@@ -147,11 +147,20 @@
   - Evidence: `claude plugin list --json` 仍显示 `thoth@thoth` `version=0.1.4`、`lastUpdated=2026-04-28T13:09:44.690Z`；`claude plugin marketplace list --json` 显示 marketplace `thoth` 来源为 GitHub `SeeleAI/Thoth`
   - Evidence: `codex plugin marketplace upgrade thoth` 失败，输出 `marketplace thoth is not configured as a Git marketplace`；当前 `codex-cli` 版本为 `0.125.0`，`codex plugin marketplace` 仅提供 `add` / `upgrade` / `remove`，无 list 命令；`which thoth` 当前为空
   - Evidence: 2026-04-30 RuntimeDriver 发布后按远端-only 规则重试：`env https_proxy=http://10.0.3.5:7899 http_proxy=http://10.0.3.5:7899 claude plugin marketplace update thoth` 成功；`claude plugin update thoth --scope user` 仍失败为 `Plugin "thoth" not found`；`codex plugin marketplace upgrade thoth` 仍失败为 `marketplace thoth is not configured as a Git marketplace`；`claude plugin list --json` 中 `thoth@thoth` 仍为 `version=0.1.4` 且 `lastUpdated=2026-04-28T13:09:44.690Z`
-  - Conclusion: 按 `CD-035`，当轮未使用本地 checkout/cache/rsync 覆盖安装。代码和远端分支已保持真实状态，本机安装刷新当时保留为 blocker `TD-031`；该 blocker 后续已由 `EV-028` 关闭。
+  - Conclusion: 按 `CD-035`，当轮未使用本地 checkout/cache/rsync 覆盖安装。代码和远端分支已保持真实状态，本机安装刷新当时保留为 blocker `TD-031`；该 blocker 后续已由 `EV-029` 关闭。
 
-- `EV-028` related to `TD-031`, `REQ-020`, `REQ-034`: 远端 marketplace 安装刷新已闭合
+- `EV-029` related to `TD-031`, `REQ-020`, `REQ-034`: 远端 marketplace 安装刷新已闭合
   - Evidence: 按官方 Claude 插件资料与本机 CLI help 修正命令后，Claude Code 侧执行 `claude plugin uninstall thoth@thoth --scope user` 成功，`claude plugin marketplace remove thoth` 成功，`claude plugin marketplace add SeeleAI/Thoth` 成功，`claude plugin install thoth@thoth --scope user` 成功，`claude plugin marketplace update thoth` 成功，`claude plugin update thoth@thoth --scope user` 返回 `thoth is already at the latest version (0.1.4)`
   - Evidence: Codex 侧 `codex plugin marketplace remove thoth` 返回 `marketplace 'thoth' is not configured or installed`，说明此前没有可卸载的 Codex marketplace；随后 `codex plugin marketplace add SeeleAI/Thoth` 成功添加 `thoth`，`codex plugin marketplace upgrade thoth` 成功升级到最新 configured revision
   - Evidence: `claude plugin list --json` 显示 `thoth@thoth` `version=0.1.4`、`scope=user`、`enabled=true`、`installedAt=2026-04-30T09:32:39.090Z`、`lastUpdated=2026-04-30T09:32:39.090Z`；`claude plugin marketplace list --json` 显示 marketplace `thoth` 来源为 GitHub `SeeleAI/Thoth`
   - Evidence: `codex --version` 为 `codex-cli 0.125.0`，`claude --version` 为 `2.1.123 (Claude Code)`
   - Conclusion: 本机双端 Thoth 安装刷新已通过远端 marketplace / host CLI 路径闭合；未使用本地 checkout、cache、临时目录或 `rsync` 覆盖安装
+
+- `EV-030` related to `WS-002`, `WS-003`, `REQ-023`, `REQ-034`: `doctor` 已收紧为只读严格审计，旧项目/半迁移项目不再误报 PASS
+  - Evidence: `thoth/plan/doctor.py` 不再调用会创建对象树并写入 summary 的 `compile_task_authority()`，而是只读检查 `.thoth/objects`、`.thoth/objects/project/project.json`、`.thoth/docs/project.json`、`.thoth/docs/{agent-entry.md,source-map.json,object-graph-summary.json}`、对象 JSON envelope、legacy authority 与 object-graph summary 是否 current
+  - Evidence: `thoth/objects.py` 的 `summarize_object_graph()` 新增 `ensure_tree=False` 只读模式；`thoth/plan/compiler.py` 新增 `collect_legacy_authority_rows()`，把 `.thoth/project` 与 `.agent-os/research-tasks` 都视为 legacy authority 残留
+  - Evidence: 新增回归 `test_doctor_rejects_half_migrated_legacy_project_without_creating_authority`，验证仅有旧 `.thoth/project/contracts` 的项目会 FAIL，且 `doctor` 不会创建 `.thoth/objects`
+  - Evidence: 新增回归 `test_doctor_rejects_object_tree_without_project_object`，验证只有空对象目录但缺 `.thoth/objects/project/project.json` 时会 FAIL
+  - Evidence: 为确保 host marketplace upgrade 真正刷新安装缓存，发布版本已从 `0.1.4` bump 到 `0.1.5`，覆盖 `pyproject.toml`、`thoth/projections.py`、`.claude-plugin/*`、`plugins/thoth/.codex-plugin/plugin.json` 与 README badge
+  - Evidence: `python -m thoth.cli sync` 已重建 repository surfaces；`python -m py_compile thoth/plan/doctor.py thoth/plan/compiler.py thoth/objects.py thoth/projections.py tests/unit/test_task_contracts.py tests/unit/test_command_spec_generation.py` 通过；`env TMPDIR=<thoth-repo>/.tmp_pytest_doctor python -m pytest -q --basetemp=<thoth-repo>/.tmp_pytest_doctor/basetemp tests/unit/test_task_contracts.py tests/unit/test_cli_surface.py::test_cli_doctor_quick tests/unit/test_cli_surface.py::test_cli_status_json tests/unit/test_command_spec_generation.py` 为 `19 passed in 74.10s`
+  - Conclusion: `doctor` 现在是严格读面，不会通过创建空对象树来制造健康假象；旧项目迁移、半迁移和生成读面漂移都会返回 FAIL
