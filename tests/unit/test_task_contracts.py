@@ -97,6 +97,33 @@ def test_doctor_reads_object_graph_and_flags_legacy_yaml(tmp_path):
     assert payload["summary"]["legacy_task_count"] == 1
 
 
+def test_doctor_rejects_half_migrated_legacy_project_without_creating_authority(tmp_path):
+    legacy_contract = tmp_path / ".thoth" / "project" / "contracts" / "contract-1.json"
+    legacy_contract.parent.mkdir(parents=True, exist_ok=True)
+    legacy_contract.write_text('{"contract_id":"contract-1"}\n', encoding="utf-8")
+
+    payload = build_doctor_payload(tmp_path)
+
+    assert payload["overall_ok"] is False
+    checks = {check["id"]: check for check in payload["checks"]}
+    assert checks["authority-tree"]["ok"] is False
+    assert checks["project-object-present"]["ok"] is False
+    assert checks["no-legacy-authority"]["ok"] is False
+    assert "legacy_thoth_project_authority_removed" in checks["no-legacy-authority"]["detail"]
+    assert not (tmp_path / ".thoth" / "objects").exists()
+
+
+def test_doctor_rejects_object_tree_without_project_object(tmp_path):
+    ensure_work_authority_tree(tmp_path)
+
+    payload = build_doctor_payload(tmp_path)
+
+    assert payload["overall_ok"] is False
+    checks = {check["id"]: check for check in payload["checks"]}
+    assert checks["authority-tree"]["ok"] is True
+    assert checks["project-object-present"]["ok"] is False
+
+
 def test_work_result_read_view_uses_docs_not_work_item_authority(tmp_path):
     ensure_work_authority_tree(tmp_path)
     upsert_work_result(

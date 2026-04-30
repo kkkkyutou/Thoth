@@ -18,11 +18,31 @@ from .paths import SCHEMA_VERSION, compiler_state_path, legacy_audit_path
 from .store import _read_yaml, _write_json, ensure_work_authority_tree
 
 
-def audit_legacy_tasks(project_root: Path) -> dict[str, Any]:
-    root = project_root / ".agent-os" / "research-tasks"
+def collect_legacy_authority_rows(project_root: Path) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    if root.is_dir():
-        for path in sorted(root.rglob("*.y*ml")):
+    legacy_thoth_project = project_root / ".thoth" / "project"
+    if legacy_thoth_project.exists():
+        items.append(
+            {
+                "legacy_path": ".thoth/project",
+                "task_id": "legacy-thoth-project",
+                "status": "invalid",
+                "reason": "legacy_thoth_project_authority_removed",
+            }
+        )
+        for path in sorted(legacy_thoth_project.rglob("*")):
+            if path.is_file():
+                items.append(
+                    {
+                        "legacy_path": str(path.relative_to(project_root)),
+                        "task_id": path.stem,
+                        "status": "invalid",
+                        "reason": "legacy_thoth_project_authority_removed",
+                    }
+                )
+    legacy_research_tasks = project_root / ".agent-os" / "research-tasks"
+    if legacy_research_tasks.is_dir():
+        for path in sorted(legacy_research_tasks.rglob("*.y*ml")):
             if path.name in {"_module.yaml", "paper-module-mapping.yaml"}:
                 continue
             payload = _read_yaml(path)
@@ -37,6 +57,11 @@ def audit_legacy_tasks(project_root: Path) -> dict[str, Any]:
                     "reason": "legacy_yaml_execution_authority_removed",
                 }
             )
+    return items
+
+
+def audit_legacy_tasks(project_root: Path) -> dict[str, Any]:
+    items = collect_legacy_authority_rows(project_root)
     audit = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": utc_now(),
