@@ -626,9 +626,10 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
     return work_id, status, work_payload
 
 
-def summarize_object_graph(project_root: Path) -> dict[str, Any]:
+def summarize_object_graph(project_root: Path, *, ensure_tree: bool = True) -> dict[str, Any]:
     store = Store(project_root)
-    store.ensure_tree()
+    if ensure_tree:
+        store.ensure_tree()
     decision_counts = {"proposed": 0, "accepted": 0, "superseded": 0}
     work_counts = {"ready": 0, "blocked": 0, "draft": 0, "active": 0, "validated": 0, "failed": 0, "abandoned": 0, "total": 0}
     problems: list[str] = []

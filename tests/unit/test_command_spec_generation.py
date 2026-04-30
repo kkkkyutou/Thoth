@@ -7,6 +7,7 @@ from pathlib import Path
 
 from thoth.command_specs import COMMAND_SPECS, PUBLIC_CODEX_COMMANDS
 from thoth.projections import (
+    PLUGIN_VERSION,
     PLUGIN_PACKAGE_DIR,
     PLUGIN_SKILLS_PATH,
     render_claude_command,
@@ -89,7 +90,7 @@ def test_codex_agent_metadata_uses_single_public_entry():
 def test_plugin_manifest_matches_official_schema_shape():
     manifest = render_plugin_manifest()
     assert manifest["name"] == "thoth"
-    assert manifest["version"] == "0.1.4"
+    assert manifest["version"] == PLUGIN_VERSION
     assert manifest["skills"] == PLUGIN_SKILLS_PATH
     assert manifest["interface"]["displayName"] == "Thoth"
     assert manifest["interface"]["defaultPrompt"][0].startswith("Show the current Thoth")
