@@ -430,7 +430,12 @@ def build_codex_public_command_prompt(
                 "Do not restate packet fields or expand into teaching prose.",
             )
         )
-    lines.append(f"Reply with `{done_token}` only after the command path reaches its terminal outcome.")
+    lines.extend(
+        (
+            "After the command path reaches its terminal outcome, return one short receipt with the real result only.",
+            "Do not reply with a bare done token or a placeholder-only completion message.",
+        )
+    )
     return " ".join(lines)
 
 

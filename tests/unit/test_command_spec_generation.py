@@ -16,6 +16,7 @@ from thoth.projections import (
     render_plugin_manifest,
     sync_repository_surfaces,
 )
+from thoth.prompt_specs import render_codex_command_micro_prompt
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -84,6 +85,13 @@ def test_codex_agent_metadata_uses_single_public_entry():
     content = render_codex_agent_metadata()
     assert 'display_name: "thoth"' in content
     assert "Use $thoth as the single public entrypoint" in content
+
+
+def test_codex_micro_prompt_requires_real_receipt_not_done_token_only():
+    content = render_codex_command_micro_prompt("run")
+    assert "return one short receipt with the real result only" in content
+    assert "Do not reply with a bare done token" in content
+    assert "Reply with `THOTH_DONE` only after the command path reaches its terminal outcome." not in content
 
 
 def test_plugin_manifest_matches_official_schema_shape():
