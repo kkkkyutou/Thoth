@@ -159,11 +159,12 @@ def test_run_and_loop_lifecycle_end_to_end(thoth_project: Path):
     assert watch_result.returncode == 0
     assert "status=completed" in watch_result.stdout
 
+    _write_task(thoth_project, "task-2")
     run_sleep_result = _run_cli(
         thoth_project,
         "run",
         "--work-id",
-        "task-1",
+        "task-2",
         "--sleep",
         env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"},
     )
@@ -178,18 +179,20 @@ def test_run_and_loop_lifecycle_end_to_end(thoth_project: Path):
         description="sleep run to complete",
     )
 
-    loop_live_result = _run_cli(thoth_project, "loop", "--work-id", "task-1", env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"})
+    _write_task(thoth_project, "task-3")
+    loop_live_result = _run_cli(thoth_project, "loop", "--work-id", "task-3", env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"})
     assert loop_live_result.returncode == 0, loop_live_result.stderr
     loop_live_id = _extract_runtime_run_id(loop_live_result.stdout)
     loop_live_watch = _run_cli(thoth_project, "loop", "--watch", loop_live_id, timeout=20)
     assert loop_live_watch.returncode == 0
     assert "status=completed" in loop_live_watch.stdout
 
+    _write_task(thoth_project, "task-4")
     loop_result = _run_cli(
         thoth_project,
         "loop",
         "--work-id",
-        "task-1",
+        "task-4",
         "--sleep",
         env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "hold"},
     )

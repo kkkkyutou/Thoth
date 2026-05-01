@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from thoth.objects import Store, flatten_work_item, utc_now
+from thoth.objects import Store, active_work_ids, flatten_work_item, utc_now
 from thoth.plan.store import load_work_for_execution
 
 
@@ -17,6 +17,66 @@ def _ready_work_ref(project_root: Path, work_id: str) -> dict[str, Any]:
         "revision": work["revision"],
         "title": work.get("title"),
     }
+
+
+def _work_ref(work: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "work_id": work["work_id"],
+        "revision": work["revision"],
+        "title": work.get("title"),
+        "status": work.get("ready_state") or work.get("status"),
+        "priority": int(work.get("priority") or 0),
+    }
+
+
+def _dependency_ids(store: Store, work_id: str) -> set[str]:
+    ids: set[str] = set()
+    for dep in store.dependencies("work_item", work_id):
+        dep_id = dep.get("object_id")
+        if isinstance(dep_id, str) and dep_id:
+            ids.add(dep_id)
+    return ids
+
+
+def list_auto_actionable_work(project_root: Path, *, scope: str = "all-open", limit: int | None = None) -> list[dict[str, Any]]:
+    store = Store(project_root)
+    locked = active_work_ids(project_root)
+    rows: list[dict[str, Any]] = []
+    closed = {"validated", "abandoned"}
+    actionable = {"ready", "active", "failed"}
+    for obj in store.list("work_item"):
+        work = flatten_work_item(obj)
+        status = str(work.get("ready_state") or work.get("status") or "")
+        if status in closed:
+            continue
+        if scope == "ready" and status != "ready":
+            continue
+        if status not in actionable:
+            continue
+        deps = _dependency_ids(store, work["work_id"])
+        if any((store.read("work_item", dep_id).get("status") not in closed) for dep_id in deps):
+            continue
+        scheduling = work.get("scheduling") if isinstance(work.get("scheduling"), dict) else {}
+        order = scheduling.get("order")
+        if not isinstance(order, int):
+            order = 1_000_000
+        status_rank = {"active": 0, "failed": 1, "ready": 2}.get(status, 9)
+        work["_auto_sort_key"] = (
+            status_rank,
+            -int(scheduling.get("priority") or 0),
+            order,
+            str(work.get("updated_at") or ""),
+            str(work.get("work_id") or ""),
+        )
+        work["_auto_locked"] = work["work_id"] in locked
+        rows.append(work)
+    rows.sort(key=lambda item: item["_auto_sort_key"])
+    if scope == "priority-top" and rows:
+        top_priority = int((rows[0].get("scheduling") or {}).get("priority") or 0)
+        rows = [row for row in rows if int((row.get("scheduling") or {}).get("priority") or 0) == top_priority]
+    if isinstance(limit, int) and limit > 0:
+        rows = rows[:limit]
+    return rows
 
 
 def _dependency_work_ids(store: Store, work_id: str, requested: set[str]) -> set[str]:
@@ -82,16 +142,21 @@ def create_orchestration_controller(
 def create_auto_controller(
     project_root: Path,
     *,
-    work_ids: list[str],
-    mode: str,
+    work_ids: list[str] | None = None,
+    mode: str = "loop",
     host: str,
     executor: str,
+    scope: str = "all-open",
+    rounds: int | None = None,
+    min_runtime_seconds: int = 8 * 60 * 60,
+    sleep_requested: bool = False,
 ) -> dict[str, Any]:
     if mode not in {"run", "loop"}:
         raise ValueError("auto mode must be run or loop")
-    if not work_ids:
-        raise ValueError("auto requires at least one --work-id")
-    refs = [_ready_work_ref(project_root, work_id) for work_id in work_ids]
+    if work_ids:
+        refs = [_ready_work_ref(project_root, work_id) for work_id in work_ids]
+    else:
+        refs = [_work_ref(work) for work in list_auto_actionable_work(project_root, scope=scope)]
     controller_id = f"controller-auto-{uuid.uuid4().hex[:12]}"
     return Store(project_root).create(
         kind="controller",
@@ -105,8 +170,12 @@ def create_auto_controller(
             "mode": mode,
             "host": host,
             "executor": executor,
+            "scope": scope,
+            "rounds": rounds,
+            "min_runtime_seconds": min_runtime_seconds,
+            "sleep_requested": sleep_requested,
             "queue": refs,
-            "cursor": {"index": 0, "active_run_id": None, "completed_work_ids": []},
+            "cursor": {"index": 0, "active_run_id": None, "completed_work_ids": [], "rounds_attempted": 0},
             "created_at": utc_now(),
         },
     )

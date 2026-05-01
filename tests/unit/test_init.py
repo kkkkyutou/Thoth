@@ -24,7 +24,7 @@ from thoth.init.render import (
     generate_thoth_runtime,
     parse_config,
 )
-from thoth.init.service import initialize_project, sync_project_layer
+from thoth.init.service import initialize_project, preview_project_migration, sync_project_layer
 
 
 @pytest.fixture
@@ -91,7 +91,7 @@ def test_generate_pre_commit_config(base_config, tmp_path):
     assert "thoth-doctor" in content
     assert "thoth-sync" in content
     assert "bash scripts/thoth-cli.sh doctor --json" in content
-    assert "bash scripts/thoth-cli.sh sync" in content
+    assert "bash scripts/thoth-cli.sh init --sync" in content
 
 
 def test_generate_dashboard_writes_locale_selection(base_config, tmp_path):
@@ -108,7 +108,7 @@ def test_generate_scripts(base_config, tmp_path):
     assert "command -v thoth" in thoth_cli
     assert "THOTH_SOURCE_ROOT" in thoth_cli
     assert "Install drift" in thoth_cli
-    assert "bash scripts/thoth-cli.sh sync" in session_end
+    assert "bash scripts/thoth-cli.sh init --sync" in session_end
     assert "bash scripts/thoth-cli.sh doctor" in session_end
 
 
@@ -203,7 +203,7 @@ def test_initialize_project_strict_cut_imports_legacy_and_removes_old_surface(ba
     assert not (tmp_path / ".agent-os" / "research-tasks").exists()
     task = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "legacy-task.json").read_text(encoding="utf-8"))
     verdict = json.loads((tmp_path / ".thoth" / "docs" / "work-results" / "legacy-task.result.json").read_text(encoding="utf-8"))
-    assert task["payload"]["source_contract_id"] == "CTR-import-legacy-task"
+    assert task["payload"]["legacy_source_id"] == "legacy-import-legacy-task"
     assert task["payload"]["runnable"] is True
     assert verdict["source"] == "legacy_import"
     import_index = json.loads(
@@ -213,6 +213,21 @@ def test_initialize_project_strict_cut_imports_legacy_and_removes_old_surface(ba
     preview = json.loads((tmp_path / ".thoth" / "migrations" / result["migration_id"] / "preview.json").read_text(encoding="utf-8"))
     assert ".research-config.yaml" in preview["remove"]
     assert ".agent-os/research-tasks" in preview["remove"]
+
+
+def test_preview_project_migration_writes_preview_without_authority(base_config, tmp_path):
+    legacy_task_dir = tmp_path / ".agent-os" / "research-tasks" / "frontend" / "f1"
+    legacy_task_dir.mkdir(parents=True)
+    (legacy_task_dir / "legacy.yaml").write_text("id: legacy-task\ntitle: Legacy Task\n", encoding="utf-8")
+
+    result = preview_project_migration(base_config, tmp_path)
+
+    migration_dir = tmp_path / ".thoth" / "migrations" / result["migration_id"]
+    assert (migration_dir / "preview.json").exists()
+    assert (migration_dir / "audit.json").exists()
+    assert not (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
+    assert result["legacy_import"]["importable_count"] == 1
+    assert result["legacy_import"]["items"][0]["target_work_id"] == "legacy-task"
 
 
 def test_initialize_project_preserves_host_owned_codex_root(base_config, tmp_path):

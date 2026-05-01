@@ -26,7 +26,7 @@ from thoth.observe.read_model import derive_gantt_rows, overview_summary_read_mo
 from data_loader import (
     load_all_tasks, load_modules, load_task, get_paper_mapping,
     invalidate_cache, get_cache_info, DIRECTIONS, load_compiler_state,
-    load_decisions, load_contracts, load_project_config,
+    load_decisions, load_work_item_refs, load_project_config,
 )
 from runtime_loader import (
     get_active_run_for_task,
@@ -624,12 +624,12 @@ async def api_decisions():
         return _error_response(500, "InternalError", str(exc))
 
 
-@app.get("/api/contracts")
-async def api_contracts():
+@app.get("/api/work-items")
+async def api_work_items():
     try:
-        return {"contracts": load_contracts(PROJECT_ROOT)}
+        return {"work_items": load_work_item_refs(PROJECT_ROOT)}
     except Exception as exc:
-        logger.error("Error in /api/contracts: %s", traceback.format_exc())
+        logger.error("Error in /api/work-items: %s", traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 

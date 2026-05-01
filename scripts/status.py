@@ -15,10 +15,10 @@ from thoth.observe.status import (
 
 
 def task_current_phase(task: dict[str, Any]) -> tuple[str, str]:
-    task_result = task.get("task_result") if isinstance(task.get("task_result"), dict) else {}
-    if task_result.get("updated_at"):
-        source = str(task_result.get("source") or "recorded")
-        return "task_result", f"task_result:{source}"
+    work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
+    if work_result.get("updated_at"):
+        source = str(work_result.get("source") or "recorded")
+        return "work_result", f"work_result:{source}"
     return "runtime", str(task.get("ready_state") or "blocked")
 
 

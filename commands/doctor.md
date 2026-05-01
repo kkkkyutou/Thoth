@@ -1,7 +1,7 @@
 ---
 name: thoth:doctor
-description: Audit project health, generated surfaces, and runtime shape.
-argument-hint: "[--quick]"
+description: Alias for `status --doctor`; strictly audit project health without writing authority.
+argument-hint: "[--quick] [--json]"
 disable-model-invocation: true
 ---
 

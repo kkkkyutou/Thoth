@@ -1,7 +1,7 @@
 ---
 name: thoth:status
 description: Show repo status and active durable runs from the shared ledger.
-argument-hint: "[--json]"
+argument-hint: "[--json] [--doctor] [--report] [--dashboard start|stop|rebuild]"
 disable-model-invocation: true
 ---
 

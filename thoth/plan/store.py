@@ -168,10 +168,6 @@ def load_decisions(project_root: Path) -> list[dict[str, Any]]:
     return Store(project_root).list("decision")
 
 
-def load_contracts(project_root: Path) -> list[dict[str, Any]]:
-    return []
-
-
 def load_work_items(project_root: Path) -> list[dict[str, Any]]:
     return [flatten_work_item(work) for work in Store(project_root).list("work_item")]
 

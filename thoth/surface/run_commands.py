@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
-from thoth.plan.doctor import infer_review_work_id
+from thoth.plan.doctor import build_doctor_payload, infer_review_work_id
 from thoth.plan.paths import compiler_state_path, work_items_dir
 from thoth.plan.store import load_work_for_execution, suggest_work_items_for_query
+from thoth.run.auto import execute_auto_controller
 from thoth.run.controllers import create_auto_controller, create_orchestration_controller
 from thoth.run.driver import JsonlStdoutSink, execute_runtime_controller
 from thoth.run.packets import LIVE_DISPATCH_MODE, prepare_execution
@@ -32,6 +36,16 @@ def handle_supervise(args, parser, *, project_root: Path) -> int:
 
 def handle_worker(args, parser, *, project_root: Path) -> int:
     return worker_main(Path(args.project_root), args.run_id)
+
+
+def handle_auto_worker(args, parser, *, project_root: Path) -> int:
+    root = Path(args.project_root).resolve()
+    return execute_auto_controller(
+        root,
+        args.controller_id,
+        driver_factory=_driver_for_handle,
+        sink=JsonlStdoutSink(),
+    )
 
 
 def _missing_task_query(args, *, command_id: str) -> str:
@@ -88,6 +102,20 @@ def _driver_for_handle(handle):
         return TestPhaseDriver(test_mode)
     executor = _normalize_worker_executor(handle.run_json().get("executor"))
     return ExternalWorkerPhaseDriver(executor=executor, timeout_seconds=_worker_timeout_seconds(handle.run_json()))
+
+
+def _auto_preflight_failures(doctor: dict) -> list[dict]:
+    ignored_ids = {"no-proposed-decisions", "no-blocked-work-items"}
+    checks = doctor.get("checks") if isinstance(doctor.get("checks"), list) else []
+    failures: list[dict] = []
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        if check.get("id") in ignored_ids:
+            continue
+        if check.get("ok") is not True:
+            failures.append(check)
+    return failures
 
 
 def handle_prepare(args, parser, *, project_root: Path) -> int:
@@ -190,19 +218,83 @@ def handle_orchestration(args, parser, *, project_root: Path) -> int:
 
 
 def handle_auto(args, parser, *, project_root: Path) -> int:
+    if getattr(args, "watch", None):
+        controller = project_root / ".thoth" / "objects" / "controller" / f"{args.watch}.json"
+        payload = json.loads(controller.read_text(encoding="utf-8")) if controller.exists() else {}
+        print_envelope(command="auto", status="ok" if payload else "failed", summary=f"Loaded auto controller {args.watch}", body={"controller": payload}, refs=output_refs(controller))
+        return 0 if payload else 1
+    if getattr(args, "stop", None):
+        from thoth.objects import Store
+
+        store = Store(project_root)
+        current = store.read("controller", args.stop)
+        if not current:
+            print_envelope(command="auto", status="failed", summary=f"Auto controller {args.stop} not found")
+            return 1
+        store.update(
+            "controller",
+            args.stop,
+            expected_revision=int(current.get("revision", 0)),
+            updates={"status": "stopped"},
+            history_summary="auto stop requested",
+            source="auto",
+        )
+        print_envelope(command="auto", status="ok", summary=f"Stop requested for auto controller {args.stop}")
+        return 0
+    doctor = build_doctor_payload(project_root)
+    preflight_failures = _auto_preflight_failures(doctor)
+    if preflight_failures:
+        print_envelope(
+            command="auto",
+            status="failed",
+            summary="Auto preflight failed execution-safety doctor; no work was executed.",
+            body={"doctor": doctor},
+            refs=output_refs(project_root / ".thoth" / "docs" / "object-graph-summary.json"),
+            checks=preflight_failures,
+        )
+        return 1
     controller = create_auto_controller(
         project_root,
         work_ids=list(getattr(args, "work_ids", []) or []),
-        mode=args.mode,
+        mode="loop",
         host=args.host,
         executor=_resolve_executor(args),
+        scope=getattr(args, "scope", "all-open"),
+        rounds=getattr(args, "rounds", None),
+        min_runtime_seconds=int(getattr(args, "min_runtime_seconds", 8 * 60 * 60) or 8 * 60 * 60),
+        sleep_requested=bool(getattr(args, "sleep", False)),
     )
-    print_envelope(
-        command="auto",
-        status="ok",
-        summary=f"Created auto controller {controller['object_id']}",
-        body={"controller": controller},
-        refs=output_refs(project_root / ".thoth" / "objects" / "controller" / f"{controller['object_id']}.json"),
-        checks=[{"name": "controller_object", "ok": True, "detail": controller["object_id"]}],
+    if getattr(args, "sleep", False):
+        controller_id = str(controller["object_id"])
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "thoth.cli",
+                "auto-worker",
+                "--project-root",
+                str(project_root.resolve()),
+                "--controller-id",
+                controller_id,
+            ],
+            cwd=str(project_root),
+            env=dict(os.environ),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        print_envelope(
+            command="auto",
+            status="ok",
+            summary=f"Started sleeping auto controller {controller_id}",
+            body={"controller": controller, "background_mode": "detached"},
+            refs=output_refs(project_root / ".thoth" / "objects" / "controller" / f"{controller_id}.json"),
+            checks=[{"name": "controller_object", "ok": True, "detail": controller_id}],
+        )
+        return 0
+    return execute_auto_controller(
+        project_root,
+        str(controller["object_id"]),
+        driver_factory=_driver_for_handle,
+        sink=JsonlStdoutSink(),
     )
-    return 0

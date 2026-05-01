@@ -1,7 +1,7 @@
 ---
 name: thoth:init
-description: Initialize canonical .thoth authority and render both host projections without taking ownership of repo-root `.codex`.
-argument-hint: "[project-name]"
+description: Initialize, migrate, or resync canonical .thoth authority without taking ownership of repo-root `.codex`.
+argument-hint: "[--sync] [--migrate --preview|--apply]"
 disable-model-invocation: true
 ---
 

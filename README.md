@@ -15,7 +15,7 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/tasks-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.1.5" src="https://img.shields.io/badge/version-0.1.5-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.1.6" src="https://img.shields.io/badge/version-0.1.6-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
@@ -37,17 +37,16 @@
 +----------------------------------------------------------------------------+
 | Layer 1. Host Surface                                                      |
 |                                                                            |
-|  init   discuss   run   loop   review   status   dashboard                 |
-|  report doctor    sync  extend                                             |
+|  init   discuss   run   loop   review   auto   status                      |
+|  doctor dashboard                                                       |
 +----------------------------------------------------------------------------+
                                               |
                                               v
 +----------------------------------------------------------------------------+
 | Layer 2. Planning Authority                                                |
 |                                                                            |
-|  init      -> bootstrap .thoth authority and host projections              |
+|  init      -> bootstrap, migrate, or resync .thoth authority               |
 |  discuss   -> record discussions, decisions, and work items                |
-|  sync      -> regenerate projections and derived surfaces                  |
 |                                                                            |
 |  Discuss -> Decision -> Work Item Object Graph                             |
 |                                         |                                  |
@@ -62,6 +61,7 @@
 |  run      -> one durable execution packet                                  |
 |  loop     -> one durable recoverable loop packet                           |
 |  review   -> structured findings through the same protocol                 |
+|  auto     -> priority-driven child loops for actionable work               |
 |                                                                            |
 |                           +---------------------------+                    |
 |                           | Ready Work (--work-id)   |                    |
@@ -89,8 +89,8 @@
 |                                                                            |
 |  dashboard -> human-visible runtime workbench                              |
 |  status    -> active / stale / attachable run summaries                    |
-|  report    -> derived project truth from current authority                 |
-|  doctor    -> health, projection, and runtime-shape audit                  |
+|  doctor    -> strict health, projection, and runtime-shape audit           |
+|  report    -> available through status --report                           |
 |                                                                            |
 |                     +-----------+-----------+-----------+-----------+      |
 |                     |           |           |           |                  |
@@ -102,8 +102,9 @@ Key invariants:
 - .thoth is the shared machine/runtime authority
 - .agent-os is the human governance layer
 - run and loop are strict --work-id surfaces
+- auto executes only actionable ready/active/failed work; blocked and draft work require human decisions
 - dashboard, status, report, and doctor are read surfaces, not authority writers
-- run and loop progress through the RuntimeDriver until terminal
+- run, loop, and auto progress through the RuntimeDriver until terminal or paused
 ```
 
 ## Why Thoth
@@ -231,17 +232,15 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 
 | Command | Host Surface | Purpose | Input | Result |
 | --- | --- | --- | --- | --- |
-| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit the repo and materialize canonical Thoth authority. | Optional project metadata or config payload | `.thoth` authority, generated projections, dashboard scaffolding, scripts, and tests |
+| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit, initialize, migrate, or resync canonical Thoth authority. | `--sync`, `--migrate --preview`, `--migrate --apply`, or optional config payload | `.thoth` authority, migration ledger, generated projections, dashboard scaffolding, scripts, and tests |
 | `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | Record planning decisions without entering code execution. | Topic, decision payload, or work payload | Updated discussion, decision, or work_item objects plus generated docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | Execute one ready work item through a durable runtime packet. | `--work-id`, optional host or executor controls, optional attach/watch/stop | Durable run ledger with state, events, phase results, artifacts, and terminal result |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | Iterate on one ready work item through a controller service. | `--work-id`, optional resume or sleep controls | Controller object, child run lineage, and bounded iteration history |
 | `review` | `Claude: /thoth:review`<br>`Codex: $thoth review` | Produce structured findings without modifying source code. | Review target, optional `--work-id`, optional executor controls | Structured review result recorded through the shared protocol |
-| `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health and active durable runs. | Optional `--json` | Shared status snapshot derived from authority and local registry |
-| `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Start or manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by `.thoth` ledgers |
-| `report` | `Claude: /thoth:report`<br>`Codex: $thoth report` | Build a structured report from current project truth. | Optional output format such as `md` or `json` | Derived progress report from ledgers and project docs |
-| `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Audit health, generated surfaces, and runtime shape. | Optional `--quick` or host checks | Health report with validation findings |
-| `sync` | `Claude: /thoth:sync`<br>`Codex: $thoth sync` | Regenerate projections and align generated surfaces. | No required positional input | Refreshed host projections and synchronized derived files |
-| `extend` | `Claude: /thoth:extend`<br>`Codex: $thoth extend` | Evolve Thoth itself under its own test gates. | Change request or touched paths | Verified repository changes that preserve public-surface parity |
+| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | Run the priority queue while the user is away. | Optional `--sleep`, `--rounds`, `--scope`, or explicit `--work-id` | Auto controller, child loop lineage, monitor events, and terminal or paused summary |
+| `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
+| `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
+| `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by `.thoth` ledgers |
 
 ## Why Trust It
 

@@ -15,7 +15,7 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/tasks-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.1.5" src="https://img.shields.io/badge/version-0.1.5-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.1.6" src="https://img.shields.io/badge/version-0.1.6-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth 概念首屏图" />
@@ -37,17 +37,16 @@
 +----------------------------------------------------------------------------+
 | Layer 1. Host Surface                                                      |
 |                                                                            |
-|  init   discuss   run   loop   review   status   dashboard                 |
-|  report doctor    sync  extend                                             |
+|  init   discuss   run   loop   review   auto   status                      |
+|  doctor dashboard                                                       |
 +----------------------------------------------------------------------------+
                                               |
                                               v
 +----------------------------------------------------------------------------+
 | Layer 2. Planning Authority                                                |
 |                                                                            |
-|  init      -> bootstrap .thoth authority and host projections              |
+|  init      -> bootstrap / migrate / resync .thoth authority                |
 |  discuss   -> record discussions, decisions, and work items                |
-|  sync      -> regenerate projections and derived surfaces                  |
 |                                                                            |
 |  Discuss -> Decision -> Work Item Object Graph                             |
 |                                         |                                  |
@@ -62,6 +61,7 @@
 |  run      -> one durable execution packet                                  |
 |  loop     -> one durable recoverable loop packet                           |
 |  review   -> structured findings through the same protocol                 |
+|  auto     -> priority-driven child loops for actionable work               |
 |                                                                            |
 |                           +---------------------------+                    |
 |                           | Ready Work (--work-id)   |                    |
@@ -89,8 +89,8 @@
 |                                                                            |
 |  dashboard -> human-visible runtime workbench                              |
 |  status    -> active / stale / attachable run summaries                    |
-|  report    -> derived project truth from current authority                 |
-|  doctor    -> health, projection, and runtime-shape audit                  |
+|  doctor    -> strict health, projection, and runtime-shape audit           |
+|  report    -> available through status --report                           |
 |                                                                            |
 |                     +-----------+-----------+-----------+-----------+      |
 |                     |           |           |           |                  |
@@ -102,8 +102,9 @@
 - `.thoth` 是共享 machine/runtime authority
 - `.agent-os` 是 human governance layer
 - `run` 和 `loop` 都是 strict `--work-id` surface
+- `auto` 只执行 ready/active/failed 这类可行动 work；blocked 和 draft 必须由人做决策
 - `dashboard`、`status`、`report`、`doctor` 是 read surfaces，不写 authority
-- 每个 live packet 都必须进入 `complete` 或 `fail`
+- `run`、`loop`、`auto` 必须进入 terminal 或 paused
 ```
 
 ## 为什么是 Thoth
@@ -231,17 +232,15 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 
 | 命令 | 宿主入口 | 目的 | 输入 | 结果 |
 | --- | --- | --- | --- | --- |
-| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | 审查仓库并物化 canonical Thoth authority。 | 可选的项目元信息或配置载荷 | `.thoth` authority、生成投影、dashboard 脚手架、脚本与测试 |
+| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | 审查、初始化、迁移或刷新 canonical Thoth authority。 | `--sync`、`--migrate --preview`、`--migrate --apply` 或可选配置 | `.thoth` authority、迁移账本、生成投影、dashboard 脚手架、脚本与测试 |
 | `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | 在不进入代码执行的前提下记录规划决策。 | 主题、decision payload 或 work payload | 更新后的 discussion、decision 或 work_item 对象，以及生成 docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | 通过 durable runtime packet 执行一个 ready work item。 | `--work-id`，可选 host 或 executor 控制，以及 attach/watch/stop | 含 state、events、phase results、artifacts 和 terminal result 的 durable run ledger |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | 通过 controller service 对一个 ready work item 做迭代执行。 | `--work-id`，可选 resume 或 sleep 控制 | Controller object、child run lineage 和有边界的迭代历史 |
 | `review` | `Claude: /thoth:review`<br>`Codex: $thoth review` | 在不改源码的前提下产出结构化 findings。 | review target、可选 `--work-id`、可选 executor 控制 | 通过共享协议写入的 structured review result |
-| `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | 展示项目健康状态和活动中的 durable runs。 | 可选 `--json` | 基于 authority 和本机 registry 派生出的共享状态快照 |
-| `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | 启动或管理本地 dashboard runtime。 | 可选动作：`start`、`stop` 或 `rebuild` | 由 `.thoth` ledgers 驱动的本地 dashboard 进程和读接口 |
-| `report` | `Claude: /thoth:report`<br>`Codex: $thoth report` | 从当前项目真相生成结构化报告。 | 可选输出格式，例如 `md` 或 `json` | 基于 ledgers 和项目文档派生出的进度报告 |
-| `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | 审计健康状态、生成面和 runtime shape。 | 可选 `--quick` 或 host 检查 | 含验证结论的健康报告 |
-| `sync` | `Claude: /thoth:sync`<br>`Codex: $thoth sync` | 重新生成投影并对齐派生 surface。 | 无必需位置参数 | 已刷新的 host projections 和同步后的派生文件 |
-| `extend` | `Claude: /thoth:extend`<br>`Codex: $thoth extend` | 在自身测试门槛下演进 Thoth 本体。 | 变更请求或受影响路径 | 保持 public-surface parity 的已验证仓库修改 |
+| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | 用户离开时按优先级持续推进可行动队列。 | 可选 `--sleep`、`--rounds`、`--scope` 或显式 `--work-id` | Auto controller、child loop lineage、monitor events，以及 terminal 或 paused 摘要 |
+| `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | 展示项目健康、活动 runs、doctor、report 或 dashboard 读面。 | 可选 `--json`、`--doctor`、`--report` 或 `--dashboard` | 基于 authority 和本机 registry 派生出的共享状态快照与读面 |
+| `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | `status --doctor` 的别名；严格审计健康状态和 runtime shape。 | 可选 `--quick` 或 `--json` | 含验证结论的健康报告 |
+| `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | `status --dashboard` 的别名；管理本地 dashboard runtime。 | 可选动作：`start`、`stop` 或 `rebuild` | 由 `.thoth` ledgers 驱动的本地 dashboard 进程和读接口 |
 
 ## 为什么值得信任
 

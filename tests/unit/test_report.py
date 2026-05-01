@@ -18,6 +18,9 @@ from report import (
     task_created_in_range,
     task_current_phase,
 )
+from thoth.objects import Store
+from thoth.init.service import initialize_project
+from thoth.plan.store import upsert_work_result
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -26,30 +29,52 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 def _setup_project(tmp_path: Path) -> None:
+    initialize_project(
+        {
+            "name": "TestProject",
+            "description": "report test",
+            "language": "en",
+            "directions": ["frontend"],
+            "phases": [],
+            "port": 8501,
+            "theme": "warm-bear",
+        },
+        tmp_path,
+    )
     (tmp_path / ".agent-os").mkdir(exist_ok=True)
     (tmp_path / ".agent-os" / "run-log.md").write_text(
         "# Run Log\n\n- 2026-01-10 14:00 UTC [task started]\n  - Started task-1\n",
         encoding="utf-8",
     )
-    _write_json(
-        tmp_path / ".thoth" / "project" / "project.json",
-        {"project": {"name": "TestProject", "directions": [{"id": "frontend"}]}},
-    )
-    _write_json(
-        tmp_path / ".thoth" / "project" / "tasks" / "task-1.json",
-        {
-            "task_id": "task-1",
-            "title": "Imported Task",
-            "module": "f1",
+    Store(tmp_path).upsert(
+        kind="work_item",
+        object_id="task-1",
+        status="validated",
+        title="Imported Task",
+        summary="Imported work",
+        payload={
+            "work_type": "task",
+            "runnable": True,
+            "goal": "Imported work",
+            "context": "f1",
             "direction": "frontend",
-            "ready_state": "imported_resolved",
-            "generated_at": "2026-01-15T10:00:00Z",
+            "module": "f1",
+            "constraints": ["test"],
+            "execution_plan": ["Inspect report output."],
+            "eval_contract": {
+                "entrypoint": {"command": "true"},
+                "primary_metric": {"name": "ok", "direction": "gte", "threshold": 1},
+                "validate_output_schema": {"type": "object"},
+            },
+            "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+            "decisions": [],
+            "missing_questions": [],
         },
     )
-    _write_json(
-        tmp_path / ".thoth" / "project" / "tasks" / "task-1.result.json",
+    upsert_work_result(
+        tmp_path,
+        "task-1",
         {
-            "task_id": "task-1",
             "source": "legacy_import",
             "updated_at": "2026-02-15T17:00:00Z",
             "evidence_paths": ["reports/task-1.md"],

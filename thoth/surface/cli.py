@@ -11,7 +11,7 @@ from .handlers import handle_command
 
 def build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="thoth")
-    public_commands = "{run,loop,orchestration,auto,status,init,doctor,dashboard,sync,report,discuss,extend,review,hook}"
+    public_commands = "{init,discuss,run,loop,review,auto,status,doctor,dashboard}"
     sub = parser.add_subparsers(dest="command", required=True, metavar=public_commands)
 
     def add_internal_parser(name: str) -> argparse.ArgumentParser:
@@ -39,34 +39,52 @@ def build_cli_parser() -> argparse.ArgumentParser:
     loop_parser.add_argument("--watch")
     loop_parser.add_argument("--stop")
 
-    orchestration_parser = sub.add_parser("orchestration")
+    orchestration_parser = add_internal_parser("orchestration")
     orchestration_parser.add_argument("--work-id", action="append", dest="work_ids", default=[])
     orchestration_parser.add_argument("--host", default="codex")
     orchestration_parser.add_argument("--executor", default=default_executor())
 
     auto_parser = sub.add_parser("auto")
     auto_parser.add_argument("--work-id", action="append", dest="work_ids", default=[])
-    auto_parser.add_argument("--mode", choices=("run", "loop"), default="run")
+    auto_parser.add_argument("--mode", choices=("loop",), default="loop")
+    auto_parser.add_argument("--scope", choices=("all-open", "ready", "priority-top"), default="all-open")
+    auto_parser.add_argument("--rounds", type=int)
+    auto_parser.add_argument("--min-runtime-seconds", type=int, default=8 * 60 * 60)
     auto_parser.add_argument("--host", default="codex")
     auto_parser.add_argument("--executor", default=default_executor())
+    auto_parser.add_argument("--sleep", action="store_true")
+    auto_parser.add_argument("--watch")
+    auto_parser.add_argument("--stop")
 
     status_parser = sub.add_parser("status")
     status_parser.add_argument("--json", action="store_true")
+    status_parser.add_argument("--doctor", action="store_true")
+    status_parser.add_argument("--report", action="store_true")
+    status_parser.add_argument("--dashboard", nargs="?", const="start", choices=("start", "stop", "rebuild"))
+    status_parser.add_argument("--fix", action="store_true")
+    status_parser.add_argument("--preview", action="store_true")
+    status_parser.add_argument("--apply", action="store_true")
 
     init_parser = sub.add_parser("init")
     init_parser.add_argument("--config-json")
+    init_parser.add_argument("--sync", action="store_true")
+    init_parser.add_argument("--migrate", action="store_true")
+    init_parser.add_argument("--preview", action="store_true")
+    init_parser.add_argument("--apply", action="store_true")
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--quick", action="store_true")
     doctor.add_argument("--fix", action="store_true")
+    doctor.add_argument("--preview", action="store_true")
+    doctor.add_argument("--apply", action="store_true")
     doctor.add_argument("--json", action="store_true")
 
     dashboard = sub.add_parser("dashboard")
     dashboard.add_argument("action", nargs="?", default="start", choices=("start", "stop", "rebuild"))
 
-    sub.add_parser("sync")
+    add_internal_parser("sync")
 
-    report = sub.add_parser("report")
+    report = add_internal_parser("report")
     report.add_argument("--format", choices=("md", "json"), default="md")
 
     discuss = sub.add_parser("discuss")
@@ -75,7 +93,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     discuss.add_argument("--work-json")
     discuss.add_argument("rest", nargs="*")
 
-    extend = sub.add_parser("extend")
+    extend = add_internal_parser("extend")
     extend.add_argument("changed", nargs="*")
 
     review = sub.add_parser("review")
@@ -85,7 +103,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     review.add_argument("--executor")
     review.add_argument("rest", nargs="*")
 
-    hook = sub.add_parser("hook")
+    hook = add_internal_parser("hook")
     hook.add_argument("--host", required=True, choices=("claude", "codex"))
     hook.add_argument("--event", required=True, choices=("start", "end", "stop"))
 
@@ -96,6 +114,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
     worker = add_internal_parser("worker")
     worker.add_argument("--project-root", required=True)
     worker.add_argument("--run-id", required=True)
+
+    auto_worker = add_internal_parser("auto-worker")
+    auto_worker.add_argument("--project-root", required=True)
+    auto_worker.add_argument("--controller-id", required=True)
 
     prepare = add_internal_parser("prepare")
     prepare.add_argument("--project-root")

@@ -67,6 +67,8 @@ def test_codex_skill_lists_single_public_entry():
     assert "### `$thoth run`" not in content
     for command in PUBLIC_CODEX_COMMANDS:
         assert f"$thoth {command}" in content
+    for internal in ("sync", "report", "extend", "orchestration"):
+        assert f"$thoth {internal}" not in content
 
 
 def test_prompt_surface_size_regression():
@@ -114,6 +116,8 @@ def test_sync_repository_surfaces_writes_generated_files(tmp_path):
     assert (tmp_path / ".agents" / "plugins" / "marketplace.json").exists()
     assert (tmp_path / "plugins" / "thoth" / "skills" / "thoth" / "SKILL.md").exists()
     assert (tmp_path / "plugins" / "thoth" / "skills" / "thoth" / "commands" / "run.md").exists()
+    assert not (tmp_path / "commands" / "sync.md").exists()
+    assert not (tmp_path / "plugins" / "thoth" / "skills" / "thoth" / "commands" / "sync.md").exists()
     assert (tmp_path / "plugins" / "thoth" / "skills" / "thoth" / "agents" / "openai.yaml").exists()
     manifest = json.loads((tmp_path / "plugins" / "thoth" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert manifest["skills"] == PLUGIN_SKILLS_PATH

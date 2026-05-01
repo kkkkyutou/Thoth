@@ -14,6 +14,6 @@
   ✓ Project tests ............. PASS (8 tests)
 
   Result: 3 issue(s) found
-  Fix: Run /thoth:sync to update todo.md
+  Fix: Run /thoth:init --sync to update generated views
   Fix: Remove broken milestone references or create missing tasks
   Fix: Resolve circular module dependencies

@@ -46,7 +46,7 @@ async def run_validate() -> dict:
 
 
 async def run_sync() -> dict:
-    result = await _run(["python", "-m", "thoth.cli", "sync"])
+    result = await _run(["python", "-m", "thoth.cli", "init", "--sync"])
     return {
         "output": result["stdout"],
         "returncode": result["returncode"],

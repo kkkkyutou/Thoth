@@ -233,6 +233,6 @@ def runtime_overview(project_root: Path) -> dict[str, Any]:
         "stale_run_count": len(stale_runs),
         "active_runs": active_runs[:10],
         "last_runtime_update": runs[0].get("last_updated_at") if runs else None,
-        "progress_source": "task_result_plus_run_ledger",
+        "progress_source": "work_result_plus_run_ledger",
         "host_breakdown": sorted({run.get("host") for run in runs if run.get("host")}),
     }

@@ -17,11 +17,61 @@ from data_loader import (
     load_modules,
     load_project_config,
 )
+from thoth.objects import Store
+from thoth.plan.store import upsert_work_result
 
 
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_project_object(tmp_path: Path, *, directions: list[dict] | None = None) -> None:
+    Store(tmp_path).upsert(
+        kind="project",
+        object_id="project",
+        status="active",
+        title="Loader Demo",
+        summary="strict",
+        payload={
+            "project": {
+                "name": "Loader Demo",
+                "description": "strict",
+                "language": "zh",
+                "directions": directions or [{"id": "frontend", "label_en": "Frontend"}],
+                "phases": [{"id": "survey", "weight": 20}],
+            },
+            "dashboard": {"port": 8600, "theme": "warm-bear"},
+        },
+    )
+
+
+def _write_work_item(tmp_path: Path, work_id: str = "task-1", *, status: str = "ready") -> None:
+    Store(tmp_path).upsert(
+        kind="work_item",
+        object_id=work_id,
+        status=status,
+        title="Strict task",
+        summary="Verify loader",
+        payload={
+            "work_type": "task",
+            "runnable": True,
+            "goal": "Verify loader",
+            "context": "f1",
+            "direction": "frontend",
+            "module": "f1",
+            "constraints": ["test"],
+            "execution_plan": ["Inspect loader output."],
+            "eval_contract": {
+                "entrypoint": {"command": "true"},
+                "primary_metric": {"name": "ok", "direction": "gte", "threshold": 1},
+                "validate_output_schema": {"type": "object"},
+            },
+            "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+            "decisions": ["DEC-test"],
+            "missing_questions": [],
+        },
+    )
 
 
 def test_safe_load_yaml_handles_valid_and_invalid(tmp_path):
@@ -34,17 +84,12 @@ def test_safe_load_yaml_handles_valid_and_invalid(tmp_path):
 
 
 def test_directions_from_manifest(tmp_path):
-    _write_json(
-        tmp_path / ".thoth" / "project" / "project.json",
-        {
-            "project": {
-                "name": "Loader Demo",
-                "directions": [
-                    {"id": "frontend", "label_en": "Frontend"},
-                    {"id": "backend", "label_en": "Backend"},
-                ],
-            }
-        },
+    _write_project_object(
+        tmp_path,
+        directions=[
+            {"id": "frontend", "label_en": "Frontend"},
+            {"id": "backend", "label_en": "Backend"},
+        ],
     )
     directions = _read_directions_from_config(tmp_path)
     assert directions == ("frontend", "backend")
@@ -52,25 +97,12 @@ def test_directions_from_manifest(tmp_path):
 
 def test_load_all_tasks_attaches_work_results(tmp_path):
     invalidate_cache()
-    _write_json(
-        tmp_path / ".thoth" / "project" / "project.json",
-        {"project": {"name": "Loader Demo", "directions": [{"id": "frontend"}]}},
-    )
-    _write_json(
-        tmp_path / ".thoth" / "project" / "tasks" / "task-1.json",
+    _write_project_object(tmp_path)
+    _write_work_item(tmp_path, status="validated")
+    upsert_work_result(
+        tmp_path,
+        "task-1",
         {
-            "task_id": "task-1",
-            "title": "Strict task",
-            "direction": "frontend",
-            "module": "f1",
-            "goal_statement": "Verify loader",
-            "ready_state": "imported_resolved",
-        },
-    )
-    _write_json(
-        tmp_path / ".thoth" / "project" / "tasks" / "task-1.result.json",
-        {
-            "task_id": "task-1",
             "source": "legacy_import",
             "usable": True,
             "meets_goal": True,
@@ -86,17 +118,7 @@ def test_load_all_tasks_attaches_work_results(tmp_path):
 
 def test_load_modules_from_tasks(tmp_path):
     invalidate_cache()
-    _write_json(
-        tmp_path / ".thoth" / "project" / "tasks" / "task-1.json",
-        {
-            "task_id": "task-1",
-            "title": "Strict task",
-            "direction": "frontend",
-            "module": "f1",
-            "goal_statement": "Verify loader",
-            "ready_state": "ready",
-        },
-    )
+    _write_work_item(tmp_path)
     modules = load_modules(tmp_path)
     assert modules[0]["id"] == "f1"
     assert modules[0]["direction"] == "frontend"
@@ -104,19 +126,7 @@ def test_load_modules_from_tasks(tmp_path):
 
 def test_load_project_config_uses_manifest(tmp_path):
     invalidate_cache()
-    _write_json(
-        tmp_path / ".thoth" / "project" / "project.json",
-        {
-            "project": {
-                "name": "Loader Demo",
-                "description": "strict",
-                "language": "zh",
-                "directions": [{"id": "frontend", "label_en": "Frontend"}],
-                "phases": [{"id": "survey", "weight": 20}],
-            },
-            "dashboard": {"port": 8600, "theme": "warm-bear"},
-        },
-    )
+    _write_project_object(tmp_path)
     config = load_project_config(tmp_path)
     assert config["project"]["name"] == "Loader Demo"
     assert config["research"]["directions"][0]["id"] == "frontend"

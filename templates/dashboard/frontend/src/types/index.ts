@@ -96,8 +96,8 @@ export interface RunDetail extends RunSummary {
   result?: Record<string, unknown>
 }
 
-export interface TaskResult {
-  task_id: string
+export interface WorkResult {
+  work_id: string
   source?: string | null
   usable?: boolean | null
   meets_goal?: boolean | null
@@ -123,10 +123,9 @@ export interface Task {
   hypothesis?: string
   phases?: Phases
   deliverables?: Deliverable[]
-  ready_state?: 'ready' | 'blocked' | 'invalid' | 'imported_resolved'
+  ready_state?: 'ready' | 'blocked' | 'invalid' | 'validated' | 'failed' | 'active' | 'draft' | 'abandoned'
   blocking_reason?: string
   goal_statement?: string
-  contract_id?: string
   decision_ids?: string[]
   candidate_method_id?: string
   implementation_recipe?: string[]
@@ -138,7 +137,7 @@ export interface Task {
   generated_at?: string
   estimated_total_hours?: number
   time_spent_hours?: number
-  task_result?: TaskResult
+  work_result?: WorkResult
   computed_status: TaskStatus
   computed_progress: number
   active_run?: RunSummary | null
