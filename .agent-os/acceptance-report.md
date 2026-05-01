@@ -180,3 +180,14 @@
   - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出 `Plugin "thoth" updated from 0.1.5 to 0.1.6 for scope user. Restart to apply changes.`；`codex plugin marketplace upgrade thoth` 输出 `Upgraded marketplace thoth to the latest configured revision.`
   - Evidence: 宿主 CLI 核验显示 `claude --version` 为 `2.1.126 (Claude Code)`、`codex --version` 为 `codex-cli 0.128.0`、`claude plugin list --json` 中 `thoth@thoth` 为 `version=0.1.6`、`scope=user`、`enabled=true`、`lastUpdated=2026-05-01T12:18:58.297Z`
   - Conclusion: 当前用户公开入口已经压缩到 9 个命令；迁移与生成刷新归入 `init`，报告与 dashboard/doctor 归入 `status` 读面，`auto` 成为离席执行入口；发布面、main 验证、远端安装刷新均已闭合
+
+- `EV-032` related to `WS-003`, `REQ-020`, `REQ-034`: Claude `/thoth:discuss` 多行参数 shell 逃逸已修复并刷新到本机安装
+  - Evidence: 根因是 Claude generated slash command 中 `discuss $ARGUMENTS` 让多行自然语言参数在 bash 中按行展开，导致用户列出的 `/tmp/thoth-demo-project/eva01/...` 路径被当成独立 shell 命令执行
+  - Evidence: `commands/discuss.md` 现在通过 heredoc 将 `$ARGUMENTS` 写入 `THOTH_DISCUSS_ARGUMENTS_FILE`，再调用 `thoth-claude-command.sh discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"`；`thoth/surface/bridges/claude.py` 会把该文件内容读回单个 `discuss` topic 参数
+  - Evidence: 新增回归 `test_claude_discuss_surface_preserves_structured_arguments` 与 `test_bridge_discuss_reads_multiline_arguments_file`
+  - Evidence: `python -m py_compile thoth/projections.py thoth/surface/bridges/claude.py tests/unit/test_command_spec_generation.py tests/unit/test_claude_bridge.py` 通过
+  - Evidence: `env TMPDIR=<thoth-repo>/.tmp_pytest_discuss_fix python -m pytest -q --basetemp=<thoth-repo>/.tmp_pytest_discuss_fix/final tests/unit/test_command_spec_generation.py tests/unit/test_claude_bridge.py` 为 `16 passed in 243.25s`
+  - Evidence: `main` cherry-pick 后快验 `py_compile` 通过，focused pytest `2 passed in 34.58s`；真实 bash heredoc smoke 证明多行 `/tmp/thoth-demo-project/eva01/...` 文本保留在 `arguments[0]` 与 `argv[-1]`，未被 shell 执行
+  - Evidence: 发布面提交 `06571d0 fix: preserve multiline discuss arguments` 已 cherry-pick 到 `main` 为 `14f04ac`；`origin/main` 已推送 `a53559c..14f04ac`
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出 `Plugin "thoth" updated from 0.1.6 to 0.1.7 for scope user. Restart to apply changes.`；`codex plugin marketplace upgrade thoth` 成功；`claude plugin list --json` 显示 `thoth@thoth` `version=0.1.7`、`lastUpdated=2026-05-01T13:12:39.100Z`
+  - Conclusion: 用户原始 `/thoth:discuss` 输入中的多行资料路径现在会作为讨论内容进入 Thoth，不再触发 shell `Permission denied` / `No such file` 这类命令执行错误

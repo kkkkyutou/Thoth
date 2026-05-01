@@ -2,6 +2,13 @@
 
 ## Entries
 
+- 2026-05-01 13:15 UTC [claude discuss multiline argument hotfix]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-003`
+  - State changes: 修复 Claude `/thoth:discuss` 在多行自然语言参数中把后续文件路径行当成 shell 命令执行的问题。`discuss` 的 generated Claude command 现在先用 quoted heredoc 将 `$ARGUMENTS` 写入临时文件，再通过 `--thoth-arguments-file` 传给 bridge；bridge 读回文件内容并作为单个 topic 参数调用 Thoth CLI。版本 bump 到 `0.1.7` 以确保远端 marketplace upgrade 真实刷新宿主安装。
+  - Evidence produced: `python -m thoth.cli sync` 重建 generated surfaces；`python -m py_compile thoth/projections.py thoth/surface/bridges/claude.py tests/unit/test_command_spec_generation.py tests/unit/test_claude_bridge.py` 通过；full focused tests `tests/unit/test_command_spec_generation.py tests/unit/test_claude_bridge.py` 为 `16 passed in 243.25s`；`main` cherry-pick 后 focused tests 为 `2 passed in 34.58s`；真实 bash heredoc smoke 证明用户给出的 `/tmp/thoth-demo-project/eva01/...` 多行路径留在 `arguments[0]`，没有被 shell 执行。
+  - Evidence produced: `dev` 发布面提交 `06571d0 fix: preserve multiline discuss arguments`，`main` cherry-pick `14f04ac fix: preserve multiline discuss arguments`；`origin/main` 已推送 `a53559c..14f04ac`；远端-only 安装刷新完成，Claude `thoth@thoth` 从 `0.1.6` 升到 `0.1.7`，Codex marketplace upgrade 成功。
+  - Next likely action: 推送 `origin/dev`，然后让用户在目标 `demo_project` 项目中重启 Claude Code 或新开会话后重试原 `/thoth:discuss`；若仍看到 `legacy=8`，那是目标项目旧 `.thoth/project` 迁移问题，应走 `doctor --fix --preview` / `init --migrate --preview` 单独处理。
+
 - 2026-04-29 10:18 UTC [unified object graph and agent runtime kernel]
   - Worked on: `OBJ-001`, `WS-002`, `WS-005`, `TD-029`
   - State changes: 按用户锁定计划将 planning/runtime authority 收敛为 `.thoth/objects/<kind>/<object_id>.json` 统一对象图；新增 `Store` 作为 authority 唯一写入口，覆盖 `project`、`discussion`、`decision`、`work_item`、`controller`、`run`、`phase_result`、`artifact`、`doc_view`；删除独立 `Contract` kind 的长期语义，把原 goal/context/constraints/execution_plan/eval/runtime_policy/decisions 并入 `work_item.payload`；public `run` / `loop` / `review` 切到 `--work-id`，`discuss` 切到 `--work-json`；`run` 绑定 `work_id@revision` 并在 `.thoth/objects/run` 与 `.thoth/runs/*` 双层落账；`loop`、`orchestration`、`auto` 收敛为 controller service，其中 orchestration 写 DAG batches，auto 写 linear queue cursor；active run/controller 引用的 work item 会阻止 update/tombstone/link mutation
