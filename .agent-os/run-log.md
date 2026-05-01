@@ -2,6 +2,13 @@
 
 ## Entries
 
+- 2026-05-01 14:45 UTC [review and discuss prompt strengthening]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-003`, `WS-005`
+  - State changes: 按用户要求强化 `review` 与 `discuss` command prompt authority：`review` 现在强调不修改代码、尽最大可能理解用户意图、发挥专业知识并从第一性原理判断；`discuss` 现在强调不要假设任何关键问题，围绕目标、约束、成功指标、风险、资源、时间和 authority 用 `AskUserQuestion` 追问到没有重要假设为止。版本 bump 到 `0.1.8`，以确保远端 marketplace upgrade 刷新宿主安装。
+  - Evidence produced: `python -m thoth.cli sync` 重建 generated surfaces；`python -m py_compile thoth/prompt_specs.py thoth/projections.py tests/unit/test_command_spec_generation.py` 通过；`tests/unit/test_command_spec_generation.py` 在 `dev` 为 `9 passed in 0.33s`，在 `main` cherry-pick 后为 `9 passed in 0.36s`；`rg` 证明确认新文案进入 `commands/{review,discuss}.md` 与 `plugins/thoth/skills/thoth/commands/{review,discuss}.md`。
+  - Evidence produced: `dev` 发布面提交 `b657be3 feat: strengthen discuss and review prompts`，`main` cherry-pick `cc614dc feat: strengthen discuss and review prompts`；`origin/main` 已推送 `14f04ac..cc614dc`；远端-only 安装刷新完成，Claude `thoth@thoth` 从 `0.1.7` 升到 `0.1.8`，Codex marketplace upgrade 成功。
+  - Next likely action: 推送 `origin/dev`；用户需要重启 Claude Code 或新开会话，使已安装 `thoth@thoth 0.1.8` 的 prompt surface 生效。
+
 - 2026-05-01 13:15 UTC [claude discuss multiline argument hotfix]
   - Worked on: `OBJ-001`, `WS-001`, `WS-003`
   - State changes: 修复 Claude `/thoth:discuss` 在多行自然语言参数中把后续文件路径行当成 shell 命令执行的问题。`discuss` 的 generated Claude command 现在先用 quoted heredoc 将 `$ARGUMENTS` 写入临时文件，再通过 `--thoth-arguments-file` 传给 bridge；bridge 读回文件内容并作为单个 topic 参数调用 Thoth CLI。版本 bump 到 `0.1.7` 以确保远端 marketplace upgrade 真实刷新宿主安装。

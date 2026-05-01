@@ -191,3 +191,13 @@
   - Evidence: 发布面提交 `06571d0 fix: preserve multiline discuss arguments` 已 cherry-pick 到 `main` 为 `14f04ac`；`origin/main` 已推送 `a53559c..14f04ac`
   - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出 `Plugin "thoth" updated from 0.1.6 to 0.1.7 for scope user. Restart to apply changes.`；`codex plugin marketplace upgrade thoth` 成功；`claude plugin list --json` 显示 `thoth@thoth` `version=0.1.7`、`lastUpdated=2026-05-01T13:12:39.100Z`
   - Conclusion: 用户原始 `/thoth:discuss` 输入中的多行资料路径现在会作为讨论内容进入 Thoth，不再触发 shell `Permission denied` / `No such file` 这类命令执行错误
+
+- `EV-033` related to `WS-003`, `WS-005`, `REQ-019`, `REQ-020`, `REQ-034`: `review` 与 `discuss` 预制 command prompt authority 已强化并刷新到双宿主安装
+  - Evidence: `thoth/prompt_specs.py` 中 `review` objective 已改为理解用户意图、应用专业判断和 first-principles reasoning，并返回不修改代码的结构化 findings；hard stops 明确禁止写 fixes，要求在 target/intent/acceptance bar 不清楚时用 `AskUserQuestion` 先问再判断
+  - Evidence: `thoth/prompt_specs.py` 中 `discuss` objective 已改为持续审问用户想法，直到 goals、constraints、success criteria、risks、authority 明确；hard stops 明确禁止假设 unanswered goals/constraints/success metrics/resources/timing/authority，并要求用 `AskUserQuestion` 继续讨论直到没有重要假设
+  - Evidence: `python -m thoth.cli sync` 已重建 Claude `/thoth:review`、`/thoth:discuss` 与 Codex `$thoth review`、`$thoth discuss` micro prompt surfaces；`rg` 已确认新文案出现在 `commands/{review,discuss}.md` 与 `plugins/thoth/skills/thoth/commands/{review,discuss}.md`
+  - Evidence: `python -m py_compile thoth/prompt_specs.py thoth/projections.py tests/unit/test_command_spec_generation.py` 通过；`env TMPDIR=<thoth-repo>/.tmp_pytest_prompt_strengthen python -m pytest -q --basetemp=<thoth-repo>/.tmp_pytest_prompt_strengthen/final tests/unit/test_command_spec_generation.py` 为 `9 passed in 0.33s`
+  - Evidence: `main` cherry-pick 后 `python -m py_compile thoth/prompt_specs.py thoth/projections.py tests/unit/test_command_spec_generation.py` 通过；focused pytest `tests/unit/test_command_spec_generation.py` 为 `9 passed in 0.36s`
+  - Evidence: 发布面提交 `b657be3 feat: strengthen discuss and review prompts` 已 cherry-pick 到 `main` 为 `cc614dc`；`origin/main` 已推送 `14f04ac..cc614dc`
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出 `Plugin "thoth" updated from 0.1.7 to 0.1.8 for scope user. Restart to apply changes.`；`codex plugin marketplace upgrade thoth` 成功；`claude plugin list --json` 显示 `thoth@thoth` `version=0.1.8`、`lastUpdated=2026-05-01T14:43:48.204Z`
+  - Conclusion: 当前 Claude Code 与 Codex 的 `review` / `discuss` live prompt surfaces 都携带强化后的“不改代码、第一性原理、专业判断、无假设、AskUserQuestion 追问到底”约束
