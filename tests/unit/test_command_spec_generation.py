@@ -44,6 +44,8 @@ def test_claude_discuss_surface_preserves_structured_arguments():
     assert "<<'THOTH_DISCUSS_ARGUMENTS_EOF'" in rendered
     assert 'scripts/thoth-claude-command.sh" discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"' in rendered
     assert 'scripts/thoth-claude-command.sh" discuss $ARGUMENTS' not in rendered
+    assert "use AskUserQuestion until no material assumptions remain" in rendered
+    assert "Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority." in rendered
     assert "disable-model-invocation: false" in rendered
 
 
@@ -55,6 +57,8 @@ def test_claude_review_surface_preserves_structured_arguments():
     assert "packet.required_review_shape" in rendered
     assert "packet.review_mode` is `exact_match`" in rendered
     assert "packet.protocol_commands.complete_exact" in rendered
+    assert "professional judgment and first-principles reasoning" in rendered
+    assert "ask with AskUserQuestion before judging instead of assuming" in rendered
     assert "route_class: `live_intelligent`" in rendered
     assert "packet_authority_mode: `review_packet`" in rendered
 

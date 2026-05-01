@@ -46,16 +46,18 @@ THOTH_DISCUSS_ARGUMENTS_EOF
 
 ### Objective
 
-Make the smallest correct planning-authority update and recompile tasks.
+Interrogate the user's idea until goals, constraints, success criteria, risks, and authority are explicit; use AskUserQuestion until no material assumptions remain.
 
 ### Hard Stops
 
 - Do not modify source code.
+- Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority.
+- Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.
 - Do not fabricate ready execution tasks from unresolved decisions.
 - Do not repeat the packet or decision payload verbatim.
 
 ### Reply Contract
 
-- reply_budget_utf8: `64`
-- result_style: brief planning receipt
+- reply_budget_utf8: `240`
+- result_style: question-driven planning dialogue or brief receipt when closed
 - validator_policy: planning authority plus compiler output decide completion

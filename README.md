@@ -15,7 +15,7 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/tasks-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.1.7" src="https://img.shields.io/badge/version-0.1.7-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.1.8" src="https://img.shields.io/badge/version-0.1.8-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />

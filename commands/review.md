@@ -45,16 +45,17 @@ executed before Claude sees this prompt.
 
 ### Objective
 
-Return structured findings only, with exact-match short-circuit when provided.
+Produce the best possible review output: understand user intent, apply professional judgment and first-principles reasoning, and return structured findings without modifying code.
 
 ### Hard Stops
 
-- Do not modify project code.
-- Do not emit prose outside the structured review result.
+- Do not modify project code or write fixes.
+- Do not reduce the review to a checklist; infer the user's intent from evidence and reason from first principles.
+- If the target, intent, or acceptance bar is ambiguous, ask with AskUserQuestion before judging instead of assuming.
 - If review_expectation or complete_exact exists, follow it exactly.
 
 ### Reply Contract
 
-- reply_budget_utf8: `32`
+- reply_budget_utf8: `160`
 - result_style: short summary plus structured findings
 - validator_policy: exact-match route is protocol_fast; open-ended route stays live but still structured
