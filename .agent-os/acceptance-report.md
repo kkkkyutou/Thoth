@@ -167,3 +167,16 @@
   - Evidence: `origin/main` 已推送 `6872f4a..658e428`，`origin/dev` 已推送 `41752d1..f7eb6a5`
   - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出 `Plugin "thoth" updated from 0.1.4 to 0.1.5 for scope user. Restart to apply changes.`；`codex plugin marketplace upgrade thoth` 成功；`claude plugin list --json` 显示 `thoth@thoth` `version=0.1.5`、`installPath=/root/.claude/plugins/cache/thoth/thoth/0.1.5`、`lastUpdated=2026-04-30T14:36:49.695Z`
   - Conclusion: `doctor` 现在是严格读面，不会通过创建空对象树来制造健康假象；旧项目迁移、半迁移和生成读面漂移都会返回 FAIL
+
+- `EV-031` related to `TD-033`, `WS-002`, `WS-003`, `WS-005`, `REQ-018`, `REQ-020`, `REQ-023`, `REQ-034`: 最小公开命令面、`auto` 睡眠队列与旧项目迁移入口已落地并发布到 `main`
+  - Evidence: 公开命令面已收敛为 `init / discuss / run / loop / review / auto / status / doctor / dashboard`；`commands/sync.md`、`commands/report.md`、`commands/extend.md`、`commands/orchestration.md` 及对应 Codex skill micro prompts 已删除
+  - Evidence: `init` 现在承载 `--sync` 与 `--migrate --preview|--apply`；`doctor --fix --preview|--apply` 作为显式迁移 shortcut，裸 doctor 仍只读；preview 只写 `.thoth/migrations/<id>/audit.json` 与 `preview.json`，apply 才写 canonical authority
+  - Evidence: `auto` 新增 `thoth/run/auto.py`，默认 live，可 `--sleep`，通过 controller 选择 actionable work 并启动 child `loop`；blocked/draft work 不自动执行，failed work 可重试，`--rounds` 预算耗尽返回 paused/exit `2`
+  - Evidence: `python -m thoth.cli sync` 返回 `status=ok` 并重建 9 个公开 command surface 与 Codex plugin/skill surface；`python -m thoth.cli --help` 只显示 `{init,discuss,run,loop,review,auto,status,doctor,dashboard}`
+  - Evidence: `dev` 发布面提交为 `4da135a refactor: minimize public runtime surface`；`main` 只 cherry-pick 发布面，得到 `a53559c refactor: minimize public runtime surface`，未夹带 root `AGENTS.md` / `CLAUDE.md` / `.agent-os/`
+  - Evidence: `main` 发布验证通过：`python -m py_compile thoth/objects.py thoth/plan/*.py thoth/run/*.py thoth/surface/*.py thoth/observe/selftest/*.py templates/dashboard/backend/*.py` 通过；第一次 targeted pytest 因 `--basetemp` 父目录不存在失败在 pytest setup，创建 `.tmp_pytest_auto` 父目录后同一组 targeted pytest 为 `50 passed in 927.28s`
+  - Evidence: `main` 核心五项 selftest `env TMPDIR=<thoth-repo>/.tmp_pytest_auto python -m thoth.selftest --case discuss.subtree.close --case run.phase_contract --case run.locked_work --case loop.controller --case observe.object_graph --artifact-dir <thoth-repo>/.tmp_pytest_auto/thoth-selftest-main-minimal-public-surface --json-report <thoth-repo>/.tmp_pytest_auto/thoth-selftest-main-minimal-public-surface.json` 为 `overall_status=passed`，报告生成时间 `2026-05-01T12:11:25Z`
+  - Evidence: 直连 `git push origin main` 因 GitHub TLS 连接失败；显式代理重试成功，输出 `658e428..a53559c  main -> main`
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出 `Plugin "thoth" updated from 0.1.5 to 0.1.6 for scope user. Restart to apply changes.`；`codex plugin marketplace upgrade thoth` 输出 `Upgraded marketplace thoth to the latest configured revision.`
+  - Evidence: 宿主 CLI 核验显示 `claude --version` 为 `2.1.126 (Claude Code)`、`codex --version` 为 `codex-cli 0.128.0`、`claude plugin list --json` 中 `thoth@thoth` 为 `version=0.1.6`、`scope=user`、`enabled=true`、`lastUpdated=2026-05-01T12:18:58.297Z`
+  - Conclusion: 当前用户公开入口已经压缩到 9 个命令；迁移与生成刷新归入 `init`，报告与 dashboard/doctor 归入 `status` 读面，`auto` 成为离席执行入口；发布面、main 验证、远端安装刷新均已闭合

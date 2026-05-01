@@ -62,6 +62,13 @@
   - Evidence: Codex 侧 `codex plugin marketplace remove thoth` 返回原先未配置；随后 `codex plugin marketplace add SeeleAI/Thoth` 成功，`codex plugin marketplace upgrade thoth` 成功
   - Evidence: `claude plugin list --json` 显示 `thoth@thoth` `version=0.1.4`、`scope=user`、`enabled=true`、`lastUpdated=2026-04-30T09:32:39.090Z`；`claude plugin marketplace list --json` 显示 marketplace `thoth` 来源为 GitHub `SeeleAI/Thoth`
   - Constraint: 全程只使用远端 marketplace / host CLI 路径，未用本机 checkout、cache、临时目录或 `rsync` 覆盖安装
+- `TD-033` `[verified]`: 将公开命令面收敛为最小组合，并补齐 `auto` 与旧项目迁移入口
+  - Related items: `WS-002`, `WS-003`, `WS-005`, `REQ-018`, `REQ-020`, `REQ-023`, `REQ-034`
+  - Evidence: 公开命令面已收敛为 `init / discuss / run / loop / review / auto / status / doctor / dashboard`；`sync` 改为 `init --sync`，`report` 改为 `status --report`，`doctor` / `dashboard` 为 `status` 读面别名，`extend` / `orchestration` 从公开投影删除
+  - Evidence: `auto` 默认 live，可 `--sleep`，按 priority/order/updated_at/work_id 选择 actionable work，通过 child `loop` 推进 ready/active/failed work，忽略 blocked/draft，`--rounds` 预算耗尽返回 paused/exit `2`，`--stop` 会写入 controller stop
+  - Evidence: `init --migrate --preview|--apply` 写 `.thoth/migrations/<id>/audit.json` 与 `preview.json`，apply 将 legacy `.agent-os/research-tasks/*.yml` 导入 `work_item` / `work_result`；`doctor --fix --preview|--apply` 作为显式迁移快捷入口，裸 doctor 仍只读严格审计
+  - Evidence: 发布面提交 `4da135a refactor: minimize public runtime surface` 已 cherry-pick 到 `main` 为 `a53559c`；`main` 上 `py_compile` 通过，targeted pytest `50 passed in 927.28s`，核心五项 selftest `overall_status=passed`
+  - Evidence: `origin/main` 已推送 `658e428..a53559c`；Claude Code 远端-only upgrade 输出 `updated from 0.1.5 to 0.1.6`，Codex `plugin marketplace upgrade thoth` 成功，`claude plugin list --json` 显示 `thoth@thoth` `version=0.1.6`
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立

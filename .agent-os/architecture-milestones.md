@@ -15,9 +15,10 @@
 
 当前已实现事实：
 
-- 公开命令面是 Claude `/thoth:*` 与 Codex `$thoth <command>`
+- 公开命令面是 Claude `/thoth:*` 与 Codex `$thoth <command>`，当前只公开 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`
 - Codex 以 executor-mode 进入 `run` / `loop` / `review`
 - `/thoth:init` 采用 audit-first adopt/init，并生成最小 `.thoth/objects/` authority tree 与 `.thoth/docs/` 只读视图
+- `/thoth:init --sync` 是当前公开的生成面刷新入口；`/thoth:init --migrate --preview|--apply` 是旧项目迁移入口
 - strict planning authority 已收敛为统一对象图：`.thoth/objects/discussion/`、`.thoth/objects/decision/`、`.thoth/objects/work_item/`、`.thoth/objects/controller/`、`.thoth/objects/run/`、`.thoth/objects/phase_result/`、`.thoth/objects/artifact/` 与 `.thoth/objects/doc_view/`
 - 独立 `Contract` kind 已删除；原 contract 的 goal、context、constraints、execution plan、eval contract、runtime policy 与 decisions 均进入 `work_item.payload`
 - `run` / `loop` 已收敛为 strict work execution：默认只接受 ready runnable `--work-id`，缺少 `--work-id` 时只能召回候选并停止
@@ -28,6 +29,7 @@
 - 当前 `run` 已收敛为统一 RuntimeDriver 四阶段链：`plan -> execute -> validate -> reflect`；四个 agentic phase 均通过宿主 executor 运行，`validate.passed` 决定 terminal success/failure，`reflect` 总是总结证据、风险与下一步建议
 - 当前 phase 产物固定为 `plan.json`、`execute.json`、`validate.json`、`reflect.json`；`result.json.result` 固定包含 `phase_statuses`、`validate_passed`、`final_summary`、`artifacts`、`next_hint`
 - 当前 `loop` 已收敛为 controller service：controller 记录预算与 child lineage，每轮显式创建独立 child `run`，child run 与普通 run 复用同一 `plan -> execute -> validate -> reflect` RuntimeDriver
+- 当前 `auto` 已收敛为 controller service：默认 live，可 `--sleep`，按 priority/order/updated_at/work_id 选择 actionable work，通过 child `loop` 推进 ready/active/failed work，blocked/draft 必须由人决策
 - heartbeat 当前写入 `state.json.last_heartbeat_at`，而不是单独的 `heartbeat.json`
 - active run/controller 引用的 `work_item` 完全锁定；`Store.update/tombstone/link/unlink` 对该 work item 必须拒绝，直到执行进入 terminal 状态
 - 当前 prompt authority 已显式拆成 `thoth/prompt_specs.py` 与 `thoth/prompt_validators.py`：前者现已收敛为压缩 authority source，只保存 `route_class` / `intelligence_tier` / `packet_authority_mode` / `objective` / `hard_stops` / `reply_budget` 等最小字段，后者只负责 phase/review 输出校验
@@ -40,7 +42,7 @@
 - dashboard 模板已收敛为单套共享前端源码，并通过 `tools/dashboard/frontend/src/generated/locale.ts` 固化 init/sync 生成时的默认语言
 - 仓库公开 selftest 已收敛为 atomic case registry：`python -m thoth.selftest` 只接受显式 `--case` 列表，报告顶层固定为 `selected_cases` 与 `results[case_id]`
 - repo-local object-kernel 原子 case 固定包含 `discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`orchestration.controller`、`auto.queue`、`observe.object_graph`
-- host-surface 原子 case 首批固定为 `surface.codex.*` 与 `surface.claude.*` 两组 capability matrix，覆盖 `init/status/doctor/discuss/run/loop/review/dashboard/sync` 的 live/sleep/watch/stop prepare 语义
+- host-surface 原子 case 首批固定为 `surface.codex.*` 与 `surface.claude.*` 两组 capability matrix；历史上覆盖过 `sync`，当前公开面已将其下沉为 `init --sync`
 - `run` / `loop` / `controller` 的原子验证已按 surface 能力与 runtime 能力拆开：host-surface case 只验证 public command / bridge / handoff / watch / stop 协议，repo-local case 单独验证 object graph、controller、phase result、validator、reflect、lock 与 terminal result shape
 - 仓库级 pytest 默认只允许 targeted runs：显式 file/nodeid 或 `--thoth-target`；裸 `pytest`、目录级 `pytest` 与 `--thoth-tier` broad runs 默认禁止，只有 `--thoth-allow-broad` 或 `THOTH_ALLOW_BROAD_TESTS=1` 时才允许豁免
 - `thoth/test_targets.py` 固化 `target_id -> selectors / recommended selftest cases` 映射，`scripts/recommend_tests.py` 负责把 changed paths 翻译成精确验证命令
@@ -49,16 +51,16 @@
 
 - 旧的顶层内部主实现 `thoth/runtime.py`、`thoth/task_contracts.py`、`thoth/project_init.py`、`thoth/claude_bridge.py`、`thoth/host_hooks.py` 已从主链删除
 - `thoth/cli.py` 与 `thoth/selftest.py` 仅保留公共入口角色
-- `scripts/status.py`、`scripts/report.py`、`scripts/doctor.py`、`scripts/sync.py`、`scripts/init.py` 均已退化为 canonical Python API wrapper，而不再承载平行实现
+- `scripts/status.py`、`scripts/report.py`、`scripts/doctor.py`、`scripts/sync.py`、`scripts/init.py` 均已退化为 canonical Python API wrapper 或内部兼容入口，而不再承载平行公开实现；公开 `sync` / `report` 已分别下沉为 `init --sync` / `status --report`
 - dashboard 控制面已切到 `thoth.observe.dashboard` Python service，不再以 `scripts/dashboard.sh` 作为 CLI 主逻辑
 - `thoth/run/lifecycle.py` 已删除，Run 主实现拆入 `model.py`、`io.py`、`lease.py`、`ledger.py`、`packets.py`、`worker.py`、`service.py`、`status.py`
 - Object graph 主实现落在 `thoth/objects.py`；`Store` 是 `.thoth/objects` 的唯一 durable 写入口，并统一负责 envelope、kind payload、status machine、typed links、revision conflict 与 active work lock
-- Plan 主实现已拆为 `paths.py`、`store.py`、`validators.py`、`compiler.py`、`results.py`、`legacy_import.py`、`doctor.py`；`compiler.py` 只保留 legacy compiler removed shim 与 object graph 编译边界
+- Plan 主实现已拆为 `paths.py`、`store.py`、`compiler.py`、`results.py`、`doctor.py`；`compiler.py` 只保留 legacy compiler removed shim、legacy authority detection 与 object graph 编译边界
 - Plan 当前只保留 work-level read view 词汇；`work_result` 不再是 authority，Observe 读面也不再回退读取 task 内嵌 `verdict`
 - Init 主实现已拆为 `audit.py`、`preview.py`、`migration.py`、`generators.py`、`planner.py`、`apply.py`、`render.py` 与 orchestration-only `service.py`
 - Init migration backup 现在会跳过 `node_modules`、`dist`、`__pycache__`、`.pytest_cache` 这类可再生成目录，避免 `re-init` 把 dashboard 第三方依赖整棵复制进 migration ledger
 - Surface handler 已拆为 `envelope.py`、`project_commands.py`、`plan_commands.py`、`run_commands.py`、`protocol_commands.py`、`observe_commands.py`，`handlers.py` 只做 registry dispatch
-- Observe 已新增 `read_model.py`，`status` / `report` / `dashboard` 共享只读派生模型，不在读面隐式修 authority
+- Observe 已新增 `read_model.py`，`status` / `doctor` / `dashboard` / internal report 共享只读派生模型，不在读面隐式修 authority
 - Selftest 已拆为 `model.py`、`recorder.py`、`processes.py`、`capabilities.py`、`fixtures.py`、`registry.py`、`atomic_cases.py`、`host_common.py`、`host_codex.py`、`host_claude.py`，`runner.py` 只保留 atomic CLI 与总编排入口；其中 `CommandResult` / `CheckResult` 已回收为 `model.py` 单一 authority，host adapters 只保留宿主差异逻辑
 - 新增 `scripts/measure_tracked_source.py` 作为 tracked-source 行数账本入口，统计面显式区分 `hard_metric` 与 `dashboard_frontend`
 
@@ -85,10 +87,10 @@
 3. `Run`
   - 包含 runtime protocol、minimal run phase chain、controller service 与 project materialization
   - `run` 固定绑定 `work_id@revision` 并执行一次 `plan -> execute -> validate -> reflect`
-  - `loop`、`orchestration`、`auto` 均通过 `controller` object 表达，不扩展 `run` 语义
+  - `loop` 与 `auto` 均通过 `controller` object 表达，不扩展 `run` 语义；`orchestration` 保留为内部 controller capability，不再作为公开命令
   - 这是唯一承接 prompt-bearing control commands 与 packet authority 的核心实现层
 4. `Observe`
-   - 包含 `status` / `doctor` / `dashboard` / `report` / `selftest`
+   - 包含 `status` / `doctor` / `dashboard` / internal report / `selftest`
    - 纯读 authority 与当前态文件，不承担修复、同步或隐式写入
    - `dashboard` 明确冻结为纯 Observe 读面
 
@@ -116,7 +118,7 @@
 - `ThothObject` envelope 是所有长期 authority 对象的统一外壳，固定字段为 `schema_version`、`object_id`、`kind`、`status`、`title`、`summary`、`revision`、`created_at`、`updated_at`、`source`、`links`、`payload`、`history`
 - `RunResult` 是单次控制命令结果 read/ledger 对象，主落在 `.thoth/runs/<run_id>/result.json`，对应 object graph 中的 `run` / `phase_result` / `artifact`
 - work-level 当前结论只作为 `.thoth/docs/work-results/<work_id>.result.json` read view；原始执行真相仍以 object graph 与 run 历史为准
-- `sync` 可以按 canonical object graph 与 run 历史重建 docs read view
+- `init --sync` 可以按 canonical object graph 与 run 历史重建 docs read view
 - 允许写 authority 的只剩 `Store` API 及其上的 Domain Service
 - `Observe`、hooks、validators 和任何 read model 都不得偷偷修 authority
 - `review` 的 public contract 冻结为 live-only，不保留 `--sleep` 口子
@@ -129,7 +131,7 @@
 - `Contract` 不再是对象 kind；原 contract 的 goal、context、constraints、execution plan、eval contract、runtime policy 与 decisions 已并入 `work_item.payload`。
 - `work_result` 不再是 `.thoth/project/tasks` authority；work-level 当前结论只作为 `.thoth/docs/work-results/*.result.json` read view，原始执行真相仍来自 `run`、`phase_result` 与 `artifact` 对象及 `.thoth/runs/*` ledger。
 - `run` 固定绑定 `work_id@revision`，只做一次 `plan -> execute -> validate -> reflect` 最小执行尝试。
-- `loop`、`orchestration`、`auto` 是 `controller` service：loop 产生 child runs，orchestration 记录 depends_on DAG batches，auto 记录线性 queue cursor。
+- `loop` 与 `auto` 是公开 controller service：loop 产生 child runs，auto 记录线性 queue cursor 并通过 child loops 推进；`orchestration` 仅保留为内部 controller capability。
 - active run/controller 引用的 `work_item` 完全锁定；`Store.update/tombstone/link/unlink` 对该 work item 必须拒绝。
 
 ## Workstreams
@@ -162,3 +164,4 @@
 - 2026-04-28: 用户已批准恢复标准分支收尾流程；本轮在 `dev` 验证并提交后，需要仅将发布面代码 `cherry-pick` 到 `main`、推送两个分支，并刷新本机 Claude/Codex 的 Thoth 安装
 - 2026-04-28: 用户重新锁定当前验证合同为“atomic selftest cases + targeted pytest runs”：`python -m thoth.selftest` 只允许显式 `--case`，发布/回归/关闭门改为显式 case list；`pytest` 默认只允许显式 file/nodeid 或 `--thoth-target`，broad sweeps 仅保留给显式豁免场景
 - 2026-04-29: 用户锁定“统一对象图 + Agent Runtime Kernel”重构：`.thoth/objects/<kind>/<object_id>.json` 成为唯一 canonical authority；`Contract` kind 删除并并入 `work_item.payload`；`run` 固定为 `work_id@revision` 的最小 phase chain；`loop` / `orchestration` / `auto` 收敛为 controller service；active run/controller 引用的 work item 完全不可变。
+- 2026-05-01: 用户锁定最终最小公开命令组合：保留 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`；`sync` 改为 `init --sync`，`report` 改为 `status --report`，`orchestration` / `extend` 下沉为内部能力；`auto` 面向离席执行，默认 live、可 sleep，按优先级推进可行动 work。
