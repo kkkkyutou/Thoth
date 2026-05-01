@@ -69,7 +69,7 @@ def _host_codex(
             "dashboard_stop": "$thoth dashboard stop",
             "loop_sleep": "$thoth loop --host codex --executor codex --sleep --work-id task-runtime-probe",
             "loop_stop": lambda run_id: f"$thoth loop --stop {run_id}",
-            "sync": "$thoth sync",
+            "sync": "$thoth init --sync",
         },
         from_step=from_step,
         to_step=to_step,

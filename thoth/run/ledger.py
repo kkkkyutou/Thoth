@@ -368,6 +368,7 @@ def complete_run(
         run_result=run_result,
         artifacts_payload=artifacts_payload,
     )
+    _close_work_item_from_run(handle, status="validated")
     return handle
 
 
@@ -409,7 +410,40 @@ def fail_run(
         run_result=run_result,
         artifacts_payload=artifacts_payload,
     )
+    _close_work_item_from_run(handle, status="failed")
     return handle
+
+
+def _close_work_item_from_run(handle: RunHandle, *, status: str) -> None:
+    run = handle.run_json()
+    if run.get("kind") == "review":
+        return
+    work_id = run.get("work_id")
+    if not isinstance(work_id, str) or not work_id:
+        return
+    store = Store(handle.project_root)
+    current = store.read("work_item", work_id)
+    if not current:
+        return
+    if current.get("status") in {"abandoned", "validated"}:
+        return
+    try:
+        store.update(
+            "work_item",
+            work_id,
+            expected_revision=int(current.get("revision", 0)),
+            updates={"status": status},
+            history_summary=f"runtime marked work_item {status}",
+            source="run",
+        )
+    except Exception:
+        _append_event(
+            handle,
+            f"work_item status update skipped: {work_id}",
+            kind="warning",
+            level="warning",
+            payload={"work_id": work_id, "target_status": status},
+        )
 
 
 def _write_stopped_result(handle: RunHandle) -> None:

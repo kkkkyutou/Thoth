@@ -1,8 +1,4 @@
-"""
-progress_calculator.py — Progress engine for the strict-task dashboard.
-
-Supports both legacy YAML tasks and new compiler-generated strict tasks.
-"""
+"""Progress engine for work-item dashboard views."""
 
 from __future__ import annotations
 
@@ -36,15 +32,15 @@ def _phase_progress(phase: dict | None) -> float:
 
 
 def _has_strict_shape(task: dict[str, Any]) -> bool:
-    return "ready_state" in task or "contract_id" in task or "task_id" in task
+    return "ready_state" in task or "work_id" in task or "task_id" in task
 
 
 def _strict_task_progress(task: dict[str, Any]) -> float:
-    task_result = task.get("task_result") if isinstance(task.get("task_result"), dict) else {}
+    work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
     ready_state = str(task.get("ready_state") or "blocked")
-    if task_result.get("updated_at"):
+    if work_result.get("updated_at"):
         return 100.0
-    if ready_state == "imported_resolved":
+    if ready_state == "validated":
         return 100.0
     if ready_state == "ready":
         return 15.0
@@ -68,15 +64,15 @@ def calculate_task_progress(task: dict) -> float:
 
 def get_task_status(task: dict) -> str:
     if _has_strict_shape(task):
-        task_result = task.get("task_result") if isinstance(task.get("task_result"), dict) else {}
-        if task_result.get("updated_at"):
-            if task_result.get("usable") is True and task_result.get("meets_goal") is True:
+        work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
+        if work_result.get("updated_at"):
+            if work_result.get("usable") is True and work_result.get("meets_goal") is True:
                 return "completed"
             return "failed"
         ready_state = str(task.get("ready_state") or "blocked")
         if ready_state == "ready":
             return "ready"
-        if ready_state == "imported_resolved":
+        if ready_state == "validated":
             return "completed"
         if ready_state == "invalid":
             return "invalid"

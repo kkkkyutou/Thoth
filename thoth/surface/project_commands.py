@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from thoth.init.render import parse_config
-from thoth.init.service import initialize_project, sync_project_layer
+from thoth.init.service import initialize_project, preview_project_migration, sync_project_layer
 from thoth.projections import sync_repository_surfaces
 from thoth.surface.envelope import output_refs, print_envelope
 from thoth.surface.hooks import run_host_hook
@@ -28,6 +28,14 @@ def run_extend_tests(changed: list[str]) -> tuple[int, str]:
 
 def handle_init(args, parser, *, project_root: Path) -> int:
     config = parse_config(args.config_json) if getattr(args, "config_json", None) else {}
+    if getattr(args, "sync", False):
+        result = sync_project_layer(project_root)
+        print_envelope(command="init", status="ok", summary="Project sync completed", body={"result": result}, refs=output_refs(project_root / ".thoth" / "docs" / "object-graph-summary.json", project_root / ".thoth" / "derived" / "codex-hooks.json"))
+        return 0
+    if getattr(args, "migrate", False) and not getattr(args, "apply", False):
+        result = preview_project_migration(config, project_root)
+        print_envelope(command="init", status="ok", summary=f"Migration preview written for {project_root}", body={"result": result}, refs=output_refs(project_root / ".thoth" / "migrations" / result["migration_id"] / "preview.json"))
+        return 0
     result = initialize_project(config, project_root)
     claude_permissions = result.get("claude_permissions") if isinstance(result.get("claude_permissions"), dict) else {}
     sources = claude_permissions.get("sources") if isinstance(claude_permissions.get("sources"), list) else []

@@ -14,15 +14,15 @@ Before treating a strict task as execution-ready or resolved:
 
 ```bash
 python -m thoth.cli doctor --quick
-python -m thoth.cli sync
+python -m thoth.cli init --sync
 ```
 
-Only proceed on `PASS`, and only if the canonical `.thoth` task/verdict ledger stays consistent.
+Only proceed on `PASS`, and only if the canonical `.thoth/objects` work/result ledger stays consistent.
 
 ## State Updates
 
 When planning or execution state changes, update all required persistence surfaces together:
 
-1. Canonical `.thoth/project/decisions`, `.thoth/project/contracts`, `.thoth/project/tasks`, or `.thoth/project/verdicts`
+1. Canonical `.thoth/objects/decision`, `.thoth/objects/work_item`, `.thoth/objects/run`, `.thoth/objects/phase_result`, and `.thoth/objects/artifact`
 2. `.agent-os/run-log.md`
-3. Generated projections refreshed through `python -m thoth.cli sync`
+3. Generated projections refreshed through `python -m thoth.cli init --sync`

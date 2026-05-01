@@ -12,6 +12,9 @@ ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from thoth.observe.status import time_ago
+from thoth.objects import Store
+from thoth.init.service import initialize_project
+from thoth.plan.store import upsert_work_result
 
 from status import (
     is_task_blocked,
@@ -29,33 +32,44 @@ def _write_json(path: Path, payload: dict) -> None:
 
 
 def _setup_project(tmp_path: Path) -> None:
-    (tmp_path / ".agent-os").mkdir(exist_ok=True)
-    for fname in [
-        "project-index.md",
-        "requirements.md",
-        "architecture-milestones.md",
-        "todo.md",
-        "cross-repo-mapping.md",
-        "acceptance-report.md",
-        "lessons-learned.md",
-        "run-log.md",
-        "change-decisions.md",
-    ]:
-        (tmp_path / ".agent-os" / fname).write_text(f"# {fname}\n", encoding="utf-8")
-    _write_json(
-        tmp_path / ".thoth" / "project" / "project.json",
+    initialize_project(
         {
-            "project": {"name": "TestProject", "directions": [{"id": "frontend"}]},
-            "dashboard": {"port": 8501},
+            "name": "TestProject",
+            "description": "status test",
+            "language": "en",
+            "directions": ["frontend"],
+            "phases": [],
+            "port": 8501,
+            "theme": "warm-bear",
         },
+        tmp_path,
     )
-    _write_json(
-        tmp_path / ".thoth" / "project" / "compiler-state.json",
-        {
-            "summary": {
-                "decision_counts": {"open": 0, "frozen": 1},
-                "task_counts": {"ready": 0, "blocked": 0, "invalid": 0, "imported_resolved": 1, "total": 1},
-            }
+
+
+def _write_work_item(tmp_path: Path, work_id: str = "task-1", *, status: str = "validated") -> None:
+    Store(tmp_path).upsert(
+        kind="work_item",
+        object_id=work_id,
+        status=status,
+        title="Imported",
+        summary="Imported work",
+        payload={
+            "work_type": "task",
+            "runnable": True,
+            "goal": "Imported work",
+            "context": "f1",
+            "direction": "frontend",
+            "module": "f1",
+            "constraints": ["test"],
+            "execution_plan": ["Inspect status output."],
+            "eval_contract": {
+                "entrypoint": {"command": "true"},
+                "primary_metric": {"name": "ok", "direction": "gte", "threshold": 1},
+                "validate_output_schema": {"type": "object"},
+            },
+            "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+            "decisions": [],
+            "missing_questions": [],
         },
     )
 
@@ -63,13 +77,11 @@ def _setup_project(tmp_path: Path) -> None:
 def test_status_output_format(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _setup_project(tmp_path)
-    _write_json(
-        tmp_path / ".thoth" / "project" / "tasks" / "task-1.json",
-        {"task_id": "task-1", "title": "Imported", "module": "f1", "direction": "frontend", "ready_state": "imported_resolved"},
-    )
-    _write_json(
-        tmp_path / ".thoth" / "project" / "tasks" / "task-1.result.json",
-        {"task_id": "task-1", "source": "legacy_import", "updated_at": "2026-04-24T00:00:00Z", "evidence_paths": ["reports/demo.md"], "metrics": {}},
+    _write_work_item(tmp_path)
+    upsert_work_result(
+        tmp_path,
+        "task-1",
+        {"source": "legacy_import", "updated_at": "2026-04-24T00:00:00Z", "evidence_paths": ["reports/demo.md"], "metrics": {}},
     )
 
     output = render_status(full=False)
@@ -83,7 +95,7 @@ def test_status_empty_project(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _setup_project(tmp_path)
     output = render_status(full=False)
-    assert "No strict tasks found" in output
+    assert "No ready work items found" in output
 
 
 def test_task_current_phase_with_verdict():

@@ -36,6 +36,8 @@ def _write_task(
     *,
     title: str = "Lifecycle Validation",
     work_goal: str = "State stays inspectable under real execution.",
+    status: str = "ready",
+    missing_questions: list[str] | None = None,
     module: str = "f1",
     direction: str = "frontend",
     eval_command: str = "pytest -q tests/unit/test_cli_surface.py",
@@ -64,7 +66,7 @@ def _write_task(
             "direction": direction,
             "module": module,
             "title": title,
-            "status": "ready",
+            "status": status,
             "work_type": "task",
             "runnable": True,
             "goal": work_goal,
@@ -79,7 +81,7 @@ def _write_task(
             },
             "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
             "decisions": [decision_id],
-            "missing_questions": [],
+            "missing_questions": list(missing_questions or []),
         },
     )
 
@@ -127,6 +129,14 @@ def test_cli_init_creates_project_layer(tmp_path):
     assert (tmp_path / ".thoth" / "docs" / "project.json").exists()
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / ".thoth" / "derived" / "codex-hooks.json").exists()
+
+
+def test_cli_help_shows_minimal_public_commands(tmp_path):
+    result = _run_cli(tmp_path, "--help")
+    assert result.returncode == 0
+    assert "{init,discuss,run,loop,review,auto,status,doctor,dashboard}" in result.stdout
+    for hidden in (" sync", " report", " extend", " orchestration"):
+        assert hidden not in result.stdout
 
 
 def test_cli_discuss_records_note(tmp_path):
@@ -179,7 +189,7 @@ def test_cli_sync_regenerates_project_layer(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
     agents_path = tmp_path / "AGENTS.md"
     agents_path.write_text("drifted\n", encoding="utf-8")
-    result = _run_cli(tmp_path, "sync")
+    result = _run_cli(tmp_path, "init", "--sync")
     assert result.returncode == 0
     assert "drifted" not in agents_path.read_text(encoding="utf-8")
 
@@ -198,6 +208,16 @@ def test_cli_doctor_quick(tmp_path):
     result = _run_cli(tmp_path, "doctor", "--quick")
     assert result.returncode == 0
     assert "Thoth Doctor" in result.stdout
+
+
+def test_cli_doctor_fix_preview_does_not_write_project_authority(tmp_path):
+    (tmp_path / ".agent-os" / "research-tasks" / "frontend" / "f1").mkdir(parents=True)
+    (tmp_path / ".agent-os" / "research-tasks" / "frontend" / "f1" / "legacy.yaml").write_text("id: legacy\n", encoding="utf-8")
+    result = _run_cli(tmp_path, "doctor", "--fix", "--preview")
+    assert result.returncode == 0, result.stderr
+    payload = _extract_envelope(result.stdout)
+    assert payload["status"] == "ok"
+    assert not (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
 
 
 def test_cli_run_rejects_free_form_execution(tmp_path):
@@ -250,6 +270,29 @@ def test_cli_runtime_defaults_and_prepare_packet(tmp_path):
     assert events[0]["executor"] == "codex"
     assert events[-1]["type"] == "thoth.run.terminal"
     assert events[-1]["status"] == "completed"
+
+
+def test_cli_auto_runs_ready_work_even_when_blocked_work_exists(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path, "ready-work", title="Ready Work", work_goal="Complete a ready item.")
+    _write_task(
+        tmp_path,
+        "blocked-work",
+        title="Blocked Work",
+        work_goal="Wait for human input.",
+        status="blocked",
+        missing_questions=["Human decision required."],
+    )
+    assert _run_cli(tmp_path, "init", "--sync").returncode == 0
+    doctor = _run_cli(tmp_path, "doctor", "--json")
+    assert doctor.returncode == 1
+
+    result = _run_cli(tmp_path, "auto", "--rounds", "1", env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"})
+
+    assert result.returncode == 2, result.stderr
+    events = _jsonl_events(result.stdout)
+    assert any(event.get("type") == "thoth.auto.child.started" and event.get("work_id") == "ready-work" for event in events)
+    assert events[-1]["type"] == "thoth.auto.paused"
 
 
 def test_cli_sleep_mode_auto_backgrounds(tmp_path):

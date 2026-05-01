@@ -27,9 +27,9 @@ def task_created_in_range(task: dict[str, Any], from_date: datetime, to_date: da
 
 
 def task_current_phase(task: dict[str, Any]) -> tuple[str, str]:
-    task_result = task.get("task_result") if isinstance(task.get("task_result"), dict) else {}
-    if task_result.get("updated_at"):
-        return "task_result", str(task_result.get("source") or "recorded")
+    work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
+    if work_result.get("updated_at"):
+        return "work_result", str(work_result.get("source") or "recorded")
     return "runtime", str(task.get("ready_state") or "blocked")
 
 

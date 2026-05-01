@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.1.5"
+PLUGIN_VERSION = "0.1.6"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "plugins/thoth"
 PLUGIN_SKILLS_PATH = "./skills"
@@ -39,11 +39,11 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
         "- If `packet.dispatch_mode` is `external_worker`, do not duplicate the work locally; report the run id, worker mode, and the correct follow-up only.",
         "- If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.",
     ]
-    if spec.command_id in {"run", "loop"}:
+    if spec.command_id in {"run", "loop", "auto"}:
         rules.extend(
             (
                 "- If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.",
-                "- Runtime lifecycle is `plan -> execute -> validate -> reflect`.",
+                "- Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.",
                 "- Use `packet.strict_task.goal_statement`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.",
                 "- Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.",
             )
@@ -67,7 +67,7 @@ def render_claude_command(spec: CommandSpec) -> str:
     disable_model_invocation = "false" if live_packet_contract else "true"
     if spec.command_id == "review":
         runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'
-    elif spec.command_id in {"run", "loop"}:
+    elif spec.command_id in {"run", "loop", "auto"}:
         runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'
     response_contract = _claude_bridge_rules(spec)
     prompt_contract = render_command_contract_markdown(spec.command_id, heading_level=3).strip()
@@ -141,8 +141,8 @@ Supported commands:
 
 ## Shared Rules
 
-- `init`, `status`, `doctor`, `dashboard`, `sync`, and `report` are mechanical fast-path commands and should return only short receipts.
-- `discuss`, `extend`, `run`, `loop`, and open-ended `review` are high-intelligence paths.
+- `init`, `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
+- `discuss`, `run`, `loop`, `auto`, and open-ended `review` are high-intelligence paths.
 - `review` exact-match/probe flows are protocol-fast: if the packet exposes an exact result, do not improvise.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.
 - Host hooks and subagents may improve throughput but are never correctness requirements.
@@ -230,6 +230,10 @@ def sync_repository_surfaces(root: Path | None = None) -> list[Path]:
 
     commands_dir = repo_root / "commands"
     commands_dir.mkdir(parents=True, exist_ok=True)
+    public_ids = {spec.command_id for spec in COMMAND_SPECS}
+    for stale in commands_dir.glob("*.md"):
+        if stale.stem not in public_ids:
+            stale.unlink()
     for spec in COMMAND_SPECS:
         path = commands_dir / f"{spec.command_id}.md"
         path.write_text(render_claude_command(spec), encoding="utf-8")
@@ -243,6 +247,9 @@ def sync_repository_surfaces(root: Path | None = None) -> list[Path]:
 
     plugin_commands_dir = plugin_root / "skills" / "thoth" / "commands"
     plugin_commands_dir.mkdir(parents=True, exist_ok=True)
+    for stale in plugin_commands_dir.glob("*.md"):
+        if stale.stem not in public_ids:
+            stale.unlink()
     for spec in COMMAND_SPECS:
         command_path = plugin_commands_dir / f"{spec.command_id}.md"
         command_path.write_text(render_codex_command_micro_prompt(spec.command_id), encoding="utf-8")

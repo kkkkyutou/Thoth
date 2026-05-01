@@ -1,7 +1,7 @@
 ---
 name: thoth:dashboard
-description: Start or describe the task-first dashboard backed by .thoth ledgers.
-argument-hint: "[--port <port>]"
+description: Alias for `status --dashboard`; manage the local dashboard backed by .thoth ledgers.
+argument-hint: "[start|stop|rebuild]"
 disable-model-invocation: true
 ---
 

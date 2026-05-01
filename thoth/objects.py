@@ -75,6 +75,26 @@ REQUIRED_WORK_PAYLOAD_FIELDS = (
 )
 
 
+def normalize_scheduling(value: Any) -> dict[str, Any]:
+    scheduling = value if isinstance(value, dict) else {}
+    priority = scheduling.get("priority")
+    if not isinstance(priority, int):
+        priority = 0
+    order = scheduling.get("order")
+    if order is not None and not isinstance(order, int):
+        order = None
+    estimated_minutes = scheduling.get("estimated_minutes")
+    if estimated_minutes is not None and (
+        not isinstance(estimated_minutes, int) or estimated_minutes <= 0
+    ):
+        estimated_minutes = None
+    return {
+        "priority": priority,
+        "order": order,
+        "estimated_minutes": estimated_minutes,
+    }
+
+
 class StoreError(RuntimeError):
     """Base class for canonical store failures."""
 
@@ -541,6 +561,7 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
     payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
     eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
     runtime_policy = payload.get("runtime_policy") if isinstance(payload.get("runtime_policy"), dict) else {}
+    scheduling = normalize_scheduling(payload.get("scheduling"))
     work_id = str(obj.get("object_id") or "")
     flattened = {
         "schema_version": obj.get("schema_version"),
@@ -563,6 +584,8 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
         "failure_classes": eval_contract.get("failure_classes", []),
         "validate_output_schema": eval_contract.get("validate_output_schema", {}),
         "runtime_contract": runtime_policy,
+        "scheduling": scheduling,
+        "priority": scheduling["priority"],
         "review_binding": eval_contract.get("review_binding", {}),
         "review_expectation": eval_contract.get("review_expectation"),
         "decision_ids": payload.get("decisions", []),
@@ -615,6 +638,7 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
         "runtime_policy": payload.get("runtime_policy")
         if isinstance(payload.get("runtime_policy"), dict)
         else {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+        "scheduling": normalize_scheduling(payload.get("scheduling")),
         "decisions": payload.get("decisions") or [],
         "missing_questions": missing_questions,
     }

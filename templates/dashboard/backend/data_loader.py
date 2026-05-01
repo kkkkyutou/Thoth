@@ -87,8 +87,6 @@ def _infer_project_root(base_dir: str | Path) -> Path:
         return base
     if base.name in {"work_item", "decision", "run", "controller"} and base.parent.name == "objects":
         return base.parent.parent.parent
-    if base.name in {"tasks", "contracts", "decisions"} and base.parent.name == "project":
-        return base.parent.parent.parent
     return base
 
 
@@ -140,10 +138,10 @@ def _load_work_result_map(project_root: Path) -> dict[str, dict[str, Any]]:
     if task_dir.is_dir():
         for path in sorted(task_dir.glob("*.result.json")):
             payload = _read_json(path)
-            task_id = payload.get("task_id") if payload else None
-            if isinstance(task_id, str) and task_id:
+            work_id = payload.get("work_id") if payload else None
+            if isinstance(work_id, str) and work_id:
                 payload["_path"] = str(path)
-                rows[task_id] = payload
+                rows[work_id] = payload
     return rows
 
 
@@ -175,7 +173,6 @@ def _flatten_work_item(payload: dict[str, Any], path: Path) -> dict[str, Any] | 
         "failure_classes": eval_contract.get("failure_classes") or [],
         "validate_output_schema": eval_contract.get("validate_output_schema") or {},
         "decision_ids": work_payload.get("decisions") or [],
-        "contract_id": work_payload.get("source_contract_id"),
         "depends_on": [
             {"task_id": str(link.get("target", "")).split(":", 1)[-1], "type": "hard"}
             for link in payload.get("links", [])
@@ -278,8 +275,8 @@ def load_decisions(base_dir: str | Path) -> list[dict[str, Any]]:
     return _set_cache("decisions", rows)
 
 
-def load_contracts(base_dir: str | Path) -> list[dict[str, Any]]:
-    cached = _cached("contracts")
+def load_work_item_refs(base_dir: str | Path) -> list[dict[str, Any]]:
+    cached = _cached("work_item_refs")
     if cached is not None:
         return cached
     project_root = _infer_project_root(base_dir)
@@ -291,9 +288,9 @@ def load_contracts(base_dir: str | Path) -> list[dict[str, Any]]:
             if not payload:
                 continue
             row = _flatten_work_item(payload, path)
-            if row and row.get("contract_id"):
+            if row:
                 rows.append(row)
-    return _set_cache("contracts", rows)
+    return _set_cache("work_item_refs", rows)
 
 
 def load_project_config(base_dir: str | Path) -> dict[str, Any]:
@@ -327,6 +324,6 @@ def load_everything(base_dir: str | Path) -> dict:
         "paper_mapping": get_paper_mapping(project_root),
         "compiler_state": load_compiler_state(project_root),
         "decisions": load_decisions(project_root),
-        "contracts": load_contracts(project_root),
+        "work_items": load_work_item_refs(project_root),
         "config": load_project_config(project_root),
     }

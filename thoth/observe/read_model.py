@@ -170,7 +170,7 @@ def task_runtime_status(task: dict[str, Any]) -> str:
     ready_state = str(task.get("ready_state") or "blocked")
     if ready_state == "ready":
         return "ready"
-    if ready_state == "imported_resolved":
+    if ready_state == "validated":
         return "completed"
     if ready_state == "invalid":
         return "invalid"
@@ -182,7 +182,7 @@ def task_progress_pct(task: dict[str, Any]) -> float:
     if work_result.get("updated_at"):
         return 100.0
     ready_state = str(task.get("ready_state") or "blocked")
-    if ready_state == "imported_resolved":
+    if ready_state == "validated":
         return 100.0
     if ready_state == "ready":
         return 15.0

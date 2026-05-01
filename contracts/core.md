@@ -10,7 +10,7 @@ These rules govern every public Thoth command.
 
 ## Session Awareness
 
-- For every command except `init`, require `.thoth/project/project.json` in the current working directory.
+- For every command except `init`, require `.thoth/objects/project/project.json` in the current working directory.
 - Read project identity and dashboard/runtime settings from canonical `.thoth` authority before producing user-facing output.
 
 ## Error Routing
@@ -21,6 +21,6 @@ These rules govern every public Thoth command.
 
 ## Plan Discipline
 
-- `extend` always requires an explicit plan before mutation.
-- Other commands may plan first when the request is ambiguous or high-risk.
+- `discuss`, `run`, `loop`, `review`, and `auto` must stay within their object/packet protocol.
+- Commands may plan first when the request is ambiguous or high-risk.
 - If execution discovers a new blocker that would change the approved action, stop and surface it.

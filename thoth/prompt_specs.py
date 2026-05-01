@@ -153,17 +153,18 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
     ),
     "auto": CommandPromptSpec(
         command_id="auto",
-        route_class="mechanical_fast",
-        intelligence_tier="none",
-        packet_authority_mode="result_envelope",
-        objective="Create a linear controller queue over ready work items.",
+        route_class="live_intelligent",
+        intelligence_tier="high",
+        packet_authority_mode="phase_controller",
+        objective="Run actionable work items by scheduling priority through child loops until none remain, budget pauses, or stop is requested.",
         hard_stops=(
-            "Do not create private queue files.",
-            "Do not execute work while creating the controller.",
+            "Do not execute blocked or draft work.",
+            "Do not auto-abandon work items.",
+            "Do not bypass execution-safety doctor preflight.",
         ),
-        reply_budget_utf8=56,
-        result_style="brief queue receipt",
-        validator_policy="controller object cursor defines queue state",
+        reply_budget_utf8=120,
+        result_style="stream runtime events until terminal or paused",
+        validator_policy="controller cursor and child loop results define queue state",
     ),
     "init": CommandPromptSpec(
         command_id="init",
@@ -406,12 +407,12 @@ def build_codex_public_command_prompt(
         f"Objective: {spec.objective}",
     ]
     lines.extend(f"Hard stop: {item}" for item in spec.hard_stops)
-    if command_id in {"run", "loop"}:
+    if command_id in {"run", "loop", "auto"}:
         lines.extend(
             (
                 "If the command streams runtime events, report progress and risks from those events only.",
                 "Stay in the same session until the RuntimeDriver reaches terminal state unless --sleep was requested.",
-                "Runtime lifecycle is plan -> execute -> validate -> reflect.",
+                "Runtime lifecycle is plan -> execute -> validate -> reflect; auto advances selected work through child loops.",
                 "Do not hand-edit `.thoth`; let the Thoth runtime driver advance phases.",
             )
         )
@@ -423,7 +424,7 @@ def build_codex_public_command_prompt(
                 "If `packet.protocol_commands.complete_exact` exists, execute that exact completion command.",
             )
         )
-    elif command_id in {"discuss", "extend"}:
+    elif command_id == "discuss":
         lines.extend(
             (
                 "If the command returns a command packet, use that packet as the only authority for the follow-up action.",

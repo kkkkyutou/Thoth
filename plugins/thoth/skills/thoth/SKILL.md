@@ -14,19 +14,15 @@ Use the single public entrypoint:
 - `$thoth <command>`
 
 Supported commands:
-- `$thoth init`: Initialize canonical .thoth authority and render both host projections without taking ownership of repo-root `.codex`.
+- `$thoth init`: Initialize, migrate, or resync canonical .thoth authority without taking ownership of repo-root `.codex`.
 - `$thoth run`: Start one strict run bound to `work_id@revision`; live runs foreground and `--sleep` detaches the same runtime driver.
 - `$thoth loop`: Start one bounded controller service whose parent creates four-phase child runs.
 - `$thoth review`: Prepare a structured live review packet through the shared Thoth surface.
-- `$thoth orchestration`: Create a controller object that schedules ready work items by object-graph dependencies.
-- `$thoth auto`: Create a linear controller queue for multiple ready work items.
+- `$thoth auto`: Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.
 - `$thoth status`: Show repo status and active durable runs from the shared ledger.
-- `$thoth doctor`: Audit project health, generated surfaces, and runtime shape.
-- `$thoth dashboard`: Start or describe the task-first dashboard backed by .thoth ledgers.
-- `$thoth sync`: Synchronize generated surfaces and project projections from their canonical sources.
-- `$thoth report`: Build a structured report from the current authority state.
 - `$thoth discuss`: Discuss or record planning decisions without entering implementation execution.
-- `$thoth extend`: Evolve Thoth itself under the generated test gates.
+- `$thoth doctor`: Alias for `status --doctor`; strictly audit project health without writing authority.
+- `$thoth dashboard`: Alias for `status --dashboard`; manage the local dashboard backed by .thoth ledgers.
 
 ## Dispatcher
 
@@ -42,20 +38,16 @@ Supported commands:
 - `run` -> `live_intelligent` / `high` / `phase_controller`
 - `loop` -> `live_intelligent` / `high` / `phase_controller`
 - `review` -> `live_intelligent` / `high` / `review_packet`
-- `orchestration` -> `mechanical_fast` / `none` / `result_envelope`
-- `auto` -> `mechanical_fast` / `none` / `result_envelope`
+- `auto` -> `live_intelligent` / `high` / `phase_controller`
 - `status` -> `mechanical_fast` / `none` / `result_envelope`
+- `discuss` -> `live_intelligent` / `high` / `command_packet`
 - `doctor` -> `mechanical_fast` / `none` / `result_envelope`
 - `dashboard` -> `mechanical_fast` / `none` / `result_envelope`
-- `sync` -> `mechanical_fast` / `none` / `result_envelope`
-- `report` -> `mechanical_fast` / `none` / `result_envelope`
-- `discuss` -> `live_intelligent` / `high` / `command_packet`
-- `extend` -> `live_intelligent` / `high` / `command_packet`
 
 ## Shared Rules
 
-- `init`, `status`, `doctor`, `dashboard`, `sync`, and `report` are mechanical fast-path commands and should return only short receipts.
-- `discuss`, `extend`, `run`, `loop`, and open-ended `review` are high-intelligence paths.
+- `init`, `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
+- `discuss`, `run`, `loop`, `auto`, and open-ended `review` are high-intelligence paths.
 - `review` exact-match/probe flows are protocol-fast: if the packet exposes an exact result, do not improvise.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.
 - Host hooks and subagents may improve throughput but are never correctness requirements.

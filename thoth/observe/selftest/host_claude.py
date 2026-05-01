@@ -62,7 +62,7 @@ def _host_claude(
             "dashboard_stop": "/thoth:dashboard stop",
             "loop_sleep": "/thoth:loop --sleep --work-id task-runtime-probe",
             "loop_stop": lambda run_id: f"/thoth:loop --stop {run_id}",
-            "sync": "/thoth:sync",
+            "sync": "/thoth:init --sync",
         },
         review_expected_executor="codex",
         from_step=from_step,

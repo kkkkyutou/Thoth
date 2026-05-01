@@ -7,7 +7,7 @@ const store = useDashboardStore()
 const task = computed(() => store.selectedTask!)
 
 const verdictLabel = computed(() => {
-  const result = task.value.task_result
+  const result = task.value.work_result
   if (result?.usable === true && result?.meets_goal === true) return 'meets_goal'
   if (result?.updated_at) return 'recorded'
   if (typeof task.value.verdict === 'string' && task.value.verdict) return task.value.verdict
@@ -15,7 +15,7 @@ const verdictLabel = computed(() => {
 })
 
 const conclusion = computed(
-  () => task.value.task_result?.conclusion || task.value.task_result?.current_summary || '',
+  () => task.value.work_result?.conclusion || task.value.work_result?.current_summary || '',
 )
 
 function renderJson(value: unknown): string {
@@ -43,7 +43,7 @@ function renderJson(value: unknown): string {
     <article class="card task-detail__section">
       <h3>{{ locale.detail.basic }}</h3>
       <dl class="task-detail__kv">
-        <dt>task_id</dt><dd>{{ task.id }}</dd>
+        <dt>work_id</dt><dd>{{ task.id }}</dd>
         <dt>title</dt><dd>{{ task.title }}</dd>
         <dt>direction</dt><dd>{{ task.direction }}</dd>
         <dt>module</dt><dd>{{ task.module }}</dd>
@@ -54,13 +54,12 @@ function renderJson(value: unknown): string {
     </article>
 
     <article
-      v-if="task.goal_statement || task.contract_id || task.decision_ids?.length || task.candidate_method_id"
+      v-if="task.goal_statement || task.decision_ids?.length || task.candidate_method_id"
       class="card task-detail__section"
     >
       <h3>{{ locale.detail.goal }}</h3>
       <dl class="task-detail__kv">
         <dt>goal_statement</dt><dd>{{ task.goal_statement || '—' }}</dd>
-        <dt>contract_id</dt><dd>{{ task.contract_id || '—' }}</dd>
         <dt>decision_ids</dt><dd>{{ task.decision_ids?.join(', ') || '—' }}</dd>
         <dt>candidate_method_id</dt><dd>{{ task.candidate_method_id || '—' }}</dd>
       </dl>
@@ -94,18 +93,18 @@ function renderJson(value: unknown): string {
     </article>
 
     <article
-      v-if="conclusion || task.task_result?.evidence_paths?.length || verdictLabel"
+      v-if="conclusion || task.work_result?.evidence_paths?.length || verdictLabel"
       class="card task-detail__section"
     >
       <h3>{{ locale.detail.verdict }}</h3>
       <dl class="task-detail__kv">
         <dt>verdict</dt><dd>{{ verdictLabel || '—' }}</dd>
-        <dt>source</dt><dd>{{ task.task_result?.source || '—' }}</dd>
-        <dt>updated_at</dt><dd>{{ task.task_result?.updated_at || '—' }}</dd>
+        <dt>source</dt><dd>{{ task.work_result?.source || '—' }}</dd>
+        <dt>updated_at</dt><dd>{{ task.work_result?.updated_at || '—' }}</dd>
       </dl>
       <p class="task-detail__text">{{ conclusion || locale.detail.noConclusion }}</p>
-      <ul v-if="task.task_result?.evidence_paths?.length" class="task-detail__list">
-        <li v-for="path in task.task_result.evidence_paths" :key="path">{{ path }}</li>
+      <ul v-if="task.work_result?.evidence_paths?.length" class="task-detail__list">
+        <li v-for="path in task.work_result.evidence_paths" :key="path">{{ path }}</li>
       </ul>
     </article>
 

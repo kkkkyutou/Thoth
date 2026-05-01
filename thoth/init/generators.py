@@ -262,7 +262,7 @@ repos:
         pass_filenames: false
       - id: thoth-sync
         name: Refresh generated Thoth projections
-        entry: bash scripts/thoth-cli.sh sync
+        entry: bash scripts/thoth-cli.sh init --sync
         language: system
         pass_filenames: false
 """)
@@ -276,8 +276,8 @@ def generate_scripts(config: dict[str, Any], project_dir: Path) -> None:
         "install-hooks.sh": "#!/usr/bin/env bash\nset -e\npre-commit install\n",
         "check-required-files.sh": "#!/usr/bin/env bash\nset -e\nfor f in .thoth/objects/project/project.json .thoth/docs/agent-entry.md .thoth/docs/object-graph-summary.json .thoth/derived/codex-hooks.json; do test -f \"$f\" || { echo \"MISSING: $f\"; exit 1; }; done\n",
         "thoth-cli.sh": "#!/usr/bin/env bash\nset -euo pipefail\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$ROOT\"\nif command -v thoth >/dev/null 2>&1; then\n  exec thoth \"$@\"\nfi\nif [ -n \"${THOTH_SOURCE_ROOT:-}\" ]; then\n  export PYTHONPATH=\"${THOTH_SOURCE_ROOT}${PYTHONPATH:+:${PYTHONPATH}}\"\n  exec python -m thoth.cli \"$@\"\nfi\necho \"Missing Thoth shell wrapper. Install drift: expected 'thoth' on PATH or THOTH_SOURCE_ROOT for source-checkout fallback.\" >&2\nexit 1\n",
-        "session-end-check.sh": "#!/usr/bin/env bash\nset -euo pipefail\nbash scripts/thoth-cli.sh sync\nbash scripts/thoth-cli.sh doctor\nbash scripts/check-required-files.sh\n",
-        "validate-all.sh": "#!/usr/bin/env bash\nset -euo pipefail\nbash scripts/thoth-cli.sh sync\nbash scripts/thoth-cli.sh doctor\nbash scripts/check-required-files.sh\n",
+        "session-end-check.sh": "#!/usr/bin/env bash\nset -euo pipefail\nbash scripts/thoth-cli.sh init --sync\nbash scripts/thoth-cli.sh doctor\nbash scripts/check-required-files.sh\n",
+        "validate-all.sh": "#!/usr/bin/env bash\nset -euo pipefail\nbash scripts/thoth-cli.sh init --sync\nbash scripts/thoth-cli.sh doctor\nbash scripts/check-required-files.sh\n",
         "thoth-codex-hook.sh": "#!/usr/bin/env bash\nset -euo pipefail\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$ROOT\"\nEVENT=\"${1:-}\"\nif [ -z \"$EVENT\" ]; then\n  echo \"Usage: thoth-codex-hook.sh <start|stop>\" >&2\n  exit 0\nfi\nif command -v thoth >/dev/null 2>&1; then\n  exec thoth hook --host codex --event \"$EVENT\"\nfi\nif [ -n \"${THOTH_SOURCE_ROOT:-}\" ]; then\n  export PYTHONPATH=\"${THOTH_SOURCE_ROOT}${PYTHONPATH:+:${PYTHONPATH}}\"\n  exec python -m thoth.cli hook --host codex --event \"$EVENT\"\nfi\nexit 0\n",
     }
     for filename, content in scripts.items():
