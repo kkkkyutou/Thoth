@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.1.6"
+PLUGIN_VERSION = "0.1.7"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "plugins/thoth"
 PLUGIN_SKILLS_PATH = "./skills"
@@ -65,7 +65,14 @@ def render_claude_command(spec: CommandSpec) -> str:
     runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} $ARGUMENTS'
     live_packet_contract = spec.intelligence_tier == "high"
     disable_model_invocation = "false" if live_packet_contract else "true"
-    if spec.command_id == "review":
+    if spec.command_id == "discuss":
+        runtime_invocation = '''THOTH_DISCUSS_ARGUMENTS_FILE="$(mktemp -t thoth-discuss-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_DISCUSS_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_DISCUSS_ARGUMENTS_FILE" <<'THOTH_DISCUSS_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_DISCUSS_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"'''
+    elif spec.command_id == "review":
         runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'
     elif spec.command_id in {"run", "loop", "auto"}:
         runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'

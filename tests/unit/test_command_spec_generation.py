@@ -40,7 +40,10 @@ def test_claude_surface_renders_from_spec():
 def test_claude_discuss_surface_preserves_structured_arguments():
     spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "discuss")
     rendered = render_claude_command(spec)
-    assert 'scripts/thoth-claude-command.sh" discuss $ARGUMENTS' in rendered
+    assert "THOTH_DISCUSS_ARGUMENTS_FILE" in rendered
+    assert "<<'THOTH_DISCUSS_ARGUMENTS_EOF'" in rendered
+    assert 'scripts/thoth-claude-command.sh" discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"' in rendered
+    assert 'scripts/thoth-claude-command.sh" discuss $ARGUMENTS' not in rendered
     assert "disable-model-invocation: false" in rendered
 
 

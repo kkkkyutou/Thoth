@@ -125,6 +125,25 @@ def test_bridge_records_status_after_init(tmp_path):
     assert [event["command_id"] for event in events][-2:] == ["init", "status"]
 
 
+def test_bridge_discuss_reads_multiline_arguments_file(tmp_path):
+    init_result = _run_bridge(tmp_path, "init")
+    assert json.loads(init_result.stdout)["bridge_success"] is True
+    args_file = tmp_path / "discuss-args.txt"
+    args_file.write_text(
+        "这个项目叫demo_project\n"
+        "/tmp/thoth-demo-project/eva01/materials/sample-sigconf.tex\n"
+        "/tmp/thoth-demo-project/eva01/context-snapshot.md\n",
+        encoding="utf-8",
+    )
+
+    result = _run_bridge(tmp_path, "discuss", "--thoth-arguments-file", str(args_file))
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["bridge_success"] is True
+    assert payload["arguments"] == [args_file.read_text(encoding="utf-8").rstrip("\n")]
+    assert "/tmp/thoth-demo-project/eva01/context-snapshot.md" in payload["argv"][-1]
+
+
 def test_bridge_uses_plugin_cli_even_if_project_has_shadow_thoth_package(tmp_path):
     shadow_pkg = tmp_path / "thoth"
     shadow_pkg.mkdir()

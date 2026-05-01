@@ -176,6 +176,16 @@ def _rewrite_run_loop_prepare_args(command_args: list[str]) -> list[str]:
     return rewritten
 
 
+def _expand_bridge_args(command_id: str, command_args: list[str]) -> list[str]:
+    if command_id != "discuss":
+        return command_args
+    if len(command_args) >= 2 and command_args[0] == "--thoth-arguments-file":
+        path = Path(command_args[1])
+        content = path.read_text(encoding="utf-8")
+        return [content.rstrip("\n")]
+    return command_args
+
+
 def run_bridge(command_id: str, command_args: list[str], *, project_root: Path | None = None) -> dict[str, Any]:
     project_root = (project_root or Path.cwd()).resolve()
     plugin_root = Path(os.environ.get("THOTH_CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parents[3]).resolve()
@@ -187,6 +197,7 @@ def run_bridge(command_id: str, command_args: list[str], *, project_root: Path |
     env["THOTH_CLAUDE_BRIDGE"] = "1"
 
     actual_command = command_id
+    command_args = _expand_bridge_args(command_id, list(command_args))
     actual_args = list(command_args)
     if command_id == "review" and not any(flag in command_args for flag in ("--attach", "--watch", "--stop")):
         actual_command = "prepare"

@@ -17,7 +17,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" discuss $ARGUMENTS
+THOTH_DISCUSS_ARGUMENTS_FILE="$(mktemp -t thoth-discuss-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_DISCUSS_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_DISCUSS_ARGUMENTS_FILE" <<'THOTH_DISCUSS_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_DISCUSS_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
