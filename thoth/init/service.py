@@ -343,7 +343,7 @@ def import_legacy_work_items(project_dir: Path, migration_dir: Path) -> dict[str
         obj = store.upsert(
             kind="work_item",
             object_id=work_id,
-            status=status if status != "validated" else "blocked",
+            status="blocked",
             title=title,
             summary=str(converted["payload"]["goal"]),
             source="legacy_import",

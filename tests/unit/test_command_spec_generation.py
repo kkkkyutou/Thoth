@@ -37,6 +37,12 @@ def test_claude_surface_renders_from_spec():
     assert "plan -> execute -> validate -> reflect" in rendered
 
 
+def test_claude_init_surface_documents_positional_migration_actions():
+    spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "init")
+    rendered = render_claude_command(spec)
+    assert "argument-hint: \"[--sync] [--migrate preview|apply] [--migrate --preview|--apply]\"" in rendered
+
+
 def test_claude_discuss_surface_preserves_structured_arguments():
     spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "discuss")
     rendered = render_claude_command(spec)

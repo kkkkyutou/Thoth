@@ -15,7 +15,7 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/tasks-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.1.8" src="https://img.shields.io/badge/version-0.1.8-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.1.9" src="https://img.shields.io/badge/version-0.1.9-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth 概念首屏图" />
@@ -232,7 +232,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 
 | 命令 | 宿主入口 | 目的 | 输入 | 结果 |
 | --- | --- | --- | --- | --- |
-| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | 审查、初始化、迁移或刷新 canonical Thoth authority。 | `--sync`、`--migrate --preview`、`--migrate --apply` 或可选配置 | `.thoth` authority、迁移账本、生成投影、dashboard 脚手架、脚本与测试 |
+| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | 审查、初始化、迁移或刷新 canonical Thoth authority。 | `--sync`、`--migrate preview`、`--migrate apply`、`--migrate --preview`、`--migrate --apply` 或可选配置 | `.thoth` authority、迁移账本、生成投影、dashboard 脚手架、脚本与测试 |
 | `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | 在不进入代码执行的前提下记录规划决策。 | 主题、decision payload 或 work payload | 更新后的 discussion、decision 或 work_item 对象，以及生成 docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | 通过 durable runtime packet 执行一个 ready work item。 | `--work-id`，可选 host 或 executor 控制，以及 attach/watch/stop | 含 state、events、phase results、artifacts 和 terminal result 的 durable run ledger |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | 通过 controller service 对一个 ready work item 做迭代执行。 | `--work-id`，可选 resume 或 sleep 控制 | Controller object、child run lineage 和有边界的迭代历史 |

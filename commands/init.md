@@ -1,7 +1,7 @@
 ---
 name: thoth:init
 description: Initialize, migrate, or resync canonical .thoth authority without taking ownership of repo-root `.codex`.
-argument-hint: "[--sync] [--migrate --preview|--apply]"
+argument-hint: "[--sync] [--migrate preview|apply] [--migrate --preview|--apply]"
 disable-model-invocation: true
 ---
 

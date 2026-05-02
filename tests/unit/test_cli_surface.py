@@ -220,6 +220,47 @@ def test_cli_doctor_fix_preview_does_not_write_project_authority(tmp_path):
     assert not (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
 
 
+def test_cli_init_migrate_accepts_positional_apply_and_removes_legacy_project(tmp_path):
+    legacy_contract = tmp_path / ".thoth" / "project" / "contracts" / "contract-1.json"
+    legacy_contract.parent.mkdir(parents=True)
+    legacy_contract.write_text(
+        json.dumps({"contract_id": "contract-1", "goal": "Migrate this legacy contract."}),
+        encoding="utf-8",
+    )
+
+    result = _run_cli(tmp_path, "init", "--migrate", "apply")
+
+    assert result.returncode == 0, result.stderr
+    payload = _extract_envelope(result.stdout)
+    assert payload["status"] == "ok"
+    assert (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
+    assert not (tmp_path / ".thoth" / "project").exists()
+    work_item = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "contract-1.json").read_text(encoding="utf-8"))
+    assert work_item["status"] == "blocked"
+
+
+def test_cli_doctor_fix_accepts_positional_preview_without_mutation(tmp_path):
+    (tmp_path / ".thoth" / "project" / "tasks").mkdir(parents=True)
+
+    result = _run_cli(tmp_path, "doctor", "--fix", "preview")
+
+    assert result.returncode == 0, result.stderr
+    payload = _extract_envelope(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["body"]["result"]["operation"] == "preview"
+    assert ".thoth/project" in payload["body"]["result"]["preview"]["remove"]
+    assert not (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
+
+
+def test_cli_doctor_fix_without_action_requires_explicit_choice(tmp_path):
+    result = _run_cli(tmp_path, "doctor", "--fix")
+
+    assert result.returncode == 2
+    payload = _extract_envelope(result.stdout)
+    assert payload["status"] == "needs_input"
+    assert "thoth init --migrate preview" in payload["body"]["guidance"]
+
+
 def test_cli_run_rejects_free_form_execution(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
     _write_task(tmp_path, "task-auth-fix", title="Fix Auth Session", work_goal="Repair session persistence bug in auth flow.")

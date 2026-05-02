@@ -32,7 +32,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="init",
         summary="Initialize, migrate, or resync canonical .thoth authority without taking ownership of repo-root `.codex`.",
-        argument_hint="[--sync] [--migrate --preview|--apply]",
+        argument_hint="[--sync] [--migrate preview|apply] [--migrate --preview|--apply]",
         route_class="mechanical_fast",
         intelligence_tier="none",
         packet_authority_mode="result_envelope",
@@ -160,7 +160,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="doctor",
         summary="Alias for `status --doctor`; strictly audit project health without writing authority.",
-        argument_hint="[--quick] [--json]",
+        argument_hint="[--quick] [--json] [--fix preview|apply]",
         route_class="mechanical_fast",
         intelligence_tier="none",
         packet_authority_mode="result_envelope",

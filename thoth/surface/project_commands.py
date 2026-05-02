@@ -13,6 +13,14 @@ from thoth.surface.envelope import output_refs, print_envelope
 from thoth.surface.hooks import run_host_hook
 
 
+def _normalize_preview_apply(args, flag_name: str, parser, command_name: str) -> None:
+    action = getattr(args, flag_name, False)
+    if action in {"preview", "apply"}:
+        setattr(args, action, True)
+    if getattr(args, "preview", False) and getattr(args, "apply", False):
+        parser.exit(2, f"thoth: error: {command_name} accepts only one of preview or apply.\n")
+
+
 def run_extend_tests(changed: list[str]) -> tuple[int, str]:
     tests_dir = Path(__file__).resolve().parents[2] / "tests"
     result = subprocess.run([sys.executable, "-m", "pytest", str(tests_dir), "-v", "--tb=short"], capture_output=True, text=True, timeout=120, cwd=str(Path(__file__).resolve().parents[2]))
@@ -27,6 +35,7 @@ def run_extend_tests(changed: list[str]) -> tuple[int, str]:
 
 
 def handle_init(args, parser, *, project_root: Path) -> int:
+    _normalize_preview_apply(args, "migrate", parser, "init --migrate")
     config = parse_config(args.config_json) if getattr(args, "config_json", None) else {}
     if getattr(args, "sync", False):
         result = sync_project_layer(project_root)

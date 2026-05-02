@@ -24,7 +24,7 @@ OPTIONAL_AGENT_OS_FILES = ["milestones.yaml"]
 GENERATED_SCRIPT_FILES = ["install-hooks.sh", "check-required-files.sh", "session-end-check.sh", "validate-all.sh", "thoth-cli.sh", "thoth-codex-hook.sh"]
 GENERATED_TEST_FILES = ["tests/conftest.py", "tests/test_structure.py"]
 MANAGED_DIRECTORY_ROOTS = [".claude", ".thoth", "scripts", "tests", "tools", "tools/dashboard"]
-LEGACY_REMOVE_PATHS = [LEGACY_CONFIG_FILE, ".agent-os/research-tasks", "tests/test_validate.py", "tests/test_check_consistency.py", "tests/test_sync_todo.py", "tests/test_verify_completion.py"]
+LEGACY_REMOVE_PATHS = [LEGACY_CONFIG_FILE, ".agent-os/research-tasks", ".thoth/project", "tests/test_validate.py", "tests/test_check_consistency.py", "tests/test_sync_todo.py", "tests/test_verify_completion.py"]
 DISCOVERY_CODE_SUFFIXES = {".py", ".js", ".ts", ".tsx", ".vue", ".sh", ".rs", ".go", ".java", ".c", ".cc", ".cpp", ".h", ".hpp"}
 THOTH_CLAUDE_BASH_ALLOW_PATTERN = "Bash(*thoth-claude-command.sh*)"
 

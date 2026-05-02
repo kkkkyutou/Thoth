@@ -14,6 +14,14 @@ from thoth.run.status import build_status_payload
 from thoth.surface.envelope import output_refs, print_envelope
 
 
+def _normalize_preview_apply(args, flag_name: str, parser, command_name: str) -> None:
+    action = getattr(args, flag_name, False)
+    if action in {"preview", "apply"}:
+        setattr(args, action, True)
+    if getattr(args, "preview", False) and getattr(args, "apply", False):
+        parser.exit(2, f"thoth: error: {command_name} accepts only one of preview or apply.\n")
+
+
 def handle_status(args, parser, *, project_root: Path) -> int:
     if getattr(args, "doctor", False):
         return handle_doctor(args, parser, project_root=project_root)
@@ -32,14 +40,13 @@ def handle_status(args, parser, *, project_root: Path) -> int:
 
 
 def _handle_doctor_fix(args, parser, *, project_root: Path) -> int:
-    if getattr(args, "preview", False) and getattr(args, "apply", False):
-        parser.exit(2, "thoth: error: doctor --fix accepts only one of --preview or --apply.\n")
+    _normalize_preview_apply(args, "fix", parser, "doctor --fix")
     if not getattr(args, "preview", False) and not getattr(args, "apply", False):
         print_envelope(
             command="doctor",
             status="needs_input",
             summary="Doctor fix requires explicit --preview or --apply; no files were changed.",
-            body={"guidance": "Use `thoth init --migrate --preview` to inspect, or `thoth init --migrate --apply` to apply."},
+            body={"guidance": "Use `thoth init --migrate preview` to inspect, or `thoth init --migrate apply` to apply."},
             checks=[{"name": "explicit_mutation_required", "ok": False, "detail": "--preview or --apply missing"}],
         )
         return 2

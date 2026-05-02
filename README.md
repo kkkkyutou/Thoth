@@ -15,7 +15,7 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/tasks-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.1.8" src="https://img.shields.io/badge/version-0.1.8-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.1.9" src="https://img.shields.io/badge/version-0.1.9-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
@@ -232,7 +232,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 
 | Command | Host Surface | Purpose | Input | Result |
 | --- | --- | --- | --- | --- |
-| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit, initialize, migrate, or resync canonical Thoth authority. | `--sync`, `--migrate --preview`, `--migrate --apply`, or optional config payload | `.thoth` authority, migration ledger, generated projections, dashboard scaffolding, scripts, and tests |
+| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit, initialize, migrate, or resync canonical Thoth authority. | `--sync`, `--migrate preview`, `--migrate apply`, `--migrate --preview`, `--migrate --apply`, or optional config payload | `.thoth` authority, migration ledger, generated projections, dashboard scaffolding, scripts, and tests |
 | `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | Record planning decisions without entering code execution. | Topic, decision payload, or work payload | Updated discussion, decision, or work_item objects plus generated docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | Execute one ready work item through a durable runtime packet. | `--work-id`, optional host or executor controls, optional attach/watch/stop | Durable run ledger with state, events, phase results, artifacts, and terminal result |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | Iterate on one ready work item through a controller service. | `--work-id`, optional resume or sleep controls | Controller object, child run lineage, and bounded iteration history |
