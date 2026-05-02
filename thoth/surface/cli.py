@@ -59,6 +59,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     status_parser = sub.add_parser("status")
     status_parser.add_argument("--json", action="store_true")
     status_parser.add_argument("--doctor", action="store_true")
+    status_parser.add_argument("--version", action="store_true")
     status_parser.add_argument("--report", action="store_true")
     status_parser.add_argument("--dashboard", nargs="?", const="start", choices=("start", "stop", "rebuild"))
     status_parser.add_argument("--fix", nargs="?", const="requested", choices=("preview", "apply", "requested"))
@@ -74,6 +75,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--quick", action="store_true")
+    doctor.add_argument("--version", action="store_true")
     doctor.add_argument("--fix", nargs="?", const="requested", choices=("preview", "apply", "requested"))
     doctor.add_argument("--preview", action="store_true")
     doctor.add_argument("--apply", action="store_true")

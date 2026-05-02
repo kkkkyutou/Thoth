@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.1.9"
+PLUGIN_VERSION = "0.1.10"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "plugins/thoth"
 PLUGIN_SKILLS_PATH = "./skills"
@@ -27,7 +27,11 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
     if spec.route_class == "mechanical_fast":
         return """- Treat the structured bridge payload above as the only authority for this invocation.
 - If `bridge_success` is `false`, report the exact bridge failure and stop.
+- If stdout starts with `version=`, repeat stdout exactly and output nothing else.
 - If `bridge_success` is `true`, report only the real command result in one short receipt.
+- If extra evidence is required, inspect only the smallest artifact explicitly named by the bridge payload.
+- Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result.
+- If the result exposes blockers or asks for human decisions, use AskUserQuestion to ask only the unresolved questions and stop.
 - Do not expand into runtime explanation, walkthroughs, or extra command execution."""
     rules = [
         "- Treat the structured bridge payload above as the only authority for this command invocation.",

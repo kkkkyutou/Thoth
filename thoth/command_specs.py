@@ -160,7 +160,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="doctor",
         summary="Alias for `status --doctor`; strictly audit project health without writing authority.",
-        argument_hint="[--quick] [--json] [--fix preview|apply]",
+        argument_hint="[--quick] [--json] [--fix preview|apply] [--version]",
         route_class="mechanical_fast",
         intelligence_tier="none",
         packet_authority_mode="result_envelope",

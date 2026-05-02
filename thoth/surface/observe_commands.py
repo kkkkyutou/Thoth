@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from thoth.projections import PLUGIN_VERSION
 from thoth.observe.dashboard import manage_dashboard
 from thoth.observe.report import generate_default_report, render_report_summary
 from thoth.observe.status import render_status
@@ -20,6 +22,35 @@ def _normalize_preview_apply(args, flag_name: str, parser, command_name: str) ->
         setattr(args, action, True)
     if getattr(args, "preview", False) and getattr(args, "apply", False):
         parser.exit(2, f"thoth: error: {command_name} accepts only one of preview or apply.\n")
+
+
+def _mtime_iso(path: Path) -> str:
+    return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _last_install_or_upgrade_time() -> str:
+    candidates: list[Path] = []
+    for key in ("THOTH_CLAUDE_PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT", "THOTH_PLUGIN_ROOT"):
+        value = os.environ.get(key)
+        if value:
+            candidates.append(Path(value))
+    repo_root = Path(__file__).resolve().parents[2]
+    candidates.extend(
+        [
+            repo_root / ".claude-plugin" / "plugin.json",
+            repo_root / "plugins" / "thoth" / ".codex-plugin" / "plugin.json",
+            repo_root / "pyproject.toml",
+        ]
+    )
+    existing = [path for path in candidates if path.exists()]
+    if not existing:
+        return "unknown"
+    latest = max(existing, key=lambda path: path.stat().st_mtime)
+    return _mtime_iso(latest)
+
+
+def render_version_probe() -> str:
+    return f"version={PLUGIN_VERSION}\nlast_updated={_last_install_or_upgrade_time()}\n"
 
 
 def handle_status(args, parser, *, project_root: Path) -> int:
@@ -74,6 +105,9 @@ def _handle_doctor_fix(args, parser, *, project_root: Path) -> int:
 
 
 def handle_doctor(args, parser, *, project_root: Path) -> int:
+    if getattr(args, "version", False):
+        print(render_version_probe(), end="")
+        return 0
     if getattr(args, "fix", False):
         return _handle_doctor_fix(args, parser, project_root=project_root)
     payload = build_doctor_payload(project_root)
