@@ -210,6 +210,19 @@ def test_cli_doctor_quick(tmp_path):
     assert "Thoth Doctor" in result.stdout
 
 
+def test_cli_doctor_version_prints_only_version_and_update_time(tmp_path):
+    result = _run_cli(tmp_path, "doctor", "--version")
+
+    assert result.returncode == 0, result.stderr
+    rows = result.stdout.splitlines()
+    assert len(rows) == 2
+    assert rows[0].startswith("version=")
+    assert rows[1].startswith("last_updated=")
+    assert result.stderr == ""
+    assert "Thoth Doctor" not in result.stdout
+    assert "{" not in result.stdout
+
+
 def test_cli_doctor_fix_preview_does_not_write_project_authority(tmp_path):
     (tmp_path / ".agent-os" / "research-tasks" / "frontend" / "f1").mkdir(parents=True)
     (tmp_path / ".agent-os" / "research-tasks" / "frontend" / "f1" / "legacy.yaml").write_text("id: legacy\n", encoding="utf-8")

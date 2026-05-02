@@ -24,7 +24,11 @@ executed before Claude sees this prompt.
 
 - Treat the structured bridge payload above as the only authority for this invocation.
 - If `bridge_success` is `false`, report the exact bridge failure and stop.
+- If stdout starts with `version=`, repeat stdout exactly and output nothing else.
 - If `bridge_success` is `true`, report only the real command result in one short receipt.
+- If extra evidence is required, inspect only the smallest artifact explicitly named by the bridge payload.
+- Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result.
+- If the result exposes blockers or asks for human decisions, use AskUserQuestion to ask only the unresolved questions and stop.
 - Do not expand into runtime explanation, walkthroughs, or extra command execution.
 
 ## Authority Summary

@@ -41,6 +41,23 @@ def test_claude_init_surface_documents_positional_migration_actions():
     spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "init")
     rendered = render_claude_command(spec)
     assert "argument-hint: \"[--sync] [--migrate preview|apply] [--migrate --preview|--apply]\"" in rendered
+    assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the bridge payload." in rendered
+    assert "Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result." in rendered
+    assert "use AskUserQuestion to ask only the unresolved questions and stop" in rendered
+    assert "Do not assume goals, project identity, migration intent, work priority, unblock policy, or acceptance criteria." in rendered
+    assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the init payload." in rendered
+    assert "If the preview/apply result leaves blocked work or unresolved migration choices, ask with AskUserQuestion and stop." in rendered
+
+
+def test_claude_doctor_surface_keeps_post_result_checks_minimal():
+    spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "doctor")
+    rendered = render_claude_command(spec)
+    assert "argument-hint: \"[--quick] [--json] [--fix preview|apply] [--version]\"" in rendered
+    assert "If stdout starts with `version=`, repeat stdout exactly and output nothing else." in rendered
+    assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the bridge payload." in rendered
+    assert "Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result." in rendered
+    assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the doctor payload." in rendered
+    assert "If work items are blocked or migration decisions are unresolved, ask with AskUserQuestion instead of guessing or fixing." in rendered
 
 
 def test_claude_discuss_surface_preserves_structured_arguments():
