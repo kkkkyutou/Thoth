@@ -69,6 +69,14 @@
   - Evidence: `init --migrate --preview|--apply` 写 `.thoth/migrations/<id>/audit.json` 与 `preview.json`，apply 将 legacy `.agent-os/research-tasks/*.yml` 导入 `work_item` / `work_result`；`doctor --fix --preview|--apply` 作为显式迁移快捷入口，裸 doctor 仍只读严格审计
   - Evidence: 发布面提交 `4da135a refactor: minimize public runtime surface` 已 cherry-pick 到 `main` 为 `a53559c`；`main` 上 `py_compile` 通过，targeted pytest `50 passed in 927.28s`，核心五项 selftest `overall_status=passed`
   - Evidence: `origin/main` 已推送 `658e428..a53559c`；Claude Code 远端-only upgrade 输出 `updated from 0.1.5 to 0.1.6`，Codex `plugin marketplace upgrade thoth` 成功，`claude plugin list --json` 显示 `thoth@thoth` `version=0.1.6`
+- `TD-034` `[verified]`: 将 `auto` 收紧为 durable background worker 与 live/sleep 观察器分层
+  - Related items: `WS-002`, `WS-003`, `WS-005`, `REQ-020`, `REQ-023`, `REQ-024`, `REQ-034`
+  - Evidence: `auto` live 路径启动/复用 durable controller worker 后只通过 `auto --watch <controller_id> --follow --stream-json` 观察；`--sleep` 与 Claude bridge `--monitor-packet` 返回 `monitor_command`，不让宿主会话持有 8 小时执行权
+  - Evidence: `.thoth/local/controllers/<controller_id>/supervisor.json` 记录 auto worker pid/state；worker stale/missing 时可复用 active controller 并重启；Ctrl-C/session loss 只影响观察器，不直接停止 controller
+  - Evidence: `--min-runtime-seconds` 默认 `28800` 按真实 wall-clock 约束执行；idle 时 heartbeat/rescan；`--rounds` 只在达到最小运行时间后作为退出上限；显式 `--work-id` 队列固定，非显式队列 idle scan 会拾取新 ready/actionable work
+  - Evidence: 同一 auto controller 内 `attempted_work_ids` / `failed_work_ids` 防止失败 work 被重复尝试；child failure 记录 `thoth.auto.risk` 后继续队列；无自动 executor fallback；同一 repo/worktree 严格串行执行
+  - Evidence: Claude prompt surface 允许 `Monitor` 但只作为可选观察增强；Codex 继续消费同一 watch JSONL 协议，不引入 hooks/subagents 作为正确性依赖
+  - Evidence: `python -m py_compile thoth/run/auto.py thoth/surface/run_commands.py thoth/surface/cli.py thoth/surface/bridges/claude.py thoth/run/controllers.py thoth/observe/read_model.py thoth/observe/status.py templates/dashboard/backend/runtime_loader.py thoth/command_specs.py thoth/prompt_specs.py thoth/projections.py tests/unit/test_cli_surface.py tests/unit/test_claude_bridge.py tests/unit/test_command_spec_generation.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_object_controllers.py` 通过；targeted pytest `tests/unit/test_cli_surface.py tests/unit/test_claude_bridge.py tests/unit/test_command_spec_generation.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_object_controllers.py` 为 `48 passed in 698.29s`
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立
