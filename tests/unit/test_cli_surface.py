@@ -341,12 +341,46 @@ def test_cli_auto_runs_ready_work_even_when_blocked_work_exists(tmp_path):
     doctor = _run_cli(tmp_path, "doctor", "--json")
     assert doctor.returncode == 1
 
-    result = _run_cli(tmp_path, "auto", "--rounds", "1", env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"})
+    result = _run_cli(
+        tmp_path,
+        "auto",
+        "--rounds",
+        "1",
+        "--min-runtime-seconds",
+        "0",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete", "THOTH_AUTO_HEARTBEAT_SECONDS": "1"},
+    )
 
     assert result.returncode == 2, result.stderr
     events = _jsonl_events(result.stdout)
-    assert any(event.get("type") == "thoth.auto.child.started" and event.get("work_id") == "ready-work" for event in events)
-    assert events[-1]["type"] == "thoth.auto.paused"
+    controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
+    controller_path = tmp_path / ".thoth" / "objects" / "controller" / f"{controller_id}.json"
+    controller = json.loads(controller_path.read_text(encoding="utf-8"))
+    assert "ready-work" in controller["payload"]["completed_work_ids"]
+    assert events[-1]["type"] == "thoth.auto.terminal"
+    assert events[-1]["status"] == "paused"
+
+
+def test_cli_auto_sleep_starts_background_controller(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path)
+    assert _run_cli(tmp_path, "init", "--sync").returncode == 0
+
+    result = _run_cli(
+        tmp_path,
+        "auto",
+        "--sleep",
+        "--min-runtime-seconds",
+        "0",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = _extract_json_object(result.stdout)
+    body = payload["body"]
+    assert body["background_mode"] == "detached"
+    assert body["controller_id"].startswith("controller-auto-")
+    assert body["monitor_command"].startswith("thoth auto --watch controller-auto-")
 
 
 def test_cli_sleep_mode_auto_backgrounds(tmp_path):

@@ -1,9 +1,9 @@
 ---
 name: thoth:auto
 description: Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.
-argument-hint: "[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...]"
+argument-hint: "[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>]"
 disable-model-invocation: false
-allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Task
+allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Task, Monitor
 ---
 
 # /thoth:auto
@@ -35,6 +35,10 @@ executed before Claude sees this prompt.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.
 - Use `packet.strict_task.goal_statement`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.
 - Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.
+- If the bridge payload exposes `body.monitor_command`, observe that command instead of executing work directly in the Claude session.
+- Prefer the Claude Monitor tool with `persistent=true` for `body.monitor_command` when available; otherwise use Bash to run the same watch command in the foreground.
+- Treat the monitor/watch JSONL stream as the only live progress authority; summarize progress and risks from those events only.
+- If the live observer is interrupted, do not stop the auto controller unless the user explicitly requests `/thoth:auto --stop <controller_id>`.
 
 ## Authority Summary
 
@@ -57,5 +61,5 @@ Run actionable work items by scheduling priority through child loops until none 
 ### Reply Contract
 
 - reply_budget_utf8: `120`
-- result_style: stream runtime events until terminal or paused
-- validator_policy: controller cursor and child loop results define queue state
+- result_style: start or reuse the durable controller, then stream JSONL watch events until terminal or observer interruption
+- validator_policy: controller cursor, child loop results, and auto watch events define queue state

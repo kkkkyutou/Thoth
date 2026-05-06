@@ -86,6 +86,16 @@ def test_claude_review_surface_preserves_structured_arguments():
     assert "packet_authority_mode: `review_packet`" in rendered
 
 
+def test_claude_auto_surface_documents_monitor_watch_contract():
+    spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "auto")
+    rendered = render_claude_command(spec)
+    assert "allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Task, Monitor" in rendered
+    assert "body.monitor_command" in rendered
+    assert "Monitor tool with `persistent=true`" in rendered
+    assert "same watch command in the foreground" in rendered
+    assert "do not stop the auto controller" in rendered
+
+
 def test_codex_skill_lists_single_public_entry():
     content = render_codex_skill()
     assert content.startswith("---\nname: thoth\n")

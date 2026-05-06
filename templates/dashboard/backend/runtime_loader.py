@@ -228,11 +228,45 @@ def runtime_overview(project_root: Path) -> dict[str, Any]:
     runs = list_runs(project_root)
     active_runs = [run for run in runs if run.get("is_active")]
     stale_runs = [run for run in runs if run.get("is_stale")]
+    auto_controllers = _list_auto_controllers(project_root)
+    active_auto = [row for row in auto_controllers if row.get("status") in {"queued", "running", "idle"}]
     return {
         "active_run_count": len(active_runs),
         "stale_run_count": len(stale_runs),
+        "active_auto_count": len(active_auto),
         "active_runs": active_runs[:10],
+        "active_auto_controllers": active_auto[:10],
         "last_runtime_update": runs[0].get("last_updated_at") if runs else None,
         "progress_source": "work_result_plus_run_ledger",
         "host_breakdown": sorted({run.get("host") for run in runs if run.get("host")}),
     }
+
+
+def _list_auto_controllers(project_root: Path) -> list[dict[str, Any]]:
+    controllers_dir = project_root / ".thoth" / "objects" / "controller"
+    if not controllers_dir.is_dir():
+        return []
+    rows: list[dict[str, Any]] = []
+    for path in sorted(controllers_dir.glob("*.json")):
+        payload = _read_json(path)
+        body = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+        if body.get("controller_type") != "auto":
+            continue
+        cursor = body.get("cursor") if isinstance(body.get("cursor"), dict) else {}
+        rows.append(
+            {
+                "controller_id": payload.get("object_id") or path.stem,
+                "status": payload.get("status"),
+                "state": body.get("state"),
+                "elapsed_seconds": body.get("elapsed_seconds"),
+                "min_runtime_seconds": body.get("min_runtime_seconds"),
+                "rounds_attempted": cursor.get("rounds_attempted"),
+                "active_run_id": cursor.get("active_run_id"),
+                "queue_count": len(body.get("queue")) if isinstance(body.get("queue"), list) else 0,
+                "completed_count": len(body.get("completed_work_ids")) if isinstance(body.get("completed_work_ids"), list) else 0,
+                "failed_count": len(body.get("failed_work_ids")) if isinstance(body.get("failed_work_ids"), list) else 0,
+                "updated_at": payload.get("updated_at"),
+            }
+        )
+    rows.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
+    return rows

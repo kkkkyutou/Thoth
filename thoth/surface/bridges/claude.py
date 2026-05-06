@@ -203,6 +203,8 @@ def run_bridge(command_id: str, command_args: list[str], *, project_root: Path |
         actual_command = "prepare"
         prepare_args = _rewrite_review_prepare_args(command_args)
         actual_args = ["--command-id", command_id, *prepare_args]
+    elif command_id == "auto" and not any(flag in command_args for flag in ("--watch", "--stop", "--sleep", "--monitor-packet")):
+        actual_args = [*command_args, "--monitor-packet"]
     argv = [sys.executable, str(cli_entry), actual_command, *actual_args]
     started = time.time()
     result = subprocess.run(

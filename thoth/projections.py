@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.1.10"
+PLUGIN_VERSION = "0.1.11"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "plugins/thoth"
 PLUGIN_SKILLS_PATH = "./skills"
@@ -50,6 +50,15 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
                 "- Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.",
                 "- Use `packet.strict_task.goal_statement`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.",
                 "- Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.",
+            )
+        )
+    if spec.command_id == "auto":
+        rules.extend(
+            (
+                "- If the bridge payload exposes `body.monitor_command`, observe that command instead of executing work directly in the Claude session.",
+                "- Prefer the Claude Monitor tool with `persistent=true` for `body.monitor_command` when available; otherwise use Bash to run the same watch command in the foreground.",
+                "- Treat the monitor/watch JSONL stream as the only live progress authority; summarize progress and risks from those events only.",
+                "- If the live observer is interrupted, do not stop the auto controller unless the user explicitly requests `/thoth:auto --stop <controller_id>`.",
             )
         )
     if spec.command_id == "review":

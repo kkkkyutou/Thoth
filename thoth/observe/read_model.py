@@ -15,6 +15,7 @@ from thoth.plan.store import (
     load_project_manifest,
     load_work_result,
 )
+from thoth.run.auto import list_auto_controller_statuses
 from thoth.run.service import list_active_runs
 
 
@@ -87,6 +88,14 @@ def task_completed_in_range(task: dict[str, Any], from_date: datetime, to_date: 
 
 def active_runs(project_root: Path) -> list[dict[str, Any]]:
     return list_active_runs(project_root)
+
+
+def active_auto_controllers(project_root: Path) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in list_auto_controller_statuses(project_root)
+        if str(row.get("status") or "") in {"queued", "running", "idle"}
+    ]
 
 
 def completed_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -319,6 +328,7 @@ def overview_summary_read_model(project_root: Path) -> dict[str, Any]:
         "healthy": healthy,
         "health_message": health_message,
         "active_run_count": len(active_runs(project_root)),
+        "active_auto_count": len(active_auto_controllers(project_root)),
     }
 
 
@@ -331,6 +341,7 @@ def status_read_model(project_root: Path) -> dict[str, Any]:
         "tasks": tasks,
         "task_count": len(tasks),
         "active_runs": active_runs(project_root),
+        "active_auto_controllers": active_auto_controllers(project_root),
         "completed_task_count": len(completed_tasks(tasks)),
         "blocked_task_count": len(blocking_tasks(tasks)),
         "healthy": healthy,

@@ -221,3 +221,20 @@ def test_bridge_run_without_work_id_returns_candidate_work_items_and_stops(tmp_p
     assert payload["bridge_success"] is False
     assert "task-auth-fix" in payload["stdout"]
     assert "No work item was created" in payload["stdout"]
+
+
+def test_bridge_auto_returns_monitor_packet_without_blocking_on_watch(tmp_path):
+    init_result = _run_bridge(tmp_path, "init")
+    assert json.loads(init_result.stdout)["bridge_success"] is True
+
+    result = _run_bridge(tmp_path, "auto", "--min-runtime-seconds", "0")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["command_id"] == "auto"
+    assert payload["bridge_success"] is True
+    assert "--monitor-packet" in payload["argv"]
+    stdout = json.loads(payload["stdout"])
+    body = stdout["body"]
+    assert body["controller_id"].startswith("controller-auto-")
+    assert body["monitor_command"].startswith("thoth auto --watch controller-auto-")

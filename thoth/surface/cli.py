@@ -55,6 +55,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
     auto_parser.add_argument("--sleep", action="store_true")
     auto_parser.add_argument("--watch")
     auto_parser.add_argument("--stop")
+    auto_parser.add_argument("--follow", action="store_true")
+    auto_parser.add_argument("--stream-json", action="store_true")
+    auto_parser.add_argument("--monitor-packet", action="store_true")
 
     status_parser = sub.add_parser("status")
     status_parser.add_argument("--json", action="store_true")

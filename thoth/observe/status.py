@@ -44,12 +44,26 @@ def render_status(project_root: Path, *, full: bool = False) -> str:
         return "\n".join(lines)
 
     active_runs = status_read_model(project_root)["active_runs"]
+    active_auto = status_read_model(project_root).get("active_auto_controllers", [])
     lines.append("▸ Running:")
     if active_runs:
         for run in active_runs:
             lines.append(f"  {progress_bar(int(run.get('progress_pct', 0) or 0))} {int(run.get('progress_pct', 0) or 0):>3}%  {run.get('run_id')} {run.get('kind')} ({run.get('phase')})")
     else:
         lines.append("  (none)")
+    if active_auto:
+        lines.append("")
+        lines.append("▸ Auto:")
+        for controller in active_auto[:5]:
+            lines.append(
+                "  {controller_id} {state} elapsed={elapsed}s queue={queue} active={active}".format(
+                    controller_id=controller.get("controller_id"),
+                    state=controller.get("state") or controller.get("status"),
+                    elapsed=controller.get("elapsed_seconds") or 0,
+                    queue=controller.get("queue_count") or 0,
+                    active=controller.get("active_run_id") or "none",
+                )
+            )
     lines.append("")
 
     completed = completed_tasks(tasks)

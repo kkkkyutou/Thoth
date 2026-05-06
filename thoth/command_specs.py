@@ -120,7 +120,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="auto",
         summary="Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.",
-        argument_hint="[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...]",
+        argument_hint="[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>]",
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",
@@ -128,7 +128,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         supports_codex_executor=True,
         needs_subagents=True,
         acceptance="A controller object records an ordered queue of frozen work_id@revision refs and a cursor.",
-        allowed_tools=("Read", "Glob", "Grep", "Edit", "Write", "Bash", "Task"),
+        allowed_tools=("Read", "Glob", "Grep", "Edit", "Write", "Bash", "Task", "Monitor"),
         scope_can=("Execute ready work items through child loops", "Monitor active work", "Retry failed work"),
         scope_cannot=("Auto-abandon work items", "Execute blocked or draft work", "Bypass execution-safety doctor preflight"),
         lifecycle=("execution-safety-preflight", "select-priority-work", "child-loop", "monitor", "pause/stop/terminal"),

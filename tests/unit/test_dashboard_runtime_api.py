@@ -117,6 +117,33 @@ def _setup_project(tmp_path: Path, monkeypatch) -> None:
         {"seq": 1, "ts": "2026-04-23T01:01:00Z", "kind": "log", "message": "started"},
         {"seq": 2, "ts": "2026-04-23T01:10:00Z", "kind": "log", "message": "still running"},
     ])
+    _write_json(
+        tmp_path / ".thoth" / "objects" / "controller" / "controller-auto-1.json",
+        {
+            "schema_version": 1,
+            "object_id": "controller-auto-1",
+            "kind": "controller",
+            "status": "running",
+            "title": "Auto queue controller",
+            "summary": "Running auto",
+            "revision": 1,
+            "created_at": "2026-04-23T01:00:00Z",
+            "updated_at": "2026-04-23T01:12:00Z",
+            "source": "auto",
+            "links": [],
+            "payload": {
+                "controller_type": "auto",
+                "state": "running",
+                "elapsed_seconds": 720,
+                "min_runtime_seconds": 28800,
+                "queue": [{"work_id": "task-1"}],
+                "completed_work_ids": [],
+                "failed_work_ids": [],
+                "cursor": {"rounds_attempted": 1, "active_run_id": "run-1"},
+            },
+            "history": [],
+        },
+    )
 
 
 def test_task_endpoint_includes_active_run(monkeypatch, tmp_path):
@@ -141,6 +168,8 @@ def test_runtime_progress_and_event_endpoints(monkeypatch, tmp_path):
     progress = client.get("/api/progress")
     assert progress.status_code == 200
     assert progress.json()["runtime"]["active_run_count"] == 1
+    assert progress.json()["runtime"]["active_auto_count"] == 1
+    assert progress.json()["runtime"]["active_auto_controllers"][0]["controller_id"] == "controller-auto-1"
     assert progress.json()["runtime"]["host_breakdown"] == ["codex"]
 
     active = client.get("/api/tasks/task-1/active-run")
@@ -169,6 +198,7 @@ def test_overview_summary_and_gantt_endpoints(monkeypatch, tmp_path):
     summary_payload = summary.json()
     assert summary_payload["headline"]["total_tasks"] == 1
     assert summary_payload["runtime"]["active_run_count"] == 1
+    assert summary_payload["runtime"]["active_auto_count"] == 1
     assert summary_payload["recent_conclusions"] == []
 
     gantt = client.get("/api/gantt")

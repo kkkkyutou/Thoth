@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 from thoth.plan.doctor import build_doctor_payload, infer_review_work_id
 from thoth.plan.paths import compiler_state_path, work_items_dir
 from thoth.plan.store import load_work_for_execution, suggest_work_items_for_query
-from thoth.run.auto import execute_auto_controller
+from thoth.run.auto import ensure_auto_worker, execute_auto_controller, find_reusable_auto_controller, watch_auto_controller
 from thoth.run.controllers import create_auto_controller, create_orchestration_controller
 from thoth.run.driver import JsonlStdoutSink, execute_runtime_controller
 from thoth.run.packets import LIVE_DISPATCH_MODE, prepare_execution
@@ -219,10 +216,12 @@ def handle_orchestration(args, parser, *, project_root: Path) -> int:
 
 def handle_auto(args, parser, *, project_root: Path) -> int:
     if getattr(args, "watch", None):
-        controller = project_root / ".thoth" / "objects" / "controller" / f"{args.watch}.json"
-        payload = json.loads(controller.read_text(encoding="utf-8")) if controller.exists() else {}
-        print_envelope(command="auto", status="ok" if payload else "failed", summary=f"Loaded auto controller {args.watch}", body={"controller": payload}, refs=output_refs(controller))
-        return 0 if payload else 1
+        return watch_auto_controller(
+            project_root,
+            str(args.watch),
+            sink=JsonlStdoutSink(),
+            follow=bool(getattr(args, "follow", False)),
+        )
     if getattr(args, "stop", None):
         from thoth.objects import Store
 
@@ -241,60 +240,60 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
         )
         print_envelope(command="auto", status="ok", summary=f"Stop requested for auto controller {args.stop}")
         return 0
-    doctor = build_doctor_payload(project_root)
-    preflight_failures = _auto_preflight_failures(doctor)
-    if preflight_failures:
-        print_envelope(
-            command="auto",
-            status="failed",
-            summary="Auto preflight failed execution-safety doctor; no work was executed.",
-            body={"doctor": doctor},
-            refs=output_refs(project_root / ".thoth" / "docs" / "object-graph-summary.json"),
-            checks=preflight_failures,
+    reused = False
+    controller = find_reusable_auto_controller(project_root)
+    if controller:
+        reused = True
+    else:
+        doctor = build_doctor_payload(project_root)
+        preflight_failures = _auto_preflight_failures(doctor)
+        if preflight_failures:
+            print_envelope(
+                command="auto",
+                status="failed",
+                summary="Auto preflight failed execution-safety doctor; no work was executed.",
+                body={"doctor": doctor},
+                refs=output_refs(project_root / ".thoth" / "docs" / "object-graph-summary.json"),
+                checks=preflight_failures,
+            )
+            return 1
+        min_runtime_arg = getattr(args, "min_runtime_seconds", 8 * 60 * 60)
+        min_runtime_seconds = int(min_runtime_arg) if isinstance(min_runtime_arg, int) and min_runtime_arg >= 0 else 8 * 60 * 60
+        controller = create_auto_controller(
+            project_root,
+            work_ids=list(getattr(args, "work_ids", []) or []),
+            mode="loop",
+            host=args.host,
+            executor=_resolve_executor(args),
+            scope=getattr(args, "scope", "all-open"),
+            rounds=getattr(args, "rounds", None),
+            min_runtime_seconds=min_runtime_seconds,
+            sleep_requested=bool(getattr(args, "sleep", False)),
         )
-        return 1
-    controller = create_auto_controller(
-        project_root,
-        work_ids=list(getattr(args, "work_ids", []) or []),
-        mode="loop",
-        host=args.host,
-        executor=_resolve_executor(args),
-        scope=getattr(args, "scope", "all-open"),
-        rounds=getattr(args, "rounds", None),
-        min_runtime_seconds=int(getattr(args, "min_runtime_seconds", 8 * 60 * 60) or 8 * 60 * 60),
-        sleep_requested=bool(getattr(args, "sleep", False)),
-    )
-    if getattr(args, "sleep", False):
-        controller_id = str(controller["object_id"])
-        subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "thoth.cli",
-                "auto-worker",
-                "--project-root",
-                str(project_root.resolve()),
-                "--controller-id",
-                controller_id,
-            ],
-            cwd=str(project_root),
-            env=dict(os.environ),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+    controller_id = str(controller["object_id"])
+    spawned, worker_pid = ensure_auto_worker(project_root, controller_id)
+    monitor_command = f"thoth auto --watch {controller_id} --follow --stream-json"
+    if getattr(args, "sleep", False) or getattr(args, "monitor_packet", False):
         print_envelope(
             command="auto",
             status="ok",
-            summary=f"Started sleeping auto controller {controller_id}",
-            body={"controller": controller, "background_mode": "detached"},
+            summary=f"{'Reused' if reused else 'Started'} auto controller {controller_id}",
+            body={
+                "controller": controller,
+                "background_mode": "detached",
+                "controller_id": controller_id,
+                "worker_pid": worker_pid,
+                "worker_spawned": spawned,
+                "started_or_reused": "reused" if reused else "started",
+                "monitor_command": monitor_command,
+            },
             refs=output_refs(project_root / ".thoth" / "objects" / "controller" / f"{controller_id}.json"),
             checks=[{"name": "controller_object", "ok": True, "detail": controller_id}],
         )
         return 0
-    return execute_auto_controller(
+    return watch_auto_controller(
         project_root,
-        str(controller["object_id"]),
-        driver_factory=_driver_for_handle,
+        controller_id,
         sink=JsonlStdoutSink(),
+        follow=True,
     )

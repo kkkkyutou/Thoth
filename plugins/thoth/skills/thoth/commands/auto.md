@@ -21,8 +21,8 @@ Run actionable work items by scheduling priority through child loops until none 
 ## Reply Contract
 
 - reply_budget_utf8: `120`
-- result_style: stream runtime events until terminal or paused
-- validator_policy: controller cursor and child loop results define queue state
+- result_style: start or reuse the durable controller, then stream JSONL watch events until terminal or observer interruption
+- validator_policy: controller cursor, child loop results, and auto watch events define queue state
 
 ## Execution String
 
