@@ -77,6 +77,12 @@
   - Evidence: 同一 auto controller 内 `attempted_work_ids` / `failed_work_ids` 防止失败 work 被重复尝试；child failure 记录 `thoth.auto.risk` 后继续队列；无自动 executor fallback；同一 repo/worktree 严格串行执行
   - Evidence: Claude prompt surface 允许 `Monitor` 但只作为可选观察增强；Codex 继续消费同一 watch JSONL 协议，不引入 hooks/subagents 作为正确性依赖
   - Evidence: `python -m py_compile thoth/run/auto.py thoth/surface/run_commands.py thoth/surface/cli.py thoth/surface/bridges/claude.py thoth/run/controllers.py thoth/observe/read_model.py thoth/observe/status.py templates/dashboard/backend/runtime_loader.py thoth/command_specs.py thoth/prompt_specs.py thoth/projections.py tests/unit/test_cli_surface.py tests/unit/test_claude_bridge.py tests/unit/test_command_spec_generation.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_object_controllers.py` 通过；targeted pytest `tests/unit/test_cli_surface.py tests/unit/test_claude_bridge.py tests/unit/test_command_spec_generation.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_object_controllers.py` 为 `48 passed in 698.29s`
+- `TD-035` `[verified]`: 同步 `.agent-os` 当前状态文档，修正 `0.1.11` durable auto 发布后的文档漂移
+  - Related items: `WS-002`, `WS-003`, `WS-004`, `WS-005`, `REQ-002`, `REQ-003`, `REQ-013`, `REQ-035`
+  - Evidence: 已同步 `requirements.md` 的 `work_id` / `init --sync` / durable `auto` 验收语义，补充 `change-decisions.md` 的 `CD-037` ~ `CD-039`，修正 `acceptance-report.md` 中历史 `--task-id` 结论和 closed blocker 归类，并刷新 `architecture-milestones.md`、`codex-vs-claude-code.md` 与本次 `run-log.md`；验收证据见 `EV-037`
+- `TD-036` `[verified]`: 收紧安装态 Codex 全命令测试与 Claude 宿主委派 Codex worker 回归矩阵
+  - Related items: `WS-003`, `REQ-019`, `REQ-020`, `REQ-034`, `REQ-036`, `AC-027`
+  - Evidence: Codex plugin package 已从 skill-only 改为 runtime package；Codex micro prompt 与 selftest 从 PATH 或安装态 plugin cache 解析 runtime，不回退本地 checkout；host-real Codex hooks 只写 disposable test repo `.codex/`；新增 Codex/Claude `auto` sleep/stop selftest cases；Claude `run` / `loop` / `review` / `auto` 均以 `--executor codex` 覆盖真实委派；验证见 `EV-038`
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立

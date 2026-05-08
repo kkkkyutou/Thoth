@@ -2,6 +2,18 @@
 
 ## Entries
 
+- 2026-05-08 15:30 UTC [installed-state Codex and Claude-to-Codex matrix]
+  - Worked on: `OBJ-001`, `WS-003`, `WS-005`
+  - State changes: 按用户要求把测试目标收紧为 installed-state：Codex plugin package 从 `plugins/thoth` skill-only 目录改为仓库根 runtime package，生成根 `.codex-plugin/plugin.json`，marketplace path 改为 `.`，skill path 改为 `./plugins/thoth/skills`，并删除旧 `plugins/thoth/.codex-plugin/plugin.json`。Codex `$thoth` micro prompt 与 selftest helper 现在优先执行 PATH `thoth`，否则解析已安装 Codex plugin cache 下的 `bin/thoth` 或 `scripts/thoth-cli-entry.py`，不回退当前 checkout。host-real preflight 不再写全局 Codex skill 或 global hooks，Codex hooks 只写 disposable project `.codex/config.toml` / `.codex/hooks.json`。Claude host flow 对 `run`、`loop`、`review`、`auto` 均使用真实 `--executor codex` 短运行，并新增 Codex/Claude `auto.sleep_prepare` 与 `auto.stop` selftest cases。
+  - Evidence produced: Codex 0.1.11 installed-state baseline `surface.codex.init` 失败为 `codex installed Thoth plugin does not contain the generated skill and runtime entrypoint`；随后版本 bump 到 `0.1.12`，`python -m thoth.cli sync` 重建 generated surface。`python -m py_compile ...` 针对 touched runtime/surface/selftest/test 文件通过；focused projection/helper pytest `63 passed in 1.75s`；runtime/bridge/surface targeted pytest `100 passed in 745.42s`；target manifest `runtime-core selftest-core surface-cli claude-bridge plugin-surface` 为 `109 passed, 114 deselected in 816.51s`；核心五项 selftest 为 `overall_status=passed`。`python -m thoth.cli doctor --version` 输出 `version=0.1.12` 与 `last_updated=2026-05-08T15:09:44Z`。首次远端-only `codex plugin marketplace upgrade thoth` 因 GitHub 443 timeout 失败，暂按环境/network blocker 处理，未使用本地覆盖兜底。
+  - Next likely action: 拆分发布面代码/生成物提交与 dev-only 治理提交；只将发布面 cherry-pick 到 `main`，push 双分支后通过远端 marketplace update/upgrade 刷新 Claude/Codex 安装，并重跑安装态 Codex/Claude->Codex 短矩阵。
+
+- 2026-05-06 07:10 UTC [agent-os state document drift sync]
+  - Worked on: `OBJ-001`, `WS-002`, `WS-003`, `WS-004`, `WS-005`
+  - State changes: 同步 `.agent-os` 当前状态文档，修正 `0.1.11` durable auto 发布后的漂移：`requirements.md` 补充 `REQ-035` / `AC-026`，将 `RunResult + work-level current result` 的重建入口改为 `init --sync`，把 `AC-019` 从旧 `task_id + target` / `TaskResult.last_closure_at` 改为 `work_id@revision` / controller child run 语义；`change-decisions.md` 追加最小公开命令面、`review` / `discuss` prompt authority、durable `auto` 的 `CD-037` ~ `CD-039`；`acceptance-report.md` 将旧 `--task-id` 结论标为历史阶段证据，并把已关闭 marketplace blocker 从 Open Checks 归为历史 blocker；`architecture-milestones.md` 增补 durable auto worker / monitor 分层；`codex-vs-claude-code.md` 修正 Codex hooks 已不再标记 `Experimental` 的最新综合判断
+  - Evidence produced: 更新 `.agent-os/project-index.md`、`.agent-os/todo.md`、`.agent-os/requirements.md`、`.agent-os/change-decisions.md`、`.agent-os/acceptance-report.md`、`.agent-os/architecture-milestones.md`、`.agent-os/official-sources/codex-vs-claude-code.md` 与本文件；文档复扫确认当前态 `requirements` / `architecture` / `official-sources` 已不再把旧 `--task-id`、`TaskResult`、Codex hooks `Experimental` 当成当前事实
+  - Next likely action: 继续 `TD-001`，把 `dev` / `main` 分流规则从文档纪律推进到仓库内可执行机制；若继续 long-running runtime 主线，则沿 `MS-006` 打磨 active auto controller 的 dashboard / status 可观察性
+
 - 2026-05-01 14:45 UTC [review and discuss prompt strengthening]
   - Worked on: `OBJ-001`, `WS-001`, `WS-003`, `WS-005`
   - State changes: 按用户要求强化 `review` 与 `discuss` command prompt authority：`review` 现在强调不修改代码、尽最大可能理解用户意图、发挥专业知识并从第一性原理判断；`discuss` 现在强调不要假设任何关键问题，围绕目标、约束、成功指标、风险、资源、时间和 authority 用 `AskUserQuestion` 追问到没有重要假设为止。版本 bump 到 `0.1.8`，以确保远端 marketplace upgrade 刷新宿主安装。

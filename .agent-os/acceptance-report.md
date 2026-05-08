@@ -17,7 +17,7 @@
 
 - `EV-003` related to `TD-014`: strict `Decision -> Contract -> Task` 执行 authority 已落地
   - Evidence: `thoth/plan/compiler.py`、`thoth/plan/store.py`、`.thoth/project/tasks` 相关读写逻辑、dashboard compiler 读面
-  - Conclusion: `run` / `loop` 默认只接受 `--task-id`；缺少 `--task-id` 时只允许召回现有 task 候选并停下，不允许创建新 task 或触碰代码
+  - Conclusion: 该条保留为历史阶段证据；当前执行 authority 已由 `EV-024` 替换为 `.thoth/objects` / `work_item` / `--work-id` 模型，旧 `.thoth/project/tasks` 与 `--task-id` 不再是当前 public execution path
 
 - `EV-004` related to `WS-003`: 公开安装面已切换到 `SeeleAI/Thoth`
   - Evidence: `README.md`、`.claude-plugin/`、`.agents/plugins/marketplace.json`、`plugins/thoth/`、`thoth/projections.py`
@@ -130,7 +130,7 @@
   - Evidence: 直连 `git push origin dev` 与 escalated retry 均因 GitHub 443 超时失败；使用显式 Git proxy 后 `dev` 已推送 `0d0d4a6..f7f2b82`，`main` 已推送 `b15e2b3..5403bd2`
   - Conclusion: 代码与发布面生成物已集成到 `main` 并推送；开发态治理文档只保留在 `dev`
 
-## Open Checks
+## Residual Open Checks
 
 - `EV-010` related to `WS-002`: 完整 `.thoth` durable runtime 仍未闭环
   - Conclusion: 当前是基线版 authority/runtime，不应对外声称 V2 全部完成
@@ -141,7 +141,9 @@
 - `EV-012` related to `WS-003`: 当前回合未重跑 Claude host-surface atomic sample
   - Conclusion: `claude auth status` 在本机当前返回 `{"loggedIn": false, "authMethod": "none"}`；因此本轮 fresh sample 只验证了 Codex host-surface cases。历史双宿主 `heavy` gate 证据仍保留在 `EV-020`，但它不等于本回合的新 atomic Claude sample
 
-- `EV-026` related to `TD-031`, `REQ-020`, `REQ-034`: 远端 marketplace 安装刷新未闭合
+## Historical Blockers And Later Evidence
+
+- `EV-026` related to `TD-031`, `REQ-020`, `REQ-034`: 远端 marketplace 安装刷新曾未闭合，后续已由 `EV-029` 关闭
   - Evidence: `claude plugin marketplace update thoth` 成功，输出 `Successfully updated marketplace: thoth`
   - Evidence: `claude plugin update thoth --scope user` 失败，输出 `Plugin "thoth" not found`
   - Evidence: `claude plugin list --json` 仍显示 `thoth@thoth` `version=0.1.4`、`lastUpdated=2026-04-28T13:09:44.690Z`；`claude plugin marketplace list --json` 显示 marketplace `thoth` 来源为 GitHub `SeeleAI/Thoth`
@@ -248,3 +250,22 @@
   - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出 `updated from 0.1.10 to 0.1.11`；`codex plugin marketplace upgrade thoth` 输出 `Upgraded marketplace thoth to the latest configured revision.`
   - Evidence: 宿主 CLI 核验显示 `claude --version` 为 `2.1.129 (Claude Code)`、`codex --version` 为 `codex-cli 0.128.0`；`claude plugin list --json` 显示 `thoth@thoth` `version=0.1.11`、`scope=user`、`enabled=true`、`lastUpdated=2026-05-06T06:29:06.732Z`；安装态 `doctor --version` 输出仅 `version=0.1.11` 与 `last_updated=2026-05-06T06:29:06Z`
   - Conclusion: `auto` 的持久性现在由 Thoth controller/worker/ledger 保证，live/sleep 只在 monitor placement 上分叉；Claude Monitor 与 Codex foreground watch 都只是同一 JSONL watch stream 的消费者，session 中断不会直接中断 durable auto worker；发布面、main 验证、双分支推送与远端安装刷新均已闭合
+
+- `EV-037` related to `TD-035`, `WS-002`, `WS-003`, `WS-004`, `WS-005`, `REQ-002`, `REQ-003`, `REQ-013`, `REQ-035`: `.agent-os` 当前状态文档已同步到 `0.1.11` durable auto 事实
+  - Evidence: `requirements.md` 已补 `REQ-035` 与 `AC-026`，并将 current-result 重建入口改为 `init --sync`；`AC-019` 已从旧 `task_id + target` / `TaskResult.last_closure_at` 改为 `work_id@revision` / controller child run 语义
+  - Evidence: `change-decisions.md` 已追加 `CD-037` 最小公开命令面、`CD-038` `review` / `discuss` prompt authority、`CD-039` durable `auto` worker / observer monitor 分层
+  - Evidence: `acceptance-report.md` 已将旧 `--task-id` / `.thoth/project/tasks` 结论标为历史阶段证据，并把已由 `EV-029` 关闭的 marketplace blocker 移出 residual open checks
+  - Evidence: `architecture-milestones.md` 已补当前 `auto` durable worker、worker supervisor、watch JSONL、真实 wall-clock `--min-runtime-seconds=28800` 和 `MS-006` long-running runtime 主线
+  - Evidence: `codex-vs-claude-code.md` 已同步 `2026-04-30T09:36:50Z` 的官方资料综合，修正 Codex hooks 当前不再标记 `Experimental` 但仍为高波动 feature-flag 扩展点
+  - Evidence: `python -m thoth.cli doctor --version` 输出 `version=0.1.11` 与 `last_updated=2026-05-06T06:05:25Z`；`python -m thoth.cli sync` 返回 `status=ok`，且未产生 command/plugin generated surface diff
+  - Conclusion: `.agent-os` 的当前态恢复入口、要求、决策、验收、架构与官方资料综合已围绕 `work_id@revision`、统一对象图、最小公开命令面和 durable `auto` 重新对齐；旧 `--task-id` / `TaskResult` / `heavy` 语义仅作为历史证据或明确替代说明保留
+
+- `EV-038` related to `TD-036`, `WS-003`, `REQ-019`, `REQ-020`, `REQ-034`, `REQ-036`, `AC-027`: 安装态 Codex/Claude->Codex public-command 矩阵已收紧到可发布实现
+  - Evidence: Codex 0.1.11 安装态 baseline `surface.codex.init` 失败为 `codex installed Thoth plugin does not contain the generated skill and runtime entrypoint`，证明旧 skill-only package 无法代表真实 `$thoth` public surface
+  - Evidence: 发布面版本 bump 到 `0.1.12`；Codex plugin package root 改为仓库根 `.`，根 `.codex-plugin/plugin.json` 成为 manifest，`skills` 路径改为 `./plugins/thoth/skills`，旧 `plugins/thoth/.codex-plugin/plugin.json` 被删除；Codex micro prompt 现在先用 PATH `thoth`，再解析已安装 plugin cache runtime entrypoint
+  - Evidence: host-real selftest 不再写全局 Codex skill 或 global hooks；Codex hooks 只写 disposable project `.codex/config.toml` 与 `.codex/hooks.json`；preflight 只检查已安装 plugin cache 中的 manifest、skill 与 runtime entrypoint
+  - Evidence: selftest registry 新增 `surface.codex.auto.sleep_prepare`、`surface.codex.auto.stop`、`surface.claude.auto.sleep_prepare`、`surface.claude.auto.stop`；Claude host flow 对 `run`、`loop`、`review`、`auto` 使用真实 `--executor codex`，并验证 started run/controller 的 executor
+  - Evidence: `python -m py_compile ...` 针对 touched runtime/surface/selftest/test 文件通过；focused projection/helper pytest 为 `63 passed in 1.75s`；runtime/bridge/surface targeted pytest 为 `100 passed in 745.42s`；target manifest `runtime-core selftest-core surface-cli claude-bridge plugin-surface` 为 `109 passed, 114 deselected in 816.51s`
+  - Evidence: 核心五项 selftest `discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`observe.object_graph` 返回 `overall_status=passed`；`python -m thoth.cli doctor --version` 输出 `version=0.1.12` 与 `last_updated=2026-05-08T15:09:44Z`
+  - Evidence: 首次远端-only `codex plugin marketplace upgrade thoth` 因 GitHub 443 连接超时失败，分类为环境/network blocker；未使用本机 checkout、cache 或 `rsync` 兜底覆盖安装
+  - Conclusion: 本次代码面已把 Codex installed-state public surface 从 skill-only package 修正为 runtime package，并把 Claude host -> Codex worker 的关键 public command 短运行纳入 selftest；最终安装刷新与安装态重跑必须在 `dev` / `main` 推送后继续通过远端 marketplace 完成

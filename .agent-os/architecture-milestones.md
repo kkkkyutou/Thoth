@@ -29,12 +29,14 @@
 - 当前 `run` 已收敛为统一 RuntimeDriver 四阶段链：`plan -> execute -> validate -> reflect`；四个 agentic phase 均通过宿主 executor 运行，`validate.passed` 决定 terminal success/failure，`reflect` 总是总结证据、风险与下一步建议
 - 当前 phase 产物固定为 `plan.json`、`execute.json`、`validate.json`、`reflect.json`；`result.json.result` 固定包含 `phase_statuses`、`validate_passed`、`final_summary`、`artifacts`、`next_hint`
 - 当前 `loop` 已收敛为 controller service：controller 记录预算与 child lineage，每轮显式创建独立 child `run`，child run 与普通 run 复用同一 `plan -> execute -> validate -> reflect` RuntimeDriver
-- 当前 `auto` 已收敛为 controller service：默认 live，可 `--sleep`，按 priority/order/updated_at/work_id 选择 actionable work，通过 child `loop` 推进 ready/active/failed work，blocked/draft 必须由人决策
+- 当前 `auto` 已收敛为 durable controller worker service：真实执行 owner 是 detached auto worker，live / sleep / Claude Monitor / Codex watch 都只是观察器；worker supervisor 写在 `.thoth/local/controllers/<controller_id>/supervisor.json`，controller truth、child run ledger 与 watch JSONL 是恢复依据
+- 当前 `auto --min-runtime-seconds` 默认 `28800`，按真实 wall-clock 约束执行；idle 时 heartbeat/rescan，`--rounds` 只在达到最小运行时间后作为退出上限，同一 controller 内失败 work 只尝试一次并记录风险后继续队列
 - heartbeat 当前写入 `state.json.last_heartbeat_at`，而不是单独的 `heartbeat.json`
 - active run/controller 引用的 `work_item` 完全锁定；`Store.update/tombstone/link/unlink` 对该 work item 必须拒绝，直到执行进入 terminal 状态
 - 当前 prompt authority 已显式拆成 `thoth/prompt_specs.py` 与 `thoth/prompt_validators.py`：前者现已收敛为压缩 authority source，只保存 `route_class` / `intelligence_tier` / `packet_authority_mode` / `objective` / `hard_stops` / `reply_budget` 等最小字段，后者只负责 phase/review 输出校验
 - Claude `commands/*.md` 当前已收敛为 runtime-first 薄包装：保留 bridge 执行、最小 fail-fast 规则与一条结果约束，不再重复展开大段 scope/runtime/shared-authority 文本
 - Codex 当前已收敛为“薄 dispatcher + per-command micro prompt files”：根 `plugins/thoth/skills/thoth/SKILL.md` 不再内联全量命令合同，按命令拆分的 micro prompt surface 固定生成到 `plugins/thoth/skills/thoth/commands/*.md`
+- Codex plugin package 当前必须包含 runtime 与 skill：根 `.codex-plugin/plugin.json` 指向仓库根 package，skill path 为 `./plugins/thoth/skills`；Codex `$thoth` micro prompt 优先执行 PATH `thoth`，否则解析已安装 plugin cache 下的 `bin/thoth` 或 `scripts/thoth-cli-entry.py`
 - `review` packet 当前显式区分 `exact_match` 与 `open_ended` 两条内部路由；`run/loop` packet 当前只声明 RuntimeDriver 生命周期，不再把 `next-phase` / `submit-phase` 作为 live 宿主手动协议暴露
 - dashboard 模板可以把 `.thoth/runs/*` 与 `.thoth/objects/*` 的 active run、history run 和事件日志绑定回 work item 视图
 - dashboard 前端主壳已从旧多页导航切到单一 workbench shell，并保留 `/overview`、`/tasks`、`/milestones`、`/dag`、`/timeline`、`/todo`、`/activity` 的兼容入口
@@ -149,6 +151,7 @@
 - `MS-003` `[backlog]`: 当前插件产品面稳定化
 - `MS-004` `[backlog]`: Thoth V2 迁移设计冻结
 - `MS-005` `[active]`: 在不丢功能和不改验收语义的前提下完成 Thoth 的整体简化重构，并以 `heavy` 双宿主命令协议 gate 收口
+- `MS-006` `[active]`: 将 long-running `auto` / controller / monitor 体验继续收敛为可恢复、可观察、可发布的 durable runtime
 
 ## Major Planning Decisions
 
@@ -165,3 +168,5 @@
 - 2026-04-28: 用户重新锁定当前验证合同为“atomic selftest cases + targeted pytest runs”：`python -m thoth.selftest` 只允许显式 `--case`，发布/回归/关闭门改为显式 case list；`pytest` 默认只允许显式 file/nodeid 或 `--thoth-target`，broad sweeps 仅保留给显式豁免场景
 - 2026-04-29: 用户锁定“统一对象图 + Agent Runtime Kernel”重构：`.thoth/objects/<kind>/<object_id>.json` 成为唯一 canonical authority；`Contract` kind 删除并并入 `work_item.payload`；`run` 固定为 `work_id@revision` 的最小 phase chain；`loop` / `orchestration` / `auto` 收敛为 controller service；active run/controller 引用的 work item 完全不可变。
 - 2026-05-01: 用户锁定最终最小公开命令组合：保留 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`；`sync` 改为 `init --sync`，`report` 改为 `status --report`，`orchestration` / `extend` 下沉为内部能力；`auto` 面向离席执行，默认 live、可 sleep，按优先级推进可行动 work。
+- 2026-05-06: `auto` 进一步锁定为 durable background worker + observer monitor 分层；live 不持有执行权，Claude `Monitor` 只是可选观察增强，正确性仍以 Thoth controller、worker supervisor、child run ledger 与 watch JSONL 为准。
+- 2026-05-08: 安装态测试成为 Codex public surface 的验收依据；Codex plugin 不允许再只发布 skill，必须随 package 提供 runtime entrypoint；Claude 宿主委派 Codex worker 的 `run`、`loop`、`review`、`auto` 必须通过真实 `--executor codex` 短运行覆盖。
