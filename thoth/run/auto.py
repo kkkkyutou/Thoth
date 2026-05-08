@@ -15,9 +15,10 @@ from thoth.run.controllers import list_auto_actionable_work
 from thoth.run.driver import JsonlStdoutSink, RuntimeEventSink, SilentSink, execute_runtime_controller
 from thoth.run.io import _read_json, _write_json, local_registry_root
 from thoth.run.ledger import _append_event
-from thoth.run.model import ACTIVE_STATUSES, RunHandle, _process_alive
+from thoth.run.model import ACTIVE_STATUSES, RunHandle
 from thoth.run.packets import prepare_execution
 from thoth.run.service import attach_run, list_active_runs
+from thoth.run.supervisor import supervisor_process_alive, write_controller_supervisor
 
 
 DriverFactory = Callable[[RunHandle], Any]
@@ -63,13 +64,17 @@ def _controller_supervisor_path(project_root: Path, controller_id: str) -> Path:
 
 def _write_controller_supervisor(project_root: Path, controller_id: str, *, pid: int, state: str) -> None:
     path = _controller_supervisor_path(project_root, controller_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _write_json(path, {"pid": pid, "state": state, "runtime": "auto_worker", "updated_at": utc_now()})
+    write_controller_supervisor(project_root, controller_id, path, pid=pid, state=state, runtime="auto_worker")
 
 
 def _controller_worker_alive(project_root: Path, controller_id: str) -> bool:
     supervisor = _read_json(_controller_supervisor_path(project_root, controller_id))
-    return _process_alive(supervisor.get("pid"))
+    return supervisor_process_alive(
+        supervisor,
+        project_root=project_root,
+        runtime="auto_worker",
+        controller_id=controller_id,
+    )
 
 
 def spawn_auto_worker(project_root: Path, controller_id: str) -> int:
@@ -122,6 +127,24 @@ def find_reusable_auto_controller(project_root: Path) -> dict[str, Any] | None:
         if status in AUTO_CONTROLLER_ACTIVE_STATUSES:
             return controller
     return None
+
+
+def auto_controller_fingerprint(controller: dict[str, Any]) -> dict[str, Any]:
+    payload = controller.get("payload") if isinstance(controller.get("payload"), dict) else {}
+    fingerprint = payload.get("request_fingerprint")
+    return fingerprint if isinstance(fingerprint, dict) else {}
+
+
+def auto_fingerprint_differences(existing: dict[str, Any], requested: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    diffs: dict[str, dict[str, Any]] = {}
+    keys = sorted(set(existing) | set(requested))
+    for key in keys:
+        if existing.get(key) != requested.get(key):
+            diffs[key] = {
+                "existing": existing.get(key),
+                "requested": requested.get(key),
+            }
+    return diffs
 
 
 def list_auto_controller_statuses(project_root: Path) -> list[dict[str, Any]]:

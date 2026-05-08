@@ -14,6 +14,7 @@ from thoth.run.lease import local_registry_root
 from thoth.run.ledger import create_run
 from thoth.run.status import build_status_payload
 from thoth.run.service import stop_run
+from thoth.run.supervisor import supervisor_process_alive
 from thoth.run.worker import spawn_supervisor
 
 
@@ -43,6 +44,13 @@ def test_spawn_and_stop_supervisor(tmp_path, monkeypatch):
     handle = create_run(tmp_path, kind="run", title="demo", work_id=None, host="codex", executor="codex")
     pid = spawn_supervisor(handle)
     assert isinstance(pid, int)
+    supervisor_path = handle.local_dir / "supervisor.json"
+    supervisor_payload = json.loads(supervisor_path.read_text(encoding="utf-8"))
+    assert supervisor_payload["run_id"] == handle.run_id
+    assert supervisor_payload["project_root"] == str(tmp_path.resolve())
+    assert supervisor_payload["runtime"] == "external_worker"
+    assert supervisor_process_alive(supervisor_payload, project_root=tmp_path, run_id=handle.run_id)
+    assert not supervisor_process_alive(supervisor_payload, project_root=tmp_path / "other", run_id=handle.run_id)
 
     deadline = time.time() + 5
     while time.time() < deadline:

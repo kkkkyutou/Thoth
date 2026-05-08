@@ -49,8 +49,9 @@ def detect_capabilities() -> dict[str, Any]:
         capabilities["codex_authenticated"] = "logged in" in status_text.lower()
         capabilities["codex_login_status"] = status_text
         features = _run_command(["codex", "features", "list"], cwd=ROOT, timeout=20)
-        hooks_line = next((line for line in features.stdout.splitlines() if line.startswith("codex_hooks")), "codex_hooks false")
+        hooks_line = _codex_hooks_feature_line(features.stdout)
         capabilities["codex_hooks_enabled"] = hooks_line.split()[-1].lower() == "true"
+        capabilities["codex_hooks_feature_line"] = hooks_line
         capabilities["codex_features_snapshot"] = features.stdout.strip()
     else:
         capabilities["codex_authenticated"] = False
@@ -59,12 +60,24 @@ def detect_capabilities() -> dict[str, Any]:
     if capabilities["claude_cli_present"]:
         result = _run_command(["claude", "auth", "status"], cwd=ROOT, timeout=20)
         status_text = result.stdout.strip() or result.stderr.strip()
-        capabilities["claude_authenticated"] = "\"loggedIn\": true" in status_text
+        anthropic_env_auth = bool(os.environ.get("ANTHROPIC_AUTH_TOKEN") and os.environ.get("ANTHROPIC_BASE_URL"))
+        capabilities["claude_authenticated"] = "\"loggedIn\": true" in status_text or anthropic_env_auth
         capabilities["claude_auth_status"] = status_text
+        capabilities["claude_auth_via_env"] = anthropic_env_auth
     else:
         capabilities["claude_authenticated"] = False
 
     return capabilities
+
+
+def _codex_hooks_feature_line(features_stdout: str) -> str:
+    for line in features_stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("hooks "):
+            return stripped
+        if stripped.startswith("codex_hooks "):
+            return stripped
+    return "hooks false"
 
 
 def _codex_config_path() -> Path:
@@ -139,7 +152,7 @@ def _ensure_codex_hooks_enabled(recorder: Recorder) -> dict[str, Any]:
     after_artifact = recorder.write_text("codex-hooks/config.after.toml", after)
     features = _run_command(["codex", "features", "list"], cwd=ROOT, timeout=20)
     features_artifact = _save_command(recorder, "codex-features-list", features)
-    hooks_line = next((line for line in features.stdout.splitlines() if line.startswith("codex_hooks")), "codex_hooks false")
+    hooks_line = _codex_hooks_feature_line(features.stdout)
     enabled = hooks_line.split()[-1].lower() == "true"
     payload = {
         "path": str(config_path),
@@ -159,7 +172,82 @@ def _ensure_codex_hooks_enabled(recorder: Recorder) -> dict[str, Any]:
     return payload
 
 
+def _latest_codex_thoth_plugin_root() -> Path | None:
+    root = Path.home() / ".codex" / "plugins" / "cache" / "thoth" / "thoth"
+    if not root.exists():
+        return None
+    candidates = [path for path in root.iterdir() if path.is_dir()]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda path: path.stat().st_mtime, reverse=True)[0]
+
+
 def _ensure_codex_skill_installed(recorder: Recorder) -> dict[str, Any]:
+    plugin_root = _latest_codex_thoth_plugin_root()
+    manifest = plugin_root / ".codex-plugin" / "plugin.json" if plugin_root else None
+    skill = plugin_root / "plugins" / "thoth" / "skills" / CODEX_SKILL_NAME / "SKILL.md" if plugin_root else None
+    legacy_skill = plugin_root / "skills" / CODEX_SKILL_NAME / "SKILL.md" if plugin_root else None
+    runtime_entry = plugin_root / "scripts" / "thoth-cli-entry.py" if plugin_root else None
+    wrapper = plugin_root / "bin" / "thoth" if plugin_root else None
+    payload = {
+        "plugin_root": str(plugin_root) if plugin_root else None,
+        "manifest": _path_snapshot(manifest) if manifest else None,
+        "skill": _path_snapshot(skill) if skill else None,
+        "legacy_skill": _path_snapshot(legacy_skill) if legacy_skill else None,
+        "runtime_entry": _path_snapshot(runtime_entry) if runtime_entry else None,
+        "wrapper": _path_snapshot(wrapper) if wrapper else None,
+    }
+    artifact = recorder.write_json("codex-plugin/installed-thoth.json", payload)
+    effective = bool(
+        plugin_root
+        and manifest
+        and manifest.exists()
+        and ((skill and skill.exists()) or (legacy_skill and legacy_skill.exists()))
+        and runtime_entry
+        and runtime_entry.exists()
+    )
+    recorder.add(
+        "preflight.codex_plugin_install",
+        "passed" if effective else "failed",
+        "Codex installed Thoth plugin was checked without writing global skills or hooks.",
+        [artifact],
+    )
+    if not effective:
+        raise RuntimeError("codex installed Thoth plugin does not contain the generated skill and runtime entrypoint")
+    return payload
+
+
+def _ensure_codex_repo_hooks(project_dir: Path, recorder: Recorder) -> dict[str, Any]:
+    config_path = project_dir / ".codex" / "config.toml"
+    hooks_path = project_dir / ".codex" / "hooks.json"
+    before_config = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    before_hooks = hooks_path.read_text(encoding="utf-8") if hooks_path.exists() else ""
+    before_config_artifact = recorder.write_text("codex-hooks/project-config.before.toml", before_config or "__MISSING__\n")
+    before_hooks_artifact = recorder.write_text("codex-hooks/project-hooks.before.json", before_hooks or "__MISSING__\n")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    updated_config = _ensure_features_flag(before_config, key="hooks", value="true")
+    config_path.write_text(updated_config, encoding="utf-8")
+    hooks_path.write_text(json.dumps(render_codex_hooks_payload(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    after_config_artifact = recorder.write_text("codex-hooks/project-config.after.toml", config_path.read_text(encoding="utf-8"))
+    after_hooks = hooks_path.read_text(encoding="utf-8")
+    after_hooks_artifact = recorder.write_text("codex-hooks/project-hooks.after.json", after_hooks)
+    effective = "thoth-codex-hook.sh" in after_hooks
+    recorder.add(
+        "preflight.codex_project_hooks",
+        "passed" if effective else "failed",
+        "Codex project-local hooks were written under the disposable test repo only.",
+        [before_config_artifact, before_hooks_artifact, after_config_artifact, after_hooks_artifact],
+    )
+    if not effective:
+        raise RuntimeError("codex project-local hooks.json does not contain the Thoth hook bridge commands")
+    return {
+        "config_path": str(config_path),
+        "hooks_path": str(hooks_path),
+        "effective": effective,
+    }
+
+
+def _ensure_codex_global_skill_installed(recorder: Recorder) -> dict[str, Any]:
     source = ROOT / "plugins" / "thoth" / "skills" / CODEX_SKILL_NAME
     if not source.exists():
         raise RuntimeError(f"missing generated Codex skill at {source}")
@@ -189,7 +277,7 @@ def _ensure_codex_skill_installed(recorder: Recorder) -> dict[str, Any]:
     except OSError:
         effective = False
     recorder.add(
-        "preflight.codex_skill_install",
+        "preflight.codex_global_skill_install",
         "passed" if effective else "failed",
         "Codex global skill entry for Thoth was checked and aligned to the repo-generated public skill surface.",
         [before_artifact, after_artifact],
@@ -242,18 +330,13 @@ def _preflight_host_real(
         "codex_authenticated": bool(capabilities.get("codex_authenticated")) if "codex" in requested_hosts else True,
         "claude_cli_present": bool(capabilities.get("claude_cli_present")) if "claude" in requested_hosts else True,
         "claude_authenticated": bool(capabilities.get("claude_authenticated")) if "claude" in requested_hosts else True,
-        "thoth_cli_present": bool(capabilities.get("thoth_cli_present")) if "codex" in requested_hosts else True,
     }
     missing = [name for name, ok in required.items() if not ok]
     if missing:
         detail = f"Missing heavy host-real prerequisites: {', '.join(missing)}"
-        if "thoth_cli_present" in missing:
-            detail += ". Host install drift: expected the plugin-installed `thoth` shell wrapper on PATH."
         recorder.add("preflight.host_tools", "failed", detail)
         raise RuntimeError(detail)
     if "codex" in requested_hosts:
-        _ensure_codex_hooks_enabled(recorder)
-        _ensure_codex_global_hooks(recorder)
         _ensure_codex_skill_installed(recorder)
     recorder.add(
         "preflight.deterministic_seed",

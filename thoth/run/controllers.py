@@ -29,6 +29,65 @@ def _work_ref(work: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def auto_request_fingerprint(
+    *,
+    refs: list[dict[str, Any]],
+    mode: str,
+    host: str,
+    executor: str,
+    scope: str,
+    rounds: int | None,
+    min_runtime_seconds: int,
+    sleep_requested: bool,
+    fixed_queue: bool,
+) -> dict[str, Any]:
+    work_refs = [
+        {
+            "work_id": str(ref.get("work_id") or ""),
+            "revision": int(ref.get("revision") or 0),
+        }
+        for ref in refs
+        if isinstance(ref.get("work_id"), str) and ref.get("work_id")
+    ]
+    return {
+        "mode": mode,
+        "host": host,
+        "executor": executor,
+        "scope": scope,
+        "rounds": rounds if isinstance(rounds, int) and rounds > 0 else None,
+        "min_runtime_seconds": int(min_runtime_seconds),
+        "sleep_requested": bool(sleep_requested),
+        "fixed_queue": bool(fixed_queue),
+        "work_refs": work_refs if fixed_queue else [],
+    }
+
+
+def build_auto_request_fingerprint(
+    project_root: Path,
+    *,
+    work_ids: list[str] | None = None,
+    mode: str = "loop",
+    host: str,
+    executor: str,
+    scope: str = "all-open",
+    rounds: int | None = None,
+    min_runtime_seconds: int = 8 * 60 * 60,
+    sleep_requested: bool = False,
+) -> dict[str, Any]:
+    refs = [_ready_work_ref(project_root, work_id) for work_id in work_ids or []]
+    return auto_request_fingerprint(
+        refs=refs,
+        mode=mode,
+        host=host,
+        executor=executor,
+        scope=scope,
+        rounds=rounds,
+        min_runtime_seconds=min_runtime_seconds,
+        sleep_requested=sleep_requested,
+        fixed_queue=bool(work_ids),
+    )
+
+
 def _dependency_ids(store: Store, work_id: str) -> set[str]:
     ids: set[str] = set()
     for dep in store.dependencies("work_item", work_id):
@@ -175,6 +234,17 @@ def create_auto_controller(
             "min_runtime_seconds": min_runtime_seconds,
             "sleep_requested": sleep_requested,
             "fixed_queue": bool(work_ids),
+            "request_fingerprint": auto_request_fingerprint(
+                refs=refs,
+                mode=mode,
+                host=host,
+                executor=executor,
+                scope=scope,
+                rounds=rounds,
+                min_runtime_seconds=min_runtime_seconds,
+                sleep_requested=sleep_requested,
+                fixed_queue=bool(work_ids),
+            ),
             "work_refs": refs,
             "queue": refs,
             "attempted_work_ids": [],

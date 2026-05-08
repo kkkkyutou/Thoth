@@ -26,7 +26,7 @@ from thoth.observe.selftest.runner import (
     _codex_prompt_for_public_command,
     _expected_host_review_result,
     _effective_host_command_timeout,
-    _ensure_codex_global_hooks,
+    _ensure_codex_repo_hooks,
     _ensure_codex_skill_installed,
     _ensure_features_flag,
     _host_real_contract_payloads,
@@ -86,36 +86,34 @@ def test_ensure_features_flag_handles_section_header_comments():
     assert updated.index("codex_hooks = true") < updated.index("[memories] # comment")
 
 
-def test_ensure_codex_skill_installed_links_global_entry(tmp_path, monkeypatch):
-    repo_root = tmp_path / "repo"
-    source = repo_root / "plugins" / "thoth" / "skills" / "thoth"
-    source.mkdir(parents=True)
-    (source / "SKILL.md").write_text("# test\n", encoding="utf-8")
+def test_ensure_codex_skill_installed_reads_installed_plugin_without_global_writes(tmp_path, monkeypatch):
     home = tmp_path / "home"
-    home.mkdir(parents=True)
-
-    monkeypatch.setattr("thoth.observe.selftest.capabilities.ROOT", repo_root)
+    plugin_root = home / ".codex" / "plugins" / "cache" / "thoth" / "thoth" / "0.1.12"
+    (plugin_root / ".codex-plugin").mkdir(parents=True)
+    (plugin_root / ".codex-plugin" / "plugin.json").write_text('{"name":"thoth"}\n', encoding="utf-8")
+    skill = plugin_root / "plugins" / "thoth" / "skills" / "thoth"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# test\n", encoding="utf-8")
+    (plugin_root / "scripts").mkdir()
+    (plugin_root / "scripts" / "thoth-cli-entry.py").write_text("# entry\n", encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
 
     recorder = Recorder(tmp_path / "artifacts")
     payload = _ensure_codex_skill_installed(recorder)
 
-    target = home / ".codex" / "skills" / "thoth"
-    assert target.is_symlink()
-    assert target.resolve() == source.resolve()
-    assert payload["effective"] is True
+    assert not (home / ".codex" / "skills" / "thoth").exists()
+    assert payload["plugin_root"] == str(plugin_root)
+    assert payload["runtime_entry"]["exists"] is True
 
 
-def test_ensure_codex_global_hooks_writes_bridge_config(tmp_path, monkeypatch):
-    home = tmp_path / "home"
-    home.mkdir(parents=True)
-    monkeypatch.setenv("HOME", str(home))
-
+def test_ensure_codex_repo_hooks_writes_project_local_bridge_config(tmp_path):
+    project = tmp_path / "project"
     recorder = Recorder(tmp_path / "artifacts")
-    payload = _ensure_codex_global_hooks(recorder)
+    payload = _ensure_codex_repo_hooks(project, recorder)
 
-    hooks_path = home / ".codex" / "hooks.json"
+    hooks_path = project / ".codex" / "hooks.json"
     assert hooks_path.exists()
+    assert (project / ".codex" / "config.toml").exists()
     hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
     start_hook = hooks["hooks"]["SessionStart"][0]["hooks"][0]
     stop_hook = hooks["hooks"]["Stop"][0]["hooks"][0]
@@ -126,17 +124,16 @@ def test_ensure_codex_global_hooks_writes_bridge_config(tmp_path, monkeypatch):
     assert payload["effective"] is True
 
 
-def test_preflight_host_real_reports_missing_thoth_wrapper_as_install_drift(tmp_path):
+def test_preflight_host_real_reports_missing_installed_codex_plugin(tmp_path):
     recorder = Recorder(tmp_path / "artifacts")
 
-    with pytest.raises(RuntimeError, match="Host install drift"):
+    with pytest.raises(RuntimeError, match="installed Thoth plugin"):
         _preflight_host_real(
             {
                 "codex_cli_present": True,
                 "codex_authenticated": True,
                 "claude_cli_present": True,
                 "claude_authenticated": True,
-                "thoth_cli_present": False,
             },
             recorder,
             requested_hosts={"codex"},
@@ -146,7 +143,6 @@ def test_preflight_host_real_reports_missing_thoth_wrapper_as_install_drift(tmp_
 def test_preflight_host_real_scopes_requirements_to_requested_host(tmp_path, monkeypatch):
     recorder = Recorder(tmp_path / "artifacts")
     monkeypatch.setattr("thoth.observe.selftest.capabilities._ensure_codex_hooks_enabled", lambda _recorder: {})
-    monkeypatch.setattr("thoth.observe.selftest.capabilities._ensure_codex_global_hooks", lambda _recorder: {})
     monkeypatch.setattr("thoth.observe.selftest.capabilities._ensure_codex_skill_installed", lambda _recorder: {})
 
     _preflight_host_real(
@@ -185,9 +181,9 @@ def test_host_real_payloads_define_frozen_decision_and_two_probe_contracts():
         "task-runtime-probe",
         "task-review-probe",
     ]
-    assert contracts[0]["eval_entrypoint"]["command"] == "python scripts/runtime_probe.py"
-    assert contracts[1]["review_expectation"] == _expected_host_review_result()
-    assert contracts[1]["review_binding"]["target"] == "tracker/review_probe.py"
+    assert contracts[0]["eval_contract"]["entrypoint"]["command"] == "python scripts/runtime_probe.py"
+    assert contracts[1]["eval_contract"]["review_expectation"] == _expected_host_review_result()
+    assert contracts[1]["eval_contract"]["review_binding"]["target"] == "tracker/review_probe.py"
 
 
 def test_codex_prompt_uses_literal_shell_command_for_public_surface():

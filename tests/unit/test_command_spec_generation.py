@@ -17,6 +17,7 @@ from thoth.projections import (
     render_plugin_manifest,
     sync_repository_surfaces,
 )
+from thoth.prompt_specs import codex_installed_runtime_shell_command
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -102,6 +103,7 @@ def test_codex_skill_lists_single_public_entry():
     assert "$thoth <command>" in content
     assert "## Dispatcher" in content
     assert "./commands/<command>.md" in content
+    assert "installed Codex plugin cache" in content
     assert "## Route Table" in content
     assert "## Command Contracts" not in content
     assert "### `$thoth run`" not in content
@@ -111,6 +113,15 @@ def test_codex_skill_lists_single_public_entry():
         assert f"$thoth {internal}" not in content
 
 
+def test_codex_runtime_shell_command_uses_installed_plugin_cache_without_checkout_fallback():
+    command = codex_installed_runtime_shell_command("$thoth run --executor codex --work-id task-1")
+    assert "command -v thoth" in command
+    assert ".codex/plugins/cache/thoth/thoth" in command
+    assert "scripts/thoth-cli-entry.py" in command
+    assert "--work-id task-1" in command
+    assert "THOTH_SOURCE_ROOT" not in command
+
+
 def test_prompt_surface_size_regression():
     run_spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "run")
     review_spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "review")
@@ -118,7 +129,7 @@ def test_prompt_surface_size_regression():
     claude_run = render_claude_command(run_spec)
     claude_review = render_claude_command(review_spec)
 
-    assert len(codex_skill) < 4200
+    assert len(codex_skill) < 4600
     assert len(claude_run) < 3200
     assert len(claude_review) < 3000
 
@@ -144,7 +155,7 @@ def test_codex_marketplace_points_to_plugin_package():
     marketplace = render_codex_marketplace()
     assert marketplace["name"] == "thoth"
     assert marketplace["plugins"][0]["name"] == "thoth"
-    assert marketplace["plugins"][0]["source"]["path"] == f"./{PLUGIN_PACKAGE_DIR}"
+    assert marketplace["plugins"][0]["source"]["path"] == PLUGIN_PACKAGE_DIR
     assert marketplace["plugins"][0]["policy"]["installation"] == "AVAILABLE"
     assert marketplace["plugins"][0]["policy"]["authentication"] == "ON_INSTALL"
 
@@ -159,5 +170,5 @@ def test_sync_repository_surfaces_writes_generated_files(tmp_path):
     assert not (tmp_path / "commands" / "sync.md").exists()
     assert not (tmp_path / "plugins" / "thoth" / "skills" / "thoth" / "commands" / "sync.md").exists()
     assert (tmp_path / "plugins" / "thoth" / "skills" / "thoth" / "agents" / "openai.yaml").exists()
-    manifest = json.loads((tmp_path / "plugins" / "thoth" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    manifest = json.loads((tmp_path / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert manifest["skills"] == PLUGIN_SKILLS_PATH

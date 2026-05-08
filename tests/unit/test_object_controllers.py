@@ -75,6 +75,20 @@ def test_auto_controller_records_linear_queue_cursor(tmp_path):
         "rounds_attempted": 0,
     }
     assert controller["payload"]["min_runtime_seconds"] == 8 * 60 * 60
+    assert controller["payload"]["request_fingerprint"] == {
+        "mode": "loop",
+        "host": "codex",
+        "executor": "claude",
+        "scope": "all-open",
+        "rounds": None,
+        "min_runtime_seconds": 8 * 60 * 60,
+        "sleep_requested": False,
+        "fixed_queue": True,
+        "work_refs": [
+            {"work_id": "work-a", "revision": 1},
+            {"work_id": "work-b", "revision": 1},
+        ],
+    }
 
 
 def test_auto_actionable_work_orders_by_scheduling_priority(tmp_path):

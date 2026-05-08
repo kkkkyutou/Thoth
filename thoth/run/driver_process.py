@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import argparse
-import os
 import signal
 import time
 from pathlib import Path
 
 from .driver import SilentSink, execute_runtime_controller
-from .io import _write_json
 from .ledger import _update_state, _write_stopped_result, fail_run, heartbeat_run
 from .lease import release_repo_lease
-from .model import RunHandle, utc_now
+from .model import RunHandle
+from .supervisor import write_run_supervisor
 from .worker import (
     ExternalWorkerPhaseDriver,
     TestPhaseDriver,
@@ -26,7 +25,7 @@ def _terminalize_stopped_driver(handle: RunHandle) -> int:
     _update_state(handle, status="stopped", phase="stopped", progress_pct=100, supervisor_state="stopped")
     _write_stopped_result(handle)
     release_repo_lease(handle.project_root, handle.run_id)
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "stopped", "runtime": "runtime_driver", "updated_at": utc_now()})
+    write_run_supervisor(handle, state="stopped", runtime="runtime_driver")
     return 0
 
 
@@ -50,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGTERM, _mark_stop)
     signal.signal(signal.SIGINT, _mark_stop)
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "running", "runtime": "runtime_driver", "updated_at": utc_now()})
+    write_run_supervisor(handle, state="running", runtime="runtime_driver")
     heartbeat_run(project_root, args.run_id, phase="runtime_driver_start", progress_pct=5, note="runtime driver started")
 
     test_mode = _test_external_worker_mode()
@@ -78,11 +77,11 @@ def main(argv: list[str] | None = None) -> int:
             reason=str(exc),
             result_payload={"worker_runtime": "runtime_driver", "executor": run_payload.get("executor")},
         )
-        _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "failed", "runtime": "runtime_driver", "updated_at": utc_now()})
+        write_run_supervisor(handle, state="failed", runtime="runtime_driver")
         return 1
     final_state = handle.state_json().get("status")
     runtime_state = "completed" if final_state == "completed" else "stopped" if final_state == "stopped" else "failed"
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": runtime_state, "runtime": "runtime_driver", "updated_at": utc_now()})
+    write_run_supervisor(handle, state=runtime_state, runtime="runtime_driver")
     return status
 
 

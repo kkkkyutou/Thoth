@@ -41,15 +41,15 @@ def test_check_required_files_missing(tmp_path, monkeypatch):
 
 def test_check_id_integrity_unique(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_json(tmp_path / ".thoth" / "project" / "tasks" / "task-1.json", {"task_id": "task-1"})
-    _write_json(tmp_path / ".thoth" / "project" / "tasks" / "task-2.json", {"task_id": "task-2"})
+    _write_json(tmp_path / ".thoth" / "objects" / "work_item" / "work-1.json", {"kind": "work_item", "object_id": "work-1"})
+    _write_json(tmp_path / ".thoth" / "objects" / "work_item" / "work-2.json", {"kind": "work_item", "object_id": "work-2"})
     passed, detail = check_id_integrity()
     assert passed
-    assert "2 unique" in detail
+    assert "2 unique work item ids" in detail
 
 
 def test_check_id_integrity_no_tasks(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     passed, detail = check_id_integrity()
     assert passed
-    assert "no strict tasks" in detail
+    assert "no work items" in detail

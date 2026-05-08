@@ -58,13 +58,14 @@ def test_single_official_codex_plugin_package_and_marketplace():
     marketplace_path = ROOT / ".agents" / "plugins" / "marketplace.json"
     assert marketplace_path.exists()
     marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
-    assert marketplace["plugins"][0]["source"]["path"] == "./plugins/thoth"
+    assert marketplace["plugins"][0]["source"]["path"] == "."
 
-    plugin_path = ROOT / "plugins" / "thoth" / ".codex-plugin" / "plugin.json"
+    plugin_path = ROOT / ".codex-plugin" / "plugin.json"
     assert plugin_path.exists()
+    assert not (ROOT / "plugins" / "thoth" / ".codex-plugin" / "plugin.json").exists()
     manifest = json.loads(plugin_path.read_text(encoding="utf-8"))
     assert manifest["name"] == "thoth"
-    assert manifest["skills"] == "./skills"
+    assert manifest["skills"] == "./plugins/thoth/skills"
     assert manifest["interface"]["displayName"] == "Thoth"
     assert "entrypoint" not in manifest
     assert "public_skill_path" not in manifest

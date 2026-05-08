@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -14,6 +13,7 @@ from thoth.prompt_validators import validate_review_result_payload
 from .io import _append_jsonl, _read_json, _write_json, ensure_runtime_tree
 from .lease import release_repo_lease
 from .model import LIVE_DISPATCH_MODE, PROTOCOL_VERSION, RunHandle, SLEEP_DISPATCH_MODE, utc_now
+from .supervisor import write_run_supervisor
 
 def create_run(
     project_root: Path,
@@ -361,7 +361,8 @@ def complete_run(
     _write_heartbeat(handle)
     _update_run(handle, attachable=False)
     release_repo_lease(project_root, run_id)
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "completed", "updated_at": utc_now()})
+    runtime = "runtime_driver" if run_payload.get("dispatch_mode") == SLEEP_DISPATCH_MODE else "live_native"
+    write_run_supervisor(handle, state="completed", runtime=runtime)
     update_work_result_from_run_result(
         project_root,
         run_payload=run_payload,
@@ -403,7 +404,8 @@ def fail_run(
     _write_heartbeat(handle)
     _update_run(handle, attachable=False)
     release_repo_lease(project_root, run_id)
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "failed", "updated_at": utc_now()})
+    runtime = "runtime_driver" if run_payload.get("dispatch_mode") == SLEEP_DISPATCH_MODE else "live_native"
+    write_run_supervisor(handle, state="failed", runtime=runtime)
     update_work_result_from_run_result(
         project_root,
         run_payload=run_payload,
