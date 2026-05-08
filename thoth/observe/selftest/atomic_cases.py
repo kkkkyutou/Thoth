@@ -545,6 +545,12 @@ def _host_case_window(case_id: str) -> tuple[str, str | None, str]:
     elif suffix == "loop.stop":
         from_step = "loop-sleep"
         step = "loop-stop"
+    elif suffix == "auto.sleep_prepare":
+        from_step = "auto"
+        step = "auto"
+    elif suffix == "auto.stop":
+        from_step = "auto"
+        step = "auto-stop"
     elif suffix == "dashboard.start":
         from_step = "dashboard-start"
         step = "dashboard-start"
@@ -553,8 +559,11 @@ def _host_case_window(case_id: str) -> tuple[str, str | None, str]:
         step = "dashboard-stop"
     else:
         step = suffix.replace(".", "-")
-    if suffix in {"status", "doctor", "sync"}:
+    if suffix in {"status", "doctor", "sync", "init_sync"}:
         from_step = step
+    if suffix == "init_sync":
+        from_step = "sync"
+        step = "sync"
     if suffix == "init":
         from_step = "init"
     return host, from_step, step
@@ -572,7 +581,7 @@ def run_host_atomic_case(case_id: str, work_root: Path, recorder: Recorder) -> N
             include_dashboard=suffix.startswith("dashboard."),
             label=f"{case_id}.materialize",
         )
-    if suffix.startswith(("run.", "loop.", "review.")):
+    if suffix.startswith(("run.", "loop.", "review.", "auto.")):
         _seed_host_real_tasks(project_dir)
     recorder.add(
         f"{case_id}.seed_repo",
@@ -634,6 +643,14 @@ def case_surface_codex_loop_stop(work_root: Path, recorder: Recorder, _capabilit
     run_host_atomic_case("surface.codex.loop.stop", work_root, recorder)
 
 
+def case_surface_codex_auto_sleep_prepare(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.codex.auto.sleep_prepare", work_root, recorder)
+
+
+def case_surface_codex_auto_stop(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.codex.auto.stop", work_root, recorder)
+
+
 def case_surface_codex_dashboard_start(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
     run_host_atomic_case("surface.codex.dashboard.start", work_root, recorder)
 
@@ -642,8 +659,8 @@ def case_surface_codex_dashboard_stop(work_root: Path, recorder: Recorder, _capa
     run_host_atomic_case("surface.codex.dashboard.stop", work_root, recorder)
 
 
-def case_surface_codex_sync(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
-    run_host_atomic_case("surface.codex.sync", work_root, recorder)
+def case_surface_codex_init_sync(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.codex.init_sync", work_root, recorder)
 
 
 def case_surface_claude_init(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
@@ -694,6 +711,14 @@ def case_surface_claude_loop_stop(work_root: Path, recorder: Recorder, _capabili
     run_host_atomic_case("surface.claude.loop.stop", work_root, recorder)
 
 
+def case_surface_claude_auto_sleep_prepare(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.claude.auto.sleep_prepare", work_root, recorder)
+
+
+def case_surface_claude_auto_stop(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.claude.auto.stop", work_root, recorder)
+
+
 def case_surface_claude_dashboard_start(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
     run_host_atomic_case("surface.claude.dashboard.start", work_root, recorder)
 
@@ -702,5 +727,5 @@ def case_surface_claude_dashboard_stop(work_root: Path, recorder: Recorder, _cap
     run_host_atomic_case("surface.claude.dashboard.stop", work_root, recorder)
 
 
-def case_surface_claude_sync(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
-    run_host_atomic_case("surface.claude.sync", work_root, recorder)
+def case_surface_claude_init_sync(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.claude.init_sync", work_root, recorder)

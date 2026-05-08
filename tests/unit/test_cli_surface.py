@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from thoth.plan.store import upsert_work_item, upsert_decision
+from thoth.run.controllers import create_auto_controller
 from thoth.run.phases import default_validate_output_schema
 
 
@@ -381,6 +382,30 @@ def test_cli_auto_sleep_starts_background_controller(tmp_path):
     assert body["background_mode"] == "detached"
     assert body["controller_id"].startswith("controller-auto-")
     assert body["monitor_command"].startswith("thoth auto --watch controller-auto-")
+
+
+def test_cli_auto_rejects_active_controller_parameter_drift(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path)
+    controller = create_auto_controller(
+        tmp_path,
+        work_ids=[],
+        mode="loop",
+        host="codex",
+        executor="codex",
+        scope="all-open",
+        rounds=1,
+        min_runtime_seconds=60,
+    )
+
+    result = _run_cli(tmp_path, "auto", "--rounds", "1", "--min-runtime-seconds", "0")
+
+    assert result.returncode == 2
+    payload = _extract_envelope(result.stdout)
+    assert payload["status"] == "needs_input"
+    assert payload["body"]["active_controller_id"] == controller["object_id"]
+    assert payload["body"]["differences"]["min_runtime_seconds"]["existing"] == 60
+    assert payload["body"]["differences"]["min_runtime_seconds"]["requested"] == 0
 
 
 def test_cli_sleep_mode_auto_backgrounds(tmp_path):

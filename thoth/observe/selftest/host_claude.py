@@ -52,16 +52,18 @@ def _host_claude(
             "doctor": "/thoth:doctor --quick",
             "discuss_decision": f"/thoth:discuss --decision-json {decision_arg}",
             "discuss_contracts": contract_commands,
-            "run_live": "/thoth:run --work-id task-runtime-probe",
-            "run_sleep": "/thoth:run --sleep --work-id task-runtime-probe",
+            "run_live": "/thoth:run --executor codex --work-id task-runtime-probe",
+            "run_sleep": "/thoth:run --executor codex --sleep --work-id task-runtime-probe",
             "run_watch": lambda run_id: f"/thoth:run --watch {run_id}",
             "run_stop": lambda run_id: f"/thoth:run --stop {run_id}",
             "review": "/thoth:review --work-id task-review-probe --executor codex tracker/review_probe.py",
-            "loop_live": "/thoth:loop --work-id task-runtime-probe",
+            "loop_live": "/thoth:loop --executor codex --work-id task-runtime-probe",
             "dashboard_start": "/thoth:dashboard start",
             "dashboard_stop": "/thoth:dashboard stop",
-            "loop_sleep": "/thoth:loop --sleep --work-id task-runtime-probe",
+            "loop_sleep": "/thoth:loop --executor codex --sleep --work-id task-runtime-probe",
             "loop_stop": lambda run_id: f"/thoth:loop --stop {run_id}",
+            "auto": "/thoth:auto --executor codex --sleep --rounds 1 --min-runtime-seconds 0",
+            "auto_stop": lambda controller_id: f"/thoth:auto --stop {controller_id}",
             "sync": "/thoth:init --sync",
         },
         review_expected_executor="codex",
@@ -84,7 +86,7 @@ def _host_claude(
     bridge_path = project_dir / ".thoth" / "derived" / "host-bridges" / "claude-command-events.jsonl"
     if bridge_path.exists():
         artifacts.append(str(bridge_path))
-    required_bridge_commands = ("init", "status", "doctor", "discuss", "run", "review", "dashboard", "loop", "sync")
+    required_bridge_commands = ("init", "status", "doctor", "discuss", "run", "review", "dashboard", "loop", "auto")
     success = all(result.returncode == 0 for result in command_results.values())
     if not partial_window:
         success = success and all(command in bridge_commands for command in required_bridge_commands) and all(
@@ -97,7 +99,7 @@ def _host_claude(
         detail = f"Claude host window completed successfully with from_step={from_step!r} to_step={to_step!r}."
     elif success and hook_seen:
         status = "passed"
-        detail = "Claude host completed the host-real decision/run/review/loop flow through the public /thoth:* surface, including a real `--executor codex` review bridge."
+        detail = "Claude host completed the host-real decision/run/review/loop/auto flow through the public /thoth:* surface, including real `--executor codex` delegation."
     elif success:
         status = "failed"
         detail = "Claude host completed the command flow, but hook/session evidence was not visible in Claude output."

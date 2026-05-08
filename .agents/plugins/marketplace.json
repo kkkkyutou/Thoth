@@ -12,7 +12,7 @@
       "name": "thoth",
       "source": {
         "source": "local",
-        "path": "./plugins/thoth"
+        "path": "."
       },
       "policy": {
         "installation": "AVAILABLE",

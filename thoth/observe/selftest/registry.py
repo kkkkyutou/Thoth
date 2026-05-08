@@ -59,9 +59,11 @@ _HOST_CASES: tuple[SelftestCaseSpec, ...] = (
     SelftestCaseSpec("surface.codex.loop.live_prepare", "host_surface", 45.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_loop_live_prepare, ("surface", "codex", "loop", "live")),
     SelftestCaseSpec("surface.codex.loop.sleep_prepare", "host_surface", 45.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_loop_sleep_prepare, ("surface", "codex", "loop", "sleep")),
     SelftestCaseSpec("surface.codex.loop.stop", "host_surface", 45.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_loop_stop, ("surface", "codex", "loop", "stop")),
+    SelftestCaseSpec("surface.codex.auto.sleep_prepare", "host_surface", 45.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_auto_sleep_prepare, ("surface", "codex", "auto", "sleep")),
+    SelftestCaseSpec("surface.codex.auto.stop", "host_surface", 45.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_auto_stop, ("surface", "codex", "auto", "stop")),
     SelftestCaseSpec("surface.codex.dashboard.start", "host_surface", 45.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_dashboard_start, ("surface", "codex", "dashboard")),
     SelftestCaseSpec("surface.codex.dashboard.stop", "host_surface", 45.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_dashboard_stop, ("surface", "codex", "dashboard")),
-    SelftestCaseSpec("surface.codex.sync", "host_surface", 25.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_sync, ("surface", "codex", "sync")),
+    SelftestCaseSpec("surface.codex.init_sync", "host_surface", 25.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_init_sync, ("surface", "codex", "init", "sync")),
     SelftestCaseSpec("surface.claude.init", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_init, ("surface", "claude", "init")),
     SelftestCaseSpec("surface.claude.status", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_status, ("surface", "claude", "status")),
     SelftestCaseSpec("surface.claude.doctor", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_doctor, ("surface", "claude", "doctor")),
@@ -74,9 +76,11 @@ _HOST_CASES: tuple[SelftestCaseSpec, ...] = (
     SelftestCaseSpec("surface.claude.loop.live_prepare", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_loop_live_prepare, ("surface", "claude", "loop", "live")),
     SelftestCaseSpec("surface.claude.loop.sleep_prepare", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_loop_sleep_prepare, ("surface", "claude", "loop", "sleep")),
     SelftestCaseSpec("surface.claude.loop.stop", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_loop_stop, ("surface", "claude", "loop", "stop")),
+    SelftestCaseSpec("surface.claude.auto.sleep_prepare", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_auto_sleep_prepare, ("surface", "claude", "auto", "sleep")),
+    SelftestCaseSpec("surface.claude.auto.stop", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_auto_stop, ("surface", "claude", "auto", "stop")),
     SelftestCaseSpec("surface.claude.dashboard.start", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_dashboard_start, ("surface", "claude", "dashboard")),
     SelftestCaseSpec("surface.claude.dashboard.stop", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_dashboard_stop, ("surface", "claude", "dashboard")),
-    SelftestCaseSpec("surface.claude.sync", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_sync, ("surface", "claude", "sync")),
+    SelftestCaseSpec("surface.claude.init_sync", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_init_sync, ("surface", "claude", "init", "sync")),
 )
 
 

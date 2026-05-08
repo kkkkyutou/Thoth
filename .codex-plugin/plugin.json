@@ -1,6 +1,6 @@
 {
   "name": "thoth",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Official Codex-native public surface for the Thoth authority runtime.",
   "author": {
     "name": "SeeleAI",
@@ -17,7 +17,7 @@
     "runtime",
     "dashboard"
   ],
-  "skills": "./skills",
+  "skills": "./plugins/thoth/skills",
   "interface": {
     "displayName": "Thoth",
     "shortDescription": "Single Codex entrypoint for the shared Thoth runtime.",

@@ -27,6 +27,7 @@ from thoth.plan.compiler import compile_task_authority
 from thoth.prompt_specs import (
     build_codex_selftest_command_probe_prompt,
     build_codex_selftest_review_probe_prompt,
+    codex_installed_runtime_shell_command,
 )
 from thoth.run.ledger import complete_run, heartbeat_run
 from thoth.selftest_seed import seed_host_real_app
@@ -197,8 +198,11 @@ def _public_command_id(public_command: str) -> str:
     if normalized.startswith("/thoth:"):
         head = normalized.split()[0]
         return head.removeprefix("/thoth:").strip() or "status"
-    shell_command = _shell_command_for_public_command(public_command)
-    parts = shell_command.split()
+    parts = shlex.split(normalized)
+    if parts and parts[0] == "$thoth":
+        return parts[1] if len(parts) >= 2 else "status"
+    if parts and parts[0] == "thoth":
+        return parts[1] if len(parts) >= 2 else "status"
     return parts[1] if len(parts) >= 2 else "status"
 
 
@@ -220,8 +224,15 @@ def _codex_prompt_for_public_command(public_command: str, done_token: str) -> st
 
 def _shell_command_for_public_command(public_command: str) -> str:
     shell_command = public_command.strip()
+    if shell_command.startswith("$thoth ") or shell_command.startswith("thoth "):
+        shell_command = codex_installed_runtime_shell_command(shell_command)
+    return shell_command
+
+
+def _canonical_public_shell_command(public_command: str) -> str:
+    shell_command = public_command.strip()
     if shell_command.startswith("$thoth "):
-        shell_command = f"thoth {shell_command[len('$thoth '):]}"
+        return f"thoth {shell_command[len('$thoth '):]}"
     return shell_command
 
 
@@ -274,8 +285,10 @@ def _codex_completed_command_items(stdout: str) -> list[dict[str, Any]]:
 
 def _codex_command_item(stdout: str, public_command: str) -> dict[str, Any]:
     shell_command = _shell_command_for_public_command(public_command)
+    canonical_command = _canonical_public_shell_command(public_command)
     for item in _codex_completed_command_items(stdout):
-        if shell_command in str(item.get("command") or ""):
+        command = str(item.get("command") or "")
+        if shell_command in command or canonical_command in command:
             return item
     return {}
 
@@ -289,10 +302,13 @@ def _normalize_codex_public_command_result(
 ) -> CommandResult:
     completed_commands = _codex_completed_command_items(result.stdout)
     shell_command = _shell_command_for_public_command(public_command)
-    is_watch_probe = "--watch" in shell_command.split()
+    canonical_command = _canonical_public_shell_command(public_command)
+    is_watch_probe = "--watch" in shlex.split(canonical_command)
     command_id = _public_command_id(public_command)
     matching_commands = [
-        item for item in completed_commands if shell_command in str(item.get("command") or "")
+        item
+        for item in completed_commands
+        if shell_command in str(item.get("command") or "") or canonical_command in str(item.get("command") or "")
     ]
     public_step = matching_commands[0] if matching_commands else None
     if public_step is None:
@@ -401,6 +417,7 @@ def _run_host_real_flow(
     command_results: dict[str, CommandResult] = {}
     claude_step_events: dict[str, dict[str, Any]] = {}
     seen_run_ids: set[str] = set()
+    seen_controller_ids: set[str] = set()
     source_baseline = _host_real_source_fingerprint(project_dir)
     transient_retry_limit = 2
     transient_retry_window_seconds = 90.0
@@ -415,10 +432,12 @@ def _run_host_real_flow(
         "run-watch",
         "run-stop",
         "review",
+        "dashboard-start",
         "loop-live",
         "loop-sleep",
         "loop-stop",
-        "dashboard-start",
+        "auto",
+        "auto-stop",
         "dashboard-stop",
     ]
     ordered_step_ids.append("sync")
@@ -503,6 +522,7 @@ def _run_host_real_flow(
         expected_kind: str,
         expected_work_id: str,
         public_command: str,
+        expected_executor: str | None = None,
     ) -> None:
         _wait_until(
             lambda: _state_payload(project_dir, run_id).get("status") in {"running", "completed", "failed", "stopped"},
@@ -528,10 +548,13 @@ def _run_host_real_flow(
             )
             and worker_started
         )
+        if expected_executor is not None:
+            ok = ok and run.get("executor") == expected_executor
         detail = (
             f"Verified {expected_kind} sleep probe {run_id}: "
             f"status={state.get('status')} attachable={run.get('attachable')} "
-            f"dispatch={run.get('dispatch_mode')} supervisor={supervisor.get('state') or state.get('supervisor_state')}"
+            f"dispatch={run.get('dispatch_mode')} executor={run.get('executor')} "
+            f"supervisor={supervisor.get('state') or state.get('supervisor_state')}"
         )
         recorder.add(_runtime_check_name(step_id, mode), "passed" if ok else "failed", detail, [
             str(project_dir / ".thoth" / "runs" / run_id / "run.json"),
@@ -657,6 +680,61 @@ def _run_host_real_flow(
         if not ok:
             raise RuntimeError(f"{host_name} step {step_id} did not expose the expected watch output")
         _guard_source(step_id, mode)
+
+    def _latest_controller_id(*, exclude_controller_ids: set[str] | None = None) -> str:
+        exclude = exclude_controller_ids or set()
+        controllers_dir = project_dir / ".thoth" / "objects" / "controller"
+        candidates: list[tuple[str, str]] = []
+        if not controllers_dir.is_dir():
+            return ""
+        for path in controllers_dir.glob("*.json"):
+            controller = _read_json(path)
+            controller_id = str(controller.get("object_id") or path.stem)
+            if controller_id in exclude:
+                continue
+            payload = controller.get("payload") if isinstance(controller.get("payload"), dict) else {}
+            if payload.get("controller_type") != "auto":
+                continue
+            candidates.append((str(controller.get("updated_at") or controller.get("created_at") or ""), controller_id))
+        candidates.sort()
+        return candidates[-1][1] if candidates else ""
+
+    def _verify_auto_controller_started(*, step_id: str, mode: str, public_command: str, result: CommandResult) -> str:
+        output = _command_output(step_id, public_command, result)
+        controller_id = ""
+        try:
+            payload = json.loads(output)
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict):
+            body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+            controller_id = str(body.get("controller_id") or "")
+        if not controller_id:
+            controller_id = _latest_controller_id(exclude_controller_ids=seen_controller_ids)
+        controller_path = project_dir / ".thoth" / "objects" / "controller" / f"{controller_id}.json"
+        supervisor_path = project_dir / ".thoth" / "local" / "controllers" / controller_id / "supervisor.json"
+        controller = _read_json(controller_path) if controller_id else {}
+        supervisor = _read_json(supervisor_path) if controller_id else {}
+        controller_payload = controller.get("payload") if isinstance(controller.get("payload"), dict) else {}
+        ok = (
+            bool(controller_id)
+            and controller.get("kind") == "controller"
+            and controller_payload.get("controller_type") == "auto"
+            and controller_payload.get("host") == host_name
+            and controller_payload.get("executor") == "codex"
+            and bool(supervisor.get("pid") or supervisor.get("state"))
+        )
+        recorder.add(
+            _runtime_check_name(step_id, mode),
+            "passed" if ok else "failed",
+            f"Verified auto controller {controller_id}: host={controller_payload.get('host')} executor={controller_payload.get('executor')} supervisor={supervisor.get('state')}.",
+            [str(controller_path), str(supervisor_path)] if controller_id else [],
+        )
+        if not ok:
+            raise RuntimeError(f"{host_name} step {step_id} did not start the expected auto controller")
+        seen_controller_ids.add(controller_id)
+        _guard_source(step_id, mode)
+        return controller_id
 
     def execute(step_id: str, public_command: str, *, timeout: float = 240) -> CommandResult | None:
         mode = step_mode(step_id)
@@ -799,7 +877,7 @@ def _run_host_real_flow(
             run_id=run_live_id,
             expected_kind="run",
             expected_work_id="task-runtime-probe",
-            expected_executor=review_expected_executor if host_name == "codex" else None,
+            expected_executor=review_expected_executor if "--executor codex" in commands["run_live"] else None,
             public_command=commands["run_live"],
         )
         cleanup_live_stop = _run_thoth(project_dir, "run", "--stop", run_live_id, timeout=20)
@@ -832,6 +910,7 @@ def _run_host_real_flow(
             expected_kind="run",
             expected_work_id="task-runtime-probe",
             public_command=commands["run_sleep"],
+            expected_executor=review_expected_executor if "--executor codex" in commands["run_sleep"] else None,
         )
         if not should_run("run-watch") and not should_run("run-stop"):
             cleanup_sleep_stop = _run_thoth(project_dir, "run", "--stop", run_sleep_id, timeout=20)
@@ -960,7 +1039,7 @@ def _run_host_real_flow(
             run_id=loop_live_id,
             expected_kind="loop",
             expected_work_id="task-runtime-probe",
-            expected_executor=review_expected_executor if host_name == "codex" else None,
+            expected_executor=review_expected_executor if "--executor codex" in commands["loop_live"] else None,
             public_command=commands["loop_live"],
         )
         cleanup_loop_live_stop = _run_thoth(project_dir, "loop", "--stop", loop_live_id, timeout=20)
@@ -988,6 +1067,7 @@ def _run_host_real_flow(
             expected_kind="loop",
             expected_work_id="task-runtime-probe",
             public_command=commands["loop_sleep"],
+            expected_executor=review_expected_executor if "--executor codex" in commands["loop_sleep"] else None,
         )
         if not should_run("loop-stop"):
             cleanup_loop_sleep_stop = _run_thoth(project_dir, "loop", "--stop", loop_run_id, timeout=20)
@@ -1008,6 +1088,26 @@ def _run_host_real_flow(
             run_id=loop_run_id,
             expected_kind="loop",
         )
+
+    auto_controller_id = ""
+    if should_run("auto"):
+        auto_result = execute("auto", commands["auto"], timeout=60)
+        if auto_result is None:
+            raise RuntimeError("auto result was unexpectedly missing")
+        auto_controller_id = _verify_auto_controller_started(
+            step_id="auto",
+            mode=step_mode("auto"),
+            public_command=commands["auto"],
+            result=auto_result,
+        )
+        if not should_run("auto-stop"):
+            auto_cleanup = _run_thoth(project_dir, "auto", "--stop", auto_controller_id, timeout=20)
+            if auto_cleanup.returncode != 0:
+                raise RuntimeError("repo-local cleanup stop for host auto probe failed")
+
+    if should_run("auto-stop"):
+        auto_stop_command = commands["auto_stop"](auto_controller_id) if callable(commands["auto_stop"]) else str(commands["auto_stop"]).format(controller_id=auto_controller_id)
+        execute("auto-stop", auto_stop_command, timeout=25)
 
     if should_run("dashboard-stop"):
         execute("dashboard-stop", commands["dashboard_stop"], timeout=30)

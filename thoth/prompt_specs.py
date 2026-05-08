@@ -1,8 +1,9 @@
-"""Compressed prompt authority for Thoth public commands and live phases."""
+"""Compressed prompt authority for Thoth public commands, internal routes, and live phases."""
 
 from __future__ import annotations
 
 import json
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -237,6 +238,12 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
 }
 
 
+PUBLIC_COMMAND_PROMPT_IDS = frozenset(
+    {"init", "discuss", "run", "loop", "review", "auto", "status", "doctor", "dashboard"}
+)
+INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_PROMPT_IDS
+
+
 PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     "plan": PhasePromptSpec(
         phase="plan",
@@ -300,6 +307,7 @@ def phase_prompt_spec(phase: str) -> PhasePromptSpec:
 def command_prompt_authority(command_id: str) -> dict[str, Any]:
     spec = command_prompt_spec(command_id)
     return {
+        "surface": "public" if command_id in PUBLIC_COMMAND_PROMPT_IDS else "internal",
         "route_class": spec.route_class,
         "intelligence_tier": spec.intelligence_tier,
         "packet_authority_mode": spec.packet_authority_mode,
@@ -410,7 +418,7 @@ def build_codex_public_command_prompt(
         "Execute that shell command immediately as your first meaningful action.",
         "Do not explain the command before executing it.",
         "Do not replace execution with prose.",
-        "If the literal `thoth` shell command is missing in a fresh plugin-installed environment, report host install drift instead of inventing another entrypoint.",
+        "If neither PATH nor the installed Codex plugin cache contains the runtime entrypoint, report host install drift instead of inventing another entrypoint.",
         f"route_class={spec.route_class}.",
         f"intelligence_tier={spec.intelligence_tier}.",
         f"packet_authority_mode={spec.packet_authority_mode}.",
@@ -445,9 +453,33 @@ def build_codex_public_command_prompt(
     return " ".join(lines)
 
 
+def codex_installed_runtime_shell_command(public_command: str) -> str:
+    parts = shlex.split(public_command.strip())
+    if parts and parts[0] == "$thoth":
+        args = parts[1:]
+    elif parts and parts[0] == "thoth":
+        args = parts[1:]
+    else:
+        args = parts
+    resolver = (
+        "set -euo pipefail; "
+        "if command -v thoth >/dev/null 2>&1; then exec thoth \"$@\"; fi; "
+        "latest=\"$(ls -td \"$HOME\"/.codex/plugins/cache/thoth/thoth/* 2>/dev/null | head -n 1 || true)\"; "
+        "if [ -n \"$latest\" ]; then "
+        "if [ -x \"$latest/bin/thoth\" ]; then exec \"$latest/bin/thoth\" \"$@\"; fi; "
+        "if [ -f \"$latest/scripts/thoth-cli-entry.py\" ]; then "
+        "if command -v python3 >/dev/null 2>&1; then exec python3 \"$latest/scripts/thoth-cli-entry.py\" \"$@\"; "
+        "else exec python \"$latest/scripts/thoth-cli-entry.py\" \"$@\"; fi; "
+        "fi; "
+        "fi; "
+        "echo 'thoth installed runtime not found' >&2; exit 127"
+    )
+    return " ".join(["bash", "-lc", shlex.quote(resolver), "thoth", *(shlex.quote(arg) for arg in args)])
+
+
 def render_codex_command_micro_prompt(command_id: str) -> str:
     public_command = f"$thoth {command_id}"
-    shell_command = f"thoth {command_id}"
+    shell_command = codex_installed_runtime_shell_command(public_command)
     done_token = "THOTH_DONE"
     return f"""# {public_command}
 
@@ -462,26 +494,30 @@ Generated micro prompt for the Thoth Codex dispatcher.
 
 
 def build_codex_selftest_command_probe_prompt(*, public_command: str, shell_command: str, done_token: str) -> str:
+    public_equivalent = public_command.replace("$thoth ", "thoth ", 1)
     return " ".join(
         (
             "This is a Thoth heavy selftest command probe.",
             "Operate only on this repo.",
             f"The Codex public surface is `{public_command}`, but in the workspace shell you must execute it literally as `{shell_command}`.",
+            f"The public shell equivalent is `{public_equivalent}`.",
             "Execute that shell command immediately as your first meaningful action.",
             "Do not inspect files, search memories, explain, retry, or execute any second shell command.",
             "Do not manually continue runtime protocol phases and do not substitute a different entrypoint.",
-            "If the literal `thoth` shell command is missing, treat that as host install drift.",
+            "If the installed Thoth runtime is missing from both PATH and the installed Codex plugin cache, treat that as host install drift.",
             f"After the shell command exits successfully, reply with `{done_token}` only.",
         )
     )
 
 
 def build_codex_selftest_review_probe_prompt(*, public_command: str, shell_command: str, done_token: str) -> str:
+    public_equivalent = public_command.replace("$thoth ", "thoth ", 1)
     return " ".join(
         (
             "This is a Thoth heavy selftest review probe.",
             "Operate only on this repo.",
             f"The Codex public surface is `{public_command}`, but in the workspace shell you must execute it literally as `{shell_command}`.",
+            f"The public shell equivalent is `{public_equivalent}`.",
             "Execute that shell command immediately as your first action.",
             "Do not send commentary, progress updates, plans, explanations, or any non-command message before that command.",
             "After the review packet is prepared, stay inside the Thoth review protocol only.",
@@ -517,10 +553,13 @@ def build_review_result_shape() -> dict[str, Any]:
 
 __all__ = [
     "COMMAND_PROMPT_SPECS",
+    "INTERNAL_COMMAND_PROMPT_IDS",
     "PHASE_PROMPT_SPECS",
+    "PUBLIC_COMMAND_PROMPT_IDS",
     "CommandPromptSpec",
     "PhasePromptSpec",
     "build_codex_public_command_prompt",
+    "codex_installed_runtime_shell_command",
     "build_codex_selftest_command_probe_prompt",
     "build_codex_selftest_review_probe_prompt",
     "build_review_result_shape",

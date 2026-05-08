@@ -11,10 +11,10 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.1.11"
+PLUGIN_VERSION = "0.1.12"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
-PLUGIN_PACKAGE_DIR = "plugins/thoth"
-PLUGIN_SKILLS_PATH = "./skills"
+PLUGIN_PACKAGE_DIR = "."
+PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
 
 
 def _frontmatter_allowed_tools(spec: CommandSpec) -> str:
@@ -152,7 +152,8 @@ Supported commands:
 - `.thoth` is the only runtime authority.
 - Parse the requested `$thoth <command>`, then open only the matching micro prompt under `./commands/<command>.md`.
 - Execute the literal shell command immediately; do not replace it with explanation.
-- If the plugin-installed `thoth` wrapper is missing in a fresh environment, treat that as host install drift.
+- If `thoth` is not on PATH, use the installed Codex plugin cache runtime entrypoint described by the micro prompt; do not use a local checkout as fallback.
+- If neither PATH nor the installed Codex plugin cache contains the runtime entrypoint, treat that as host install drift.
 - Do not create alternative public Codex variants such as `run:codex` or `loop:codex`.
 
 ## Route Table
@@ -231,7 +232,7 @@ def render_codex_marketplace() -> dict:
                 "name": PLUGIN_NAME,
                 "source": {
                     "source": "local",
-                    "path": f"./{PLUGIN_PACKAGE_DIR}",
+                    "path": PLUGIN_PACKAGE_DIR,
                 },
                 "policy": {
                     "installation": "AVAILABLE",
@@ -260,12 +261,13 @@ def sync_repository_surfaces(root: Path | None = None) -> list[Path]:
         written.append(path)
 
     plugin_root = repo_root / PLUGIN_PACKAGE_DIR
-    plugin_skill_path = plugin_root / "skills" / "thoth" / "SKILL.md"
+    plugin_skills_root = repo_root / PLUGIN_SKILLS_PATH.removeprefix("./")
+    plugin_skill_path = plugin_skills_root / "thoth" / "SKILL.md"
     plugin_skill_path.parent.mkdir(parents=True, exist_ok=True)
     plugin_skill_path.write_text(render_codex_skill(), encoding="utf-8")
     written.append(plugin_skill_path)
 
-    plugin_commands_dir = plugin_root / "skills" / "thoth" / "commands"
+    plugin_commands_dir = plugin_skills_root / "thoth" / "commands"
     plugin_commands_dir.mkdir(parents=True, exist_ok=True)
     for stale in plugin_commands_dir.glob("*.md"):
         if stale.stem not in public_ids:
@@ -275,12 +277,14 @@ def sync_repository_surfaces(root: Path | None = None) -> list[Path]:
         command_path.write_text(render_codex_command_micro_prompt(spec.command_id), encoding="utf-8")
         written.append(command_path)
 
-    plugin_agent_metadata_path = plugin_root / "skills" / "thoth" / "agents" / "openai.yaml"
+    plugin_agent_metadata_path = plugin_skills_root / "thoth" / "agents" / "openai.yaml"
     plugin_agent_metadata_path.parent.mkdir(parents=True, exist_ok=True)
     plugin_agent_metadata_path.write_text(render_codex_agent_metadata(), encoding="utf-8")
     written.append(plugin_agent_metadata_path)
 
-    plugin_path = plugin_root / ".codex-plugin" / "plugin.json"
+    legacy_plugin_path = repo_root / "plugins" / "thoth" / ".codex-plugin" / "plugin.json"
+    legacy_plugin_path.unlink(missing_ok=True)
+    plugin_path = repo_root / ".codex-plugin" / "plugin.json"
     plugin_path.parent.mkdir(parents=True, exist_ok=True)
     plugin_path.write_text(json.dumps(render_plugin_manifest(), indent=2) + "\n", encoding="utf-8")
     written.append(plugin_path)

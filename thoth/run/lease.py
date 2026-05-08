@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .io import _read_json, _write_json, local_registry_root
-from .model import ACTIVE_STATUSES, _age_seconds, _process_alive, utc_now
+from .model import ACTIVE_STATUSES, _age_seconds, utc_now
+from .supervisor import supervisor_process_alive
 
 def _supervisor_payload(project_root: Path, run_id: str) -> dict[str, Any]:
     local_dir = local_registry_root(project_root) / "runs" / run_id
@@ -32,7 +33,11 @@ def _lease_holder_is_stale(project_root: Path, lease_payload: dict[str, Any]) ->
     state = _read_json(run_dir / "state.json")
     heartbeat_age = _age_seconds(state.get("last_heartbeat_at"))
     supervisor = _supervisor_payload(project_root, run_id)
-    supervisor_alive = _process_alive(supervisor.get("pid"))
+    supervisor_alive = supervisor_process_alive(
+        supervisor,
+        project_root=project_root,
+        run_id=run_id,
+    )
     if supervisor_alive:
         return False
     if heartbeat_age is None:

@@ -38,8 +38,8 @@ from .model import (
     WORKER_RETRY_WINDOW_SECONDS,
     RunHandle,
     default_executor,
-    utc_now,
 )
+from .supervisor import write_run_supervisor
 
 def spawn_supervisor(handle: RunHandle) -> int:
     run_payload = handle.run_json()
@@ -96,7 +96,7 @@ def spawn_supervisor(handle: RunHandle) -> int:
             stdout_handle.close()
             stderr_handle.close()
         worker_pid = proc.pid
-    _write_json(handle.local_dir / "supervisor.json", {"pid": worker_pid, "state": "running", "runtime": "external_worker", "updated_at": utc_now()})
+    write_run_supervisor(handle, pid=worker_pid, state="running", runtime="external_worker", command=cmd)
     _update_state(
         handle,
         status="running",
@@ -527,7 +527,7 @@ def _terminalize_stopped_worker(handle: RunHandle) -> int:
     _update_state(handle, status="stopped", phase="stopped", progress_pct=100, supervisor_state="stopped")
     _write_stopped_result(handle)
     release_repo_lease(handle.project_root, handle.run_id)
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "stopped", "runtime": "external_worker", "updated_at": utc_now()})
+    write_run_supervisor(handle, state="stopped", runtime="external_worker")
     return 0
 
 
@@ -555,7 +555,7 @@ def worker_main(project_root: Path, run_id: str) -> int:
 
     signal.signal(signal.SIGTERM, _mark_stop)
     signal.signal(signal.SIGINT, _mark_stop)
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "running", "runtime": "external_worker", "updated_at": utc_now()})
+    write_run_supervisor(handle, state="running", runtime="external_worker")
     heartbeat_run(project_root, run_id, phase="external_worker_start", progress_pct=5, note="external worker started")
     test_mode = _test_external_worker_mode()
     if test_mode == "hold":
@@ -589,9 +589,9 @@ def worker_main(project_root: Path, run_id: str) -> int:
             reason=str(exc),
             result_payload={"worker_runtime": "external_worker", "executor": run_payload.get("executor")},
         )
-        _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": "failed", "runtime": "external_worker", "updated_at": utc_now()})
+        write_run_supervisor(handle, state="failed", runtime="external_worker")
         return 1
     final_state = handle.state_json().get("status")
     runtime_state = "completed" if final_state == "completed" else "stopped" if final_state == "stopped" else "failed"
-    _write_json(handle.local_dir / "supervisor.json", {"pid": os.getpid(), "state": runtime_state, "runtime": "external_worker", "updated_at": utc_now()})
+    write_run_supervisor(handle, state=runtime_state, runtime="external_worker")
     return status

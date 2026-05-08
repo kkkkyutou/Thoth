@@ -8,8 +8,15 @@ from pathlib import Path
 from thoth.plan.doctor import build_doctor_payload, infer_review_work_id
 from thoth.plan.paths import compiler_state_path, work_items_dir
 from thoth.plan.store import load_work_for_execution, suggest_work_items_for_query
-from thoth.run.auto import ensure_auto_worker, execute_auto_controller, find_reusable_auto_controller, watch_auto_controller
-from thoth.run.controllers import create_auto_controller, create_orchestration_controller
+from thoth.run.auto import (
+    auto_controller_fingerprint,
+    auto_fingerprint_differences,
+    ensure_auto_worker,
+    execute_auto_controller,
+    find_reusable_auto_controller,
+    watch_auto_controller,
+)
+from thoth.run.controllers import build_auto_request_fingerprint, create_auto_controller, create_orchestration_controller
 from thoth.run.driver import JsonlStdoutSink, execute_runtime_controller
 from thoth.run.packets import LIVE_DISPATCH_MODE, prepare_execution
 from thoth.run.service import attach_run, resume_run, stop_run
@@ -240,9 +247,38 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
         )
         print_envelope(command="auto", status="ok", summary=f"Stop requested for auto controller {args.stop}")
         return 0
+    min_runtime_arg = getattr(args, "min_runtime_seconds", 8 * 60 * 60)
+    min_runtime_seconds = int(min_runtime_arg) if isinstance(min_runtime_arg, int) and min_runtime_arg >= 0 else 8 * 60 * 60
+    requested_fingerprint = build_auto_request_fingerprint(
+        project_root,
+        work_ids=list(getattr(args, "work_ids", []) or []),
+        mode="loop",
+        host=args.host,
+        executor=_resolve_executor(args),
+        scope=getattr(args, "scope", "all-open"),
+        rounds=getattr(args, "rounds", None),
+        min_runtime_seconds=min_runtime_seconds,
+        sleep_requested=bool(getattr(args, "sleep", False)),
+    )
     reused = False
     controller = find_reusable_auto_controller(project_root)
     if controller:
+        diffs = auto_fingerprint_differences(auto_controller_fingerprint(controller), requested_fingerprint)
+        if diffs:
+            controller_id = str(controller.get("object_id") or "")
+            print_envelope(
+                command="auto",
+                status="needs_input",
+                summary=f"Active auto controller {controller_id} has different request parameters; no new controller was started.",
+                body={
+                    "active_controller_id": controller_id,
+                    "differences": diffs,
+                    "guidance": f"Use `thoth auto --watch {controller_id} --follow --stream-json`, stop it first, or explicitly start a new controller after adding a public --new policy.",
+                },
+                refs=output_refs(project_root / ".thoth" / "objects" / "controller" / f"{controller_id}.json"),
+                checks=[{"name": "auto_request_fingerprint", "ok": False, "detail": "active controller parameters differ"}],
+            )
+            return 2
         reused = True
     else:
         doctor = build_doctor_payload(project_root)
@@ -257,8 +293,6 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
                 checks=preflight_failures,
             )
             return 1
-        min_runtime_arg = getattr(args, "min_runtime_seconds", 8 * 60 * 60)
-        min_runtime_seconds = int(min_runtime_arg) if isinstance(min_runtime_arg, int) and min_runtime_arg >= 0 else 8 * 60 * 60
         controller = create_auto_controller(
             project_root,
             work_ids=list(getattr(args, "work_ids", []) or []),

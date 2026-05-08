@@ -12,7 +12,8 @@ from typing import Any
 from .io import _read_json
 from .lease import acquire_repo_lease, release_repo_lease
 from .ledger import _append_event, _update_run, _update_state, _write_heartbeat, _write_stopped_result
-from .model import ACTIVE_STATUSES, LIVE_DISPATCH_MODE, SLEEP_DISPATCH_MODE, TERMINAL_STATUSES, RunHandle, _process_alive
+from .model import ACTIVE_STATUSES, LIVE_DISPATCH_MODE, SLEEP_DISPATCH_MODE, TERMINAL_STATUSES, RunHandle
+from .supervisor import supervisor_process_alive
 
 def stop_run(project_root: Path, run_id: str) -> None:
     handle = RunHandle(project_root=project_root.resolve(), run_id=run_id)
@@ -23,7 +24,7 @@ def stop_run(project_root: Path, run_id: str) -> None:
     _update_state(handle, status="stopping", phase="stopping", supervisor_state="stopping")
     supervisor = _read_json(handle.local_dir / "supervisor.json")
     pid = supervisor.get("pid")
-    if isinstance(pid, int) and _process_alive(pid):
+    if isinstance(pid, int) and supervisor_process_alive(supervisor, project_root=project_root, run_id=run_id):
         if terminalize_immediately:
             _update_state(handle, status="stopped", phase="stopped", progress_pct=100, supervisor_state="stopped")
             _write_stopped_result(handle)

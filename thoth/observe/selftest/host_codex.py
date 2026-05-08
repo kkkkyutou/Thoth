@@ -11,6 +11,7 @@ from .host_common import (
     _safe_name,
     _write_host_real_discuss_payload_files,
 )
+from .capabilities import _ensure_codex_repo_hooks
 from .model import CommandResult
 from .recorder import Recorder
 
@@ -23,6 +24,7 @@ def _host_codex(
     to_step: str | None = None,
 ) -> None:
     decision_path, contract_paths = _write_host_real_discuss_payload_files(project_dir)
+    hook_artifacts = [_ensure_codex_repo_hooks(project_dir, recorder)]
 
     def run_public_command(public_command: str, *, recorder: Recorder, artifact_name: str, timeout: float = 240) -> tuple[CommandResult, list[str]]:
         done_token = f"{_safe_name(artifact_name).upper()}_DONE"
@@ -69,6 +71,8 @@ def _host_codex(
             "dashboard_stop": "$thoth dashboard stop",
             "loop_sleep": "$thoth loop --host codex --executor codex --sleep --work-id task-runtime-probe",
             "loop_stop": lambda run_id: f"$thoth loop --stop {run_id}",
+            "auto": "$thoth auto --host codex --executor codex --sleep --rounds 1 --min-runtime-seconds 0",
+            "auto_stop": lambda controller_id: f"$thoth auto --stop {controller_id}",
             "sync": "$thoth init --sync",
         },
         from_step=from_step,
@@ -76,6 +80,7 @@ def _host_codex(
         review_expected_executor="codex",
         review_expected_result=_expected_host_review_result(),
     )
+    artifacts.extend(str(item.get("hooks_path") or "") for item in hook_artifacts if isinstance(item, dict))
     conversations_path = project_dir / ".thoth" / "project" / "conversations.jsonl"
     skill_load_failed = any("failed to load skill" in result.stderr.lower() for result in command_results.values())
     if conversations_path.exists():

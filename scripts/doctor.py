@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 from thoth.plan.doctor import build_doctor_payload, render_doctor_text
-from thoth.plan.store import load_compiled_tasks
+from thoth.objects import Store
 
 
 REQUIRED_AGENT_OS_FILES = [
@@ -33,14 +33,18 @@ def check_required_files() -> tuple[bool, str]:
 
 
 def check_id_integrity() -> tuple[bool, str]:
-    tasks = load_compiled_tasks(Path.cwd())
-    ids = [str(task.get("task_id") or task.get("id")) for task in tasks if task.get("task_id") or task.get("id")]
+    work_items = Store(Path.cwd()).list("work_item")
+    ids: list[str] = []
+    for item in work_items:
+        object_id = item.get("object_id")
+        if isinstance(object_id, str) and object_id.strip():
+            ids.append(object_id.strip())
     if not ids:
-        return True, "PASS no strict tasks found"
+        return True, "PASS no work items found"
     duplicates = sorted({item for item in ids if ids.count(item) > 1})
     if duplicates:
-        return False, "Duplicate strict task ids: " + ", ".join(duplicates)
-    return True, f"PASS {len(ids)} unique strict task ids"
+        return False, "Duplicate work item ids: " + ", ".join(duplicates)
+    return True, f"PASS {len(ids)} unique work item ids"
 
 
 def main() -> int:

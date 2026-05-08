@@ -16,7 +16,9 @@ def test_case_registry_contains_expected_atomic_cases():
     assert "plan.discuss.compile" in case_ids
     assert "runtime.run.live" in case_ids
     assert "surface.codex.run.live_prepare" in case_ids
-    assert "surface.claude.sync" in case_ids
+    assert "surface.codex.auto.sleep_prepare" in case_ids
+    assert "surface.claude.auto.sleep_prepare" in case_ids
+    assert "surface.claude.init_sync" in case_ids
 
 
 def test_resolve_case_specs_rejects_duplicates_and_unknown_cases():
@@ -67,6 +69,11 @@ def test_host_case_windows_start_from_minimal_prerequisite_step():
         "claude",
         "dashboard-start",
         "dashboard-stop",
+    )
+    assert _host_case_window("surface.codex.auto.stop") == (
+        "codex",
+        "auto",
+        "auto-stop",
     )
 
 

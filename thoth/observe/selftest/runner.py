@@ -13,6 +13,7 @@ from typing import Any
 
 from .capabilities import (
     _ensure_codex_global_hooks,
+    _ensure_codex_repo_hooks,
     _ensure_codex_skill_installed,
     _ensure_features_flag,
     _preflight_host_real,
