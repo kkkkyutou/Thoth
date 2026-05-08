@@ -3,9 +3,9 @@
 ## Current Truth
 
 - Objective: `OBJ-001`
-- Top next action: `TD-001`
+- Top next action: `TD-037`
 - Active workstreams: `WS-001`, `WS-002`, `WS-003`, `WS-004`, `WS-005`
-- Active blockers: None
+- Active blockers: `TD-037`
 
 ## Objective Summary
 
@@ -23,14 +23,15 @@
 
 ## Top Next Action
 
-- `TD-001` `[ready]`: 将 `dev` / `main` 分流规则固化为仓库内可执行治理机制
+- `TD-037` `[blocked]`: 完成 `0.1.12` 远端-only Claude/Codex 安装刷新与安装态矩阵重跑
 
 ## Active Blockers
 
-- None.
+- `TD-037`: 代码已推送到 `origin/main` / `origin/dev`，但本机远端-only marketplace refresh 被 GitHub 网络/TLS 阻塞；禁止用本地 checkout/cache/rsync 兜底覆盖安装。
 
 ## Recent Important Changes
 
+- 2026-05-08: `0.1.12` 发布面已按治理规则集成并推送：`dev` 发布面提交 `4343c44`、dev-only 治理提交 `b21a463`，`main` cherry-pick 为 `11eea39`；`main` 上关键 `py_compile`、63 条投影/selftest helper 单测、核心五项 selftest 均通过。远端-only 安装刷新未闭合：Claude marketplace update 直连超时，代理重试报 SSH auth failure；Codex marketplace upgrade 代理报 TLS 连接异常，直连报 GitHub 443 timeout；Claude installed `thoth@thoth` 仍为 `0.1.11`。已按 `REQ-034` 停在 blocker，不做本地覆盖。
 - 2026-05-08: 已收紧安装态 Codex/Claude->Codex 回归矩阵并准备发布 `0.1.12`：Codex plugin package 从 skill-only 改为携带 repo runtime 的根 package，`.codex-plugin/plugin.json` 移到仓库根，skill 路径改为 `./plugins/thoth/skills`；Codex `$thoth` micro prompt 与 selftest 从 PATH 或已安装 plugin cache 解析 runtime，不使用本地 checkout 兜底；host-real Codex hooks 只写 disposable test repo `.codex/`；Claude `/thoth:* --executor codex` 对 `run`、`loop`、`review`、`auto` 纳入真实短运行验证。当前代码验证已通过 targeted pytest、target manifest 与核心五项 selftest；远端 install refresh 仍需在推送后继续执行。
 - 2026-05-06: 已同步 `.agent-os` 当前状态文档，修正 `0.1.11` durable auto 发布后的文档漂移：`requirements.md` 已补 `REQ-035` / `AC-026` 并移除当前态里的旧 `task_id` / `TaskResult` 语义；`change-decisions.md` 追加 `CD-037` ~ `CD-039`；`acceptance-report.md` 将旧 `--task-id` 结论标为历史阶段证据，并把已关闭 marketplace blocker 从 Open Checks 归入历史证据；`architecture-milestones.md` 与官方资料对照同步 durable auto 和 Codex hooks 最新判断。
 - 2026-05-06: 收紧 `auto` 为 durable worker + observer monitor 模型并发布 `0.1.11`：`auto` live 不再拥有执行权，而是启动/复用后台 auto worker 后通过 `auto --watch <controller_id> --follow --stream-json` 观察 controller；`--sleep` 与 Claude bridge 默认返回 `monitor_command`，Claude `Monitor` 只作为可选观察器，正确性仍以 `.thoth/objects/controller`、child run ledger 与 watch JSONL 为准。`--min-runtime-seconds` 默认 `28800` 成为真实 wall-clock 下限，idle 时 heartbeat/rescan，不在空队列时提前完成；`--rounds` 只在达到最小运行时间后作为退出上限；同一 auto controller 内失败 work 只尝试一次并记录风险后继续队列。发布面提交 `069ef58` 已 cherry-pick 到 `main` 为 `b2f2da4` 并推送；`main` 发布验证 `py_compile` 通过、targeted pytest `48 passed in 725.14s`、核心五项 selftest `overall_status=passed`；本机 Claude/Codex 安装已按远端-only marketplace 流程刷新到 `0.1.11`。

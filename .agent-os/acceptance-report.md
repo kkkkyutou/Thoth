@@ -141,6 +141,12 @@
 - `EV-012` related to `WS-003`: 当前回合未重跑 Claude host-surface atomic sample
   - Conclusion: `claude auth status` 在本机当前返回 `{"loggedIn": false, "authMethod": "none"}`；因此本轮 fresh sample 只验证了 Codex host-surface cases。历史双宿主 `heavy` gate 证据仍保留在 `EV-020`，但它不等于本回合的新 atomic Claude sample
 
+- `EV-039` related to `TD-037`, `REQ-020`, `REQ-034`, `REQ-036`, `AC-027`: `0.1.12` 远端-only 安装刷新未闭合
+  - Evidence: `origin/main` 已推送到 `11eea39`，`origin/dev` 已推送到 `b21a463`，但 `claude plugin marketplace update thoth` 直连在 180 秒内无返回并被 timeout 终止
+  - Evidence: 代理重试 `claude plugin marketplace update thoth` 失败，输出 `SSH authentication failed` / `git@github.com: Permission denied (publickey)`；`claude plugin list --json` 仍显示 `thoth@thoth version=0.1.11 lastUpdated=2026-05-06T06:29:06.732Z`
+  - Evidence: 代理重试 `codex plugin marketplace upgrade thoth` 失败，输出 `gnutls_handshake() failed: The TLS connection was non-properly terminated`；直连重试失败，输出 `Failed to connect to github.com port 443 ... Connection timed out`
+  - Conclusion: 这是远端网络/GitHub/host marketplace access blocker，不是发布面代码验证失败；按 `REQ-034` 未使用本地 checkout、cache、临时目录、`rsync` 或其他本地覆盖方式刷新安装。安装态 Codex/Claude->Codex 矩阵仍需在 marketplace refresh 成功后重跑。
+
 ## Historical Blockers And Later Evidence
 
 - `EV-026` related to `TD-031`, `REQ-020`, `REQ-034`: 远端 marketplace 安装刷新曾未闭合，后续已由 `EV-029` 关闭
@@ -268,4 +274,4 @@
   - Evidence: `python -m py_compile ...` 针对 touched runtime/surface/selftest/test 文件通过；focused projection/helper pytest 为 `63 passed in 1.75s`；runtime/bridge/surface targeted pytest 为 `100 passed in 745.42s`；target manifest `runtime-core selftest-core surface-cli claude-bridge plugin-surface` 为 `109 passed, 114 deselected in 816.51s`
   - Evidence: 核心五项 selftest `discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`observe.object_graph` 返回 `overall_status=passed`；`python -m thoth.cli doctor --version` 输出 `version=0.1.12` 与 `last_updated=2026-05-08T15:09:44Z`
   - Evidence: 首次远端-only `codex plugin marketplace upgrade thoth` 因 GitHub 443 连接超时失败，分类为环境/network blocker；未使用本机 checkout、cache 或 `rsync` 兜底覆盖安装
-  - Conclusion: 本次代码面已把 Codex installed-state public surface 从 skill-only package 修正为 runtime package，并把 Claude host -> Codex worker 的关键 public command 短运行纳入 selftest；最终安装刷新与安装态重跑必须在 `dev` / `main` 推送后继续通过远端 marketplace 完成
+  - Conclusion: 本次代码面已把 Codex installed-state public surface 从 skill-only package 修正为 runtime package，并把 Claude host -> Codex worker 的关键 public command 短运行纳入 selftest；发布面代码已通过验证并推送，安装刷新后续 blocker 见 `EV-039`

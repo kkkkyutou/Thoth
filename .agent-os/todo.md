@@ -46,7 +46,10 @@
 
 ## Blocked
 
-- None
+- `TD-037` `[blocked]`: 完成 `0.1.12` 远端-only Claude/Codex 安装刷新与安装态矩阵重跑
+  - Related items: `WS-003`, `REQ-020`, `REQ-034`, `REQ-036`, `AC-027`
+  - Blocker: GitHub remote access is currently unstable from this machine. Claude `plugin marketplace update thoth` direct path timed out after 180s; proxy retry failed with SSH authentication error from the marketplace clone path. Codex `plugin marketplace upgrade thoth` failed with proxy TLS termination error and direct GitHub 443 timeout.
+  - Constraint: Per `REQ-034` / `CD-035`, do not use local checkout/cache/rsync as fallback. Only retry remote marketplace update/upgrade when network or GitHub access is healthy.
 
 ## Done
 
