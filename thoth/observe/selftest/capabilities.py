@@ -172,18 +172,18 @@ def _ensure_codex_hooks_enabled(recorder: Recorder) -> dict[str, Any]:
     return payload
 
 
-def _latest_codex_thoth_plugin_root() -> Path | None:
-    root = Path.home() / ".codex" / "plugins" / "cache" / "thoth" / "thoth"
-    if not root.exists():
-        return None
-    candidates = [path for path in root.iterdir() if path.is_dir()]
-    if not candidates:
-        return None
-    return sorted(candidates, key=lambda path: path.stat().st_mtime, reverse=True)[0]
+def _codex_thoth_plugin_roots() -> list[Path]:
+    roots: list[Path] = []
+    cache_root = Path.home() / ".codex" / "plugins" / "cache" / "thoth" / "thoth"
+    if cache_root.exists():
+        roots.extend(sorted((path for path in cache_root.iterdir() if path.is_dir()), key=lambda path: path.stat().st_mtime, reverse=True))
+    marketplace_root = Path.home() / ".codex" / ".tmp" / "marketplaces" / "thoth"
+    if marketplace_root.exists():
+        roots.append(marketplace_root)
+    return roots
 
 
-def _ensure_codex_skill_installed(recorder: Recorder) -> dict[str, Any]:
-    plugin_root = _latest_codex_thoth_plugin_root()
+def _codex_plugin_install_payload(plugin_root: Path | None) -> dict[str, Any]:
     manifest = plugin_root / ".codex-plugin" / "plugin.json" if plugin_root else None
     skill = plugin_root / "plugins" / "thoth" / "skills" / CODEX_SKILL_NAME / "SKILL.md" if plugin_root else None
     legacy_skill = plugin_root / "skills" / CODEX_SKILL_NAME / "SKILL.md" if plugin_root else None
@@ -197,15 +197,27 @@ def _ensure_codex_skill_installed(recorder: Recorder) -> dict[str, Any]:
         "runtime_entry": _path_snapshot(runtime_entry) if runtime_entry else None,
         "wrapper": _path_snapshot(wrapper) if wrapper else None,
     }
-    artifact = recorder.write_json("codex-plugin/installed-thoth.json", payload)
-    effective = bool(
-        plugin_root
-        and manifest
-        and manifest.exists()
-        and ((skill and skill.exists()) or (legacy_skill and legacy_skill.exists()))
-        and runtime_entry
-        and runtime_entry.exists()
+    return payload
+
+
+def _codex_plugin_payload_effective(payload: dict[str, Any]) -> bool:
+    manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else {}
+    skill = payload.get("skill") if isinstance(payload.get("skill"), dict) else {}
+    legacy_skill = payload.get("legacy_skill") if isinstance(payload.get("legacy_skill"), dict) else {}
+    runtime_entry = payload.get("runtime_entry") if isinstance(payload.get("runtime_entry"), dict) else {}
+    return bool(
+        payload.get("plugin_root")
+        and manifest.get("exists")
+        and (skill.get("exists") or legacy_skill.get("exists"))
+        and runtime_entry.get("exists")
     )
+
+
+def _ensure_codex_skill_installed(recorder: Recorder) -> dict[str, Any]:
+    payloads = [_codex_plugin_install_payload(root) for root in _codex_thoth_plugin_roots()]
+    payload = next((item for item in payloads if _codex_plugin_payload_effective(item)), payloads[0] if payloads else _codex_plugin_install_payload(None))
+    artifact = recorder.write_json("codex-plugin/installed-thoth.json", {"selected": payload, "candidates": payloads})
+    effective = _codex_plugin_payload_effective(payload)
     recorder.add(
         "preflight.codex_plugin_install",
         "passed" if effective else "failed",

@@ -106,6 +106,27 @@ def test_ensure_codex_skill_installed_reads_installed_plugin_without_global_writ
     assert payload["runtime_entry"]["exists"] is True
 
 
+def test_ensure_codex_skill_installed_accepts_marketplace_runtime_root(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    stale_cache = home / ".codex" / "plugins" / "cache" / "thoth" / "thoth" / "0.1.11"
+    stale_cache.mkdir(parents=True)
+    marketplace_root = home / ".codex" / ".tmp" / "marketplaces" / "thoth"
+    (marketplace_root / ".codex-plugin").mkdir(parents=True)
+    (marketplace_root / ".codex-plugin" / "plugin.json").write_text('{"name":"thoth"}\n', encoding="utf-8")
+    skill = marketplace_root / "plugins" / "thoth" / "skills" / "thoth"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# test\n", encoding="utf-8")
+    (marketplace_root / "scripts").mkdir()
+    (marketplace_root / "scripts" / "thoth-cli-entry.py").write_text("# entry\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+
+    recorder = Recorder(tmp_path / "artifacts")
+    payload = _ensure_codex_skill_installed(recorder)
+
+    assert payload["plugin_root"] == str(marketplace_root)
+    assert payload["runtime_entry"]["exists"] is True
+
+
 def test_ensure_codex_repo_hooks_writes_project_local_bridge_config(tmp_path):
     project = tmp_path / "project"
     recorder = Recorder(tmp_path / "artifacts")
@@ -124,7 +145,8 @@ def test_ensure_codex_repo_hooks_writes_project_local_bridge_config(tmp_path):
     assert payload["effective"] is True
 
 
-def test_preflight_host_real_reports_missing_installed_codex_plugin(tmp_path):
+def test_preflight_host_real_reports_missing_installed_codex_plugin(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     recorder = Recorder(tmp_path / "artifacts")
 
     with pytest.raises(RuntimeError, match="installed Thoth plugin"):
