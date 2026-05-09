@@ -29,6 +29,7 @@ from thoth.prompt_specs import (
     build_codex_selftest_review_probe_prompt,
     codex_installed_runtime_shell_command,
 )
+from thoth.run.io import project_hash
 from thoth.run.ledger import complete_run, heartbeat_run
 from thoth.selftest_seed import seed_host_real_app
 
@@ -38,6 +39,7 @@ from .processes import *
 from .capabilities import *
 from .fixtures import *
 from .hard_suite import *
+from .hard_suite import _local_supervisor
 
 def _looks_like_transient_host_outage(result: CommandResult) -> bool:
     detail = f"{result.stdout}\n{result.stderr}".lower()
@@ -56,6 +58,22 @@ def _looks_like_transient_host_outage(result: CommandResult) -> bool:
             "无可用渠道",
         )
     )
+
+
+def _run_supervisor_path(project_dir: Path, run_id: str) -> Path:
+    return _host_local_registry_root(project_dir) / "runs" / run_id / "supervisor.json"
+
+
+def _controller_supervisor_path(project_dir: Path, controller_id: str) -> Path:
+    return _host_local_registry_root(project_dir) / "controllers" / controller_id / "supervisor.json"
+
+
+def _host_local_state_env(project_dir: Path) -> dict[str, str]:
+    return {"THOTH_LOCAL_STATE_DIR": str(project_dir / ".thoth" / "local-state")}
+
+
+def _host_local_registry_root(project_dir: Path) -> Path:
+    return Path(_host_local_state_env(project_dir)["THOTH_LOCAL_STATE_DIR"]) / project_hash(project_dir)
 
 
 def _looks_like_claude_bridge_cold_start(result: CommandResult) -> bool:
@@ -560,7 +578,7 @@ def _run_host_real_flow(
             str(project_dir / ".thoth" / "runs" / run_id / "run.json"),
             str(project_dir / ".thoth" / "runs" / run_id / "state.json"),
             str(project_dir / ".thoth" / "runs" / run_id / "events.jsonl"),
-            str(project_dir / ".thoth" / "local" / "runs" / run_id / "supervisor.json"),
+            str(_run_supervisor_path(project_dir, run_id)),
         ])
         if not ok:
             raise RuntimeError(f"{host_name} step {step_id} did not establish the expected runtime contract")
@@ -712,7 +730,7 @@ def _run_host_real_flow(
         if not controller_id:
             controller_id = _latest_controller_id(exclude_controller_ids=seen_controller_ids)
         controller_path = project_dir / ".thoth" / "objects" / "controller" / f"{controller_id}.json"
-        supervisor_path = project_dir / ".thoth" / "local" / "controllers" / controller_id / "supervisor.json"
+        supervisor_path = _controller_supervisor_path(project_dir, controller_id)
         controller = _read_json(controller_path) if controller_id else {}
         supervisor = _read_json(supervisor_path) if controller_id else {}
         controller_payload = controller.get("payload") if isinstance(controller.get("payload"), dict) else {}

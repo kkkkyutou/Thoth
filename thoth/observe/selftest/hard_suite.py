@@ -22,6 +22,7 @@ from urllib.request import urlopen
 import yaml
 
 from thoth.init.render import render_codex_hooks_payload
+from thoth.run.io import project_hash
 from thoth.plan.compiler import compile_task_authority
 from thoth.run.ledger import complete_run, heartbeat_run
 from thoth.selftest_seed import seed_host_real_app
@@ -33,6 +34,14 @@ from .capabilities import *
 from .fixtures import *
 
 def _local_supervisor(project_dir: Path, run_id: str) -> dict[str, Any]:
+    selftest_path = project_dir / ".thoth" / "local-state" / project_hash(project_dir) / "runs" / run_id / "supervisor.json"
+    if selftest_path.exists():
+        try:
+            payload = json.loads(selftest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict):
+            return payload
     probe = _run_command(
         [
             PYTHON,

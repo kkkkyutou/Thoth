@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .host_common import (
     _expected_host_review_result,
+    _host_local_state_env,
     _looks_like_transient_host_outage,
     _normalize_codex_public_command_result,
     _run_codex_public_command,
@@ -28,7 +29,9 @@ def _host_codex(
 
     def run_public_command(public_command: str, *, recorder: Recorder, artifact_name: str, timeout: float = 240) -> tuple[CommandResult, list[str]]:
         done_token = f"{_safe_name(artifact_name).upper()}_DONE"
-        extra_env = {"THOTH_TEST_EXTERNAL_WORKER_MODE": "hold"} if "--sleep" in public_command.split() else None
+        extra_env = _host_local_state_env(project_dir)
+        if "--sleep" in public_command.split():
+            extra_env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "hold"
         result, artifacts = _run_codex_public_command(
             project_dir,
             public_command,

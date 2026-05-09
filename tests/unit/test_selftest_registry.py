@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from thoth.observe.selftest.atomic_cases import _host_case_window
+from thoth.observe.selftest.atomic_cases import _host_case_window, _materialize_selftest_project
 from thoth.observe.selftest.processes import _SelftestBudget
+from thoth.observe.selftest.recorder import Recorder
+from thoth.plan.doctor import build_doctor_payload
 from thoth.observe.selftest.registry import CASE_REGISTRY, SelftestCaseSpec, resolve_case_specs
 from thoth.observe.selftest.runner import _cap_selftest_timeout, main, run_selftest
 
@@ -75,6 +77,28 @@ def test_host_case_windows_start_from_minimal_prerequisite_step():
         "auto",
         "auto-stop",
     )
+
+
+def test_materialized_selftest_project_satisfies_strict_doctor_views(tmp_path):
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    recorder = Recorder(tmp_path / "artifacts")
+
+    _materialize_selftest_project(
+        project_dir,
+        recorder,
+        include_dashboard=False,
+        label="setup.materialize",
+    )
+
+    for relative_path in (
+        ".thoth/docs/agent-entry.md",
+        ".thoth/docs/source-map.json",
+        ".thoth/docs/object-graph-summary.json",
+    ):
+        assert (project_dir / relative_path).is_file()
+    payload = build_doctor_payload(project_dir)
+    assert payload["overall_ok"] is True
 
 
 def test_run_selftest_writes_case_keyed_report(monkeypatch, tmp_path):

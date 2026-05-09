@@ -5,6 +5,7 @@ from pathlib import Path
 from .fixtures import _compact_json, _host_real_contract_payloads, _host_real_decision_payload, _shell_quote
 from .host_common import (
     _expected_host_review_result,
+    _host_local_state_env,
     _looks_like_transient_host_outage,
     _read_claude_bridge_events,
     _run_claude_public_command,
@@ -25,7 +26,9 @@ def _host_claude(
     artifacts = [_write_claude_local_settings(project_dir, repo_root, recorder)]
 
     def run_public_command(public_command: str, *, recorder: Recorder, artifact_name: str, timeout: float = 240) -> tuple[CommandResult, list[str]]:
-        extra_env = {"THOTH_TEST_EXTERNAL_WORKER_MODE": "hold"} if "--sleep" in public_command.split() else None
+        extra_env = _host_local_state_env(project_dir)
+        if "--sleep" in public_command.split():
+            extra_env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "hold"
         return _run_claude_public_command(
             repo_root,
             project_dir,

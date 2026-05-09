@@ -15,6 +15,9 @@ from thoth.init.generators import (
     generate_thoth_runtime,
     parse_config,
 )
+from thoth.init.audit import audit_repository_state
+from thoth.init.migration import _write_source_map
+from thoth.init.preview import build_init_preview
 from thoth.init.render import render_codex_hooks_payload
 from thoth.plan.compiler import compile_task_authority
 from thoth.plan.store import load_work_for_execution
@@ -104,6 +107,10 @@ def _materialize_selftest_project(
     generate_codex_hook_projection(project_dir)
     if include_dashboard:
         generate_dashboard(config, project_dir)
+    audit = audit_repository_state(project_dir)
+    preview = build_init_preview(project_dir, audit)
+    _write_source_map(project_dir, audit, preview)
+    compile_task_authority(project_dir)
     recorder.add(
         label,
         "passed",
