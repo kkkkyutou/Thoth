@@ -46,10 +46,7 @@
 
 ## Blocked
 
-- `TD-037` `[blocked]`: 完成 `0.1.12` 远端-only Claude/Codex 安装刷新与安装态矩阵重跑
-  - Related items: `WS-003`, `REQ-020`, `REQ-034`, `REQ-036`, `AC-027`
-  - Blocker: GitHub remote access is currently unstable from this machine. Claude `plugin marketplace update thoth` direct path timed out after 180s; proxy retry failed with SSH authentication error from the marketplace clone path. Codex `plugin marketplace upgrade thoth` failed with proxy TLS termination error and direct GitHub 443 timeout.
-  - Constraint: Per `REQ-034` / `CD-035`, do not use local checkout/cache/rsync as fallback. Only retry remote marketplace update/upgrade when network or GitHub access is healthy.
+- None
 
 ## Done
 
@@ -86,6 +83,11 @@
 - `TD-036` `[verified]`: 收紧安装态 Codex 全命令测试与 Claude 宿主委派 Codex worker 回归矩阵
   - Related items: `WS-003`, `REQ-019`, `REQ-020`, `REQ-034`, `REQ-036`, `AC-027`
   - Evidence: Codex plugin package 已从 skill-only 改为 runtime package；Codex micro prompt 与 selftest 从 PATH 或安装态 plugin cache 解析 runtime，不回退本地 checkout；host-real Codex hooks 只写 disposable test repo `.codex/`；新增 Codex/Claude `auto` sleep/stop selftest cases；Claude `run` / `loop` / `review` / `auto` 均以 `--executor codex` 覆盖真实委派；验证见 `EV-038`
+- `TD-037` `[verified]`: 完成 `0.1.12` 远端-only Claude/Codex 安装刷新与安装态矩阵重跑
+  - Related items: `WS-003`, `REQ-020`, `REQ-034`, `REQ-036`, `AC-027`
+  - Evidence: 使用 repo-local credential 与远端 marketplace 流程刷新后，Claude `thoth@thoth` 已从 `0.1.11` 逐步更新到 `0.1.13`，Codex marketplace 已通过远端 sparse `SeeleAI/Thoth` 根刷新到可执行 runtime root；未用本地 checkout/cache/rsync 覆盖安装。
+  - Evidence: 本轮发布 `0.1.14` 进一步修复 installed-state selftest 剩余阻塞：fixture 生成 strict doctor 所需读面，host-real command 注入 project-local `THOTH_LOCAL_STATE_DIR`，验证器读取同一 local registry，`auto.stop` case 预算覆盖两次 host exec。
+  - Evidence: `python -m py_compile ...` 通过；focused pytest `tests/unit/test_selftest_registry.py tests/unit/test_selftest_helpers.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py` 为 `67 passed`；`python -m thoth.cli doctor --version` 输出 `version=0.1.14`；installed-state Codex slice `surface.codex.init/status/doctor/init_sync/auto.sleep_prepare/auto.stop` 为 `overall_status=passed`。
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立
