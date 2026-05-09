@@ -89,6 +89,11 @@
   - Evidence: 本轮发布 `0.1.14` 进一步修复 installed-state selftest 剩余阻塞：fixture 生成 strict doctor 所需读面，host-real command 注入 project-local `THOTH_LOCAL_STATE_DIR`，验证器读取同一 local registry，`auto.stop` case 预算覆盖两次 host exec。
   - Evidence: `python -m py_compile ...` 通过；focused pytest `tests/unit/test_selftest_registry.py tests/unit/test_selftest_helpers.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py` 为 `67 passed`；`python -m thoth.cli doctor --version` 输出 `version=0.1.14`；installed-state Codex slice `surface.codex.init/status/doctor/init_sync/auto.sleep_prepare/auto.stop` 为 `overall_status=passed`。
   - Evidence: 远端-only 安装刷新完成：Claude `plugin update thoth@thoth --scope user` 输出从 `0.1.13` 更新到 `0.1.14`；Codex `plugin marketplace upgrade thoth` 成功，installed marketplace root 的 `doctor --version` 输出 `version=0.1.14`；post-upgrade installed-state Codex slice 同组 6 项继续 `overall_status=passed`。
+- `TD-038` `[verified]`: 强化 `discuss` 长对话语义 authority 保存与 runtime `plan` 防漂移 gate
+  - Related items: `WS-002`, `WS-003`, `WS-005`, `REQ-024`, `REQ-030`, `REQ-031`, `REQ-034`
+  - Evidence: 新增 `thoth/plan/discuss.py` 的 draft checkpoint / close authority service；`discuss` packet 暴露 hidden checkpoint/close protocol command，close 后写入 `work_item.payload.authority_context`，并保持 `discussion -> decision -> work_item` 三对象模型。
+  - Evidence: Runtime `plan` phase 现在必须输出 `authority_complete`、`authority_coverage`、`open_gaps`、`forbidden_assumptions_used`；存在缺口或未授权假设时以 `needs_input` terminal failed，不进入 `execute`。`execute` phase 必须读取 `plan.json` 并报告 `plan_artifact_read=true` 与 `plan_deviations`。
+  - Evidence: `python -m py_compile thoth/objects.py thoth/plan/discuss.py thoth/plan/store.py thoth/surface/plan_commands.py thoth/surface/cli.py thoth/surface/handlers.py thoth/prompt_specs.py thoth/prompt_validators.py thoth/run/phases.py thoth/run/worker.py thoth/projections.py` 通过；targeted pytest `64 passed in 597.00s` 与 lifecycle/bridge/dashboard pytest `14 passed in 266.40s`；核心五项 selftest 为 `overall_status=passed`，报告路径 `.tmp_pytest/thoth-selftest-discuss-plan-authority.json`，生成时间 `2026-05-09T06:20:41Z`。
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立

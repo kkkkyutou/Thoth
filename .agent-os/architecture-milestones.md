@@ -127,12 +127,15 @@
 - `loop` 只通过 `controller` 对同一个 `work_id@revision` 反复创建 child run，直到 validated、budget exhausted、failed 或 stopped
 - `eval_contract` 与 `runtime_policy` 已成为 runnable `work_item` 的 runtime-hard 合同；CLI 不提供高优先级覆盖入口
 
-2026-04-29 对上述模型作出替换性收敛：
+2026-04-29 至 2026-05-09 对上述模型作出替换性收敛与补强：
 
 - `Plan` 不再是 `Decision -> Contract -> Task` compiler；它现在只通过 `Store` 写 `discussion`、`decision`、`work_item` 对象，并生成 `.thoth/docs` 只读视图。
 - `Contract` 不再是对象 kind；原 contract 的 goal、context、constraints、execution plan、eval contract、runtime policy 与 decisions 已并入 `work_item.payload`。
 - `work_result` 不再是 `.thoth/project/tasks` authority；work-level 当前结论只作为 `.thoth/docs/work-results/*.result.json` read view，原始执行真相仍来自 `run`、`phase_result` 与 `artifact` 对象及 `.thoth/runs/*` ledger。
 - `run` 固定绑定 `work_id@revision`，只做一次 `plan -> execute -> validate -> reflect` 最小执行尝试。
+- `discuss` 的长对话 authority 采用语义无损结构化保存：未闭环时可在 `discussion.payload` 写 draft checkpoint，闭环时将目标、非目标、约束、accepted decisions、rejected options、acceptance、context evidence、risks、run instructions 与 open questions 写入 `work_item.payload.authority_context`，并保留短证据锚点。
+- `run` / `loop` 的 `plan` phase 必须读取 `strict_task.authority_context` 并输出 `authority_complete`、`authority_coverage`、`open_gaps` 与 `forbidden_assumptions_used`；若存在 authority 缺口，RuntimeDriver 以 `needs_input` terminal failed，不进入 `execute`。
+- `execute` phase 必须读取本次 `plan.json` 并报告 `plan_artifact_read` 与 `plan_deviations`；`plan.json` 是本次 run 的执行证据和 execute 输入，不反写 planning authority。
 - `loop` 与 `auto` 是公开 controller service：loop 产生 child runs，auto 记录线性 queue cursor 并通过 child loops 推进；`orchestration` 仅保留为内部 controller capability。
 - active run/controller 引用的 `work_item` 完全锁定；`Store.update/tombstone/link/unlink` 对该 work item 必须拒绝。
 
@@ -170,3 +173,4 @@
 - 2026-05-01: 用户锁定最终最小公开命令组合：保留 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`；`sync` 改为 `init --sync`，`report` 改为 `status --report`，`orchestration` / `extend` 下沉为内部能力；`auto` 面向离席执行，默认 live、可 sleep，按优先级推进可行动 work。
 - 2026-05-06: `auto` 进一步锁定为 durable background worker + observer monitor 分层；live 不持有执行权，Claude `Monitor` 只是可选观察增强，正确性仍以 Thoth controller、worker supervisor、child run ledger 与 watch JSONL 为准。
 - 2026-05-08: 安装态测试成为 Codex public surface 的验收依据；Codex plugin 不允许再只发布 skill，必须随 package 提供 runtime entrypoint；Claude 宿主委派 Codex worker 的 `run`、`loop`、`review`、`auto` 必须通过真实 `--executor codex` 短运行覆盖。
+- 2026-05-09: `discuss` 长对话 authority 保存补强为语义无损结构化 capsule + draft checkpoint + 显式 close；RuntimeDriver 的 `plan` phase 必须证明 closed `authority_context` 覆盖完整，发现缺口以 `needs_input` 返回 `discuss`，`execute` phase 必须读取本 run 的 `plan.json` 并记录偏离。
