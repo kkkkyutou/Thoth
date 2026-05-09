@@ -217,6 +217,52 @@ def render_plugin_manifest() -> dict:
     }
 
 
+def render_claude_plugin_manifest() -> dict:
+    return {
+        "name": PLUGIN_NAME,
+        "version": PLUGIN_VERSION,
+        "description": "Dashboard-centric Agent Project OS for auditable AI execution, persistent project state, and human-visible workflow orchestration.",
+        "author": {
+            "name": "SeeleAI",
+            "url": "https://github.com/SeeleAI",
+        },
+        "homepage": PLUGIN_REPOSITORY,
+        "repository": PLUGIN_REPOSITORY,
+        "license": "MIT",
+        "keywords": [
+            "research",
+            "project-management",
+            "dashboard",
+            "autonomous",
+            "audit",
+            "execution",
+        ],
+    }
+
+
+def render_claude_marketplace() -> dict:
+    return {
+        "name": PLUGIN_NAME,
+        "owner": {
+            "name": "SeeleAI",
+            "url": "https://github.com/SeeleAI",
+        },
+        "plugins": [
+            {
+                "name": PLUGIN_NAME,
+                "description": "Dashboard-centric Agent Project OS with project bootstrap, execution loops, audit visibility, validation, reporting, and executor-mode Codex delegation.",
+                "version": PLUGIN_VERSION,
+                "author": {
+                    "name": "SeeleAI",
+                    "url": "https://github.com/SeeleAI",
+                },
+                "source": "./",
+                "category": "productivity",
+            }
+        ],
+    }
+
+
 def render_codex_marketplace() -> dict:
     return {
         "name": PLUGIN_NAME,
@@ -288,6 +334,15 @@ def sync_repository_surfaces(root: Path | None = None) -> list[Path]:
     plugin_path.parent.mkdir(parents=True, exist_ok=True)
     plugin_path.write_text(json.dumps(render_plugin_manifest(), indent=2) + "\n", encoding="utf-8")
     written.append(plugin_path)
+
+    claude_plugin_path = repo_root / ".claude-plugin" / "plugin.json"
+    claude_plugin_path.parent.mkdir(parents=True, exist_ok=True)
+    claude_plugin_path.write_text(json.dumps(render_claude_plugin_manifest(), indent=2) + "\n", encoding="utf-8")
+    written.append(claude_plugin_path)
+
+    claude_marketplace_path = repo_root / ".claude-plugin" / "marketplace.json"
+    claude_marketplace_path.write_text(json.dumps(render_claude_marketplace(), indent=2) + "\n", encoding="utf-8")
+    written.append(claude_marketplace_path)
 
     marketplace_path = repo_root / ".agents" / "plugins" / "marketplace.json"
     marketplace_path.parent.mkdir(parents=True, exist_ok=True)
