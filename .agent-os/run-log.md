@@ -2,6 +2,12 @@
 
 ## Entries
 
+- 2026-05-09 00:00 UTC [repo-local Git credential and dev blocker push]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-003`
+  - State changes: 按用户要求只在当前仓库配置 GitHub 认证，不修改全局 git config：移除本仓库临时 `extraHeader` 后，改为 repo-local `credential.helper=store --file=.git/thoth-github-credentials`，remote URL 保持 `https://github.com/SeeleAI/Thoth.git`，不把 token 写入 remote URL。
+  - Evidence produced: `git fetch origin` 成功；`git pull --ff-only origin dev` 返回 already up to date；`git push origin dev` 成功，将 blocker 记账提交 `a3745f4 docs: record install refresh blocker` 推送到 `origin/dev`。
+  - Next likely action: 继续 `TD-037`，在不使用本地覆盖兜底的前提下，等待 marketplace/GitHub access 可用后执行 Claude/Codex 远端-only 安装刷新与安装态矩阵重跑。
+
 - 2026-05-08 15:30 UTC [installed-state Codex and Claude-to-Codex matrix]
   - Worked on: `OBJ-001`, `WS-003`, `WS-005`
   - State changes: 按用户要求把测试目标收紧为 installed-state：Codex plugin package 从 `plugins/thoth` skill-only 目录改为仓库根 runtime package，生成根 `.codex-plugin/plugin.json`，marketplace path 改为 `.`，skill path 改为 `./plugins/thoth/skills`，并删除旧 `plugins/thoth/.codex-plugin/plugin.json`。Codex `$thoth` micro prompt 与 selftest helper 现在优先执行 PATH `thoth`，否则解析已安装 Codex plugin cache 下的 `bin/thoth` 或 `scripts/thoth-cli-entry.py`，不回退当前 checkout。host-real preflight 不再写全局 Codex skill 或 global hooks，Codex hooks 只写 disposable project `.codex/config.toml` / `.codex/hooks.json`。Claude host flow 对 `run`、`loop`、`review`、`auto` 均使用真实 `--executor codex` 短运行，并新增 Codex/Claude `auto.sleep_prepare` 与 `auto.stop` selftest cases。
