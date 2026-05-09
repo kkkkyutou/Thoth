@@ -11,6 +11,8 @@ from thoth.projections import (
     PLUGIN_PACKAGE_DIR,
     PLUGIN_SKILLS_PATH,
     render_claude_command,
+    render_claude_marketplace,
+    render_claude_plugin_manifest,
     render_codex_marketplace,
     render_codex_agent_metadata,
     render_codex_skill,
@@ -151,6 +153,14 @@ def test_plugin_manifest_matches_official_schema_shape():
         assert removed_field not in manifest
 
 
+def test_claude_manifests_use_shared_plugin_version():
+    manifest = render_claude_plugin_manifest()
+    marketplace = render_claude_marketplace()
+    assert manifest["version"] == PLUGIN_VERSION
+    assert marketplace["plugins"][0]["version"] == PLUGIN_VERSION
+    assert marketplace["plugins"][0]["source"] == "./"
+
+
 def test_codex_marketplace_points_to_plugin_package():
     marketplace = render_codex_marketplace()
     assert marketplace["name"] == "thoth"
@@ -172,3 +182,7 @@ def test_sync_repository_surfaces_writes_generated_files(tmp_path):
     assert (tmp_path / "plugins" / "thoth" / "skills" / "thoth" / "agents" / "openai.yaml").exists()
     manifest = json.loads((tmp_path / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert manifest["skills"] == PLUGIN_SKILLS_PATH
+    claude_manifest = json.loads((tmp_path / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    claude_marketplace = json.loads((tmp_path / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    assert claude_manifest["version"] == PLUGIN_VERSION
+    assert claude_marketplace["plugins"][0]["version"] == PLUGIN_VERSION

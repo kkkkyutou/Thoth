@@ -38,7 +38,7 @@ def _last_install_or_upgrade_time() -> str:
     candidates.extend(
         [
             repo_root / ".claude-plugin" / "plugin.json",
-            repo_root / "plugins" / "thoth" / ".codex-plugin" / "plugin.json",
+            repo_root / ".codex-plugin" / "plugin.json",
             repo_root / "pyproject.toml",
         ]
     )

@@ -71,6 +71,18 @@ def test_single_official_codex_plugin_package_and_marketplace():
     assert "public_skill_path" not in manifest
 
 
+def test_claude_plugin_manifests_match_release_version():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    version_match = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE)
+    assert version_match
+    expected_version = version_match.group(1)
+
+    plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    assert plugin["version"] == expected_version
+    assert marketplace["plugins"][0]["version"] == expected_version
+
+
 def test_codex_agent_metadata_exists():
     """Plugin-packaged OpenAI metadata should exist for the installable Codex skill."""
     plugin_metadata_path = ROOT / "plugins" / "thoth" / "skills" / "thoth" / "agents" / "openai.yaml"
