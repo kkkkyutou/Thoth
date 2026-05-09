@@ -88,6 +88,7 @@
   - Evidence: 使用 repo-local credential 与远端 marketplace 流程刷新后，Claude `thoth@thoth` 已从 `0.1.11` 逐步更新到 `0.1.13`，Codex marketplace 已通过远端 sparse `SeeleAI/Thoth` 根刷新到可执行 runtime root；未用本地 checkout/cache/rsync 覆盖安装。
   - Evidence: 本轮发布 `0.1.14` 进一步修复 installed-state selftest 剩余阻塞：fixture 生成 strict doctor 所需读面，host-real command 注入 project-local `THOTH_LOCAL_STATE_DIR`，验证器读取同一 local registry，`auto.stop` case 预算覆盖两次 host exec。
   - Evidence: `python -m py_compile ...` 通过；focused pytest `tests/unit/test_selftest_registry.py tests/unit/test_selftest_helpers.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py` 为 `67 passed`；`python -m thoth.cli doctor --version` 输出 `version=0.1.14`；installed-state Codex slice `surface.codex.init/status/doctor/init_sync/auto.sleep_prepare/auto.stop` 为 `overall_status=passed`。
+  - Evidence: 远端-only 安装刷新完成：Claude `plugin update thoth@thoth --scope user` 输出从 `0.1.13` 更新到 `0.1.14`；Codex `plugin marketplace upgrade thoth` 成功，installed marketplace root 的 `doctor --version` 输出 `version=0.1.14`；post-upgrade installed-state Codex slice 同组 6 项继续 `overall_status=passed`。
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立
