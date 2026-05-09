@@ -142,6 +142,7 @@ def minimal_task_authority(strict_task: dict[str, Any]) -> dict[str, Any]:
         "work_revision": strict_task.get("revision"),
         "title": strict_task.get("title"),
         "goal_statement": strict_task.get("goal_statement"),
+        "constraints": strict_task.get("constraints", []),
         "implementation_recipe": strict_task.get("implementation_recipe", []),
         "eval_entrypoint": strict_task.get("eval_entrypoint", {}),
         "primary_metric": strict_task.get("primary_metric", {}),
@@ -149,6 +150,7 @@ def minimal_task_authority(strict_task: dict[str, Any]) -> dict[str, Any]:
         "runtime_contract": normalize_runtime_contract(strict_task.get("runtime_contract")),
         "validate_output_schema": normalize_validate_output_schema(strict_task.get("validate_output_schema")),
         "review_binding": strict_task.get("review_binding", {}),
+        "authority_context": strict_task.get("authority_context", {}),
     }
     if isinstance(strict_task.get("review_expectation"), dict):
         payload["review_expectation"] = strict_task.get("review_expectation")
@@ -293,8 +295,11 @@ def _phase_input_for_run(handle: RunHandle, controller: dict[str, Any]) -> dict[
             "required_fields": list(PHASE_REQUIRED_FIELDS[phase]),
             "summary_budget_utf8": phase_prompt_authority(phase)["summary_budget_utf8"],
             "validate_output_schema": strict_task.get("validate_output_schema") if phase == "validate" else None,
+            "plan_artifact_required": phase == "execute",
         },
     }
+    if phase == "execute":
+        packet["required_plan_artifact"] = controller.get("artifacts", {}).get("plan") if isinstance(controller.get("artifacts"), dict) else None
     return packet
 
 
@@ -419,6 +424,18 @@ def _build_run_result_payload(controller: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _plan_has_authority_gaps(payload: dict[str, Any]) -> bool:
+    if payload.get("authority_complete") is not True:
+        return True
+    open_gaps = payload.get("open_gaps")
+    if isinstance(open_gaps, list) and any(isinstance(item, str) and item.strip() for item in open_gaps):
+        return True
+    forbidden = payload.get("forbidden_assumptions_used")
+    if isinstance(forbidden, list) and any(isinstance(item, str) and item.strip() for item in forbidden):
+        return True
+    return False
+
+
 def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase: str, payload: dict[str, Any]) -> PhaseOutcome:
     phase_statuses = controller.get("phase_statuses") if isinstance(controller.get("phase_statuses"), dict) else {}
     phase_statuses[phase] = "completed"
@@ -429,6 +446,19 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
     controller["next_hint"] = payload.get("next_plan_hint") if phase == "reflect" else controller.get("next_hint")
     _write_phase_state(handle, controller)
     if phase == "plan":
+        if _plan_has_authority_gaps(payload):
+            phase_statuses["plan"] = "failed"
+            controller["phase_statuses"] = phase_statuses
+            controller["next_hint"] = "return to discuss and close authority gaps"
+            _write_phase_state(handle, controller)
+            return PhaseOutcome(
+                True,
+                "failed",
+                str(payload.get("summary") or "plan needs input"),
+                None,
+                result_payload=_build_run_result_payload(controller),
+                reason="needs_input",
+            )
         _update_state(handle, phase="execute", progress_pct=RUN_PHASE_PROGRESS["plan"])
         return PhaseOutcome(False, "running", str(payload.get("summary") or "plan complete"), "execute")
     if phase == "execute":

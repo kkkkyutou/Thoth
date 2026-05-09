@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.1.14"
+PLUGIN_VERSION = "0.1.15"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -48,8 +48,14 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
             (
                 "- If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.",
                 "- Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.",
-                "- Use `packet.strict_task.goal_statement`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.",
                 "- Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.",
+            )
+        )
+    if spec.command_id in {"run", "loop"}:
+        rules.extend(
+            (
+                "- Use `packet.strict_task.goal_statement`, `packet.strict_task.authority_context`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.",
+                "- If plan reports `authority_complete=false` or `reason=needs_input`, stop and route the user back to `/thoth:discuss` instead of guessing.",
             )
         )
     if spec.command_id == "auto":
@@ -70,6 +76,15 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
         )
         rules.append(
             "- If `packet.protocol_commands.complete_exact` exists, execute that exact completion command rather than deriving your own variant."
+        )
+    if spec.command_id == "discuss":
+        rules.extend(
+            (
+                "- Use AskUserQuestion until goals, non-goals, constraints, accepted decisions, rejected options, acceptance, context evidence, risks, run instructions, and open questions are explicit.",
+                "- On major semantic changes, write a draft authority checkpoint through `packet.protocol_commands.checkpoint_authority`.",
+                "- When no material assumptions remain, write a semantic-lossless closure through `packet.protocol_commands.close_authority`.",
+                "- Do not create ready work if any open_questions remain in the authority capsule.",
+            )
         )
     return "\n".join(rules)
 

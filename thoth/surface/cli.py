@@ -98,6 +98,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
     discuss.add_argument("--work-json")
     discuss.add_argument("rest", nargs="*")
 
+    record_discussion = add_internal_parser("record-discussion-authority")
+    record_discussion.add_argument("--project-root", required=True)
+    record_discussion.add_argument("--discussion-id", required=True)
+    record_discussion.add_argument("--mode", required=True, choices=("draft", "close"))
+    record_discussion.add_argument("--authority-json-file", required=True)
+
     extend = add_internal_parser("extend")
     extend.add_argument("changed", nargs="*")
 

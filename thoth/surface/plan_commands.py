@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from thoth.plan.discuss import checkpoint_discussion_authority, close_discussion_authority, load_authority_json
 from thoth.plan.compiler import compile_task_authority
 from thoth.plan.store import create_discussion_placeholder, upsert_work_item, upsert_decision
 from thoth.objects import ActiveExecutionLock, active_work_ids
@@ -20,6 +22,36 @@ def append_project_note(project_root: Path, note_type: str, content: str) -> Pat
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
     return path
+
+
+def _protocol_command(project_root: Path, command: str, *extra: str) -> str:
+    argv = [sys.executable, "-m", "thoth.cli", command, "--project-root", str(project_root), *extra]
+    return " ".join(json.dumps(part) for part in argv)
+
+
+def _discussion_protocol_commands(project_root: Path, discussion_id: str) -> dict[str, str]:
+    return {
+        "checkpoint_authority": _protocol_command(
+            project_root,
+            "record-discussion-authority",
+            "--discussion-id",
+            discussion_id,
+            "--mode",
+            "draft",
+            "--authority-json-file",
+            "path/to/authority.json",
+        ),
+        "close_authority": _protocol_command(
+            project_root,
+            "record-discussion-authority",
+            "--discussion-id",
+            discussion_id,
+            "--mode",
+            "close",
+            "--authority-json-file",
+            "path/to/authority.json",
+        ),
+    }
 
 
 def handle_discuss(args, parser, *, project_root: Path) -> int:
@@ -55,7 +87,27 @@ def handle_discuss(args, parser, *, project_root: Path) -> int:
         body = {"work_item": work, "note_path": str(note_path)}
     else:
         decision = create_discussion_placeholder(project_root, content, host="codex")
-        body = {"discussion": decision, "note_path": str(note_path)}
+        body = {
+            "discussion": decision,
+            "note_path": str(note_path),
+            "packet": {
+                "packet_kind": "discussion_authority",
+                "discussion_id": decision["discussion_id"],
+                "protocol_commands": _discussion_protocol_commands(project_root, decision["discussion_id"]),
+                "required_authority_categories": [
+                    "goal",
+                    "non_goals",
+                    "constraints",
+                    "accepted_decisions",
+                    "rejected_options",
+                    "acceptance",
+                    "context_evidence",
+                    "risks",
+                    "run_instructions",
+                    "open_questions",
+                ],
+            },
+        }
     compiler = compile_task_authority(project_root)
     summary = compiler.get("summary", {})
     work_counts = summary.get("work_item_counts", {}) if isinstance(summary.get("work_item_counts"), dict) else {}
@@ -75,3 +127,37 @@ def handle_discuss(args, parser, *, project_root: Path) -> int:
         checks=[{"name": "object_graph_ready", "ok": True, "detail": str(work_counts.get("ready", 0))}],
     )
     return 0
+
+
+def handle_record_discussion_authority(args, parser, *, project_root: Path) -> int:
+    root = Path(args.project_root).resolve() if getattr(args, "project_root", None) else project_root
+    capsule = load_authority_json(Path(args.authority_json_file))
+    try:
+        if args.mode == "draft":
+            result = checkpoint_discussion_authority(root, discussion_id=args.discussion_id, capsule=capsule)
+            status = "ok"
+            summary = f"Checkpointed discussion authority for {args.discussion_id}"
+        else:
+            result = close_discussion_authority(root, discussion_id=args.discussion_id, capsule=capsule)
+            status = str(result.get("status") or "ok")
+            if status == "needs_input":
+                summary = f"Discussion {args.discussion_id} still has authority gaps."
+            else:
+                summary = f"Closed discussion authority for {args.discussion_id}"
+    except ActiveExecutionLock as exc:
+        print_envelope(
+            command="record-discussion-authority",
+            status="blocked_by_active_execution",
+            summary=str(exc),
+            checks=[{"name": "active_work_lock", "ok": False, "detail": "authority close rejected"}],
+        )
+        return 3
+    print_envelope(
+        command="record-discussion-authority",
+        status=status,
+        summary=summary,
+        body={"result": result},
+        refs=output_refs(root / ".thoth" / "objects" / "discussion" / f"{args.discussion_id}.json"),
+        checks=[{"name": "authority_recorded", "ok": status == "ok", "detail": args.mode}],
+    )
+    return 0 if status == "ok" else 2

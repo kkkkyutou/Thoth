@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from thoth.objects import ActiveExecutionLock, Store, flatten_work_item, work_item_ready_errors
 from thoth.plan.compiler import compile_task_authority
+from thoth.plan.discuss import checkpoint_discussion_authority, close_discussion_authority
 from thoth.plan.doctor import build_doctor_payload
 from thoth.plan.store import (
     create_discussion_placeholder,
@@ -38,6 +39,44 @@ def _ready_work_payload(decision_id: str = "DEC-001") -> dict:
         "runtime_policy": {"loop": {"max_iterations": 3, "max_runtime_seconds": 60}},
         "decisions": [decision_id],
         "missing_questions": [],
+    }
+
+
+def _closed_authority_capsule() -> dict:
+    return {
+        "semantic_events": [
+            {
+                "event_type": "goal",
+                "source_summary": "用户要验证 runtime lifecycle。",
+                "normalized_summary": "Validate runtime lifecycle.",
+                "evidence_anchor": {"turn": "user-1", "quote": "验证 runtime lifecycle"},
+                "affects": ["goal"],
+            }
+        ],
+        "goal": {
+            "source_summary": "验证 runtime lifecycle。",
+            "normalized_summary": "Validate runtime lifecycle.",
+        },
+        "non_goals": [],
+        "constraints": ["temp-project"],
+        "accepted_decisions": [
+            {
+                "decision_id": "DEC-runtime-lifecycle",
+                "question": "Which validator should be used?",
+                "selected_values": {"validator": "pytest -q"},
+                "status": "frozen",
+                "unresolved_gaps": [],
+            }
+        ],
+        "rejected_options": ["do not invent a validator"],
+        "acceptance": {"normalized_summary": "pytest must pass"},
+        "context_evidence": [{"path": "tests/unit/test_task_contracts.py"}],
+        "risks": [],
+        "run_instructions": ["Run pytest."],
+        "open_questions": [],
+        "language": {"source": "zh", "runtime": "en"},
+        "completeness": {"is_closed": True},
+        "work_item": _ready_work_payload("DEC-runtime-lifecycle"),
     }
 
 
@@ -85,6 +124,68 @@ def test_inquiring_discussion_does_not_generate_ready_work(tmp_path):
     assert discussion["status"] == "inquiring"
     assert compiler["summary"]["work_item_counts"]["ready"] == 0
     assert (tmp_path / ".thoth" / "objects" / "discussion" / f"{discussion['discussion_id']}.json").exists()
+
+
+def test_discussion_authority_checkpoint_does_not_create_ready_work(tmp_path):
+    ensure_work_authority_tree(tmp_path)
+    discussion = create_discussion_placeholder(tmp_path, "Need to preserve all decisions")
+
+    result = checkpoint_discussion_authority(
+        tmp_path,
+        discussion_id=discussion["discussion_id"],
+        capsule={
+            "semantic_events": [
+                {
+                    "event_type": "constraint",
+                    "source_summary": "不要丢失讨论里的约束。",
+                    "normalized_summary": "Do not lose discussion constraints.",
+                    "evidence_anchor": {"turn": "user-1"},
+                    "affects": ["constraints"],
+                }
+            ],
+            "open_questions": ["validator not closed"],
+            "completeness": {"is_closed": False},
+        },
+    )
+    compiler = compile_task_authority(tmp_path)
+
+    assert result["checkpoint"]["authority_context"]["semantic_events"][0]["status"] == "draft"
+    assert compiler["summary"]["work_item_counts"]["ready"] == 0
+
+
+def test_discussion_authority_close_creates_ready_work_with_context(tmp_path):
+    ensure_work_authority_tree(tmp_path)
+    discussion = create_discussion_placeholder(tmp_path, "Close runtime work")
+
+    result = close_discussion_authority(
+        tmp_path,
+        discussion_id=discussion["discussion_id"],
+        capsule=_closed_authority_capsule(),
+    )
+    compiler = compile_task_authority(tmp_path)
+    loaded = load_work_for_execution(tmp_path, "work-1")
+
+    assert result["status"] == "ok"
+    assert result["discussion"]["status"] == "closed"
+    assert compiler["summary"]["work_item_counts"]["ready"] == 1
+    assert loaded["authority_context"]["completeness"]["is_closed"] is True
+    assert loaded["authority_context"]["source_discussion_id"] == discussion["discussion_id"]
+    assert loaded["authority_context"]["semantic_events"][0]["event_type"] == "goal"
+
+
+def test_discussion_authority_close_with_open_questions_needs_input(tmp_path):
+    ensure_work_authority_tree(tmp_path)
+    discussion = create_discussion_placeholder(tmp_path, "Still ambiguous")
+    capsule = _closed_authority_capsule()
+    capsule["open_questions"] = ["acceptance not closed"]
+    capsule["completeness"] = {"is_closed": False}
+
+    result = close_discussion_authority(tmp_path, discussion_id=discussion["discussion_id"], capsule=capsule)
+    compiler = compile_task_authority(tmp_path)
+
+    assert result["status"] == "needs_input"
+    assert result["discussion"]["status"] == "inquiring"
+    assert compiler["summary"]["work_item_counts"]["ready"] == 0
 
 
 def test_doctor_reads_object_graph_and_flags_legacy_yaml(tmp_path):

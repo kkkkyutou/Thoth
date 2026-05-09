@@ -25,6 +25,21 @@ def _prepare_project(tmp_path: Path) -> Path:
     return project
 
 
+def _plan_payload(summary: str = "plan ok") -> dict:
+    return {
+        "summary": summary,
+        "authority_complete": True,
+        "authority_coverage": {"goal": True, "acceptance": True},
+        "open_gaps": [],
+        "forbidden_assumptions_used": [],
+        "execution_steps": ["edit", "test"],
+        "files_expected": [],
+        "commands_expected": ["pytest -q"],
+        "validation_plan": "run pytest",
+        "risk_assessment": "low risk",
+    }
+
+
 def test_prepare_execution_writes_packet_and_live_dispatch(tmp_path):
     project = _prepare_project(tmp_path)
     handle, packet = prepare_execution(
@@ -217,7 +232,7 @@ def test_external_worker_prompt_mentions_protocol_and_limits(tmp_path):
     assert "pytest -q tests/test_demo.py" in prompt
     assert "Runtime driver capture path" in prompt
     assert len(json.dumps(packet, ensure_ascii=False)) < 4200
-    assert len(prompt) < 4400
+    assert len(prompt) < 5800
 
 
 def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
@@ -247,14 +262,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
         project,
         handle.run_id,
         phase="plan",
-        payload={
-            "summary": "plan ok",
-            "execution_steps": ["edit", "test"],
-            "files_expected": [],
-            "commands_expected": ["pytest -q"],
-            "validation_plan": "run pytest",
-            "risk_assessment": "low risk",
-        },
+        payload=_plan_payload(),
     )
     execute_packet = next_phase_payload(project, handle.run_id)
     assert execute_packet["phase"] == "execute"
@@ -282,6 +290,10 @@ def test_phase_output_rejects_overlong_summary(tmp_path):
         phase="plan",
         payload={
             "summary": too_long,
+            "authority_complete": True,
+            "authority_coverage": {"goal": True},
+            "open_gaps": [],
+            "forbidden_assumptions_used": [],
             "execution_steps": ["edit"],
             "files_expected": [],
             "commands_expected": [],
@@ -319,6 +331,10 @@ def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp
                 json.dumps(
                     {
                         "summary": "x" * 241,
+                        "authority_complete": True,
+                        "authority_coverage": {"goal": True},
+                        "open_gaps": [],
+                        "forbidden_assumptions_used": [],
                         "execution_steps": ["edit"],
                         "files_expected": [],
                         "commands_expected": [],
@@ -334,6 +350,10 @@ def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp
                 json.dumps(
                     {
                         "summary": "plan ok",
+                        "authority_complete": True,
+                        "authority_coverage": {"goal": True},
+                        "open_gaps": [],
+                        "forbidden_assumptions_used": [],
                         "execution_steps": ["edit"],
                         "files_expected": [],
                         "commands_expected": [],

@@ -9,8 +9,19 @@ from .prompt_specs import phase_prompt_spec
 
 
 PHASE_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
-    "plan": ("summary", "execution_steps", "files_expected", "commands_expected", "validation_plan", "risk_assessment"),
-    "execute": ("summary", "files_touched", "commands_run", "artifacts"),
+    "plan": (
+        "summary",
+        "authority_complete",
+        "authority_coverage",
+        "open_gaps",
+        "forbidden_assumptions_used",
+        "execution_steps",
+        "files_expected",
+        "commands_expected",
+        "validation_plan",
+        "risk_assessment",
+    ),
+    "execute": ("summary", "plan_artifact_read", "plan_deviations", "files_touched", "commands_run", "artifacts"),
     "validate": ("summary", "passed", "metric_name", "metric_value", "threshold", "checks"),
     "reflect": ("summary", "outcome", "residual_risks", "evidence", "next_recommendation"),
 }
@@ -100,6 +111,12 @@ def _require_check_list(field: str, value: Any, *, limit: int) -> list[dict[str,
     return rows
 
 
+def _require_bool(field: str, value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
+    return value
+
+
 def validate_phase_output(
     phase: str,
     payload: dict[str, Any],
@@ -120,6 +137,17 @@ def validate_phase_output(
         phase_prompt_spec(phase).summary_budget_utf8,
     )
     if phase == "plan":
+        normalized["authority_complete"] = _require_bool("plan.authority_complete", payload.get("authority_complete"))
+        coverage = payload.get("authority_coverage")
+        if not isinstance(coverage, (list, dict)):
+            raise ValueError("plan.authority_coverage must be a list or object")
+        normalized["authority_coverage"] = coverage
+        normalized["open_gaps"] = _require_string_list("plan.open_gaps", payload.get("open_gaps"), ROOT_CAUSE_LIMIT)
+        normalized["forbidden_assumptions_used"] = _require_string_list(
+            "plan.forbidden_assumptions_used",
+            payload.get("forbidden_assumptions_used"),
+            ROOT_CAUSE_LIMIT,
+        )
         normalized["execution_steps"] = _require_string_list(
             "plan.execution_steps",
             payload.get("execution_steps"),
@@ -135,6 +163,14 @@ def validate_phase_output(
         normalized["risk_assessment"] = _require_plan_field("plan.risk_assessment", payload.get("risk_assessment"), RISK_LIMIT)
         return normalized
     if phase == "execute":
+        normalized["plan_artifact_read"] = _require_bool("execute.plan_artifact_read", payload.get("plan_artifact_read"))
+        if not normalized["plan_artifact_read"]:
+            raise ValueError("execute.plan_artifact_read must be true")
+        normalized["plan_deviations"] = _require_string_list(
+            "execute.plan_deviations",
+            payload.get("plan_deviations"),
+            ROOT_CAUSE_LIMIT,
+        )
         if not isinstance(payload.get("files_touched"), list):
             raise ValueError("execute.files_touched must be a list")
         if not isinstance(payload.get("artifacts"), list):

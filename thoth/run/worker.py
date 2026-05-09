@@ -371,6 +371,10 @@ class TestPhaseDriver:
         if phase == "plan":
             return {
                 "summary": "plan done",
+                "authority_complete": True,
+                "authority_coverage": {"deterministic": True},
+                "open_gaps": [],
+                "forbidden_assumptions_used": [],
                 "execution_steps": ["make change", "run validator"],
                 "files_expected": [],
                 "commands_expected": [],
@@ -380,6 +384,8 @@ class TestPhaseDriver:
         if phase == "execute":
             return {
                 "summary": "exec done",
+                "plan_artifact_read": True,
+                "plan_deviations": [],
                 "files_touched": [],
                 "commands_run": [],
                 "artifacts": [],

@@ -70,7 +70,8 @@ def test_claude_discuss_surface_preserves_structured_arguments():
     assert "<<'THOTH_DISCUSS_ARGUMENTS_EOF'" in rendered
     assert 'scripts/thoth-claude-command.sh" discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"' in rendered
     assert 'scripts/thoth-claude-command.sh" discuss $ARGUMENTS' not in rendered
-    assert "use AskUserQuestion until no material assumptions remain" in rendered
+    assert "no material assumptions remain" in rendered
+    assert "packet.protocol_commands.close_authority" in rendered
     assert "Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority." in rendered
     assert "disable-model-invocation: false" in rendered
 

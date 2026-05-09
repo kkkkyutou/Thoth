@@ -208,11 +208,13 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="command_packet",
-        objective="Interrogate the user's idea until goals, constraints, success criteria, risks, and authority are explicit; use AskUserQuestion until no material assumptions remain.",
+        objective="Interrogate the user's idea until goals, constraints, success criteria, risks, and authority are explicit; preserve semantic decisions as draft checkpoints and close only when no material assumptions remain.",
         hard_stops=(
             "Do not modify source code.",
             "Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority.",
             "Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.",
+            "When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.",
+            "When closing, translate the discussion into semantic-lossless authority: goal, non-goals, constraints, accepted decisions, rejected options, acceptance, context evidence, risks, run instructions, and open questions.",
             "Do not fabricate ready execution tasks from unresolved decisions.",
             "Do not repeat the packet or decision payload verbatim.",
         ),
@@ -247,15 +249,28 @@ INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_P
 PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     "plan": PhasePromptSpec(
         phase="plan",
-        objective="Produce the concrete execution plan for the frozen strict task without changing the goal or validation contract.",
+        objective="Produce the concrete execution plan for the frozen strict task after proving coverage of the discussion authority context.",
         hard_stops=(
             "Do not modify project files.",
             "Do not change the work item goal, constraints, or validation entrypoint.",
+            "Do not use assumptions that are absent from strict_task.authority_context.",
+            "If authority_context has open questions or contradictions, set authority_complete=false and list open_gaps.",
             "Do not hand-edit .thoth ledgers.",
         ),
-        required_fields=("summary", "execution_steps", "files_expected", "commands_expected", "validation_plan", "risk_assessment"),
+        required_fields=(
+            "summary",
+            "authority_complete",
+            "authority_coverage",
+            "open_gaps",
+            "forbidden_assumptions_used",
+            "execution_steps",
+            "files_expected",
+            "commands_expected",
+            "validation_plan",
+            "risk_assessment",
+        ),
         summary_budget_utf8=240,
-        validator_policy="plan is read-only and may only prepare the concrete execution path",
+        validator_policy="plan is read-only; incomplete authority terminalizes as needs_input before execute",
     ),
     "execute": PhasePromptSpec(
         phase="execute",
@@ -263,9 +278,10 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
         hard_stops=(
             "Do not hand-edit .thoth ledgers.",
             "Do not terminalize the full run from inside execute.",
+            "Read and follow prior_artifacts.plan before changing files; record any deviation.",
             "Do not run destructive delete/reset commands.",
         ),
-        required_fields=("summary", "files_touched", "commands_run", "artifacts"),
+        required_fields=("summary", "plan_artifact_read", "plan_deviations", "files_touched", "commands_run", "artifacts"),
         summary_budget_utf8=240,
         validator_policy="execute follows the plan artifact; validator remains the acceptance authority",
     ),
@@ -388,6 +404,12 @@ def render_phase_worker_prompt(
     ]
     if output_path:
         lines.append(f"Runtime driver capture path: `{output_path}`.")
+    if phase == "plan":
+        lines.append("Check `strict_task.authority_context`; set authority_complete=false with open_gaps if any user decision, acceptance bar, constraint, or rejected option is missing or contradictory.")
+        lines.append("Do not invent authority; the plan may only prepare execution for already closed discussion authority.")
+    if phase == "execute":
+        lines.append("Read `required_plan_artifact` or `prior_artifacts.plan` before touching files and set plan_artifact_read=true only after doing so.")
+        lines.append("Follow the plan artifact; if deviation is necessary, list it in plan_deviations without changing the goal or validator.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:
         lines.append(f"Previous output failed validation: {correction_error}")
@@ -434,6 +456,8 @@ def build_codex_public_command_prompt(
                 "Do not hand-edit `.thoth`; let the Thoth runtime driver advance phases.",
             )
         )
+    if command_id in {"run", "loop"}:
+        lines.append("Plan must prove coverage of strict_task.authority_context before execute; needs_input routes back to discuss.")
     elif command_id == "review":
         lines.extend(
             (
@@ -446,6 +470,8 @@ def build_codex_public_command_prompt(
         lines.extend(
             (
                 "If the command returns a command packet, use that packet as the only authority for the follow-up action.",
+                "Checkpoint major semantic changes through packet.protocol_commands.checkpoint_authority.",
+                "Close only by translating the discussion into semantic-lossless authority and executing packet.protocol_commands.close_authority.",
                 "Do not restate packet fields or expand into teaching prose.",
             )
         )

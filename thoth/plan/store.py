@@ -422,6 +422,10 @@ def upsert_work_item(project_root: Path, payload: dict[str, Any]) -> dict[str, A
         for decision_id in _normalize_string_list(payload.get("decisions"))
         if store.read("decision", decision_id)
     ]
+    authority_context = payload.get("authority_context") if isinstance(payload.get("authority_context"), dict) else {}
+    source_discussion_id = authority_context.get("source_discussion_id")
+    if isinstance(source_discussion_id, str) and source_discussion_id.strip() and store.read("discussion", source_discussion_id):
+        links.append({"type": "primary_parent", "target": f"discussion:{source_discussion_id}"})
     obj = store.upsert(
         kind="work_item",
         object_id=work_id,

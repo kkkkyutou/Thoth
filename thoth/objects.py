@@ -75,6 +75,38 @@ REQUIRED_WORK_PAYLOAD_FIELDS = (
 )
 
 
+def default_authority_context(payload: dict[str, Any], *, decision_ids: list[str] | None = None) -> dict[str, Any]:
+    """Build a closed, compact authority context for direct work-item payloads."""
+
+    decisions = decision_ids if decision_ids is not None else _normalize_string_list(payload.get("decisions"))
+    goal = payload.get("goal") or ""
+    constraints = payload.get("constraints") if isinstance(payload.get("constraints"), list) else []
+    execution_plan = payload.get("execution_plan") if isinstance(payload.get("execution_plan"), list) else []
+    eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
+    return {
+        "schema_version": 1,
+        "source_discussion_id": "",
+        "source_decision_ids": decisions,
+        "semantic_events": [],
+        "goal": {"source_summary": goal, "normalized_summary": goal},
+        "non_goals": [],
+        "constraints": constraints,
+        "accepted_decisions": decisions,
+        "rejected_options": [],
+        "assumptions": [],
+        "acceptance": {
+            "source_summary": eval_contract.get("entrypoint", {}).get("command", "") if isinstance(eval_contract.get("entrypoint"), dict) else "",
+            "normalized_summary": eval_contract.get("primary_metric", {}),
+        },
+        "context_evidence": [],
+        "risks": [],
+        "run_instructions": execution_plan,
+        "open_questions": [],
+        "language": {"source": "unspecified", "runtime": "normalized"},
+        "completeness": {"is_closed": True, "unresolved_count": 0, "blocking_reasons": []},
+    }
+
+
 def normalize_scheduling(value: Any) -> dict[str, Any]:
     scheduling = value if isinstance(value, dict) else {}
     priority = scheduling.get("priority")
@@ -251,6 +283,19 @@ def work_item_ready_errors(payload: dict[str, Any]) -> list[str]:
         runtime_policy = payload.get("runtime_policy")
         if not isinstance(runtime_policy, dict):
             errors.append("runtime_policy must be an object")
+        authority_context = payload.get("authority_context")
+        if authority_context is not None:
+            if not isinstance(authority_context, dict):
+                errors.append("authority_context must be an object")
+            else:
+                completeness = authority_context.get("completeness") if isinstance(authority_context.get("completeness"), dict) else {}
+                if completeness.get("is_closed") is not True:
+                    errors.append("authority_context.completeness.is_closed must be true")
+                open_questions = authority_context.get("open_questions")
+                if not isinstance(open_questions, list):
+                    errors.append("authority_context.open_questions must be a list")
+                elif any(isinstance(item, str) and item.strip() for item in open_questions):
+                    errors.append("ready runnable work_item requires authority_context.open_questions=[]")
     return errors
 
 
@@ -589,6 +634,7 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
         "review_binding": eval_contract.get("review_binding", {}),
         "review_expectation": eval_contract.get("review_expectation"),
         "decision_ids": payload.get("decisions", []),
+        "authority_context": payload.get("authority_context", {}),
         "links": obj.get("links", []),
         "created_at": obj.get("created_at"),
         "updated_at": obj.get("updated_at"),
@@ -627,6 +673,8 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
     title = str(payload.get("title") or work_id)
     status = str(payload.get("status") or "").strip()
     missing_questions = _normalize_string_list(payload.get("missing_questions"))
+    decisions = _normalize_string_list(payload.get("decisions"))
+    authority_context = payload.get("authority_context") if isinstance(payload.get("authority_context"), dict) else None
     work_payload = {
         "work_type": str(payload.get("work_type") or "task"),
         "runnable": bool(payload.get("runnable", True)),
@@ -639,8 +687,9 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
         if isinstance(payload.get("runtime_policy"), dict)
         else {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
         "scheduling": normalize_scheduling(payload.get("scheduling")),
-        "decisions": payload.get("decisions") or [],
+        "decisions": decisions,
         "missing_questions": missing_questions,
+        "authority_context": authority_context or default_authority_context(payload, decision_ids=decisions),
     }
     ready_errors = work_item_ready_errors(work_payload)
     if status not in WORK_ITEM_STATUSES:

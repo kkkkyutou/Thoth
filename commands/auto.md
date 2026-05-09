@@ -33,7 +33,6 @@ executed before Claude sees this prompt.
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
 - If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.
-- Use `packet.strict_task.goal_statement`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.
 - Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.
 - If the bridge payload exposes `body.monitor_command`, observe that command instead of executing work directly in the Claude session.
 - Prefer the Claude Monitor tool with `persistent=true` for `body.monitor_command` when available; otherwise use Bash to run the same watch command in the foreground.

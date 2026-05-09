@@ -150,6 +150,85 @@ def test_cli_discuss_records_note(tmp_path):
     assert payload["kind"] == "discussion"
     assert payload["status"] == "inquiring"
     assert payload["payload"]["messages"][-1]["content"] == "planning note"
+    envelope = json.loads(result.stdout)
+    packet = envelope["body"]["packet"]
+    assert packet["packet_kind"] == "discussion_authority"
+    assert "record-discussion-authority" in packet["protocol_commands"]["close_authority"]
+
+
+def test_cli_record_discussion_authority_closes_work(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    result = _run_cli(tmp_path, "discuss", "close", "this")
+    discussion_id = json.loads(result.stdout)["body"]["discussion"]["discussion_id"]
+    capsule_path = tmp_path / "authority.json"
+    capsule_path.write_text(
+        json.dumps(
+            {
+                "semantic_events": [
+                    {
+                        "event_type": "goal",
+                        "source_summary": "关闭这个工作。",
+                        "normalized_summary": "Close this work.",
+                        "evidence_anchor": {"turn": "user-1"},
+                        "affects": ["goal"],
+                    }
+                ],
+                "goal": {"source_summary": "关闭这个工作。", "normalized_summary": "Close this work."},
+                "constraints": ["temp-project"],
+                "accepted_decisions": [
+                    {
+                        "decision_id": "DEC-close-work",
+                        "question": "Close which work?",
+                        "selected_values": {"work": "close-work"},
+                        "status": "frozen",
+                        "unresolved_gaps": [],
+                    }
+                ],
+                "acceptance": {"normalized_summary": "pytest passes"},
+                "open_questions": [],
+                "completeness": {"is_closed": True},
+                "work_item": {
+                    "work_id": "close-work",
+                    "title": "Close Work",
+                    "status": "ready",
+                    "work_type": "task",
+                    "runnable": True,
+                    "goal": "Close this work.",
+                    "context": "test",
+                    "constraints": ["temp-project"],
+                    "execution_plan": ["Run validator."],
+                    "eval_contract": {
+                        "entrypoint": {"command": "pytest -q"},
+                        "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                        "failure_classes": ["runtime_drift"],
+                        "validate_output_schema": default_validate_output_schema(),
+                    },
+                    "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+                    "missing_questions": [],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    close = _run_cli(
+        tmp_path,
+        "record-discussion-authority",
+        "--project-root",
+        str(tmp_path),
+        "--discussion-id",
+        discussion_id,
+        "--mode",
+        "close",
+        "--authority-json-file",
+        str(capsule_path),
+    )
+
+    assert close.returncode == 0, close.stderr
+    work_item = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "close-work.json").read_text(encoding="utf-8"))
+    assert work_item["payload"]["authority_context"]["source_discussion_id"] == discussion_id
+    assert work_item["status"] == "ready"
 
 
 def test_cli_discuss_accepts_structured_decision_payload(tmp_path):

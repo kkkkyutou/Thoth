@@ -36,6 +36,32 @@ def _strict_task(*, runtime_contract: dict | None = None) -> dict:
     return payload
 
 
+def _plan_payload(summary: str = "plan ok") -> dict:
+    return {
+        "summary": summary,
+        "authority_complete": True,
+        "authority_coverage": {"goal": True, "acceptance": True},
+        "open_gaps": [],
+        "forbidden_assumptions_used": [],
+        "execution_steps": ["edit", "test"],
+        "files_expected": [],
+        "commands_expected": ["pytest -q"],
+        "validation_plan": "run pytest",
+        "risk_assessment": "low risk",
+    }
+
+
+def _execute_payload(summary: str = "exec ok") -> dict:
+    return {
+        "summary": summary,
+        "plan_artifact_read": True,
+        "plan_deviations": [],
+        "files_touched": [],
+        "commands_run": [],
+        "artifacts": [],
+    }
+
+
 def test_run_state_machine_completes_after_validate_pass(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
@@ -56,20 +82,13 @@ def test_run_state_machine_completes_after_validate_pass(tmp_path):
         project,
         handle.run_id,
         phase="plan",
-        payload={
-            "summary": "plan ok",
-            "execution_steps": ["edit", "test"],
-            "files_expected": [],
-            "commands_expected": ["pytest -q"],
-            "validation_plan": "run pytest",
-            "risk_assessment": "low risk",
-        },
+        payload=_plan_payload(),
     )
     submit_phase_output(
         project,
         handle.run_id,
         phase="execute",
-        payload={"summary": "exec ok", "files_touched": [], "commands_run": [], "artifacts": []},
+        payload=_execute_payload(),
     )
     interim = submit_phase_output(
         project,
@@ -125,20 +144,13 @@ def test_run_state_machine_forces_reflect_after_validate_failure(tmp_path):
         project,
         handle.run_id,
         phase="plan",
-        payload={
-            "summary": "plan ok",
-            "execution_steps": ["edit", "test"],
-            "files_expected": [],
-            "commands_expected": ["pytest -q"],
-            "validation_plan": "run pytest",
-            "risk_assessment": "low risk",
-        },
+        payload=_plan_payload(),
     )
     submit_phase_output(
         project,
         handle.run_id,
         phase="execute",
-        payload={"summary": "exec ok", "files_touched": [], "commands_run": [], "artifacts": []},
+        payload=_execute_payload(),
     )
     interim = submit_phase_output(
         project,
@@ -179,6 +191,67 @@ def test_run_state_machine_forces_reflect_after_validate_failure(tmp_path):
     assert run_result["result"]["next_hint"] == "change implementation before retrying"
 
 
+def test_plan_authority_gap_terminalizes_before_execute(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Ambiguous task",
+        work_id="task-1",
+        host="codex",
+        executor="claude",
+        sleep_requested=False,
+        strict_task=_strict_task(),
+        goal="ship demo",
+    )
+
+    result = submit_phase_output(
+        project,
+        handle.run_id,
+        phase="plan",
+        payload={
+            **_plan_payload("needs input"),
+            "authority_complete": False,
+            "open_gaps": ["acceptance not closed"],
+        },
+    )
+
+    assert result["terminal"] is True
+    assert result["status"] == "failed"
+    assert result["reason"] == "needs_input"
+    run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
+    assert run_result["status"] == "failed"
+    assert run_result["checks"][0]["detail"] == "needs_input"
+
+
+def test_execute_requires_plan_artifact_read(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Demo task",
+        work_id="task-1",
+        host="codex",
+        executor="claude",
+        sleep_requested=False,
+        strict_task=_strict_task(),
+        goal="ship demo",
+    )
+    submit_phase_output(project, handle.run_id, phase="plan", payload=_plan_payload())
+
+    try:
+        submit_phase_output(
+            project,
+            handle.run_id,
+            phase="execute",
+            payload={**_execute_payload(), "plan_artifact_read": False},
+        )
+    except ValueError as exc:
+        assert "execute.plan_artifact_read must be true" in str(exc)
+    else:
+        raise AssertionError("execute without reading plan artifact should be rejected")
+
+
 def test_loop_parent_stops_on_iteration_budget(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
@@ -202,20 +275,13 @@ def test_loop_parent_stops_on_iteration_budget(tmp_path):
             project,
             handle.run_id,
             phase="plan",
-            payload={
-                "summary": "plan ok",
-                "execution_steps": ["edit", "test"],
-                "files_expected": [],
-                "commands_expected": ["pytest -q"],
-                "validation_plan": "run pytest",
-                "risk_assessment": "low risk",
-            },
+            payload=_plan_payload(),
         )
         submit_phase_output(
             project,
             handle.run_id,
             phase="execute",
-            payload={"summary": "exec ok", "files_touched": [], "commands_run": [], "artifacts": []},
+            payload=_execute_payload(),
         )
         submit_phase_output(
             project,
