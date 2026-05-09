@@ -105,7 +105,7 @@ def test_codex_skill_lists_single_public_entry():
     assert "$thoth <command>" in content
     assert "## Dispatcher" in content
     assert "./commands/<command>.md" in content
-    assert "installed Codex plugin cache" in content
+    assert "installed Codex plugin cache or marketplace-root runtime entrypoint" in content
     assert "## Route Table" in content
     assert "## Command Contracts" not in content
     assert "### `$thoth run`" not in content
@@ -119,6 +119,7 @@ def test_codex_runtime_shell_command_uses_installed_plugin_cache_without_checkou
     command = codex_installed_runtime_shell_command("$thoth run --executor codex --work-id task-1")
     assert "command -v thoth" in command
     assert ".codex/plugins/cache/thoth/thoth" in command
+    assert ".codex/.tmp/marketplaces/thoth" in command
     assert "scripts/thoth-cli-entry.py" in command
     assert "--work-id task-1" in command
     assert "THOTH_SOURCE_ROOT" not in command

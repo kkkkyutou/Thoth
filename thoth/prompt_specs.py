@@ -418,7 +418,7 @@ def build_codex_public_command_prompt(
         "Execute that shell command immediately as your first meaningful action.",
         "Do not explain the command before executing it.",
         "Do not replace execution with prose.",
-        "If neither PATH nor the installed Codex plugin cache contains the runtime entrypoint, report host install drift instead of inventing another entrypoint.",
+        "If neither PATH nor the installed Codex plugin cache or marketplace root contains the runtime entrypoint, report host install drift instead of inventing another entrypoint.",
         f"route_class={spec.route_class}.",
         f"intelligence_tier={spec.intelligence_tier}.",
         f"packet_authority_mode={spec.packet_authority_mode}.",
@@ -464,14 +464,16 @@ def codex_installed_runtime_shell_command(public_command: str) -> str:
     resolver = (
         "set -euo pipefail; "
         "if command -v thoth >/dev/null 2>&1; then exec thoth \"$@\"; fi; "
-        "latest=\"$(ls -td \"$HOME\"/.codex/plugins/cache/thoth/thoth/* 2>/dev/null | head -n 1 || true)\"; "
-        "if [ -n \"$latest\" ]; then "
-        "if [ -x \"$latest/bin/thoth\" ]; then exec \"$latest/bin/thoth\" \"$@\"; fi; "
-        "if [ -f \"$latest/scripts/thoth-cli-entry.py\" ]; then "
-        "if command -v python3 >/dev/null 2>&1; then exec python3 \"$latest/scripts/thoth-cli-entry.py\" \"$@\"; "
-        "else exec python \"$latest/scripts/thoth-cli-entry.py\" \"$@\"; fi; "
+        "candidates=\"$(ls -td \"$HOME\"/.codex/plugins/cache/thoth/thoth/* 2>/dev/null || true)\"; "
+        "marketplace=\"$HOME/.codex/.tmp/marketplaces/thoth\"; "
+        "if [ -d \"$marketplace\" ]; then candidates=\"$candidates\n$marketplace\"; fi; "
+        "for candidate in $candidates; do "
+        "if [ -x \"$candidate/bin/thoth\" ]; then exec \"$candidate/bin/thoth\" \"$@\"; fi; "
+        "if [ -f \"$candidate/scripts/thoth-cli-entry.py\" ]; then "
+        "if command -v python3 >/dev/null 2>&1; then exec python3 \"$candidate/scripts/thoth-cli-entry.py\" \"$@\"; "
+        "else exec python \"$candidate/scripts/thoth-cli-entry.py\" \"$@\"; fi; "
         "fi; "
-        "fi; "
+        "done; "
         "echo 'thoth installed runtime not found' >&2; exit 127"
     )
     return " ".join(["bash", "-lc", shlex.quote(resolver), "thoth", *(shlex.quote(arg) for arg in args)])
@@ -504,7 +506,7 @@ def build_codex_selftest_command_probe_prompt(*, public_command: str, shell_comm
             "Execute that shell command immediately as your first meaningful action.",
             "Do not inspect files, search memories, explain, retry, or execute any second shell command.",
             "Do not manually continue runtime protocol phases and do not substitute a different entrypoint.",
-            "If the installed Thoth runtime is missing from both PATH and the installed Codex plugin cache, treat that as host install drift.",
+            "If the installed Thoth runtime is missing from PATH, the installed Codex plugin cache, and the marketplace root, treat that as host install drift.",
             f"After the shell command exits successfully, reply with `{done_token}` only.",
         )
     )

@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.1.12"
+PLUGIN_VERSION = "0.1.13"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -152,8 +152,8 @@ Supported commands:
 - `.thoth` is the only runtime authority.
 - Parse the requested `$thoth <command>`, then open only the matching micro prompt under `./commands/<command>.md`.
 - Execute the literal shell command immediately; do not replace it with explanation.
-- If `thoth` is not on PATH, use the installed Codex plugin cache runtime entrypoint described by the micro prompt; do not use a local checkout as fallback.
-- If neither PATH nor the installed Codex plugin cache contains the runtime entrypoint, treat that as host install drift.
+- If `thoth` is not on PATH, use the installed Codex plugin cache or marketplace-root runtime entrypoint described by the micro prompt; do not use a local checkout as fallback.
+- If neither PATH nor the installed Codex plugin cache / marketplace root contains the runtime entrypoint, treat that as host install drift.
 - Do not create alternative public Codex variants such as `run:codex` or `loop:codex`.
 
 ## Route Table
