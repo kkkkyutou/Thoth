@@ -63,7 +63,7 @@ def _summary_is_current(project_root: Path, expected_summary: dict[str, Any], ex
     comparable_keys = (
         "decision_counts",
         "work_item_counts",
-        "legacy_task_count",
+        "legacy_authority_count",
         "active_work_count",
         "ready_work_count",
         "blocked_work_count",
@@ -86,15 +86,15 @@ def build_doctor_payload(project_root: Path) -> dict[str, Any]:
     object_problems = _object_file_problems(project_root)
     problems = list(graph.get("problems", [])) + legacy_problems + object_problems
     summary = dict(graph.get("summary", {}))
-    summary["legacy_task_count"] = len(legacy_rows)
+    summary["legacy_authority_count"] = len(legacy_rows)
     decision_counts = summary.get("decision_counts", {})
     work_counts = summary.get("work_item_counts", {})
-    legacy_task_count = int(summary.get("legacy_task_count", 0))
+    legacy_authority_count = int(summary.get("legacy_authority_count", 0))
     active_work_count = int(summary.get("active_work_count", 0))
     project_payload = Store(project_root).read("project", "project")
     docs_project, docs_project_error = _read_json_strict(docs_root(project_root) / "project.json")
     summary_current, summary_detail = _summary_is_current(project_root, summary, problems)
-    legacy_detail = f"legacy_authority_count={legacy_task_count}"
+    legacy_detail = f"legacy_authority_count={legacy_authority_count}"
     if legacy_rows:
         legacy_detail += " " + "; ".join(f"{item.get('legacy_path')}:{item.get('reason')}" for item in legacy_rows[:5])
 
@@ -131,7 +131,7 @@ def build_doctor_payload(project_root: Path) -> dict[str, Any]:
         },
         {
             "id": "no-legacy-authority",
-            "ok": legacy_task_count == 0,
+            "ok": legacy_authority_count == 0,
             "detail": legacy_detail,
         },
         {
@@ -146,8 +146,8 @@ def build_doctor_payload(project_root: Path) -> dict[str, Any]:
         },
         {
             "id": "no-legacy-yaml-authority",
-            "ok": legacy_task_count == 0,
-            "detail": f"legacy_task_count={legacy_task_count}",
+            "ok": legacy_authority_count == 0,
+            "detail": f"legacy_authority_count={legacy_authority_count}",
         },
         {
             "id": "compiler-state-written",
@@ -178,7 +178,7 @@ def build_doctor_payload(project_root: Path) -> dict[str, Any]:
         "summary": {
             "decision_counts": decision_counts,
             "work_item_counts": work_counts,
-            "legacy_task_count": legacy_task_count,
+            "legacy_authority_count": legacy_authority_count,
             "active_work_count": active_work_count,
         },
     }
@@ -215,7 +215,7 @@ def render_doctor_text(payload: dict[str, Any]) -> str:
             total=int(work_counts.get("total", 0)),
         )
     )
-    lines.append(f"  legacy_task_count={int(summary.get('legacy_task_count', 0))}")
+    lines.append(f"  legacy_authority_count={int(summary.get('legacy_authority_count', 0))}")
     problems = compiler.get("problems", [])
     if problems:
         lines.append("")

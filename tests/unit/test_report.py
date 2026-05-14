@@ -53,7 +53,7 @@ def _setup_project(tmp_path: Path) -> None:
         title="Imported Task",
         summary="Imported work",
         payload={
-            "work_type": "task",
+            "work_kind": "execution",
             "runnable": True,
             "goal": "Imported work",
             "context": "f1",

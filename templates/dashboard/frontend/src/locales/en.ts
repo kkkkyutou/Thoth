@@ -11,7 +11,7 @@ export const en = {
     system: 'System',
   },
   filters: {
-    search: 'Search tasks, modules, or directions',
+    search: 'Search work items, modules, or directions',
     allStatus: 'All status',
     allDirection: 'All directions',
     allModule: 'All modules',
@@ -44,7 +44,7 @@ export const en = {
     empty: 'No data yet',
   },
   detail: {
-    empty: 'Select a task or module from the sidebar',
+    empty: 'Select a work item or module from the sidebar',
     basic: 'Basic Info',
     goal: 'Goal / Contract',
     readiness: 'Readiness',

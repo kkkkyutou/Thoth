@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, build_opener
 
 from thoth.observe.read_model import load_config
 
@@ -110,7 +110,8 @@ def _cleanup_dashboard_metadata(project_root: Path) -> None:
 
 
 def _probe_dashboard_status(port: int, *, timeout: float = 3.0) -> dict[str, Any]:
-    with urlopen(f"http://127.0.0.1:{port}/api/status", timeout=timeout) as response:  # noqa: S310
+    opener = build_opener(ProxyHandler({}))
+    with opener.open(f"http://127.0.0.1:{port}/api/status", timeout=timeout) as response:  # noqa: S310
         body = response.read().decode("utf-8")
     return json.loads(body)
 

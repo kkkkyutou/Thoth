@@ -1,5 +1,5 @@
 """
-data_loader.py — strict-task dashboard loader for Thoth.
+data_loader.py — work-item dashboard loader for Thoth.
 
 The dashboard only reads `.thoth` authority. Legacy `.agent-os/research-tasks`
 and `.research-config.yaml` are not active runtime inputs.
@@ -156,7 +156,6 @@ def _flatten_work_item(payload: dict[str, Any], path: Path) -> dict[str, Any] | 
         "kind": "work_item",
         "id": work_id,
         "work_id": work_id,
-        "task_id": work_id,
         "title": payload.get("title") or work_id,
         "summary": payload.get("summary") or "",
         "module": work_payload.get("module") or work_payload.get("context") or "strict",
@@ -164,7 +163,7 @@ def _flatten_work_item(payload: dict[str, Any], path: Path) -> dict[str, Any] | 
         "ready_state": payload.get("status"),
         "status": payload.get("status"),
         "runnable": work_payload.get("runnable") is True,
-        "work_type": work_payload.get("work_type"),
+        "work_kind": work_payload.get("work_kind"),
         "goal_statement": work_payload.get("goal") or "",
         "implementation_recipe": work_payload.get("execution_plan") or [],
         "constraints": work_payload.get("constraints") or [],
@@ -174,7 +173,7 @@ def _flatten_work_item(payload: dict[str, Any], path: Path) -> dict[str, Any] | 
         "validate_output_schema": eval_contract.get("validate_output_schema") or {},
         "decision_ids": work_payload.get("decisions") or [],
         "depends_on": [
-            {"task_id": str(link.get("target", "")).split(":", 1)[-1], "type": "hard"}
+            {"work_id": str(link.get("target", "")).split(":", 1)[-1], "type": "hard"}
             for link in payload.get("links", [])
             if isinstance(link, dict) and link.get("type") == "depends_on"
         ],
@@ -198,9 +197,9 @@ def _load_compiled_tasks(project_root: Path) -> list[dict[str, Any]]:
         row = _flatten_work_item(payload, path)
         if row is None:
             continue
-        task_id = row["task_id"]
-        if task_id in work_result_map:
-            row["work_result"] = work_result_map[task_id]
+        work_id = row["work_id"]
+        if work_id in work_result_map:
+            row["work_result"] = work_result_map[work_id]
         rows.append(row)
     return rows
 

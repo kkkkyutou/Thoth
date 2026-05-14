@@ -92,7 +92,7 @@ def _setup_project(tmp_path: Path, monkeypatch) -> None:
             "module": "f1",
             "direction": "frontend",
             "status": "ready",
-            "work_type": "task",
+            "work_kind": "execution",
             "runnable": True,
             "goal": "Test runtime binding",
             "context": "frontend-runtime",
@@ -146,18 +146,18 @@ def _setup_project(tmp_path: Path, monkeypatch) -> None:
     )
 
 
-def test_task_endpoint_includes_active_run(monkeypatch, tmp_path):
+def test_work_item_endpoint_includes_active_run(monkeypatch, tmp_path):
     _setup_project(tmp_path, monkeypatch)
     dashboard_app.invalidate_cache()
     client = TestClient(dashboard_app.app)
 
-    response = client.get("/api/tasks")
+    response = client.get("/api/work-items")
     assert response.status_code == 200
     body = response.json()
-    assert body["tasks"][0]["active_run"]["run_id"] == "run-1"
-    assert body["tasks"][0]["run_count"] == 1
-    assert body["tasks"][0]["active_run"]["host"] == "codex"
-    assert body["tasks"][0]["active_run"]["attachable"] is True
+    assert body["work_items"][0]["active_run"]["run_id"] == "run-1"
+    assert body["work_items"][0]["run_count"] == 1
+    assert body["work_items"][0]["active_run"]["host"] == "codex"
+    assert body["work_items"][0]["active_run"]["attachable"] is True
 
 
 def test_runtime_progress_and_event_endpoints(monkeypatch, tmp_path):
@@ -172,12 +172,12 @@ def test_runtime_progress_and_event_endpoints(monkeypatch, tmp_path):
     assert progress.json()["runtime"]["active_auto_controllers"][0]["controller_id"] == "controller-auto-1"
     assert progress.json()["runtime"]["host_breakdown"] == ["codex"]
 
-    active = client.get("/api/tasks/task-1/active-run")
+    active = client.get("/api/work-items/task-1/active-run")
     assert active.status_code == 200
     assert active.json()["status"] == "running"
     assert active.json()["supervisor_state"] == "running"
 
-    history = client.get("/api/tasks/task-1/runs")
+    history = client.get("/api/work-items/task-1/runs")
     assert history.status_code == 200
     assert history.json()["runs"][0]["run_id"] == "run-1"
 
@@ -196,7 +196,7 @@ def test_overview_summary_and_gantt_endpoints(monkeypatch, tmp_path):
     summary = client.get("/api/overview-summary")
     assert summary.status_code == 200
     summary_payload = summary.json()
-    assert summary_payload["headline"]["total_tasks"] == 1
+    assert summary_payload["headline"]["total_work_items"] == 1
     assert summary_payload["runtime"]["active_run_count"] == 1
     assert summary_payload["runtime"]["active_auto_count"] == 1
     assert summary_payload["recent_conclusions"] == []
@@ -214,7 +214,11 @@ def test_spa_entry_routes_return_frontend_shell(monkeypatch, tmp_path):
     dashboard_app.invalidate_cache()
     client = TestClient(dashboard_app.app)
 
-    for route in ("/", "/overview", "/tasks", "/timeline", "/system"):
+    for route in ("/", "/overview", "/work-items", "/timeline", "/system"):
         response = client.get(route)
         assert response.status_code == 200
         assert "dashboard shell" in response.text
+
+    for old_route in ("/tasks", "/api/tasks"):
+        response = client.get(old_route)
+        assert response.status_code == 404

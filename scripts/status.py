@@ -26,13 +26,13 @@ def is_task_blocked(task: dict[str, Any], all_tasks: list[dict[str, Any]]) -> tu
     if task.get("ready_state") in {"blocked", "invalid"}:
         deps = task.get("depends_on")
         if isinstance(deps, list):
-            return True, [str(dep.get("task_id")) for dep in deps if isinstance(dep, dict) and dep.get("type") == "hard"]
+            return True, [str(dep.get("work_id")) for dep in deps if isinstance(dep, dict) and dep.get("type") == "hard"]
         return True, []
-    completed_ids = {str(row.get("task_id") or row.get("id")) for row in all_tasks if is_task_completed(row)}
+    completed_ids = {str(row.get("work_id") or row.get("id")) for row in all_tasks if is_task_completed(row)}
     blockers: list[str] = []
     for dep in task.get("depends_on", []):
-        if isinstance(dep, dict) and dep.get("type") == "hard" and dep.get("task_id") not in completed_ids:
-            blockers.append(str(dep["task_id"]))
+        if isinstance(dep, dict) and dep.get("type") == "hard" and dep.get("work_id") not in completed_ids:
+            blockers.append(str(dep["work_id"]))
     return bool(blockers), blockers
 
 

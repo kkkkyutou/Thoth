@@ -78,11 +78,11 @@ defineExpose({ reload: load })
             </span>
             <span class="event-time">{{ formatTime(ev.created_at) }}</span>
           </div>
-          <div class="event-title">{{ ev.task_title }}</div>
+          <div class="event-title">{{ ev.work_title }}</div>
           <div class="event-meta">
             <span class="meta-tag">{{ ev.direction }}</span>
             <span class="meta-tag">{{ ev.module }}</span>
-            <span class="meta-id">{{ ev.task_id }}</span>
+            <span class="meta-id">{{ ev.work_id }}</span>
           </div>
           <div v-if="ev.conclusion_text" class="event-conclusion">
             {{ ev.conclusion_text }}

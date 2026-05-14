@@ -233,36 +233,6 @@ def golden_config_invalid():
 
 
 @pytest.fixture
-def golden_task_valid():
-    """Load valid task YAML."""
-    return FIXTURES_DIR / "tasks" / "valid_task.yaml"
-
-
-@pytest.fixture
-def golden_task_completed():
-    """Load completed task YAML."""
-    return FIXTURES_DIR / "tasks" / "completed_task.yaml"
-
-
-@pytest.fixture
-def golden_task_blocked():
-    """Load blocked task YAML."""
-    return FIXTURES_DIR / "tasks" / "blocked_task.yaml"
-
-
-@pytest.fixture
-def golden_task_null_criteria():
-    """Load task with null criteria.current."""
-    return FIXTURES_DIR / "tasks" / "null_criteria.yaml"
-
-
-@pytest.fixture
-def golden_task_invalid():
-    """Load invalid task YAML (schema violation)."""
-    return FIXTURES_DIR / "tasks" / "invalid_schema.yaml"
-
-
-@pytest.fixture
 def golden_module_valid():
     """Load valid module YAML."""
     return FIXTURES_DIR / "modules" / "valid_module.yaml"

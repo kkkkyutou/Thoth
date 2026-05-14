@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
-import type { RunEvent, RunSummary, Task, TaskListResponse, TaskFilters, TaskStatus } from '@/types'
+import type { RunEvent, RunSummary, WorkItem, WorkItemListResponse, WorkItemFilters, WorkItemStatus } from '@/types'
 
-const tasks = ref<Task[]>([])
+const work_items = ref<WorkItem[]>([])
 const total = ref(0)
 const offset = ref(0)
 const limit = ref(20)
 const filterDirection = ref('')
-const filterStatus = ref<TaskStatus | ''>('')
+const filterStatus = ref<WorkItemStatus | ''>('')
 const loading = ref(true)
 const error = ref('')
 const expandedId = ref<string | null>(null)
-const taskRuns = ref<Record<string, RunSummary[]>>({})
+const workItemRuns = ref<Record<string, RunSummary[]>>({})
 const activeRuns = ref<Record<string, RunSummary | null>>({})
 const runEvents = ref<Record<string, RunEvent[]>>({})
 const runEventCursor = ref<Record<string, number | null>>({})
@@ -22,21 +22,21 @@ const DEFAULT_POLL_MS = 10 * 60 * 1000
 const parsedPollMs = Number(import.meta.env.VITE_THOTH_DASHBOARD_POLL_MS ?? DEFAULT_POLL_MS)
 const pollMs = Number.isFinite(parsedPollMs) && parsedPollMs >= 250 ? parsedPollMs : DEFAULT_POLL_MS
 
-async function loadTasks() {
+async function loadWorkItems() {
   loading.value = true
   error.value = ''
   try {
-    const filters: TaskFilters = {
+    const filters: WorkItemFilters = {
       offset: offset.value,
       limit: limit.value,
     }
     if (filterDirection.value) filters.direction = filterDirection.value
     if (filterStatus.value) filters.status = filterStatus.value
-    const res: TaskListResponse = await api.getTasks(filters)
-    tasks.value = res.tasks
+    const res: WorkItemListResponse = await api.getWorkItems(filters)
+    work_items.value = res.work_items
     total.value = res.total
-    for (const task of res.tasks) {
-      activeRuns.value[task.id] = task.active_run ?? null
+    for (const workItem of res.work_items) {
+      activeRuns.value[workItem.id] = workItem.active_run ?? null
     }
   } catch (e) {
     error.value = String(e)
@@ -45,69 +45,69 @@ async function loadTasks() {
   }
 }
 
-async function loadTaskRuntime(taskId: string) {
-  detailLoading.value[taskId] = true
+async function loadWorkItemRuntime(workId: string) {
+  detailLoading.value[workId] = true
   try {
     const [activeRun, runsPayload] = await Promise.all([
-      api.getTaskActiveRun(taskId),
-      api.getTaskRuns(taskId),
+      api.getWorkItemActiveRun(workId),
+      api.getWorkItemRuns(workId),
     ])
-    activeRuns.value[taskId] = activeRun
-    taskRuns.value[taskId] = runsPayload.runs
+    activeRuns.value[workId] = activeRun
+    workItemRuns.value[workId] = runsPayload.runs
 
     const displayRunId = activeRun?.run_id ?? runsPayload.runs[0]?.run_id
     if (!displayRunId) {
-      runEvents.value[taskId] = []
-      runEventCursor.value[taskId] = null
+      runEvents.value[workId] = []
+      runEventCursor.value[workId] = null
       return
     }
     const eventsPayload = await api.getRunEvents(displayRunId, null, 50)
-    runEvents.value[taskId] = eventsPayload.events
-    runEventCursor.value[taskId] = eventsPayload.next_after_seq ?? null
+    runEvents.value[workId] = eventsPayload.events
+    runEventCursor.value[workId] = eventsPayload.next_after_seq ?? null
   } catch (e) {
     error.value = String(e)
   } finally {
-    detailLoading.value[taskId] = false
+    detailLoading.value[workId] = false
   }
 }
 
-async function refreshExpandedTaskRuntime() {
+async function refreshExpandedWorkItemRuntime() {
   if (!expandedId.value) return
-  const taskId = expandedId.value
-  await loadTaskRuntime(taskId)
-  const runId = activeRuns.value[taskId]?.run_id
-  const afterSeq = runEventCursor.value[taskId]
+  const workId = expandedId.value
+  await loadWorkItemRuntime(workId)
+  const runId = activeRuns.value[workId]?.run_id
+  const afterSeq = runEventCursor.value[workId]
   if (!runId || afterSeq == null) return
   const delta = await api.getRunEvents(runId, afterSeq, 100)
   if (delta.events.length) {
-    runEvents.value[taskId] = [...(runEvents.value[taskId] ?? []), ...delta.events].slice(-200)
-    runEventCursor.value[taskId] = delta.next_after_seq ?? runEventCursor.value[taskId]
+    runEvents.value[workId] = [...(runEvents.value[workId] ?? []), ...delta.events].slice(-200)
+    runEventCursor.value[workId] = delta.next_after_seq ?? runEventCursor.value[workId]
   }
 }
 
 function prevPage() {
   if (offset.value > 0) {
     offset.value = Math.max(0, offset.value - limit.value)
-    loadTasks()
+    loadWorkItems()
   }
 }
 
 function nextPage() {
   if (offset.value + limit.value < total.value) {
     offset.value += limit.value
-    loadTasks()
+    loadWorkItems()
   }
 }
 
 function applyFilters() {
   offset.value = 0
-  loadTasks()
+  loadWorkItems()
 }
 
-async function toggleExpand(taskId: string) {
-  expandedId.value = expandedId.value === taskId ? null : taskId
-  if (expandedId.value === taskId) {
-    await loadTaskRuntime(taskId)
+async function toggleExpand(workId: string) {
+  expandedId.value = expandedId.value === workId ? null : workId
+  if (expandedId.value === workId) {
+    await loadWorkItemRuntime(workId)
   }
 }
 
@@ -125,10 +125,10 @@ function formatTime(value?: string | null): string {
 }
 
 onMounted(async () => {
-  await loadTasks()
+  await loadWorkItems()
   pollHandle = window.setInterval(async () => {
-    await loadTasks()
-    await refreshExpandedTaskRuntime()
+    await loadWorkItems()
+    await refreshExpandedWorkItemRuntime()
   }, pollMs)
 })
 
@@ -141,7 +141,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="panel">
-    <h2 class="panel-title">任务</h2>
+    <h2 class="panel-title">Work Items</h2>
 
     <div class="filters card">
       <input
@@ -164,10 +164,10 @@ onBeforeUnmount(() => {
     <div v-else-if="error" class="error-state">{{ error }}</div>
 
     <template v-else>
-      <div class="task-count">{{ total }} tasks found</div>
+      <div class="task-count">{{ total }} work items found</div>
 
       <div class="task-list">
-        <div v-for="task in tasks" :key="task.id" class="card task-card">
+        <div v-for="task in work_items" :key="task.id" class="card task-card">
           <div class="task-header" @click="toggleExpand(task.id)">
             <span class="task-id">{{ task.id }}</span>
             <span :class="statusClass(task.computed_status)">{{ task.computed_status }}</span>
@@ -212,8 +212,8 @@ onBeforeUnmount(() => {
             <template v-else>
               <div class="history-section">
                 <h5>Run History</h5>
-                <div v-if="(taskRuns[task.id] || []).length" class="history-list">
-                  <div v-for="run in taskRuns[task.id]" :key="run.run_id" class="history-row">
+                <div v-if="(workItemRuns[task.id] || []).length" class="history-list">
+                  <div v-for="run in workItemRuns[task.id]" :key="run.run_id" class="history-row">
                     <span>{{ run.run_id }}</span>
                     <span>{{ run.status }}</span>
                     <span>{{ run.progress_pct.toFixed(0) }}%</span>

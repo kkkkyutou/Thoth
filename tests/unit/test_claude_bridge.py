@@ -72,7 +72,7 @@ def _write_task(
         "module": "f1",
         "title": title,
         "status": "ready",
-        "work_type": "task",
+        "work_kind": "execution",
         "runnable": True,
         "goal": work_goal,
         "context": f"scope-{work_id}",

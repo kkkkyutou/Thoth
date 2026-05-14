@@ -55,7 +55,7 @@ from .recorder import Recorder, _write_json
 from .registry import available_case_lines, recommended_usage, resolve_case_specs
 
 
-INVOCATION_BUDGET_SECONDS = 180.0
+INVOCATION_BUDGET_SECONDS = float(os.environ.get("THOTH_SELFTEST_INVOCATION_BUDGET_SECONDS", "180"))
 
 
 def _case_status(checks: list[dict[str, Any]]) -> str:

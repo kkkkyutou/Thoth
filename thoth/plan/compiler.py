@@ -25,7 +25,7 @@ def collect_legacy_authority_rows(project_root: Path) -> list[dict[str, Any]]:
         items.append(
             {
                 "legacy_path": ".thoth/project",
-                "task_id": "legacy-thoth-project",
+                "legacy_id": "legacy-thoth-project",
                 "status": "invalid",
                 "reason": "legacy_thoth_project_authority_removed",
             }
@@ -35,7 +35,7 @@ def collect_legacy_authority_rows(project_root: Path) -> list[dict[str, Any]]:
                 items.append(
                     {
                         "legacy_path": str(path.relative_to(project_root)),
-                        "task_id": path.stem,
+                        "legacy_id": path.stem,
                         "status": "invalid",
                         "reason": "legacy_thoth_project_authority_removed",
                     }
@@ -46,13 +46,13 @@ def collect_legacy_authority_rows(project_root: Path) -> list[dict[str, Any]]:
             if path.name in {"_module.yaml", "paper-module-mapping.yaml"}:
                 continue
             payload = _read_yaml(path)
-            task_id = payload.get("id") if isinstance(payload.get("id"), str) else path.stem
-            if not isinstance(task_id, str) or not task_id:
-                task_id = path.stem
+            legacy_id = payload.get("id") if isinstance(payload.get("id"), str) else path.stem
+            if not isinstance(legacy_id, str) or not legacy_id:
+                legacy_id = path.stem
             items.append(
                 {
                     "legacy_path": str(path.relative_to(project_root)),
-                    "task_id": task_id,
+                    "legacy_id": legacy_id,
                     "status": "invalid",
                     "reason": "legacy_yaml_execution_authority_removed",
                 }
@@ -65,7 +65,7 @@ def audit_legacy_tasks(project_root: Path) -> dict[str, Any]:
     audit = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": utc_now(),
-        "legacy_tasks": items,
+        "legacy_authority": items,
         "summary": {
             "total": len(items),
             "invalid": len(items),
@@ -80,9 +80,9 @@ def compile_task_authority(project_root: Path) -> dict[str, Any]:
     legacy_audit = audit_legacy_tasks(project_root)
     graph = summarize_object_graph(project_root)
     problems = list(graph.get("problems", []))
-    for item in legacy_audit.get("legacy_tasks", []):
-        problems.append(f"legacy task {item.get('task_id')}: {item.get('reason')}")
-    graph["summary"]["legacy_task_count"] = legacy_audit["summary"]["total"]
+    for item in legacy_audit.get("legacy_authority", []):
+        problems.append(f"legacy authority {item.get('legacy_id')}: {item.get('reason')}")
+    graph["summary"]["legacy_authority_count"] = legacy_audit["summary"]["total"]
     graph["problems"] = problems
     _write_json(compiler_state_path(project_root), graph)
     return graph

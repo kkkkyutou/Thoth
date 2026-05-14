@@ -94,7 +94,7 @@ class TestInitWorkflow:
         session_end = (project_dir / "scripts" / "session-end-check.sh").read_text(encoding="utf-8")
         assert "command -v thoth" in thoth_cli
         assert "THOTH_SOURCE_ROOT" in thoth_cli
-        assert "bash scripts/thoth-cli.sh sync" in session_end
+        assert "bash scripts/thoth-cli.sh init --sync" in session_end
         assert "bash scripts/thoth-cli.sh doctor" in session_end
         assert "research-tasks" not in session_end
 

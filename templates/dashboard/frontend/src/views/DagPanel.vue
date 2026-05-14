@@ -66,7 +66,7 @@ function edgeStyle(edge: DagEdge): string {
               <span v-if="node.status" class="node-status">{{ node.status }}</span>
               <span class="node-direction">{{ node.direction }}</span>
               <span class="node-progress">{{ node.progress.toFixed(0) }}%</span>
-              <span v-if="node.task_count !== undefined" class="node-tasks">{{ node.task_count }} tasks</span>
+              <span v-if="node.work_item_count !== undefined" class="node-work_items">{{ node.work_item_count }} work_items</span>
             </div>
             <!-- Edges from this node -->
             <div

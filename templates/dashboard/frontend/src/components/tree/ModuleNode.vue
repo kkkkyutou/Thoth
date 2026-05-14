@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { TreeModule } from '@/types'
-import TaskNode from './TaskNode.vue'
+import WorkItemNode from './WorkItemNode.vue'
 import { useDashboardStore } from '@/stores/dashboard'
 
 const props = defineProps<{ module: TreeModule }>()
@@ -19,10 +19,10 @@ const open = ref(false)
         <span class="module__id">{{ props.module.id }}</span>
         <span class="module__name">{{ props.module.name }}</span>
       </button>
-      <span class="module__meta">{{ props.module.task_count }}</span>
+      <span class="module__meta">{{ props.module.work_item_count }}</span>
     </div>
-    <div v-show="open" class="module__tasks">
-      <TaskNode v-for="task in props.module.tasks" :key="task.id" :task="task" />
+    <div v-show="open" class="module__work_items">
+      <WorkItemNode v-for="task in props.module.work_items" :key="task.id" :task="task" />
     </div>
   </div>
 </template>
@@ -83,7 +83,7 @@ const open = ref(false)
   font-size: 0.75rem;
 }
 
-.module__tasks {
+.module__work_items {
   padding-left: 18px;
 }
 </style>

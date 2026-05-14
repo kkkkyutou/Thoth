@@ -9,7 +9,7 @@ import type {
   ProgressData,
   ResearchConfig,
   SystemStatus,
-  Task,
+  WorkItem,
   TreeDirection,
   TreeModule,
   WorkbenchTab,
@@ -29,7 +29,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const activity = ref<ActivityEvent[]>([])
   const systemStatus = ref<SystemStatus | null>(null)
 
-  const selectedTask = ref<Task | null>(null)
+  const selectedWorkItem = ref<WorkItem | null>(null)
   const selectedModuleId = ref<string | null>(null)
   const activeTab = ref<WorkbenchTab>('overview')
   const lastUpdatedAt = ref<string | null>(null)
@@ -71,7 +71,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
             if (filters.module && module.id !== filters.module) {
               return null
             }
-            const nextTasks = module.tasks.filter((task) => {
+            const nextTasks = module.work_items.filter((task) => {
               const searchPool = [
                 task.id,
                 task.title,
@@ -94,8 +94,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
             }
             return {
               ...module,
-              task_count: nextTasks.length,
-              tasks: nextTasks,
+              work_item_count: nextTasks.length,
+              work_items: nextTasks,
             }
           })
           .filter((module): module is TreeModule => Boolean(module))
@@ -200,14 +200,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
     await loadTabData(activeTab.value)
   }
 
-  async function selectTask(taskId: string) {
+  async function selectWorkItem(workId: string) {
     loading.detail = true
     try {
-      selectedTask.value = await api.getTask(taskId)
+      selectedWorkItem.value = await api.getWorkItem(workId)
       selectedModuleId.value = null
       activeTab.value = 'detail'
     } catch (error) {
-      lastError.value = `task ${taskId}: ${stringifyError(error)}`
+      lastError.value = `work item ${workId}: ${stringifyError(error)}`
     } finally {
       loading.detail = false
     }
@@ -215,12 +215,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   function selectModule(moduleId: string) {
     selectedModuleId.value = moduleId
-    selectedTask.value = null
+    selectedWorkItem.value = null
     activeTab.value = 'detail'
   }
 
   function clearSelection() {
-    selectedTask.value = null
+    selectedWorkItem.value = null
     selectedModuleId.value = null
   }
 
@@ -244,7 +244,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     progress,
     selectedModule,
     selectedModuleId,
-    selectedTask,
+    selectedWorkItem,
     systemStatus,
     tree,
     clearSelection,
@@ -256,7 +256,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     loadTabData,
     refreshForActiveTab,
     selectModule,
-    selectTask,
+    selectWorkItem,
     setActiveTab,
   }
 })

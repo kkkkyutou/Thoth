@@ -72,7 +72,7 @@ const directionEntries = computed(() => {
 
       <!-- Status counts -->
       <section class="card status-grid">
-        <h3>Task Status</h3>
+        <h3>WorkItem Status</h3>
         <div class="status-items">
           <div
             v-for="(count, key) in progress.status_counts"
@@ -106,7 +106,7 @@ const directionEntries = computed(() => {
         </p>
         <div v-if="progress.runtime.active_runs.length" class="active-run-list">
           <div v-for="run in progress.runtime.active_runs" :key="run.run_id" class="active-run-row">
-            <strong>{{ run.task_id }}</strong>
+            <strong>{{ run.work_id }}</strong>
             <span>{{ run.host || 'unknown-host' }}</span>
             <span>{{ run.executor || 'unknown-executor' }}</span>
             <span>{{ run.status }}</span>
@@ -132,11 +132,11 @@ const directionEntries = computed(() => {
         </div>
       </section>
 
-      <!-- Blocked tasks -->
-      <section v-if="progress.blocked_tasks.length > 0" class="card blocked-section">
-        <h3>Blocked Tasks</h3>
+      <!-- Blocked work items -->
+      <section v-if="progress.blocked_work_items.length > 0" class="card blocked-section">
+        <h3>Blocked Work Items</h3>
         <ul class="blocked-list">
-          <li v-for="bt in progress.blocked_tasks" :key="bt.id">
+          <li v-for="bt in progress.blocked_work_items" :key="bt.id">
             <strong>{{ bt.title }}</strong>
             <span class="blocked-reason">Blocked by: {{ bt.blocked_by.join(', ') }}</span>
           </li>
@@ -148,8 +148,8 @@ const directionEntries = computed(() => {
         <h3>Estimation</h3>
         <div class="estimation-grid">
           <div class="est-item">
-            <span class="est-value">{{ progress.estimation.completed_tasks }}/{{ progress.estimation.total_tasks }}</span>
-            <span class="est-label">Tasks Completed</span>
+            <span class="est-value">{{ progress.estimation.completed_work_items }}/{{ progress.estimation.total_work_items }}</span>
+            <span class="est-label">Work Items Completed</span>
           </div>
           <div class="est-item">
             <span class="est-value">{{ progress.estimation.elapsed_days }}d</span>

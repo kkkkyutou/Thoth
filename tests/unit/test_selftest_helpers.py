@@ -14,6 +14,7 @@ import pytest
 from thoth.observe.selftest.host_common import (
     _claude_arguments_match,
     _claude_expected_args,
+    _codex_command_matches_public_command,
     _looks_like_claude_bridge_cold_start,
     _normalize_claude_public_command_result,
 )
@@ -337,6 +338,19 @@ def test_codex_completed_command_items_extracts_failed_shell_step():
     assert len(items) == 1
     assert items[0]["command"] == "/bin/bash -lc 'thoth status'"
     assert items[0]["exit_code"] == 1
+
+
+def test_codex_command_match_accepts_cat_expanded_argument_probe():
+    command = (
+        "/bin/bash -lc \"bash -lc 'set -euo pipefail; exec python3 "
+        "\"$THOTH_SELFTEST_RUNTIME_ROOT/scripts/thoth-cli-entry.py\" \"$@\"' "
+        "thoth discuss --decision-json \\\"\"'$(cat /tmp/probe/decision.json)'\""
+    )
+
+    assert _codex_command_matches_public_command(
+        command,
+        '$thoth discuss --decision-json "$(cat /tmp/probe/decision.json)"',
+    )
 
 
 def test_normalize_codex_public_command_result_allows_followup_commands_for_review_probe():

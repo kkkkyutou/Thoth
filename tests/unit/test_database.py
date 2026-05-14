@@ -51,19 +51,19 @@ def test_insert_research_event(test_db):
 
     conn = _get_test_conn(test_db)
     conn.execute(
-        """INSERT INTO research_events (task_id, task_title, module, direction, verdict, conclusion_text)
+        """INSERT INTO research_events (work_id, work_title, module, direction, verdict, conclusion_text)
            VALUES (?, ?, ?, ?, ?, ?)""",
         ("f1-h2", "OAuth Integration", "f1", "frontend", "confirmed",
          "72% friction reduction achieved"),
     )
     conn.commit()
 
-    cursor = conn.execute("SELECT * FROM research_events WHERE task_id = ?", ("f1-h2",))
+    cursor = conn.execute("SELECT * FROM research_events WHERE work_id = ?", ("f1-h2",))
     row = cursor.fetchone()
     conn.close()
 
     assert row is not None, "Expected to find the inserted research event"
-    assert row["task_id"] == "f1-h2"
+    assert row["work_id"] == "f1-h2"
     assert row["verdict"] == "confirmed"
     assert row["module"] == "f1"
     assert row["direction"] == "frontend"
@@ -132,7 +132,7 @@ def test_indexes_exist(test_db):
 
     expected_indexes = [
         "idx_research_events_created",
-        "idx_research_events_task",
+        "idx_research_events_work",
         "idx_todo_tasks_project",
         "idx_todo_tasks_completed",
     ]
@@ -146,7 +146,7 @@ def test_init_db_idempotent(test_db):
 
     conn = _get_test_conn(test_db)
     conn.execute(
-        """INSERT INTO research_events (task_id, task_title, module, direction, verdict)
+        """INSERT INTO research_events (work_id, work_title, module, direction, verdict)
            VALUES (?, ?, ?, ?, ?)""",
         ("t1", "Test", "m1", "d1", "confirmed"),
     )

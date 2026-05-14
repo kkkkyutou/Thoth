@@ -54,7 +54,7 @@ def _write_work_item(tmp_path: Path, work_id: str = "task-1", *, status: str = "
         title="Imported",
         summary="Imported work",
         payload={
-            "work_type": "task",
+            "work_kind": "execution",
             "runnable": True,
             "goal": "Imported work",
             "context": "f1",
@@ -110,7 +110,7 @@ def test_is_task_completed():
 
 
 def test_is_task_blocked():
-    blocked, blockers = is_task_blocked({"ready_state": "blocked", "depends_on": [{"task_id": "dep", "type": "hard"}]}, [])
+    blocked, blockers = is_task_blocked({"ready_state": "blocked", "depends_on": [{"work_id": "dep", "type": "hard"}]}, [])
     assert blocked
     assert blockers == ["dep"]
 

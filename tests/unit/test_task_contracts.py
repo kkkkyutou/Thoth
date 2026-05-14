@@ -24,7 +24,7 @@ def _ready_work_payload(decision_id: str = "DEC-001") -> dict:
         "work_id": "work-1",
         "title": "Runtime validation",
         "status": "ready",
-        "work_type": "task",
+        "work_kind": "execution",
         "runnable": True,
         "goal": "Validate runtime lifecycle.",
         "context": "runtime",
@@ -195,7 +195,7 @@ def test_doctor_reads_object_graph_and_flags_legacy_yaml(tmp_path):
     legacy_task.write_text("id: task-1\nhypothesis: stale legacy\n", encoding="utf-8")
     payload = build_doctor_payload(tmp_path)
     assert payload["overall_ok"] is False
-    assert payload["summary"]["legacy_task_count"] == 1
+    assert payload["summary"]["legacy_authority_count"] == 1
 
 
 def test_doctor_rejects_half_migrated_legacy_project_without_creating_authority(tmp_path):

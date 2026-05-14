@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .host_common import (
@@ -30,8 +31,12 @@ def _host_codex(
     def run_public_command(public_command: str, *, recorder: Recorder, artifact_name: str, timeout: float = 240) -> tuple[CommandResult, list[str]]:
         done_token = f"{_safe_name(artifact_name).upper()}_DONE"
         extra_env = _host_local_state_env(project_dir)
+        if os.environ.get("THOTH_SELFTEST_USE_LOCAL_RUNTIME") == "1":
+            extra_env["THOTH_SELFTEST_RUNTIME_ROOT"] = str(repo_root)
         if "--sleep" in public_command.split():
             extra_env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "hold"
+        elif public_command.strip().startswith(("$thoth run ", "$thoth loop ")):
+            extra_env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "complete"
         result, artifacts = _run_codex_public_command(
             project_dir,
             public_command,

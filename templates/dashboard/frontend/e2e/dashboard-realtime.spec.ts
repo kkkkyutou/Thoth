@@ -18,7 +18,7 @@ test('dashboard reflects live runtime state and stop transitions', async ({ page
   await expect(runtimeSection).toContainText(taskId)
   await expect(runtimeSection).toContainText('codex')
 
-  await page.goto('/tasks')
+  await page.goto('/work-items')
   await page.getByText(taskId).first().click()
   const taskDetail = page.locator('.task-detail').first()
   await expect(taskDetail).toContainText(runId)

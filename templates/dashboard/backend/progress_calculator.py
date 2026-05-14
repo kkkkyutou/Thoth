@@ -32,7 +32,7 @@ def _phase_progress(phase: dict | None) -> float:
 
 
 def _has_strict_shape(task: dict[str, Any]) -> bool:
-    return "ready_state" in task or "work_id" in task or "task_id" in task
+    return "ready_state" in task or "work_id" in task
 
 
 def _strict_task_progress(task: dict[str, Any]) -> float:
@@ -123,9 +123,9 @@ def calculate_global_progress(all_tasks: list[dict]) -> float:
 def find_blocked_tasks(all_tasks: list[dict]) -> list[dict]:
     blocked: list[dict] = []
     seen_ids: set[str] = set()
-    completed_ids = {task.get("id") or task.get("task_id") for task in all_tasks if get_task_status(task) == "completed"}
+    completed_ids = {task.get("id") or task.get("work_id") for task in all_tasks if get_task_status(task) == "completed"}
     for task in all_tasks:
-        tid = str(task.get("id") or task.get("task_id") or "")
+        tid = str(task.get("id") or task.get("work_id") or "")
         if not tid or tid in seen_ids:
             continue
         if _has_strict_shape(task):
@@ -137,11 +137,15 @@ def find_blocked_tasks(all_tasks: list[dict]) -> list[dict]:
         if not deps:
             continue
         for dep in deps:
-            if dep.get("type") == "hard" and dep.get("task_id") not in completed_ids:
+            if dep.get("type") == "hard" and dep.get("work_id") not in completed_ids:
                 blocked.append(task)
                 seen_ids.add(tid)
                 break
     return blocked
+
+
+def find_blocked_work_items(all_tasks: list[dict]) -> list[dict]:
+    return find_blocked_tasks(all_tasks)
 
 
 def estimate_completion(all_tasks: list[dict]) -> Optional[dict]:
@@ -169,8 +173,8 @@ def estimate_completion(all_tasks: list[dict]) -> Optional[dict]:
             completed_count += 1
     if earliest is None or completed_count == 0:
         return {
-            "total_tasks": total_count,
-            "completed_tasks": completed_count,
+            "total_work_items": total_count,
+            "completed_work_items": completed_count,
             "elapsed_days": 0,
             "estimated_days_remaining": None,
             "message": "Insufficient data for estimation",
@@ -183,8 +187,8 @@ def estimate_completion(all_tasks: list[dict]) -> Optional[dict]:
     remaining = total_count - completed_count
     est_days = remaining / rate if rate > 0 else None
     return {
-        "total_tasks": total_count,
-        "completed_tasks": completed_count,
+        "total_work_items": total_count,
+        "completed_work_items": completed_count,
         "elapsed_days": round(elapsed, 1),
         "rate_per_day": round(rate, 2),
         "estimated_days_remaining": round(est_days, 1) if est_days else None,
@@ -202,10 +206,10 @@ def status_counts(tasks: list[dict]) -> dict[str, int]:
         "invalid": 0,
         "failed": 0,
     }
-    blocked_ids = {task.get("id") or task.get("task_id") for task in find_blocked_tasks(tasks)}
+    blocked_ids = {task.get("id") or task.get("work_id") for task in find_blocked_tasks(tasks)}
     for task in tasks:
         counts["total"] += 1
-        tid = task.get("id") or task.get("task_id")
+        tid = task.get("id") or task.get("work_id")
         if tid in blocked_ids and not _has_strict_shape(task):
             counts["blocked"] += 1
             continue

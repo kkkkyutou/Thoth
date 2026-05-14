@@ -18,7 +18,7 @@ onMounted(() => {
       <div class="activity__list">
         <div v-for="event in store.activity" :key="event.id" class="activity__item">
           <div class="activity__top">
-            <strong>{{ event.task_id }} · {{ event.task_title }}</strong>
+            <strong>{{ event.work_id }} · {{ event.work_title }}</strong>
             <span>{{ event.verdict }}</span>
           </div>
           <p>{{ event.conclusion_text || 'No conclusion text' }}</p>

@@ -1,4 +1,4 @@
-export type TaskStatus =
+export type WorkItemStatus =
   | 'pending'
   | 'in_progress'
   | 'completed'
@@ -17,7 +17,7 @@ export type WorkbenchTab =
   | 'system'
 
 export interface Dependency {
-  task_id: string
+  work_id: string
   type: 'hard' | 'soft'
   reason?: string
 }
@@ -50,7 +50,7 @@ export interface Phases {
 
 export interface RunSummary {
   run_id: string
-  task_id: string | null
+  work_id: string | null
   title: string
   host?: string | null
   status: string
@@ -113,9 +113,9 @@ export interface WorkResult {
   latest_review?: Record<string, unknown>
 }
 
-export interface Task {
+export interface WorkItem {
   id: string
-  task_id?: string
+  work_id?: string
   title: string
   type?: string
   direction: string
@@ -138,29 +138,29 @@ export interface Task {
   estimated_total_hours?: number
   time_spent_hours?: number
   work_result?: WorkResult
-  computed_status: TaskStatus
+  computed_status: WorkItemStatus
   computed_progress: number
   active_run?: RunSummary | null
   run_count?: number
 }
 
-export interface TaskListResponse {
+export interface WorkItemListResponse {
   total: number
   offset: number
   limit: number
-  tasks: Task[]
+  work_items: WorkItem[]
 }
 
-export interface TaskRunsResponse {
-  task_id: string
+export interface WorkItemRunsResponse {
+  work_id: string
   runs: RunSummary[]
 }
 
-export interface TreeTask {
+export interface TreeWorkItem {
   id: string
   title: string
   type: string
-  status: TaskStatus
+  status: WorkItemStatus
   progress: number
   hypothesis?: string
 }
@@ -169,9 +169,9 @@ export interface TreeModule {
   id: string
   name: string
   scientific_question?: string
-  task_count: number
+  work_item_count: number
   progress: number
-  tasks: TreeTask[]
+  work_items: TreeWorkItem[]
   upstream: string[]
   downstream: string[]
 }
@@ -184,7 +184,7 @@ export interface TreeDirection {
   modules: TreeModule[]
 }
 
-export interface BlockedTask {
+export interface BlockedWorkItem {
   id: string
   title: string
   blocked_by: string[]
@@ -212,11 +212,11 @@ export interface ProgressData {
     invalid?: number
     failed?: number
   }
-  blocked_tasks: BlockedTask[]
+  blocked_work_items: BlockedWorkItem[]
   module_count: number
   estimation: {
-    total_tasks: number
-    completed_tasks: number
+    total_work_items: number
+    completed_work_items: number
     elapsed_days: number
     rate_per_day?: number
     estimated_days_remaining: number | null
@@ -229,19 +229,19 @@ export interface ProgressData {
 export interface DagNode {
   id: string
   label: string
-  type: 'module' | 'task'
+  type: 'module' | 'work_item'
   direction: string
   module?: string
-  status?: TaskStatus
+  status?: WorkItemStatus
   progress: number
-  task_count?: number
+  work_item_count?: number
 }
 
 export interface DagEdge {
   source: string
   target: string
   type: 'hard' | 'soft'
-  level: 'module' | 'task'
+  level: 'module' | 'work_item'
   reason?: string
 }
 
@@ -281,13 +281,13 @@ export interface Milestone {
   name: string
   description: string
   progress: number
-  task_count: number
+  work_item_count: number
 }
 
 export interface ActivityEvent {
   id: number
-  task_id: string
-  task_title: string
+  work_id: string
+  work_title: string
   module: string
   direction: string
   verdict: string
@@ -315,7 +315,7 @@ export interface TodoProject {
 
 export interface SystemStatus {
   last_updated: number | string
-  task_count: number
+  work_item_count: number
   module_count: number
   cache_info: Record<string, unknown>
   runtime?: RuntimeOverview
@@ -323,7 +323,7 @@ export interface SystemStatus {
 }
 
 export interface OverviewConclusion {
-  task_id: string
+  work_id: string
   title: string
   module: string
   direction: string
@@ -347,10 +347,10 @@ export interface OverviewSummary {
     language?: string
   }
   headline: {
-    total_tasks: number
-    completed_tasks: number
-    blocked_tasks: number
-    ready_tasks: number
+    total_work_items: number
+    completed_work_items: number
+    blocked_work_items: number
+    ready_work_items: number
     overall_progress: number
     decision_queue_count: number
   }
@@ -360,7 +360,7 @@ export interface OverviewSummary {
   recent_conclusions: OverviewConclusion[]
   recent_activity: string[]
   todo_next: TodoNextEntry[]
-  blocked_tasks?: BlockedTask[]
+  blocked_work_items?: BlockedWorkItem[]
   healthy: boolean
   health_message: string
   active_run_count?: number
@@ -387,8 +387,8 @@ export interface ResearchConfig {
   }
 }
 
-export interface TaskFilters {
-  status?: TaskStatus | ''
+export interface WorkItemFilters {
+  status?: WorkItemStatus | ''
   module?: string
   direction?: string
   limit?: number

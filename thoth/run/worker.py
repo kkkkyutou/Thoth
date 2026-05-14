@@ -283,7 +283,7 @@ def external_worker_command(
             str(project_root),
         ]
         if phase in {"plan", "validate"}:
-            cmd.extend(["--sandbox", "read-only"])
+            cmd.extend(["--sandbox", "workspace-write"])
         else:
             cmd.append("--dangerously-bypass-approvals-and-sandbox")
         if output_path is not None:

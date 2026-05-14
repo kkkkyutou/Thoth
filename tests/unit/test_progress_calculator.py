@@ -14,7 +14,7 @@ from progress_calculator import (
     calculate_task_progress,
     calculate_module_progress,
     calculate_global_progress,
-    find_blocked_tasks,
+    find_blocked_work_items,
     estimate_completion,
     get_task_status,
     status_counts,
@@ -124,9 +124,9 @@ def test_blocked_task_detection():
     dep_task = _make_task("dep1")  # All pending, not completed
     main_task = _make_task(
         "main1",
-        depends_on=[{"task_id": "dep1", "type": "hard", "reason": "needs dep"}],
+        depends_on=[{"work_id": "dep1", "type": "hard", "reason": "needs dep"}],
     )
-    blocked = find_blocked_tasks([dep_task, main_task])
+    blocked = find_blocked_work_items([dep_task, main_task])
     blocked_ids = [t["id"] for t in blocked]
     assert "main1" in blocked_ids, f"Expected main1 to be blocked, got blocked: {blocked_ids}"
 
@@ -140,9 +140,9 @@ def test_completed_dependency_not_blocked():
                           conclusion="completed")
     main_task = _make_task(
         "main1",
-        depends_on=[{"task_id": "dep1", "type": "hard", "reason": "needs dep"}],
+        depends_on=[{"work_id": "dep1", "type": "hard", "reason": "needs dep"}],
     )
-    blocked = find_blocked_tasks([dep_task, main_task])
+    blocked = find_blocked_work_items([dep_task, main_task])
     blocked_ids = [t["id"] for t in blocked]
     assert "main1" not in blocked_ids, f"Expected main1 NOT blocked, got blocked: {blocked_ids}"
 
@@ -152,9 +152,9 @@ def test_soft_dependency_not_blocking():
     dep_task = _make_task("dep1")  # pending
     main_task = _make_task(
         "main1",
-        depends_on=[{"task_id": "dep1", "type": "soft", "reason": "nice to have"}],
+        depends_on=[{"work_id": "dep1", "type": "soft", "reason": "nice to have"}],
     )
-    blocked = find_blocked_tasks([dep_task, main_task])
+    blocked = find_blocked_work_items([dep_task, main_task])
     assert blocked == [], f"Expected no blocked tasks for soft deps, got: {[t['id'] for t in blocked]}"
 
 
@@ -169,7 +169,7 @@ def test_status_counts():
                    experiment="completed",
                    conclusion="completed"),  # completed
         _make_task("t4",
-                   depends_on=[{"task_id": "t1", "type": "hard", "reason": "test"}]),
+                   depends_on=[{"work_id": "t1", "type": "hard", "reason": "test"}]),
         # t4 depends on t1 which is pending -> blocked
     ]
     counts = status_counts(tasks)
@@ -192,8 +192,8 @@ def test_estimate_completion():
     ]
     result = estimate_completion(tasks)
     assert result is not None, "Expected estimation result, got None"
-    assert result["total_tasks"] == 2, f"Expected total_tasks=2, got {result['total_tasks']}"
-    assert result["completed_tasks"] == 1, f"Expected completed_tasks=1, got {result['completed_tasks']}"
+    assert result["total_work_items"] == 2, f"Expected total_work_items=2, got {result['total_work_items']}"
+    assert result["completed_work_items"] == 1, f"Expected completed_work_items=1, got {result['completed_work_items']}"
     assert result["estimated_days_remaining"] is not None, (
         "Expected estimated_days_remaining to be calculated"
     )

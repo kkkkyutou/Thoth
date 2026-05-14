@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { api } from '@/api/client'
-import type { Task, TaskFilters } from '@/types/index'
+import type { WorkItem, WorkItemFilters } from '@/types/index'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
 
 const loading = ref(true)
 const error = ref('')
-const tasks = ref<Task[]>([])
+const work_items = ref<WorkItem[]>([])
 const total = ref(0)
 const expandedId = ref<string | null>(null)
 
@@ -19,9 +19,9 @@ const filterModule = ref('')
 const page = ref(0)
 const pageSize = 20
 
-const filters = (): TaskFilters => ({
+const filters = (): WorkItemFilters => ({
   direction: filterDirection.value || undefined,
-  status: (filterStatus.value as TaskFilters['status']) || undefined,
+  status: (filterStatus.value as WorkItemFilters['status']) || undefined,
   module: filterModule.value || undefined,
   limit: pageSize,
   offset: page.value * pageSize,
@@ -31,8 +31,8 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const res = await api.getTasks(filters())
-    tasks.value = res.tasks
+    const res = await api.getWorkItems(filters())
+    work_items.value = res.work_items
     total.value = res.total
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
@@ -102,11 +102,11 @@ const phaseLabels: Record<string, string> = {
     <LoadingState v-if="loading" />
     <div v-else-if="error" class="error-msg">{{ error }}</div>
     <template v-else>
-      <div v-if="!tasks.length" class="empty-hint">无匹配任务</div>
+      <div v-if="!work_items.length" class="empty-hint">无匹配工作项</div>
 
       <div class="task-list">
         <div
-          v-for="task in tasks"
+          v-for="task in work_items"
           :key="task.id"
           class="task-card"
           :class="{ expanded: expandedId === task.id }"
@@ -155,13 +155,13 @@ const phaseLabels: Record<string, string> = {
 
             <div v-if="task.depends_on?.length" class="detail-section">
               <strong>依赖：</strong>
-              <span v-for="dep in task.depends_on" :key="dep.task_id" class="dep-chip">
-                {{ dep.task_id }} ({{ dep.type }})
+              <span v-for="dep in task.depends_on" :key="dep.work_id" class="dep-chip">
+                {{ dep.work_id }} ({{ dep.type }})
               </span>
             </div>
 
             <div v-if="task.ready_state" class="detail-section">
-              <strong>严格任务状态：</strong>{{ task.ready_state }}
+              <strong>工作项状态：</strong>{{ task.ready_state }}
               <span v-if="task.blocking_reason"> - {{ task.blocking_reason }}</span>
             </div>
 
@@ -251,7 +251,7 @@ const phaseLabels: Record<string, string> = {
   color: var(--text-secondary, #6b5b4e);
 }
 
-/* ── Task list ─── */
+/* ── WorkItem list ─── */
 .task-list {
   display: flex;
   flex-direction: column;

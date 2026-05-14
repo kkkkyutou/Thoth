@@ -29,7 +29,7 @@ onMounted(async () => {
       <div v-for="ms in milestones" :key="ms.id" class="card milestone-card">
         <div class="ms-header">
           <span class="ms-id">{{ ms.id }}</span>
-          <span class="ms-task-count">{{ ms.task_count }} tasks</span>
+          <span class="ms-task-count">{{ ms.work_item_count }} work_items</span>
         </div>
         <h4 class="ms-name">{{ ms.name }}</h4>
         <p class="ms-desc">{{ ms.description }}</p>

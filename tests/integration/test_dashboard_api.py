@@ -12,7 +12,7 @@ from progress_calculator import (
     calculate_module_progress,
     calculate_global_progress,
     get_task_status,
-    find_blocked_tasks,
+    find_blocked_work_items,
     status_counts,
     estimate_completion,
 )
@@ -68,9 +68,9 @@ class TestProgressCalculator:
                 "method_design": {"status": "pending"},
                 "experiment": {"status": "pending"},
                 "conclusion": {"status": "pending"},
-            }, "depends_on": [{"task_id": "t1", "type": "hard"}]},
+            }, "depends_on": [{"work_id": "t1", "type": "hard"}]},
         ]
-        blocked = find_blocked_tasks(tasks)
+        blocked = find_blocked_work_items(tasks)
         assert len(blocked) == 1
         assert blocked[0]["id"] == "t2"
 

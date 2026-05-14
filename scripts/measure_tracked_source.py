@@ -80,8 +80,6 @@ def classify(relpath: str) -> tuple[str, str]:
         return ("hard_metric", "tests")
     if relpath.startswith("commands/"):
         return ("hard_metric", "commands")
-    if relpath.startswith("contracts/"):
-        return ("hard_metric", "contracts")
     if relpath.startswith("plugins/thoth/skills/thoth/"):
         return ("hard_metric", "codex_skill")
     if relpath.startswith("scripts/"):

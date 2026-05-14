@@ -54,7 +54,7 @@ def _write_work_item(tmp_path: Path, work_id: str = "task-1", *, status: str = "
         title="Strict task",
         summary="Verify loader",
         payload={
-            "work_type": "task",
+            "work_kind": "execution",
             "runnable": True,
             "goal": "Verify loader",
             "context": "f1",
