@@ -3,7 +3,7 @@
 ## Current Truth
 
 - Objective: `OBJ-001`
-- Top next action: `TD-039`
+- Top next action: `TD-001`
 - Active workstreams: `WS-001`, `WS-002`, `WS-003`, `WS-004`, `WS-005`
 - Active blockers: None
 
@@ -23,7 +23,7 @@
 
 ## Top Next Action
 
-- `TD-039` `[doing]`: 完成 `v0.2.0` stable compact release 的分支集成、tag、push 与远端-only 安装刷新
+- `TD-001` `[ready]`: 将 `dev` / `main` 分流规则固化为仓库内可执行治理机制
 
 ## Active Blockers
 
@@ -31,7 +31,7 @@
 
 ## Recent Important Changes
 
-- 2026-05-14: `TD-039` 已进入发布收口：当前 `dev` checkout 已将 package/plugin version bump 到 `0.2.0`，README / CHANGELOG / generated Claude/Codex plugin surfaces、`thoth init` 生成的 `AGENTS.md`/`CLAUDE.md`、runtime/read-model/dashboard/API/UI、自测 fixture 与 obsolete plugin residue 统一到 `work_item` / `work_id` / `work_kind` / `runnable`。旧 `/tasks`、`/api/tasks`、current authority `task_id` 与 `work_type=task` 不再作为当前 public/runtime/dashboard 输出保留；legacy `task_id` 仅限 migration input / doctor rejection / 历史证据 / todo 非 authority 语境。代码面与 dev 验证已通过 `py_compile`、split targeted pytest、frontend build、core five selftest、Codex surface split selftest 与 drift scan；当前仍需完成 release-surface commit、dev-only governance commit、`main` cherry-pick/main verification、`v0.2.0` tag、push，以及远端-only Claude/Codex marketplace 安装刷新。
+- 2026-05-14: `TD-039` 已验证并发布 `v0.2.0` stable compact release：package/plugin version、README / CHANGELOG / generated Claude/Codex plugin surfaces、`thoth init` 生成的 `AGENTS.md`/`CLAUDE.md`、runtime/read-model/dashboard/API/UI、自测 fixture 与 obsolete plugin residue 已统一到 `work_item` / `work_id` / `work_kind` / `runnable`。旧 `/tasks`、`/api/tasks`、current authority `task_id` 与 `work_type=task` 不再作为当前 public/runtime/dashboard 输出保留；legacy `task_id` 仅限 migration input / doctor rejection / 历史证据 / todo 非 authority 语境。发布面提交 `010c339` 已 cherry-pick 到 `main` 为 `094609c`，tag `v0.2.0` 打在 `094609c`；`origin/dev`、`origin/main` 与 tag 已推送；远端-only Claude/Codex marketplace 安装刷新已完成，Claude `thoth@thoth` 与 Codex marketplace root runtime 均核验为 `version=0.2.0`。
 - 2026-05-09: `TD-038` 已验证并发布 `0.1.15`：`discuss` 长对话现在可通过语义无损结构化 authority capsule 做 draft checkpoint 与显式 close，close 后把目标、非目标、约束、accepted/rejected decisions、acceptance、context evidence、risks、run instructions 与 open questions 写入 `work_item.payload.authority_context`，不新增公开命令或新 object kind。`run` / `loop` 的 `plan` phase 必须证明 `strict_task.authority_context` 覆盖完整；发现 open gaps 或未授权假设时以 `needs_input` terminal failed，不进入 `execute`；`execute` phase 必须读取 `plan.json` 并记录 `plan_artifact_read` / `plan_deviations`。验证：`py_compile` 通过，targeted pytest `64 passed in 597.00s` 与 `14 passed in 266.40s`，核心五项 selftest `overall_status=passed`；`main` 发布验证 targeted pytest `64 passed in 473.94s`、核心五项 selftest `overall_status=passed`；远端-only 安装刷新完成，Claude `thoth@thoth` 为 `0.1.15`，Codex marketplace upgrade 成功。
 - 2026-05-09: `TD-037` blocker 已解除并发布 `0.1.14`：Claude manifest 版本漂移已在 `0.1.12/0.1.13` 修复，本轮继续消除 installed-state Codex selftest 剩余阻塞。host-real fixture 现在补齐 `agent-entry.md` / `source-map.json` / `object-graph-summary.json`，严格 `doctor --quick` 不再因自测 fixture 缺读面失败；Codex/Claude host-real 命令统一注入 project-local `THOTH_LOCAL_STATE_DIR`，selftest 从同一 local registry 读取 run/controller supervisor，避免 Codex exec 沙箱与父进程 home-state 不一致；`surface.*.auto.stop` case 预算调到 90s 以覆盖启动 controller + stop 两次 host exec 的真实成本。验证：`py_compile` 通过，focused pytest `67 passed`，`doctor --version` 输出 `version=0.1.14`，installed-state Codex slice `surface.codex.init/status/doctor/init_sync/auto.sleep_prepare/auto.stop` 为 `overall_status=passed`；远端-only 安装刷新完成，Claude `thoth@thoth` 为 `0.1.14`，Codex marketplace root runtime probe 为 `0.1.14`，post-upgrade installed-state Codex slice 仍为 `overall_status=passed`。
 - 2026-05-08: `0.1.12` 发布面已按治理规则集成并推送：`dev` 发布面提交 `4343c44`、dev-only 治理提交 `b21a463`，`main` cherry-pick 为 `11eea39`；`main` 上关键 `py_compile`、63 条投影/selftest helper 单测、核心五项 selftest 均通过。远端-only 安装刷新未闭合：Claude marketplace update 直连超时，代理重试报 SSH auth failure；Codex marketplace upgrade 代理报 TLS 连接异常，直连报 GitHub 443 timeout；Claude installed `thoth@thoth` 仍为 `0.1.11`。已按 `REQ-034` 停在 blocker，不做本地覆盖。

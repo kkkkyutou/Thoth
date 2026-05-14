@@ -42,11 +42,7 @@
 
 ## Doing
 
-- `TD-039` `[doing]`: 完成 `v0.2.0` stable compact release 的分支集成、tag、push 与远端-only 安装刷新
-  - Related items: `WS-001`, `WS-002`, `WS-003`, `WS-005`, `REQ-020`, `REQ-030`, `REQ-031`, `REQ-034`, `CD-042`, `EV-040`
-  - Current state: `dev` checkout 的 release-surface 实现与验证已完成，包含 `0.2.0` version bump、README/CHANGELOG/generated surfaces、init 生成 agent instructions、work-item-only authority compact、dashboard `/work-items` rename、obsolete root plugin residue 删除、split targeted pytest、frontend build、core five selftest、Codex surface split selftest 与 drift scan。
-  - Remaining: 提交 release-surface 与 dev-only governance 两笔 commit；仅将 release-surface commit cherry-pick 到 `main`；在 `main` 重跑发布验证；打 `v0.2.0` tag；push `origin dev`、`origin main` 与 tag；通过远端 marketplace update/upgrade 刷新本机 Claude Code / Codex 安装并核验 installed version。
-  - Constraint: 未完成远端-only 安装刷新前，不得把 `v0.2.0` release 记为 fully verified。
+- None
 
 ## Blocked
 
@@ -99,6 +95,12 @@
   - Evidence: Runtime `plan` phase 现在必须输出 `authority_complete`、`authority_coverage`、`open_gaps`、`forbidden_assumptions_used`；存在缺口或未授权假设时以 `needs_input` terminal failed，不进入 `execute`。`execute` phase 必须读取 `plan.json` 并报告 `plan_artifact_read=true` 与 `plan_deviations`。
   - Evidence: `python -m py_compile thoth/objects.py thoth/plan/discuss.py thoth/plan/store.py thoth/surface/plan_commands.py thoth/surface/cli.py thoth/surface/handlers.py thoth/prompt_specs.py thoth/prompt_validators.py thoth/run/phases.py thoth/run/worker.py thoth/projections.py` 通过；targeted pytest `64 passed in 597.00s` 与 lifecycle/bridge/dashboard pytest `14 passed in 266.40s`；核心五项 selftest 为 `overall_status=passed`，报告路径 `.tmp_pytest/thoth-selftest-discuss-plan-authority.json`，生成时间 `2026-05-09T06:20:41Z`。
   - Evidence: 发布面提交 `48ddebf feat: preserve discussion authority for runtime planning` 已 cherry-pick 到 `main` 为 `1176483` 并推送；dev-only 治理提交 `7fc54bd` 已推送 `origin/dev`。`main` 上 `py_compile` 通过，targeted pytest `64 passed in 473.94s`，核心五项 selftest `.tmp_pytest/thoth-selftest-main-discuss-plan-authority.json` 为 `overall_status=passed`。远端-only 安装刷新完成：Claude `thoth@thoth` 从 `0.1.14` 更新到 `0.1.15`，Codex `plugin marketplace upgrade thoth` 成功。
+- `TD-039` `[verified]`: 完成 `v0.2.0` stable compact release 的分支集成、tag、push 与远端-only 安装刷新
+  - Related items: `WS-001`, `WS-002`, `WS-003`, `WS-005`, `REQ-020`, `REQ-030`, `REQ-031`, `REQ-034`, `CD-042`, `EV-040`
+  - Evidence: `dev` release-surface commit `010c339 release: compact work item authority for 0.2.0` 与 dev-only governance commit `f296eeb docs: record 0.2.0 compact release verification` 已完成并推送；release-surface commit 已 cherry-pick 到 `main` 为 `094609c`。
+  - Evidence: `main` 发布验证通过：targeted `py_compile`、`cd templates/dashboard/frontend && npm run build`、targeted pytest `112 passed in 632.30s`、核心五项 selftest `.tmp_pytest/thoth-selftest-v020-main-core.json` 为 `overall_status=passed`，生成时间 `2026-05-14T14:13:11Z`。
+  - Evidence: tag `v0.2.0` 已打在 `main` 发布提交 `094609c`；`origin/dev` 已推送到 `f296eeb`，`origin/main` 已推送到 `094609c`，`origin/v0.2.0` 已创建。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出从 `0.1.15` 更新到 `0.2.0`；`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.0`；Claude cache 与 Codex marketplace root 的 `doctor --version` 均输出 `version=0.2.0`。
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立
