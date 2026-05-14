@@ -42,7 +42,11 @@
 
 ## Doing
 
-- None
+- `TD-039` `[doing]`: 完成 `v0.2.0` stable compact release 的分支集成、tag、push 与远端-only 安装刷新
+  - Related items: `WS-001`, `WS-002`, `WS-003`, `WS-005`, `REQ-020`, `REQ-030`, `REQ-031`, `REQ-034`, `CD-042`, `EV-040`
+  - Current state: `dev` checkout 的 release-surface 实现与验证已完成，包含 `0.2.0` version bump、README/CHANGELOG/generated surfaces、init 生成 agent instructions、work-item-only authority compact、dashboard `/work-items` rename、obsolete root plugin residue 删除、split targeted pytest、frontend build、core five selftest、Codex surface split selftest 与 drift scan。
+  - Remaining: 提交 release-surface 与 dev-only governance 两笔 commit；仅将 release-surface commit cherry-pick 到 `main`；在 `main` 重跑发布验证；打 `v0.2.0` tag；push `origin dev`、`origin main` 与 tag；通过远端 marketplace update/upgrade 刷新本机 Claude Code / Codex 安装并核验 installed version。
+  - Constraint: 未完成远端-only 安装刷新前，不得把 `v0.2.0` release 记为 fully verified。
 
 ## Blocked
 
