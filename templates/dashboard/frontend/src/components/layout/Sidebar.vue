@@ -25,7 +25,7 @@ const directions = computed(
         :direction="direction"
       />
       <div v-if="store.filteredTree.length === 0" class="sidebar__empty">
-        No matching tasks
+        No matching work_items
       </div>
     </div>
   </aside>

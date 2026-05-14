@@ -215,7 +215,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
             "Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.",
             "When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.",
             "When closing, translate the discussion into semantic-lossless authority: goal, non-goals, constraints, accepted decisions, rejected options, acceptance, context evidence, risks, run instructions, and open questions.",
-            "Do not fabricate ready execution tasks from unresolved decisions.",
+            "Do not fabricate ready execution work items from unresolved decisions.",
             "Do not repeat the packet or decision payload verbatim.",
         ),
         reply_budget_utf8=240,
@@ -489,6 +489,10 @@ def codex_installed_runtime_shell_command(public_command: str) -> str:
         args = parts
     resolver = (
         "set -euo pipefail; "
+        "if [ -n \"${THOTH_SELFTEST_RUNTIME_ROOT:-}\" ]; then "
+        "if [ -x \"$THOTH_SELFTEST_RUNTIME_ROOT/bin/thoth\" ]; then exec \"$THOTH_SELFTEST_RUNTIME_ROOT/bin/thoth\" \"$@\"; fi; "
+        "if [ -f \"$THOTH_SELFTEST_RUNTIME_ROOT/scripts/thoth-cli-entry.py\" ]; then exec python3 \"$THOTH_SELFTEST_RUNTIME_ROOT/scripts/thoth-cli-entry.py\" \"$@\"; fi; "
+        "fi; "
         "if command -v thoth >/dev/null 2>&1; then exec thoth \"$@\"; fi; "
         "candidates=\"$(ls -td \"$HOME\"/.codex/plugins/cache/thoth/thoth/* 2>/dev/null || true)\"; "
         "marketplace=\"$HOME/.codex/.tmp/marketplaces/thoth\"; "
@@ -502,7 +506,12 @@ def codex_installed_runtime_shell_command(public_command: str) -> str:
         "done; "
         "echo 'thoth installed runtime not found' >&2; exit 127"
     )
-    return " ".join(["bash", "-lc", shlex.quote(resolver), "thoth", *(shlex.quote(arg) for arg in args)])
+    def quote_runtime_arg(arg: str) -> str:
+        if arg.startswith("$(cat ") and arg.endswith(")") and "\n" not in arg:
+            return '"' + arg.replace('"', '\\"') + '"'
+        return shlex.quote(arg)
+
+    return " ".join(["bash", "-lc", shlex.quote(resolver), "thoth", *(quote_runtime_arg(arg) for arg in args)])
 
 
 def render_codex_command_micro_prompt(command_id: str) -> str:

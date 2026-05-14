@@ -14,10 +14,12 @@
   <p>
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
-    <img alt="Ready Work --work-id" src="https://img.shields.io/badge/tasks-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.1.15" src="https://img.shields.io/badge/version-0.1.15-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
+    <img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
+  <h2>🚀 What's New</h2>
+  <p><strong>v0.2.0 stable release</strong> · compact work-item authority with <code>work_id</code> · Claude Code and Codex plugin parity</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 
@@ -127,11 +129,11 @@ Thoth is a dashboard-first orchestration runtime for autoresearch. It assumes ch
 | Hooks + watchdog + runtime | Keep execution attached to durable ledgers and observable lifecycle events. | Work is not persistent |
 | Dashboard-first visibility | Show live, stale, attachable, and host-specific runtime truth in one read surface. | Parallel work is invisible |
 | Mechanical yes/no acceptance | Force validators, ledgers, and result payloads to decide whether work really passed. | Agents can claim completion too early |
-| Object graph + execution system + locked work items | Freeze what is allowed, compile it into tasks, and keep authority layers from drifting. | Docs and state rot over time |
+| Object graph + execution system + locked work items | Freeze what is allowed, compile it into runnable work items, and keep authority layers from drifting. | Docs and state rot over time |
 
 ## System At A Glance
 
-Humans should not spend their attention tracking every grain of sand in the funnel. Thoth lets AI own the middle of the hourglass, while the dashboard shows the gold that survives: decisions, tasks, runs, results, and the current verdict.
+Humans should not spend their attention tracking every grain of sand in the funnel. Thoth lets AI own the middle of the hourglass, while the dashboard shows the gold that survives: decisions, work items, runs, results, and the current verdict.
 
 ## Architecture Flow Table
 

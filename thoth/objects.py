@@ -244,14 +244,18 @@ def active_work_ids(project_root: Path) -> set[str]:
 
 def work_item_ready_errors(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    work_type = payload.get("work_type")
+    if "task_id" in payload:
+        errors.append("task_id is legacy current-authority shape; run thoth init --migrate apply")
+    if "work_type" in payload:
+        errors.append("work_type is legacy current-authority shape; use work_kind")
+    work_kind = payload.get("work_kind")
     runnable = payload.get("runnable")
-    if work_type not in {"milestone", "task"}:
-        errors.append("work_type must be milestone or task")
+    if work_kind not in {"execution", "milestone"}:
+        errors.append("work_kind must be execution or milestone")
     if not isinstance(runnable, bool):
         errors.append("runnable must be boolean")
-    if runnable is True and work_type != "task":
-        errors.append("only task work_items may be runnable")
+    if runnable is True and work_kind != "execution":
+        errors.append("only execution work_items may be runnable")
     missing_questions = payload.get("missing_questions")
     if missing_questions is None:
         missing_questions = []
@@ -619,7 +623,7 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
         "revision": obj.get("revision"),
         "ready_state": obj.get("status"),
         "runnable": payload.get("runnable") is True,
-        "work_type": payload.get("work_type"),
+        "work_kind": payload.get("work_kind"),
         "goal_statement": payload.get("goal"),
         "context": payload.get("context"),
         "constraints": payload.get("constraints", []),
@@ -648,6 +652,7 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
 LEGACY_WORK_JSON_FIELDS = {
     "contract_id",
     "task_id",
+    "work_type",
     "decision_ids",
     "goal_statement",
     "implementation_recipe",
@@ -676,7 +681,7 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
     decisions = _normalize_string_list(payload.get("decisions"))
     authority_context = payload.get("authority_context") if isinstance(payload.get("authority_context"), dict) else None
     work_payload = {
-        "work_type": str(payload.get("work_type") or "task"),
+        "work_kind": str(payload.get("work_kind") or "execution"),
         "runnable": bool(payload.get("runnable", True)),
         "goal": payload.get("goal") or title,
         "context": payload.get("context") or "",

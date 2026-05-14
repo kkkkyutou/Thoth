@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { api } from '@/api/client'
-import type { ProgressData, Task } from '@/types/index'
+import type { ProgressData, WorkItem } from '@/types/index'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import LoadingState from '@/components/common/LoadingState.vue'
@@ -9,7 +9,7 @@ import LoadingState from '@/components/common/LoadingState.vue'
 const loading = ref(true)
 const error = ref('')
 const progress = ref<ProgressData | null>(null)
-const decisionTasks = ref<Task[]>([])
+const decisionTasks = ref<WorkItem[]>([])
 
 const overallPct = computed(() => progress.value?.overall_progress ?? 0)
 const counts = computed(() => progress.value?.status_counts ?? { total: 0, pending: 0, in_progress: 0, completed: 0, blocked: 0 })
@@ -26,10 +26,10 @@ async function load() {
   try {
     const [p, blockedRes] = await Promise.all([
       api.getProgress(),
-      api.getTasks({ status: 'blocked' }),
+      api.getWorkItems({ status: 'blocked' }),
     ])
     progress.value = p
-    decisionTasks.value = blockedRes.tasks
+    decisionTasks.value = blockedRes.work_items
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {

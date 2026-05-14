@@ -59,9 +59,9 @@ def generate_report(project_root: Path, from_date: datetime, to_date: datetime, 
     lines.append(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     lines.append("")
     lines.append("## Summary")
-    lines.append(f"- Tasks completed in period: {len(completed_in_range)}")
-    lines.append(f"- Tasks in progress: {len(in_progress)}")
-    lines.append(f"- Tasks blocked or invalid: {len(blocked)}")
+    lines.append(f"- Work items completed in period: {len(completed_in_range)}")
+    lines.append(f"- Work items in progress: {len(in_progress)}")
+    lines.append(f"- Work items blocked or invalid: {len(blocked)}")
     lines.append(f"- Overall progress: {overall_pct}% ({total_completed}/{total})")
     lines.append("")
     lines.append("## Completed")
@@ -76,7 +76,7 @@ def generate_report(project_root: Path, from_date: datetime, to_date: datetime, 
             for evidence in work_result.get("evidence_paths", []):
                 lines.append(f"- Evidence: [{evidence}]({evidence})")
     else:
-        lines.append("No tasks completed in the selected range.")
+        lines.append("No work items completed in the selected range.")
     lines.append("")
     lines.append("## In Progress")
     lines.append("")
@@ -84,7 +84,7 @@ def generate_report(project_root: Path, from_date: datetime, to_date: datetime, 
         for task in in_progress:
             lines.append(f"- `{task.get('work_id')}` {task.get('title', '')}")
     else:
-        lines.append("No ready tasks at the moment.")
+        lines.append("No ready work items at the moment.")
     lines.append("")
     lines.append("## Blockers & Risks")
     lines.append("")
@@ -92,7 +92,7 @@ def generate_report(project_root: Path, from_date: datetime, to_date: datetime, 
         for task in blocked:
             lines.append(f"- `{task.get('work_id')}` {task.get('blocking_reason') or task.get('ready_state')}")
     else:
-        lines.append("No blocked tasks.")
+        lines.append("No blocked work items.")
     lines.append("")
     lines.append("## Run Log Highlights")
     lines.append("")

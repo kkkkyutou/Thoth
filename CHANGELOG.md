@@ -2,12 +2,25 @@
 
 ## [Unreleased]
 
-### Changed
-- Removed Claude plugin default-agent activation so public `/thoth:*` commands no longer get hijacked into the internal `thoth-main` agent path
-- Reworked generated Claude command surfaces to execute the repo-local Thoth CLI through a plugin bridge before Claude summarizes the result
+No pending changes.
 
-### Fixed
-- Hardened the Claude selftest gate to require real bridge events from `/thoth:init` and `/thoth:status`, instead of accepting prompt-only fake project initialization
+## [0.2.0] - 2026-05-14
+
+### Added
+- Published the first stable compact release for the current `.thoth/objects` runtime.
+- Added README launch notes for durable runs, locked work items, reviewable verdicts, and Claude Code / Codex plugin parity.
+- Strengthened generated `AGENTS.md` / `CLAUDE.md` project contracts with Think Before Coding, Simplicity First, Surgical Changes, and Goal-Driven Execution guidance.
+
+### Changed
+- Standardized current authority, runtime, and dashboard read models on `work_item`, `work_id`, `work_kind`, and `runnable`.
+- Renamed dashboard public routes and API endpoints from task naming to work-item naming, including `/work-items` and `/api/work-items`.
+- Updated publishable plugin metadata and generated host surfaces to version `0.2.0`.
+
+### Breaking Changes
+- Removed `task_id` from current public authority, dashboard output, runtime summaries, generated surfaces, and selftest samples.
+- Replaced current `work_type=task|milestone` payload shape with `work_kind=execution|milestone`; runnable execution eligibility now depends on `runnable=true`.
+- Removed `/tasks`, `/api/tasks`, `/api/tasks/{task_id}`, `/api/tasks/{task_id}/active-run`, and `/api/tasks/{task_id}/runs` from the dashboard public surface.
+- Removed obsolete root plugin residue directories `skills/`, `contracts/`, and `hooks/hooks.json`; publishable plugin surfaces now live under the generated Claude/Codex plugin manifests, `commands/`, `plugins/thoth/skills/thoth/`, `bin/thoth`, `scripts/thoth-cli-entry.py`, and the `thoth/` runtime package.
 
 ## [0.1.4] - 2026-04-23
 

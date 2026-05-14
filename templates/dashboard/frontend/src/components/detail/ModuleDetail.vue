@@ -3,8 +3,8 @@ import { useDashboardStore } from '@/stores/dashboard'
 
 const store = useDashboardStore()
 
-function openTask(taskId: string) {
-  void store.selectTask(taskId)
+function openWorkItem(workId: string) {
+  void store.selectWorkItem(workId)
 }
 </script>
 
@@ -14,18 +14,18 @@ function openTask(taskId: string) {
       <h2>{{ store.selectedModule.id }} · {{ store.selectedModule.name }}</h2>
       <p>{{ store.selectedModule.scientific_question || 'No module summary yet.' }}</p>
       <div class="module-detail__meta">
-        <span>tasks: {{ store.selectedModule.task_count }}</span>
+        <span>work_items: {{ store.selectedModule.work_item_count }}</span>
         <span>progress: {{ Math.round(store.selectedModule.progress) }}%</span>
       </div>
     </article>
 
-    <article class="card module-detail__tasks">
-      <h3>Tasks</h3>
+    <article class="card module-detail__work_items">
+      <h3>Work Items</h3>
       <button
-        v-for="task in store.selectedModule.tasks"
+        v-for="task in store.selectedModule.work_items"
         :key="task.id"
         class="module-detail__task"
-        @click="openTask(task.id)"
+        @click="openWorkItem(task.id)"
       >
         <strong>{{ task.id }}</strong>
         <span>{{ task.title }}</span>
@@ -42,7 +42,7 @@ function openTask(taskId: string) {
 }
 
 .module-detail__hero,
-.module-detail__tasks {
+.module-detail__work_items {
   padding: 18px;
 }
 
@@ -58,7 +58,7 @@ function openTask(taskId: string) {
   color: var(--text-muted);
 }
 
-.module-detail__tasks {
+.module-detail__work_items {
   display: grid;
   gap: 8px;
 }

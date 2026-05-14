@@ -109,7 +109,7 @@ def _write_task(project_dir: Path, work_id: str = "task-1") -> None:
             "module": "f1",
             "title": "Lifecycle Validation",
             "status": "ready",
-            "work_type": "task",
+            "work_kind": "execution",
             "runnable": True,
             "goal": "State stays inspectable under real execution.",
             "context": "frontend-runtime",
@@ -250,7 +250,7 @@ def test_dashboard_process_and_hooks_are_observable(thoth_project: Path):
         description="dashboard backend to expose runtime payload",
     )
 
-    with urlopen(f"http://127.0.0.1:{port}/api/tasks/task-1/active-run", timeout=5) as response:  # noqa: S310
+    with urlopen(f"http://127.0.0.1:{port}/api/work-items/task-1/active-run", timeout=5) as response:  # noqa: S310
         active_run = json.loads(response.read().decode("utf-8"))
     assert active_run["run_id"] == run_id
     assert active_run["work_id"] == "task-1"
@@ -261,7 +261,7 @@ def test_dashboard_process_and_hooks_are_observable(thoth_project: Path):
     state["updated_at"] = "2000-01-01T00:00:00Z"
     state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    with urlopen(f"http://127.0.0.1:{port}/api/tasks/task-1/active-run", timeout=5) as response:  # noqa: S310
+    with urlopen(f"http://127.0.0.1:{port}/api/work-items/task-1/active-run", timeout=5) as response:  # noqa: S310
         stale_run = json.loads(response.read().decode("utf-8"))
     assert stale_run["is_stale"] is True
 
@@ -344,7 +344,7 @@ def test_dashboard_process_and_hooks_are_observable(thoth_project: Path):
                 "source": "test",
                 "links": [],
                 "payload": {
-                    "work_type": "task",
+                    "work_kind": "execution",
                     "runnable": True,
                     "missing_questions": [],
                 },

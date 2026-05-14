@@ -120,7 +120,7 @@ def handle_discuss(args, parser, *, project_root: Path) -> int:
             blocked=int(work_counts.get("blocked", 0)),
             active=int(summary.get("active_work_count", 0)),
             accepted=int(decision_counts.get("accepted", 0)),
-            legacy=int(summary.get("legacy_task_count", 0)),
+            legacy=int(summary.get("legacy_authority_count", 0)),
         ),
         body={**body, "compiler": compiler},
         refs=output_refs(note_path, project_root / ".thoth" / "docs" / "object-graph-summary.json"),

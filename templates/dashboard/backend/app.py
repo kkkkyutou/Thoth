@@ -29,10 +29,10 @@ from data_loader import (
     load_decisions, load_work_item_refs, load_project_config,
 )
 from runtime_loader import (
-    get_active_run_for_task,
+    get_active_run_for_work_item,
     get_run_detail,
     get_run_events,
-    get_task_runs,
+    get_work_item_runs,
     runtime_overview,
 )
 from progress_calculator import (
@@ -64,17 +64,17 @@ def _load_milestones() -> list:
 
 def _milestone_payload() -> list[dict]:
     milestone_map = _load_milestones()
-    tasks = load_all_tasks(PROJECT_ROOT)
-    tasks_by_id = {t.get("id", ""): t for t in tasks}
+    work_items = load_all_tasks(PROJECT_ROOT)
+    work_items_by_id = {item.get("id", ""): item for item in work_items}
     result = []
     for ms in milestone_map:
-        ms_task_ids = ms.get("tasks", [])
-        ms_tasks = [tasks_by_id[tid] for tid in ms_task_ids if tid in tasks_by_id]
-        progress = sum(calculate_task_progress(t) for t in ms_tasks) / len(ms_tasks) if ms_tasks else 0.0
+        ms_work_item_ids = ms.get("work_items") or ms.get("tasks", [])
+        ms_work_items = [work_items_by_id[wid] for wid in ms_work_item_ids if wid in work_items_by_id]
+        progress = sum(calculate_task_progress(t) for t in ms_work_items) / len(ms_work_items) if ms_work_items else 0.0
         result.append({
             "id": ms["id"], "name": ms["name"],
             "description": ms.get("description", ""),
-            "progress": round(progress, 1), "task_count": len(ms_task_ids),
+            "progress": round(progress, 1), "work_item_count": len(ms_work_item_ids),
         })
     return result
 
@@ -91,7 +91,7 @@ init_db()
 
 SPA_ENTRY_ROUTES = (
     "/overview",
-    "/tasks",
+    "/work-items",
     "/milestones",
     "/dag",
     "/timeline",
@@ -119,10 +119,10 @@ DIRECTION_LABELS = {
 
 def _build_tree() -> list[dict]:
     modules = load_modules(PROJECT_ROOT)
-    all_tasks = load_all_tasks(PROJECT_ROOT)
-    tasks_by_module: dict[str, list[dict]] = {}
-    for t in all_tasks:
-        tasks_by_module.setdefault(t.get("module", ""), []).append(t)
+    all_work_items = load_all_tasks(PROJECT_ROOT)
+    work_items_by_module: dict[str, list[dict]] = {}
+    for t in all_work_items:
+        work_items_by_module.setdefault(t.get("module", ""), []).append(t)
     modules_by_dir: dict[str, list[dict]] = {}
     for m in modules:
         modules_by_dir.setdefault(m.get("direction", "unknown"), []).append(m)
@@ -133,30 +133,30 @@ def _build_tree() -> list[dict]:
         module_nodes = []
         for mod in dir_modules:
             mid = mod.get("id", "")
-            mod_tasks = tasks_by_module.get(mid, [])
-            task_nodes = []
-            for task in mod_tasks:
-                task_nodes.append({
-                    "id": task.get("id", "") or task.get("task_id", ""),
-                    "title": task.get("title", ""),
-                    "type": task.get("type", "hypothesis"),
-                    "status": get_task_status(task),
-                    "progress": calculate_task_progress(task),
-                    "hypothesis": task.get("hypothesis") or task.get("goal_statement", ""),
-                    "phases": _summarize_phases(task),
+            mod_work_items = work_items_by_module.get(mid, [])
+            work_item_nodes = []
+            for work_item in mod_work_items:
+                work_item_nodes.append({
+                    "id": work_item.get("id", "") or work_item.get("work_id", ""),
+                    "title": work_item.get("title", ""),
+                    "type": "work_item",
+                    "status": get_task_status(work_item),
+                    "progress": calculate_task_progress(work_item),
+                    "hypothesis": work_item.get("hypothesis") or work_item.get("goal_statement", ""),
+                    "phases": _summarize_phases(work_item),
                 })
             module_nodes.append({
                 "id": mid,
                 "name": mod.get("name", mid),
                 "scientific_question": mod.get("scientific_question", ""),
-                "task_count": len(mod_tasks),
-                "progress": calculate_module_progress(mod_tasks),
-                "tasks": task_nodes,
+                "work_item_count": len(mod_work_items),
+                "progress": calculate_module_progress(mod_work_items),
+                "work_items": work_item_nodes,
                 "upstream": mod.get("related_modules", {}).get("upstream", []),
                 "downstream": mod.get("related_modules", {}).get("downstream", []),
             })
         dir_progress = calculate_direction_progress(
-            [{"tasks": tasks_by_module.get(m.get("id", ""), [])} for m in dir_modules]
+            [{"tasks": work_items_by_module.get(m.get("id", ""), [])} for m in dir_modules]
         )
         tree.append({
             "direction": direction,
@@ -185,11 +185,11 @@ def _summarize_phases(task: dict) -> dict:
     return summary
 
 
-def _attach_runtime(task: dict) -> dict:
-    payload = dict(task)
-    task_id = str(task.get("id", "") or task.get("task_id", ""))
-    payload["active_run"] = get_active_run_for_task(PROJECT_ROOT, task_id)
-    payload["run_count"] = len(get_task_runs(PROJECT_ROOT, task_id))
+def _attach_runtime(work_item: dict) -> dict:
+    payload = dict(work_item)
+    work_id = str(work_item.get("work_id", "") or work_item.get("id", ""))
+    payload["active_run"] = get_active_run_for_work_item(PROJECT_ROOT, work_id)
+    payload["run_count"] = len(get_work_item_runs(PROJECT_ROOT, work_id))
     return payload
 
 
@@ -234,8 +234,8 @@ async def api_overview_summary():
         return _error_response(500, "InternalError", str(exc))
 
 
-@app.get("/api/tasks")
-async def api_tasks(
+@app.get("/api/work-items")
+async def api_work_items(
     status: Optional[str] = Query(None),
     module: Optional[str] = Query(None),
     direction: Optional[str] = Query(None),
@@ -244,12 +244,12 @@ async def api_tasks(
 ):
     try:
         tasks = load_all_tasks(PROJECT_ROOT)
-        blocked_ids = {t.get("id") or t.get("task_id") for t in find_blocked_tasks(tasks)}
+        blocked_ids = {t.get("id") or t.get("work_id") for t in find_blocked_tasks(tasks)}
         result = []
         for t in tasks:
             t_status = get_task_status(t)
-            task_id = t.get("id") or t.get("task_id")
-            if task_id in blocked_ids and t_status not in {"invalid", "failed"}:
+            work_id = t.get("id") or t.get("work_id")
+            if work_id in blocked_ids and t_status not in {"invalid", "failed"}:
                 t_status = "blocked"
             if status and t_status != status:
                 continue
@@ -263,24 +263,24 @@ async def api_tasks(
                 "computed_progress": calculate_task_progress(t),
             })
         total = len(result)
-        return {"total": total, "offset": offset, "limit": limit, "tasks": result[offset:offset + limit]}
+        return {"total": total, "offset": offset, "limit": limit, "work_items": result[offset:offset + limit]}
     except Exception as exc:
-        logger.error("Error in /api/tasks: %s", traceback.format_exc())
+        logger.error("Error in /api/work-items: %s", traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 
-@app.get("/api/tasks/{task_id}")
-async def api_task_detail(task_id: str):
+@app.get("/api/work-items/{work_id}")
+async def api_work_item_detail(work_id: str):
     try:
         tasks = load_all_tasks(PROJECT_ROOT)
         for t in tasks:
-            if t.get("id") == task_id or t.get("task_id") == task_id:
+            if t.get("id") == work_id or t.get("work_id") == work_id:
                 return {
                     **_attach_runtime({k: v for k, v in t.items() if not k.startswith("_")}),
                     "computed_status": get_task_status(t),
                     "computed_progress": calculate_task_progress(t),
                 }
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        raise HTTPException(status_code=404, detail=f"Work item {work_id} not found")
     except HTTPException:
         raise
     except Exception as exc:
@@ -304,21 +304,21 @@ async def api_dag():
                 "id": mid, "label": mod.get("name", mid), "type": "module",
                 "direction": mod.get("direction", ""),
                 "progress": calculate_module_progress(mod_tasks),
-                "task_count": len(mod_tasks),
+                "work_item_count": len(mod_tasks),
             })
             for ds in mod.get("related_modules", {}).get("downstream", []):
                 edges.append({"source": mid, "target": ds, "type": "hard", "level": "module"})
         for task in tasks:
-            tid = task.get("id", "") or task.get("task_id", "")
+            tid = task.get("id", "") or task.get("work_id", "")
             nodes.append({
-                "id": tid, "label": task.get("title", tid), "type": "task",
+                "id": tid, "label": task.get("title", tid), "type": "work_item",
                 "direction": task.get("direction", ""), "module": task.get("module", ""),
                 "status": get_task_status(task), "progress": calculate_task_progress(task),
             })
             for dep in task.get("depends_on", []):
                 edges.append({
-                    "source": dep.get("task_id", ""), "target": tid,
-                    "type": dep.get("type", "soft"), "level": "task",
+                    "source": dep.get("work_id", ""), "target": tid,
+                    "type": dep.get("type", "soft"), "level": "work_item",
                     "reason": dep.get("reason", ""),
                 })
             if task.get("ready_state") in {"blocked", "invalid"} and task.get("blocking_reason"):
@@ -326,7 +326,7 @@ async def api_dag():
                     "source": f"reason:{tid}",
                     "target": tid,
                     "type": "hard",
-                    "level": "task",
+                    "level": "work_item",
                     "reason": str(task.get("blocking_reason")),
                 })
         return {"nodes": nodes, "edges": edges}
@@ -388,14 +388,14 @@ async def api_progress():
         blocked = find_blocked_tasks(tasks)
         blocked_list = []
         for bt in blocked:
-            deps = [d.get("task_id", "") for d in bt.get("depends_on", []) if d.get("type") == "hard"]
+            deps = [d.get("work_id", "") for d in bt.get("depends_on", []) if d.get("type") == "hard"]
             if bt.get("blocking_reason"):
                 deps = [str(bt.get("blocking_reason"))]
-            blocked_list.append({"id": bt.get("id", "") or bt.get("task_id", ""), "title": bt.get("title", ""), "blocked_by": deps})
+            blocked_list.append({"id": bt.get("id", "") or bt.get("work_id", ""), "title": bt.get("title", ""), "blocked_by": deps})
 
         return {
             "overall_progress": overall_pct, "by_direction": by_direction,
-            "status_counts": counts, "blocked_tasks": blocked_list,
+            "status_counts": counts, "blocked_work_items": blocked_list,
             "module_count": len(modules), "estimation": est,
             "runtime": runtime_overview(PROJECT_ROOT),
             "compiler": compiler_state,
@@ -419,7 +419,7 @@ async def api_activity(limit: int = Query(20, ge=1, le=100)):
     try:
         with get_conn() as conn:
             events = conn.execute(
-                "SELECT id, task_id, task_title, module, direction, verdict, conclusion_text, created_at "
+                "SELECT id, work_id, work_title, module, direction, verdict, conclusion_text, created_at "
                 "FROM research_events ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(r) for r in events]
@@ -436,7 +436,7 @@ async def api_system_status():
         runtime = runtime_overview(PROJECT_ROOT)
         return {
             "last_updated": runtime.get("last_runtime_update") or time.time(),
-            "task_count": len(tasks), "module_count": len(modules),
+            "work_item_count": len(tasks), "module_count": len(modules),
             "cache_info": get_cache_info(),
             "runtime": runtime,
             "compiler": load_compiler_state(PROJECT_ROOT),
@@ -445,21 +445,21 @@ async def api_system_status():
         return _error_response(500, "InternalError", str(exc))
 
 
-@app.get("/api/tasks/{task_id}/active-run")
-async def api_task_active_run(task_id: str):
+@app.get("/api/work-items/{work_id}/active-run")
+async def api_work_item_active_run(work_id: str):
     try:
-        return get_active_run_for_task(PROJECT_ROOT, task_id)
+        return get_active_run_for_work_item(PROJECT_ROOT, work_id)
     except Exception as exc:
-        logger.error("Error in /api/tasks/%s/active-run: %s", task_id, traceback.format_exc())
+        logger.error("Error in /api/work-items/%s/active-run: %s", work_id, traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 
-@app.get("/api/tasks/{task_id}/runs")
-async def api_task_runs(task_id: str):
+@app.get("/api/work-items/{work_id}/runs")
+async def api_work_item_runs(work_id: str):
     try:
-        return {"task_id": task_id, "runs": get_task_runs(PROJECT_ROOT, task_id)}
+        return {"work_id": work_id, "runs": get_work_item_runs(PROJECT_ROOT, work_id)}
     except Exception as exc:
-        logger.error("Error in /api/tasks/%s/runs: %s", task_id, traceback.format_exc())
+        logger.error("Error in /api/work-items/%s/runs: %s", work_id, traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 
@@ -507,10 +507,10 @@ async def trigger_sync():
         return _error_response(500, "InternalError", str(exc))
 
 
-@app.post("/api/trigger/verify/{task_id}")
-async def trigger_verify(task_id: str):
+@app.post("/api/trigger/verify/{work_id}")
+async def trigger_verify(work_id: str):
     try:
-        return await run_verify(task_id)
+        return await run_verify(work_id)
     except Exception as exc:
         return _error_response(500, "InternalError", str(exc))
 
@@ -525,15 +525,15 @@ async def trigger_health_check():
 
 @app.post("/api/research-events")
 async def api_add_research_event(body: dict):
-    required = {"task_id", "task_title", "module", "direction", "verdict"}
+    required = {"work_id", "work_title", "module", "direction", "verdict"}
     missing = required - set(body.keys())
     if missing:
         return _error_response(400, "MissingFields", f"Missing: {missing}")
     try:
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO research_events (task_id, task_title, module, direction, verdict, conclusion_text) VALUES (?,?,?,?,?,?)",
-                (body["task_id"], body["task_title"], body["module"], body["direction"], body["verdict"], body.get("conclusion_text")),
+                "INSERT INTO research_events (work_id, work_title, module, direction, verdict, conclusion_text) VALUES (?,?,?,?,?,?)",
+                (body["work_id"], body["work_title"], body["module"], body["direction"], body["verdict"], body.get("conclusion_text")),
             )
         return {"status": "ok"}
     except Exception as exc:
@@ -624,12 +624,12 @@ async def api_decisions():
         return _error_response(500, "InternalError", str(exc))
 
 
-@app.get("/api/work-items")
-async def api_work_items():
+@app.get("/api/work-item-refs")
+async def api_work_item_refs():
     try:
         return {"work_items": load_work_item_refs(PROJECT_ROOT)}
     except Exception as exc:
-        logger.error("Error in /api/work-items: %s", traceback.format_exc())
+        logger.error("Error in /api/work-item-refs: %s", traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 

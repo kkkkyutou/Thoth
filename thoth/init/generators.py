@@ -153,6 +153,7 @@ This document is the canonical human-readable project instruction source for `{c
 - Planning authority is object-graph driven: `discussion -> decision -> work_item`.
 - `work_item` replaces old contract/task authority; runnable work must be `ready`.
 - `run` and `loop` only execute ready runnable work by `--work-id`.
+- Current work-item payloads use `work_id`, `work_kind`, and `runnable`; old `task_id` and `work_type` fields are legacy migration inputs only.
 - Free-form execution is forbidden; ambiguous work must go back through `discuss`.
 - `init` must audit the current repository before it standardizes any Thoth-managed surface.
 - `run` and `loop` are durable by default and support attach/watch/stop lifecycle.
@@ -290,7 +291,7 @@ def render_host_projection(config: dict[str, Any]) -> str:
     return textwrap.dedent(f"""\
 # AGENTS.md
 
-This file is a thin generated shim for `{config["name"]}`.
+This file is a generated project operation contract for `{config["name"]}`.
 
 ## Mission
 
@@ -309,12 +310,43 @@ This file is a thin generated shim for `{config["name"]}`.
 
 - Planning authority lives in `.thoth/objects/discussion`, `.thoth/objects/decision`, and `.thoth/objects/work_item`.
 - There is no standalone Contract kind; goal, constraints, execution plan, eval, runtime policy, and decisions live inside `work_item.payload`.
+- Current executable authority uses `work_item`, `work_id`, `work_kind`, and `runnable`.
+- Legacy `task_id` and `work_type` inputs may be read only by managed migration; current authority objects must not write them.
 - `run` and `loop` execute by `--work-id` only; free-form goals belong in `discuss`.
+- `discuss` owns unresolved intent. If goals, constraints, acceptance, or authority are unclear, keep the work in discussion instead of creating runnable work.
 - Active run/controller references lock the target work item until terminal state.
 - `run` and `loop` are durable by default and support attach/watch/stop lifecycle.
 - Hooks and subagents may enhance throughput but are never correctness dependencies.
-- Dashboard truth is derived from `.thoth/objects` and `.thoth/runs/*`, not host session state.
+- Dashboard, status, and doctor are read surfaces derived from `.thoth/objects` and `.thoth/runs/*`; they are not authority writers.
 - New feature work must keep Claude Code and Codex project surfaces in sync.
+
+## Think Before Coding
+
+- State material assumptions before implementing.
+- If multiple interpretations are plausible, expose the difference instead of silently choosing.
+- If the simple solution satisfies the work item and validator, prefer it.
+- If important context is missing, return to `discuss` rather than guessing.
+
+## Simplicity First
+
+- Implement only what the current work item requires.
+- Do not add speculative configurability, abstractions, or future-proofing.
+- Avoid defensive branches for impossible cases unless the work item or validator requires them.
+- If the implementation grows larger than the problem, reduce the scope before continuing.
+
+## Surgical Changes
+
+- Edit only files needed for the current work item.
+- Preserve local style and surrounding structure.
+- Remove only dead imports, variables, or helpers caused by the current change.
+- Report adjacent issues separately instead of folding them into unrelated edits.
+
+## Goal-Driven Execution
+
+- Translate broad requests into verifiable success conditions.
+- Reproduce bugs before fixing when possible.
+- Verify the exact behavior changed by the implementation.
+- Do not mark work complete until implementation, validation, and evidence are recorded.
 """)
 
 

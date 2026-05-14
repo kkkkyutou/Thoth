@@ -13,7 +13,7 @@ def _work_payload(work_id: str) -> dict:
         "work_id": work_id,
         "title": work_id,
         "status": "ready",
-        "work_type": "task",
+        "work_kind": "execution",
         "runnable": True,
         "goal": f"Complete {work_id}",
         "context": "test",

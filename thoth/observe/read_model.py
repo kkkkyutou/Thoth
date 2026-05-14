@@ -297,29 +297,29 @@ def derive_gantt_rows(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def overview_summary_read_model(project_root: Path) -> dict[str, Any]:
-    tasks = load_tasks(project_root)
+    work_items = load_tasks(project_root)
     config = load_config(project_root)
     compiler_state = load_compiler_state(project_root)
     healthy, health_message = quick_health(project_root)
-    ready_count = sum(1 for task in tasks if str(task.get("ready_state") or "") == "ready")
-    total_count = len(tasks)
-    completed_count = len(completed_tasks(tasks))
-    blocked_count = len(blocking_tasks(tasks))
+    ready_count = sum(1 for item in work_items if str(item.get("ready_state") or "") == "ready")
+    total_count = len(work_items)
+    completed_count = len(completed_tasks(work_items))
+    blocked_count = len(blocking_tasks(work_items))
     overall_progress = round((100 * completed_count / total_count), 1) if total_count else 0.0
     compiler_summary = compiler_state.get("summary", {}) if isinstance(compiler_state, dict) else {}
     decision_counts = compiler_summary.get("decision_counts", {}) if isinstance(compiler_summary.get("decision_counts"), dict) else {}
     return {
         "project": config.get("project", {}),
         "headline": {
-            "total_tasks": total_count,
-            "completed_tasks": completed_count,
-            "blocked_tasks": blocked_count,
-            "ready_tasks": ready_count,
+            "total_work_items": total_count,
+            "completed_work_items": completed_count,
+            "blocked_work_items": blocked_count,
+            "ready_work_items": ready_count,
             "overall_progress": overall_progress,
             "decision_queue_count": decision_counts.get("proposed", 0),
         },
         "compiler_summary": compiler_summary,
-        "recent_conclusions": recent_work_result_summaries(tasks, limit=6),
+        "recent_conclusions": recent_work_result_summaries(work_items, limit=6),
         "recent_activity": load_run_log_recent(project_root, 6),
         "todo_next": [
             {"id": item_id, "status": item_status, "description": description}
@@ -333,17 +333,17 @@ def overview_summary_read_model(project_root: Path) -> dict[str, Any]:
 
 
 def status_read_model(project_root: Path) -> dict[str, Any]:
-    tasks = load_tasks(project_root)
+    work_items = load_tasks(project_root)
     healthy, health_msg = quick_health(project_root)
     return {
         "project_root": str(project_root.resolve()),
         "config": load_config(project_root),
-        "tasks": tasks,
-        "task_count": len(tasks),
+        "work_items": work_items,
+        "work_item_count": len(work_items),
         "active_runs": active_runs(project_root),
         "active_auto_controllers": active_auto_controllers(project_root),
-        "completed_task_count": len(completed_tasks(tasks)),
-        "blocked_task_count": len(blocking_tasks(tasks)),
+        "completed_work_item_count": len(completed_tasks(work_items)),
+        "blocked_work_item_count": len(blocking_tasks(work_items)),
         "healthy": healthy,
         "health_message": health_msg,
         "todo_next": load_todo_next(project_root),

@@ -81,14 +81,14 @@ const chartOption = computed(() => {
       formatter: (params: { data?: { _raw?: DagNode; name?: string } }) => {
         const n = params.data?._raw
         if (!n) return params.data?.name ?? ''
-        const lines = [`<b>${n.label}</b>`, `类型: ${n.type === 'module' ? '模块' : '任务'}`, `方向: ${n.direction}`]
+        const lines = [`<b>${n.label}</b>`, `类型: ${n.type === 'module' ? '模块' : '工作项'}`, `方向: ${n.direction}`]
         if (n.progress != null) lines.push(`进度: ${Math.round(n.progress)}%`)
         if (n.status) lines.push(`状态: ${n.status}`)
         return lines.join('<br/>')
       },
     },
     legend: {
-      data: ['模块', '任务'],
+      data: ['模块', '工作项'],
       top: 10,
       textStyle: { color: '#6b5b4e' },
     },
@@ -100,7 +100,7 @@ const chartOption = computed(() => {
       force: { repulsion: 200, edgeLength: [80, 160], gravity: 0.1 },
       categories: [
         { name: '模块' },
-        { name: '任务' },
+        { name: '工作项' },
       ],
       data: graphNodes,
       links: graphLinks,
@@ -172,7 +172,7 @@ defineExpose({ reload: load })
           <div v-if="selectedNode.module" class="detail-row"><span class="dl">模块</span><span>{{ selectedNode.module }}</span></div>
           <div class="detail-row"><span class="dl">进度</span><span>{{ Math.round(selectedNode.progress) }}%</span></div>
           <div v-if="selectedNode.status" class="detail-row"><span class="dl">状态</span><span>{{ selectedNode.status }}</span></div>
-          <div v-if="selectedNode.task_count != null" class="detail-row"><span class="dl">任务数</span><span>{{ selectedNode.task_count }}</span></div>
+          <div v-if="selectedNode.work_item_count != null" class="detail-row"><span class="dl">任务数</span><span>{{ selectedNode.work_item_count }}</span></div>
         </div>
       </div>
     </template>

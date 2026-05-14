@@ -47,7 +47,7 @@ function verdictClass(verdict: string | null): string {
       <div class="event-list">
         <div v-for="ev in events" :key="ev.id" class="card event-card">
           <div class="ev-header">
-            <span class="ev-task-title">{{ ev.task_title }}</span>
+            <span class="ev-task-title">{{ ev.work_title }}</span>
             <span v-if="ev.verdict" class="ev-verdict" :class="verdictClass(ev.verdict)">
               {{ ev.verdict }}
             </span>

@@ -59,7 +59,7 @@ Interrogate the user's idea until goals, constraints, success criteria, risks, a
 - Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.
 - When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.
 - When closing, translate the discussion into semantic-lossless authority: goal, non-goals, constraints, accepted decisions, rejected options, acceptance, context evidence, risks, run instructions, and open questions.
-- Do not fabricate ready execution tasks from unresolved decisions.
+- Do not fabricate ready execution work items from unresolved decisions.
 - Do not repeat the packet or decision payload verbatim.
 
 ### Reply Contract

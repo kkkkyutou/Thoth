@@ -387,11 +387,11 @@ def test_external_worker_command_uses_executor_specific_cli(tmp_path):
     assert "--dangerously-skip-permissions" in claude_cmd
 
 
-def test_plan_and_validate_worker_commands_are_read_only(tmp_path):
+def test_plan_and_validate_worker_commands_use_workspace_sandbox(tmp_path):
     project = _prepare_project(tmp_path)
     codex_plan = external_worker_command("codex", project, "prompt", phase="plan")
     codex_validate = external_worker_command("codex", project, "prompt", phase="validate")
     claude_validate = external_worker_command("claude", project, "prompt", phase="validate")
-    assert ["--sandbox", "read-only"] == codex_plan[codex_plan.index("--sandbox") : codex_plan.index("--sandbox") + 2]
-    assert ["--sandbox", "read-only"] == codex_validate[codex_validate.index("--sandbox") : codex_validate.index("--sandbox") + 2]
+    assert ["--sandbox", "workspace-write"] == codex_plan[codex_plan.index("--sandbox") : codex_plan.index("--sandbox") + 2]
+    assert ["--sandbox", "workspace-write"] == codex_validate[codex_validate.index("--sandbox") : codex_validate.index("--sandbox") + 2]
     assert "--disallowed-tools" in claude_validate

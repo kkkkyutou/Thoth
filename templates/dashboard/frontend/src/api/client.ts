@@ -9,10 +9,10 @@ import type {
   RunEventPage,
   RunSummary,
   SystemStatus,
-  Task,
-  TaskFilters,
-  TaskListResponse,
-  TaskRunsResponse,
+  WorkItem,
+  WorkItemFilters,
+  WorkItemListResponse,
+  WorkItemRunsResponse,
   Milestone,
   TodoProject,
   TreeDirection,
@@ -39,7 +39,7 @@ export const api = {
   getOverviewSummary: () => request<OverviewSummary>('/overview-summary'),
   getSystemStatus: () => request<SystemStatus>('/status'),
 
-  getTasks: (filters?: TaskFilters) => {
+  getWorkItems: (filters?: WorkItemFilters) => {
     const params = new URLSearchParams()
     if (filters?.status) params.set('status', filters.status)
     if (filters?.module) params.set('module', filters.module)
@@ -47,13 +47,13 @@ export const api = {
     if (filters?.limit) params.set('limit', String(filters.limit))
     if (filters?.offset) params.set('offset', String(filters.offset))
     const query = params.toString()
-    return request<TaskListResponse>(`/tasks${query ? `?${query}` : ''}`)
+    return request<WorkItemListResponse>(`/work-items${query ? `?${query}` : ''}`)
   },
-  getTask: (taskId: string) => request<Task>(`/tasks/${taskId}`),
-  getTaskActiveRun: (taskId: string) =>
-    request<RunSummary | null>(`/tasks/${taskId}/active-run`),
-  getTaskRuns: (taskId: string) =>
-    request<TaskRunsResponse>(`/tasks/${taskId}/runs`),
+  getWorkItem: (workId: string) => request<WorkItem>(`/work-items/${workId}`),
+  getWorkItemActiveRun: (workId: string) =>
+    request<RunSummary | null>(`/work-items/${workId}/active-run`),
+  getWorkItemRuns: (workId: string) =>
+    request<WorkItemRunsResponse>(`/work-items/${workId}/runs`),
   getRun: (runId: string) => request<RunDetail>(`/runs/${runId}`),
   getRunEvents: (runId: string, afterSeq?: number | null, limit = 100) => {
     const params = new URLSearchParams()

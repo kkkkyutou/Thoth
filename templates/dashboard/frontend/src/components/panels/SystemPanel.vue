@@ -25,7 +25,7 @@ onMounted(() => {
           {{ locale.system.healthy }}: {{ store.overviewSummary?.healthy ? 'OK' : 'CHECK' }}
         </span>
         <span class="pill badge-ready">
-          tasks: {{ system?.task_count || 0 }}
+          work_items: {{ system?.work_item_count || 0 }}
         </span>
         <span class="pill badge-pending">
           modules: {{ system?.module_count || 0 }}

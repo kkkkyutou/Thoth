@@ -21,8 +21,8 @@ const routes: Array<RouteRecordRaw & { meta: RouteMetaShape }> = [
     meta: { tab: 'overview', section: 'overview' },
   },
   {
-    path: '/tasks',
-    name: 'tasks',
+    path: '/work-items',
+    name: 'work-items',
     component: WorkbenchView,
     meta: { tab: 'detail' },
   },

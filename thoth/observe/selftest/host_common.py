@@ -254,6 +254,42 @@ def _canonical_public_shell_command(public_command: str) -> str:
     return shell_command
 
 
+def _codex_command_matches_public_command(command: str, public_command: str) -> bool:
+    shell_command = _shell_command_for_public_command(public_command)
+    canonical_command = _canonical_public_shell_command(public_command)
+    if shell_command in command or canonical_command in command:
+        return True
+    public_parts = shlex.split(public_command.strip())
+    if not public_parts or public_parts[0] not in {"$thoth", "thoth"} or len(public_parts) < 2:
+        return False
+    command_id = public_parts[1]
+    if f" thoth {command_id}" not in command and f"' thoth {command_id}" not in command:
+        return False
+    required_flags = {
+        "--decision-json",
+        "--work-json",
+        "--work-id",
+        "--host",
+        "--executor",
+        "--sleep",
+        "--watch",
+        "--stop",
+        "--rounds",
+        "--min-runtime-seconds",
+        "--quick",
+    }
+    for part in public_parts[2:]:
+        if part.startswith("--") and part in required_flags and part not in command:
+            return False
+        if part.startswith("--"):
+            continue
+        if part.startswith("$("):
+            continue
+        if part and part not in command and part not in {"codex"}:
+            return False
+    return True
+
+
 def _run_codex_public_command(
     project_dir: Path,
     public_command: str,
@@ -271,7 +307,8 @@ def _run_codex_public_command(
             "-m",
             os.environ.get("THOTH_CODEX_EXEC_MODEL", "gpt-5.4"),
             "--json",
-            "--full-auto",
+            "--sandbox",
+            "workspace-write",
             "-C",
             str(project_dir),
             _codex_prompt_for_public_command(public_command, done_token),
@@ -302,11 +339,9 @@ def _codex_completed_command_items(stdout: str) -> list[dict[str, Any]]:
 
 
 def _codex_command_item(stdout: str, public_command: str) -> dict[str, Any]:
-    shell_command = _shell_command_for_public_command(public_command)
-    canonical_command = _canonical_public_shell_command(public_command)
     for item in _codex_completed_command_items(stdout):
         command = str(item.get("command") or "")
-        if shell_command in command or canonical_command in command:
+        if _codex_command_matches_public_command(command, public_command):
             return item
     return {}
 
@@ -326,7 +361,7 @@ def _normalize_codex_public_command_result(
     matching_commands = [
         item
         for item in completed_commands
-        if shell_command in str(item.get("command") or "") or canonical_command in str(item.get("command") or "")
+        if _codex_command_matches_public_command(str(item.get("command") or ""), public_command)
     ]
     public_step = matching_commands[0] if matching_commands else None
     if public_step is None:
@@ -451,12 +486,12 @@ def _run_host_real_flow(
         "run-stop",
         "review",
         "dashboard-start",
+        "dashboard-stop",
         "loop-live",
         "loop-sleep",
         "loop-stop",
         "auto",
         "auto-stop",
-        "dashboard-stop",
     ]
     ordered_step_ids.append("sync")
     step_index = {step_id: index for index, step_id in enumerate(ordered_step_ids)}
@@ -608,8 +643,10 @@ def _run_host_real_flow(
             and run.get("work_id") == expected_work_id
             and run.get("host") == host_name
             and run.get("dispatch_mode") == expected_dispatch(public_command)
-            and bool(run.get("attachable", False))
-            and state.get("status") == "running"
+            and (
+                (state.get("status") == "running" and bool(run.get("attachable", False)))
+                or (state.get("status") == "completed" and not bool(run.get("attachable", True)))
+            )
             and packet.get("dispatch_mode") == expected_dispatch(public_command)
         )
         if expected_executor is not None:
@@ -630,7 +667,7 @@ def _run_host_real_flow(
             ],
         )
         if not ok:
-            raise RuntimeError(f"{host_name} step {step_id} did not prepare the expected live packet")
+            raise RuntimeError(f"{host_name} step {step_id} did not prepare or complete the expected live packet")
         _guard_source(step_id, mode)
 
     def _verify_sleep_probe_stopped(
@@ -862,18 +899,18 @@ def _run_host_real_flow(
     last_discuss_step = f"discuss-contract-{len(commands['discuss_contracts'])}"
     if should_run(last_discuss_step):
         compiler_summary = compile_task_authority(project_dir).get("summary", {})
-        ready_count = int(compiler_summary.get("task_counts", {}).get("ready", 0))
+        ready_count = int(compiler_summary.get("work_item_counts", {}).get("ready", 0))
         queue_count = int(compiler_summary.get("decision_queue_count", 0))
         compiler_ok = ready_count == 2 and queue_count == 0
         compiler_artifact = recorder.write_json(f"host-{host_name}-compiler-summary.json", compiler_summary)
         recorder.add(
             _runtime_check_name("compiler-ready", step_mode(last_discuss_step)),
             "passed" if compiler_ok else "failed",
-            f"Structured discuss compiled the host-real tasks: ready={ready_count} decision_queue={queue_count}.",
+            f"Structured discuss compiled the host-real work items: ready={ready_count} decision_queue={queue_count}.",
             [compiler_artifact],
         )
         if not compiler_ok:
-            raise RuntimeError("compiled host-real tasks were not ready after structured discuss")
+            raise RuntimeError("compiled host-real work items were not ready after structured discuss")
 
     run_live_id = ""
     if should_run("run-live"):

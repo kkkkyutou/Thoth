@@ -11,7 +11,7 @@ export const zh = {
     system: '系统',
   },
   filters: {
-    search: '搜索任务、模块或方向',
+    search: '搜索工作项、模块或方向',
     allStatus: '全部状态',
     allDirection: '全部方向',
     allModule: '全部模块',
@@ -44,7 +44,7 @@ export const zh = {
     empty: '暂无数据',
   },
   detail: {
-    empty: '从左侧选择任务或模块',
+    empty: '从左侧选择工作项或模块',
     basic: '基本信息',
     goal: 'Goal / Contract',
     readiness: 'Readiness',

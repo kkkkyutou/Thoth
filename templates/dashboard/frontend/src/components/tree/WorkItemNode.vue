@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import type { TreeTask } from '@/types'
+import type { TreeWorkItem } from '@/types'
 import { useDashboardStore } from '@/stores/dashboard'
 
-const props = defineProps<{ task: TreeTask }>()
+const props = defineProps<{ task: TreeWorkItem }>()
 const store = useDashboardStore()
 
-function selectTask() {
-  void store.selectTask(props.task.id)
+function selectWorkItem() {
+  void store.selectWorkItem(props.task.id)
 }
 </script>
 
 <template>
-  <button class="task" :class="{ 'task--selected': store.selectedTask?.id === task.id }" @click="selectTask">
+  <button class="task" :class="{ 'task--selected': store.selectedWorkItem?.id === task.id }" @click="selectWorkItem">
     <span class="task__status" :class="`badge-${task.status}`" />
     <span class="task__id">{{ task.id }}</span>
     <span class="task__title">{{ task.title }}</span>

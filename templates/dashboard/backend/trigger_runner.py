@@ -53,10 +53,10 @@ async def run_sync() -> dict:
     }
 
 
-async def run_verify(task_id: str) -> dict:
+async def run_verify(work_id: str) -> dict:
     result = await _run(["python", "-m", "thoth.cli", "status", "--json"])
     return {
-        "passed": result["returncode"] == 0 and task_id in result["stdout"],
+        "passed": result["returncode"] == 0 and work_id in result["stdout"],
         "output": result["stdout"] or result["stderr"],
         "returncode": result["returncode"],
     }

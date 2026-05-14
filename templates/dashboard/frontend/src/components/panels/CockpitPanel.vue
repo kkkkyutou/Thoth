@@ -8,7 +8,7 @@ const store = useDashboardStore()
 const summary = computed(() => store.overviewSummary)
 
 function openTask(taskId: string) {
-  void store.selectTask(taskId)
+  void store.selectWorkItem(taskId)
 }
 
 function activityTitle(entry: string): string {
@@ -34,19 +34,19 @@ function activityTitle(entry: string): string {
     <div class="cockpit__metrics">
       <article class="card cockpit__metric">
         <span>Total</span>
-        <strong>{{ summary?.headline.total_tasks ?? 0 }}</strong>
+        <strong>{{ summary?.headline.total_work_items ?? 0 }}</strong>
       </article>
       <article class="card cockpit__metric">
         <span>Completed</span>
-        <strong>{{ summary?.headline.completed_tasks ?? 0 }}</strong>
+        <strong>{{ summary?.headline.completed_work_items ?? 0 }}</strong>
       </article>
       <article class="card cockpit__metric">
         <span>Blocked</span>
-        <strong>{{ summary?.headline.blocked_tasks ?? 0 }}</strong>
+        <strong>{{ summary?.headline.blocked_work_items ?? 0 }}</strong>
       </article>
       <article class="card cockpit__metric">
         <span>Ready</span>
-        <strong>{{ summary?.headline.ready_tasks ?? 0 }}</strong>
+        <strong>{{ summary?.headline.ready_work_items ?? 0 }}</strong>
       </article>
     </div>
 
@@ -65,7 +65,7 @@ function activityTitle(entry: string): string {
           >
             <div>
               <strong>{{ run.run_id }}</strong>
-              <p>{{ run.task_id || 'no task' }} · {{ run.host || 'unknown host' }}</p>
+              <p>{{ run.work_id || 'no work item' }} · {{ run.host || 'unknown host' }}</p>
             </div>
             <span class="pill" :class="`badge-${run.is_stale ? 'blocked' : 'ready'}`">
               {{ run.phase || run.status }}
@@ -87,7 +87,7 @@ function activityTitle(entry: string): string {
           >
             <div>
               <strong>{{ milestone.name }}</strong>
-              <p>{{ milestone.task_count }} tasks</p>
+              <p>{{ milestone.work_item_count }} work_items</p>
             </div>
             <span>{{ Math.round(milestone.progress) }}%</span>
           </button>
@@ -102,12 +102,12 @@ function activityTitle(entry: string): string {
         <div class="cockpit__list">
           <button
             v-for="item in summary?.recent_conclusions ?? []"
-            :key="item.task_id"
+            :key="item.work_id"
             class="cockpit__list-item cockpit__list-item--stack"
-            @click="openTask(item.task_id)"
+            @click="openTask(item.work_id)"
           >
             <div>
-              <strong>{{ item.task_id }} · {{ item.title }}</strong>
+              <strong>{{ item.work_id }} · {{ item.title }}</strong>
               <p>{{ item.conclusion || 'No conclusion text' }}</p>
             </div>
             <span>{{ item.source || item.status }}</span>
@@ -139,14 +139,14 @@ function activityTitle(entry: string): string {
         <h3>{{ locale.cockpit.blockers }}</h3>
         <div class="cockpit__list">
           <div
-            v-for="task in store.progress?.blocked_tasks ?? []"
+            v-for="task in store.progress?.blocked_work_items ?? []"
             :key="task.id"
             class="cockpit__list-item cockpit__list-item--stack"
           >
             <strong>{{ task.id }} · {{ task.title }}</strong>
             <p>{{ task.blocked_by.join(', ') || 'blocked' }}</p>
           </div>
-          <p v-if="!(store.progress?.blocked_tasks?.length)" class="cockpit__empty">
+          <p v-if="!(store.progress?.blocked_work_items?.length)" class="cockpit__empty">
             {{ locale.cockpit.empty }}
           </p>
         </div>

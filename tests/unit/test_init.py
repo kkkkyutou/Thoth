@@ -209,7 +209,7 @@ def test_initialize_project_strict_cut_imports_legacy_and_removes_old_surface(ba
     import_index = json.loads(
         (tmp_path / ".thoth" / "migrations" / result["migration_id"] / "legacy-import" / "index.json").read_text(encoding="utf-8")
     )
-    assert import_index["imported_task_count"] == 1
+    assert import_index["imported_work_item_count"] == 1
     preview = json.loads((tmp_path / ".thoth" / "migrations" / result["migration_id"] / "preview.json").read_text(encoding="utf-8"))
     assert ".research-config.yaml" in preview["remove"]
     assert ".agent-os/research-tasks" in preview["remove"]

@@ -4,7 +4,7 @@ import { locale } from '@/locales'
 import { useDashboardStore } from '@/stores/dashboard'
 
 const store = useDashboardStore()
-const task = computed(() => store.selectedTask!)
+const task = computed(() => store.selectedWorkItem!)
 
 const verdictLabel = computed(() => {
   const result = task.value.work_result

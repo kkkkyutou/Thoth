@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import DagChart from '@/components/charts/DagChart.vue'
 import GanttChart from '@/components/charts/GanttChart.vue'
 import ModuleDetail from '@/components/detail/ModuleDetail.vue'
-import TaskDetail from '@/components/detail/TaskDetail.vue'
+import WorkItemDetail from '@/components/detail/WorkItemDetail.vue'
 import ActivityPanel from '@/components/panels/ActivityPanel.vue'
 import CockpitPanel from '@/components/panels/CockpitPanel.vue'
 import SystemPanel from '@/components/panels/SystemPanel.vue'
@@ -28,7 +28,7 @@ const tabs = computed<Array<{ key: WorkbenchTab; label: string }>>(() => [
 
 const tabRoute: Record<WorkbenchTab, string> = {
   overview: '/overview',
-  detail: '/tasks',
+  detail: '/work-items',
   dag: '/dag',
   gantt: '/timeline',
   todo: '/todo',
@@ -59,9 +59,9 @@ function activateTab(tab: WorkbenchTab) {
     <div class="main-panel__content">
       <Transition name="fade" mode="out-in">
         <CockpitPanel v-if="store.activeTab === 'overview'" key="overview" />
-        <TaskDetail
-          v-else-if="store.activeTab === 'detail' && store.selectedTask"
-          :key="store.selectedTask.id"
+        <WorkItemDetail
+          v-else-if="store.activeTab === 'detail' && store.selectedWorkItem"
+          :key="store.selectedWorkItem.id"
         />
         <ModuleDetail
           v-else-if="store.activeTab === 'detail' && store.selectedModule"

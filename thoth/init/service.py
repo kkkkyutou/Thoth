@@ -271,7 +271,7 @@ def _legacy_work_payload(raw: dict[str, Any], *, source_path: str) -> tuple[str,
     evidence_paths = results.get("evidence_paths") if isinstance(results.get("evidence_paths"), list) else []
     metrics = results.get("metrics") if isinstance(results.get("metrics"), dict) else {}
     work_payload = {
-        "work_type": "task",
+        "work_kind": "execution",
         "runnable": True,
         "goal": goal,
         "context": f"Imported from {source_path}",
@@ -356,7 +356,7 @@ def import_legacy_work_items(project_dir: Path, migration_dir: Path) -> dict[str
     payload = {
         "schema_version": 1,
         "generated_at": _utc_iso(),
-        "imported_task_count": len(imported),
+        "imported_work_item_count": len(imported),
         "items": imported,
     }
     (import_dir / "index.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

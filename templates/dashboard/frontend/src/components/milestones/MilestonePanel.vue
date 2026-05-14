@@ -34,7 +34,7 @@ defineExpose({ reload: load })
       <div v-for="ms in milestones" :key="ms.id" class="ms-card">
         <div class="ms-header">
           <h3 class="ms-name">{{ ms.name }}</h3>
-          <span class="ms-task-count">{{ ms.task_count }} 项任务</span>
+          <span class="ms-task-count">{{ ms.work_item_count }} 项任务</span>
         </div>
         <p v-if="ms.description" class="ms-desc">{{ ms.description }}</p>
         <ProgressBar :value="ms.progress" :height="8" />

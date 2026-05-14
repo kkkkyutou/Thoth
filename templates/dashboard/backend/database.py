@@ -2,7 +2,7 @@
 database.py — SQLite layer for Thoth Research Dashboard.
 
 Tables:
-  research_events  — records of task verdicts
+  research_events  — records of work-item verdicts
   todo_projects    — personal todo projects
   todo_tasks       — personal todo tasks (nested under projects)
 """
@@ -17,8 +17,8 @@ DB_PATH = Path(__file__).resolve().parents[3] / "research.db"
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS research_events (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id         TEXT    NOT NULL,
-    task_title      TEXT    NOT NULL,
+    work_id         TEXT    NOT NULL,
+    work_title      TEXT    NOT NULL,
     module          TEXT    NOT NULL,
     direction       TEXT    NOT NULL,
     verdict         TEXT    NOT NULL,
@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS research_events (
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_research_events_created ON research_events(created_at);
-CREATE INDEX IF NOT EXISTS idx_research_events_task ON research_events(task_id);
 
 CREATE TABLE IF NOT EXISTS todo_projects (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,3 +59,11 @@ def get_conn() -> sqlite3.Connection:
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(_CREATE_SQL)
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(research_events)").fetchall()}
+        if "task_id" in columns and "work_id" not in columns:
+            conn.execute("ALTER TABLE research_events ADD COLUMN work_id TEXT")
+            conn.execute("UPDATE research_events SET work_id = task_id WHERE work_id IS NULL")
+        if "task_title" in columns and "work_title" not in columns:
+            conn.execute("ALTER TABLE research_events ADD COLUMN work_title TEXT")
+            conn.execute("UPDATE research_events SET work_title = task_title WHERE work_title IS NULL")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_research_events_work ON research_events(work_id)")
