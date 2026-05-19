@@ -527,3 +527,10 @@
   - State changes: 将 `README.md` 中 `Locked planning authority` 行的 malformed inline-code backticks 修回 canonical 源码，并补一个 `0.2.2` manifest bump，原因是 Claude Code 远端-only `plugin update` 对同版本 `0.2.1` 会判定 already latest，无法用允许的 update 流程刷新 installed cache 中的 README。
   - Evidence produced: `python -m thoth.cli sync` 返回 `status=ok`；`python -m py_compile thoth/projections.py` 通过；manifest/version targeted pytest `4 passed in 0.13s`；`bin/thoth doctor --version` 输出 `version=0.2.2`；`git diff --check` 通过；README grep 确认 `Locked planning authority` 行三个 `.thoth/objects/...` 路径均为单 backtick inline code。
   - Next likely action: 将 `0.2.2` 发布面提交按 `dev -> main` cherry-pick 并推送，重新执行远端-only Claude/Codex marketplace update；之后同步 `awesome-codex-plugins#132` 的 Thoth bundle。
+
+- 2026-05-19 13:32 UTC [phase summary budget bump]
+  - Worked on: `OBJ-001`, `WS-003`
+  - State changes: 按用户要求将 `run` 四阶段中 `plan` 与 `reflect` 的 `summary_budget_utf8` 从 `240` 提高到 `800`，保留 `execute` 与 `validate` 为 `240`；版本 bump 到 `0.2.3` 并重新生成 Claude/Codex plugin manifests 与 marketplace metadata。
+  - Evidence produced: 首轮 focused pytest 抓到误改为 `execute=800` / `validate=800` 且 `plan/reflect` 未正确对齐，已修正为 `plan=800`、`execute=240`、`validate=240`、`reflect=800`；`rg` 确认 `thoth/prompt_specs.py` 四处预算分别为 `800/240/240/800`。
+  - Evidence produced: `python -m thoth.cli sync` 返回 `status=ok`；`python -m py_compile tests/unit/test_runtime_protocol.py thoth/prompt_specs.py thoth/prompt_validators.py thoth/projections.py` 通过；focused pytest `8 passed in 0.21s`；完整 `tests/unit/test_runtime_protocol.py` 为 `12 passed in 0.21s`；`bin/thoth doctor --version` 输出 `version=0.2.3`；`git diff --check` 与 plugin manifest JSON 校验通过。
+  - Next likely action: 将发布面提交按 `dev -> main` cherry-pick 并推送，随后执行远端-only Claude/Codex marketplace refresh。
