@@ -60,7 +60,7 @@ def _require_short_text(field: str, value: Any, limit: int) -> str:
     if _contains_markdown(text):
         raise ValueError(f"{field} must be plain single-line text")
     if utf8_len(text) > limit:
-        raise ValueError(f"{field} exceeds {limit} UTF-8 chars")
+        raise ValueError(f"{field} exceeds {limit} UTF-8 bytes")
     return text
 
 

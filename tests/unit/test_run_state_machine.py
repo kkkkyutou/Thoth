@@ -318,3 +318,89 @@ def test_loop_parent_stops_on_iteration_budget(tmp_path):
     assert run_result["result"]["iterations_attempted"] == 2
     assert run_result["result"]["budget_exhausted_by"] == "max_iterations"
     assert len(run_result["result"]["child_run_ids"]) == 2
+
+
+def test_loop_retry_context_is_passed_to_next_child(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="loop",
+        title="Loop task",
+        work_id="task-1",
+        host="codex",
+        executor="claude",
+        sleep_requested=False,
+        strict_task=_strict_task(runtime_contract={"loop": {"max_iterations": 3, "max_runtime_seconds": 28800}}),
+        goal="close loop",
+    )
+
+    assert next_phase_payload(project, handle.run_id)["phase"] == "plan"
+    submit_phase_output(project, handle.run_id, phase="plan", payload=_plan_payload())
+    submit_phase_output(project, handle.run_id, phase="execute", payload=_execute_payload())
+    submit_phase_output(
+        project,
+        handle.run_id,
+        phase="validate",
+        payload={
+            "summary": "fail",
+            "passed": False,
+            "metric_name": "checks",
+            "metric_value": 0,
+            "threshold": 1,
+            "checks": [{"name": "checks", "ok": False}],
+        },
+    )
+    first_result = submit_phase_output(
+        project,
+        handle.run_id,
+        phase="reflect",
+        payload={
+            "summary": "reflect ok",
+            "outcome": "failed",
+            "residual_risks": ["checks failed"],
+            "evidence": ["checks failed"],
+            "next_recommendation": "retry",
+            "failure_class": "checks",
+            "root_cause": "validator failed",
+            "next_plan_hint": "change implementation before retrying",
+        },
+    )
+
+    assert first_result["terminal"] is False
+    next_packet = next_phase_payload(project, handle.run_id)
+    assert next_packet["phase"] == "plan"
+    loop_context = next_packet["loop_context"]
+    assert loop_context["previous_reflect"]["root_cause"] == "validator failed"
+    assert loop_context["last_retry_decision"]["action"] == "retry"
+    assert loop_context["last_retry_decision"]["next_plan_hint"] == "change implementation before retrying"
+
+
+def test_loop_stops_on_child_needs_input_without_retry(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="loop",
+        title="Loop task",
+        work_id="task-1",
+        host="codex",
+        executor="claude",
+        sleep_requested=False,
+        strict_task=_strict_task(runtime_contract={"loop": {"max_iterations": 3, "max_runtime_seconds": 28800}}),
+        goal="close loop",
+    )
+
+    assert next_phase_payload(project, handle.run_id)["phase"] == "plan"
+    result = submit_phase_output(
+        project,
+        handle.run_id,
+        phase="plan",
+        payload={**_plan_payload("needs input"), "authority_complete": False, "open_gaps": ["acceptance not closed"]},
+    )
+
+    assert result["terminal"] is True
+    assert result["status"] == "failed"
+    assert result["reason"] == "needs_input"
+    run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
+    assert run_result["result"]["final_outcome"] == "stopped_by_retry_policy"
+    assert run_result["result"]["retry_decision"]["action"] == "stop"
+    assert run_result["result"]["retry_decision"]["reason"] == "needs_input"

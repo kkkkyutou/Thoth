@@ -399,9 +399,12 @@ def render_phase_worker_prompt(
         "Do not invoke `$thoth run`, `$thoth loop`, or `$thoth review`.",
         f"Objective: {authority.get('objective')}",
         f"Required fields: {', '.join(str(item) for item in required_fields)}",
-        f"Summary budget utf8: {authority.get('summary_budget_utf8')}",
+        f"Summary budget UTF-8 bytes: {authority.get('summary_budget_utf8')}",
         f"Validator policy: {authority.get('validator_policy')}",
     ]
+    loop_context = phase_packet.get("loop_context")
+    if isinstance(loop_context, dict) and loop_context:
+        lines.append("Use `loop_context` to avoid repeating the previous failure; follow its next_plan_hint without changing the work goal or validator.")
     if output_path:
         lines.append(f"Runtime driver capture path: `{output_path}`.")
     if phase == "plan":
@@ -575,14 +578,14 @@ def build_codex_selftest_review_probe_prompt(*, public_command: str, shell_comma
 
 def build_review_result_shape() -> dict[str, Any]:
     return {
-        "summary": "Short summary <= 48 UTF-8 chars.",
+        "summary": "Short summary <= 48 UTF-8 bytes.",
         "findings": [
             {
                 "severity": "high|medium|low",
-                "title": "Short title <= 32 UTF-8 chars.",
+                "title": "Short title <= 32 UTF-8 bytes.",
                 "path": "relative/file/path",
                 "line": 1,
-                "summary": "Short summary <= 48 UTF-8 chars.",
+                "summary": "Short summary <= 48 UTF-8 bytes.",
             }
         ],
     }

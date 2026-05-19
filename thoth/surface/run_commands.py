@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from thoth.objects import utc_now
 from thoth.plan.doctor import build_doctor_payload, infer_review_work_id
 from thoth.plan.paths import compiler_state_path, work_items_dir
 from thoth.plan.store import load_work_for_execution, suggest_work_items_for_query
@@ -237,15 +238,29 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
         if not current:
             print_envelope(command="auto", status="failed", summary=f"Auto controller {args.stop} not found")
             return 1
+        payload = current.get("payload") if isinstance(current.get("payload"), dict) else {}
+        cursor = payload.get("cursor") if isinstance(payload.get("cursor"), dict) else {}
+        active_run_id = cursor.get("active_run_id")
+        stopped_child_run_id = None
+        if isinstance(active_run_id, str) and active_run_id:
+            stop_run(project_root, active_run_id)
+            stopped_child_run_id = active_run_id
+        payload["state"] = "stopped"
+        payload["stopped_at"] = utc_now()
         store.update(
             "controller",
             args.stop,
             expected_revision=int(current.get("revision", 0)),
-            updates={"status": "stopped"},
+            updates={"status": "stopped", "payload": payload},
             history_summary="auto stop requested",
             source="auto",
         )
-        print_envelope(command="auto", status="ok", summary=f"Stop requested for auto controller {args.stop}")
+        print_envelope(
+            command="auto",
+            status="ok",
+            summary=f"Stop requested for auto controller {args.stop}",
+            body={"controller_id": args.stop, "stopped_child_run_id": stopped_child_run_id},
+        )
         return 0
     min_runtime_arg = getattr(args, "min_runtime_seconds", 8 * 60 * 60)
     min_runtime_seconds = int(min_runtime_arg) if isinstance(min_runtime_arg, int) and min_runtime_arg >= 0 else 8 * 60 * 60

@@ -8,8 +8,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from thoth.plan.store import upsert_work_item, upsert_decision
+from thoth.objects import Store
+from thoth.plan.store import load_work_for_execution, upsert_work_item, upsert_decision
 from thoth.run.controllers import create_auto_controller
+from thoth.run.packets import prepare_execution
 from thoth.run.phases import default_validate_output_schema
 
 
@@ -508,6 +510,79 @@ def test_cli_auto_rejects_active_controller_parameter_drift(tmp_path):
     assert payload["body"]["active_controller_id"] == controller["object_id"]
     assert payload["body"]["differences"]["min_runtime_seconds"]["existing"] == 60
     assert payload["body"]["differences"]["min_runtime_seconds"]["requested"] == 0
+
+
+def test_cli_auto_stop_cascades_to_active_child_run(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path)
+    strict_task = load_work_for_execution(tmp_path, "task-1", require_ready=True)
+    handle, _packet = prepare_execution(
+        tmp_path,
+        command_id="loop",
+        title="Lifecycle Validation",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task=strict_task,
+        goal="State stays inspectable under real execution.",
+    )
+    controller = create_auto_controller(
+        tmp_path,
+        work_ids=[],
+        mode="loop",
+        host="codex",
+        executor="codex",
+        scope="all-open",
+        rounds=1,
+        min_runtime_seconds=0,
+    )
+    payload = dict(controller["payload"])
+    payload["state"] = "running"
+    payload["cursor"] = {**payload["cursor"], "active_run_id": handle.run_id}
+    Store(tmp_path).update(
+        "controller",
+        controller["object_id"],
+        expected_revision=controller["revision"],
+        updates={"status": "running", "payload": payload},
+        history_summary="seed active auto controller",
+    )
+
+    result = _run_cli(tmp_path, "auto", "--stop", controller["object_id"])
+
+    assert result.returncode == 0, result.stderr
+    envelope = _extract_envelope(result.stdout)
+    assert envelope["body"]["stopped_child_run_id"] == handle.run_id
+    assert handle.state_json()["status"] == "stopped"
+
+
+def test_cli_auto_persists_controller_event_log(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path)
+    assert _run_cli(tmp_path, "init", "--sync").returncode == 0
+    local_state = tmp_path / "local-state"
+
+    result = _run_cli(
+        tmp_path,
+        "auto",
+        "--rounds",
+        "1",
+        "--min-runtime-seconds",
+        "0",
+        env={
+            "THOTH_TEST_EXTERNAL_WORKER_MODE": "complete",
+            "THOTH_AUTO_HEARTBEAT_SECONDS": "1",
+            "THOTH_LOCAL_STATE_DIR": str(local_state),
+        },
+    )
+
+    assert result.returncode == 2, result.stderr
+    events = _jsonl_events(result.stdout)
+    controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
+    event_logs = list(local_state.glob(f"*/controllers/{controller_id}/events.jsonl"))
+    assert event_logs, "auto controller should persist a local event stream"
+    persisted = event_logs[0].read_text(encoding="utf-8")
+    assert "thoth.auto.started" in persisted
 
 
 def test_cli_sleep_mode_auto_backgrounds(tmp_path):

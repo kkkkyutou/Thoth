@@ -4,6 +4,12 @@
 
 No pending changes.
 
+## [0.2.4] - 2026-05-19
+
+### Changed
+- Hardened `loop` with bounded retry decisions, compact failure context for the next child run, and clearer UTF-8 byte budget prompt wording.
+- Hardened `auto` with controller-local worker locking, persisted controller event streams, lower-churn idle heartbeats, and stop cascading to the active child run.
+
 ## [0.2.3] - 2026-05-19
 
 ### Changed

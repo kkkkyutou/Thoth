@@ -239,6 +239,7 @@ def test_external_worker_prompt_mentions_protocol_and_limits(tmp_path):
     assert "\"max_iterations\": 10" in prompt
     assert "pytest -q tests/test_demo.py" in prompt
     assert "Runtime driver capture path" in prompt
+    assert "Summary budget UTF-8 bytes" in prompt
     assert len(json.dumps(packet, ensure_ascii=False)) < 4200
     assert len(prompt) < 5800
 
@@ -312,7 +313,7 @@ def test_phase_output_rejects_overlong_summary(tmp_path):
         },
         )
     except ValueError as exc:
-        assert "plan.summary exceeds 800 UTF-8 chars" in str(exc)
+        assert "plan.summary exceeds 800 UTF-8 bytes" in str(exc)
     else:
         raise AssertionError("expected summary budget failure")
 
@@ -382,7 +383,7 @@ def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp
 
     assert payload["summary"] == "plan ok"
     assert len(prompts) == 2
-    assert "Previous output failed validation: plan.summary exceeds 800 UTF-8 chars" in prompts[1]
+    assert "Previous output failed validation: plan.summary exceeds 800 UTF-8 bytes" in prompts[1]
 
 
 def test_external_worker_command_uses_executor_specific_cli(tmp_path):

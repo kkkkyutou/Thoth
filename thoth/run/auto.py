@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import fcntl
+import json
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from time import sleep, time
 from typing import Any, Callable
 
-from thoth.objects import Store, utc_now
+from thoth.objects import RevisionConflict, Store, utc_now
 from thoth.plan.store import load_work_for_execution
 from thoth.run.controllers import list_auto_actionable_work
 from thoth.run.driver import JsonlStdoutSink, RuntimeEventSink, SilentSink, execute_runtime_controller
-from thoth.run.io import _read_json, _write_json, local_registry_root
+from thoth.run.io import _append_jsonl, _read_json, _write_json, local_registry_root
 from thoth.run.ledger import _append_event
 from thoth.run.model import ACTIVE_STATUSES, RunHandle
 from thoth.run.packets import prepare_execution
@@ -42,20 +46,64 @@ def _emit(sink: RuntimeEventSink, controller_id: str, event_type: str, **payload
 
 def _update_controller(project_root: Path, controller: dict[str, Any], *, status: str, payload_updates: dict[str, Any]) -> dict[str, Any]:
     store = Store(project_root)
-    payload = dict(controller.get("payload") if isinstance(controller.get("payload"), dict) else {})
-    payload.update(payload_updates)
+    current = dict(controller)
+    object_id = str(current["object_id"])
+    for _ in range(3):
+        payload = dict(current.get("payload") if isinstance(current.get("payload"), dict) else {})
+        payload.update(payload_updates)
+        try:
+            return store.update(
+                "controller",
+                object_id,
+                expected_revision=int(current.get("revision", 0)),
+                updates={"status": status, "payload": payload},
+                history_summary=f"auto controller -> {status}",
+                source="auto",
+            )
+        except RevisionConflict:
+            refreshed = store.read("controller", object_id)
+            if not refreshed:
+                raise
+            current = refreshed
     return store.update(
         "controller",
-        str(controller["object_id"]),
-        expected_revision=int(controller.get("revision", 0)),
-        updates={"status": status, "payload": payload},
+        object_id,
+        expected_revision=int(current.get("revision", 0)),
+        updates={"status": status, "payload": {**(current.get("payload") if isinstance(current.get("payload"), dict) else {}), **payload_updates}},
         history_summary=f"auto controller -> {status}",
         source="auto",
     )
 
 
+def _controller_events_path(project_root: Path, controller_id: str) -> Path:
+    return _controller_local_dir(project_root, controller_id) / "events.jsonl"
+
+
+@dataclass
+class ControllerEventLogSink:
+    project_root: Path
+    controller_id: str
+    inner: RuntimeEventSink
+
+    def emit(self, event: dict[str, Any]) -> None:
+        _append_jsonl(_controller_events_path(self.project_root, self.controller_id), event)
+        self.inner.emit(event)
+
+
 def _controller_local_dir(project_root: Path, controller_id: str) -> Path:
     return local_registry_root(project_root) / "controllers" / controller_id
+
+
+@contextmanager
+def _controller_lock(project_root: Path, controller_id: str):
+    lock_path = _controller_local_dir(project_root, controller_id) / "worker.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def _controller_supervisor_path(project_root: Path, controller_id: str) -> Path:
@@ -179,11 +227,12 @@ def list_auto_controller_statuses(project_root: Path) -> list[dict[str, Any]]:
 
 
 def ensure_auto_worker(project_root: Path, controller_id: str) -> tuple[bool, int | None]:
-    if _controller_worker_alive(project_root, controller_id):
-        supervisor = _read_json(_controller_supervisor_path(project_root, controller_id))
-        pid = supervisor.get("pid")
-        return False, pid if isinstance(pid, int) else None
-    return True, spawn_auto_worker(project_root, controller_id)
+    with _controller_lock(project_root, controller_id):
+        if _controller_worker_alive(project_root, controller_id):
+            supervisor = _read_json(_controller_supervisor_path(project_root, controller_id))
+            pid = supervisor.get("pid")
+            return False, pid if isinstance(pid, int) else None
+        return True, spawn_auto_worker(project_root, controller_id)
 
 
 def _active_run_for_work(project_root: Path, work_id: str) -> str | None:
@@ -318,7 +367,7 @@ def execute_auto_controller(
     driver_factory: DriverFactory,
     sink: RuntimeEventSink | None = None,
 ) -> int:
-    event_sink = sink or SilentSink()
+    event_sink = ControllerEventLogSink(project_root, controller_id, sink or SilentSink())
     store = Store(project_root)
     controller = store.read("controller", controller_id)
     if not controller:
@@ -350,6 +399,7 @@ def execute_auto_controller(
     rounds_attempted = 0
     completed_work_ids = [item for item in payload.get("completed_work_ids", []) if isinstance(item, str)] if isinstance(payload.get("completed_work_ids"), list) else []
     last_idle_emit = 0.0
+    last_idle_update = 0.0
     heartbeat_interval = auto_heartbeat_interval_seconds()
     while True:
         controller = store.read("controller", controller_id) or controller
@@ -383,15 +433,18 @@ def execute_auto_controller(
             elapsed = int(time() - started_at)
             if not _min_runtime_reached(payload, started_at):
                 now = time()
-                payload.update(
-                    {
-                        "state": "idle",
-                        "elapsed_seconds": elapsed,
-                        "last_heartbeat_at": utc_now(),
-                        "queue": [],
-                    }
-                )
-                controller = _update_controller(project_root, controller, status="idle", payload_updates=payload)
+                state_changed = str(controller.get("status") or "") != "idle" or str(payload.get("state") or "") != "idle"
+                if state_changed or now - last_idle_update >= heartbeat_interval:
+                    payload.update(
+                        {
+                            "state": "idle",
+                            "elapsed_seconds": elapsed,
+                            "last_heartbeat_at": utc_now(),
+                            "queue": [],
+                        }
+                    )
+                    controller = _update_controller(project_root, controller, status="idle", payload_updates=payload)
+                    last_idle_update = now
                 if now - last_idle_emit >= heartbeat_interval:
                     _emit(
                         event_sink,
@@ -497,6 +550,7 @@ def watch_auto_controller(
     interval = poll_seconds if isinstance(poll_seconds, (int, float)) and poll_seconds > 0 else 1.0
     heartbeat_interval = auto_heartbeat_interval_seconds()
     seen_child_runs: set[str] = set()
+    seen_event_count = 0
     last_snapshot_emit = 0.0
     last_status = ""
     while True:
@@ -510,6 +564,17 @@ def watch_auto_controller(
             event_sink.emit(_controller_snapshot(project_root, controller))
             last_snapshot_emit = now
             last_status = status
+        events_path = _controller_events_path(project_root, controller_id)
+        if events_path.exists():
+            rows = [line for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            for raw in rows[seen_event_count:]:
+                try:
+                    event = json.loads(raw)
+                except Exception:
+                    continue
+                if isinstance(event, dict):
+                    event_sink.emit(event)
+            seen_event_count = len(rows)
         payload = controller.get("payload") if isinstance(controller.get("payload"), dict) else {}
         cursor = payload.get("cursor") if isinstance(payload.get("cursor"), dict) else {}
         active_run_id = cursor.get("active_run_id")

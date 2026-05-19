@@ -26,6 +26,7 @@ from .review_context import latest_fresh_review_context
 
 DEFAULT_LOOP_MAX_ITERATIONS = 10
 DEFAULT_LOOP_MAX_RUNTIME_SECONDS = 8 * 60 * 60
+DEFAULT_LOOP_RETRY_LIMIT = 2
 RUN_PHASE_ORDER = ("plan", "execute", "validate", "reflect")
 RUN_PHASE_PROGRESS = {
     "plan": 20,
@@ -132,6 +133,9 @@ def _upsert_loop_controller_object(handle: RunHandle, payload: dict[str, Any]) -
             "phase_state_path": str(phase_state_path(handle)),
             "child_run_ids": payload.get("loop", {}).get("child_run_ids", []),
             "active_child_run_id": payload.get("loop", {}).get("active_child_run_id"),
+            "retry_history": payload.get("loop", {}).get("retry_history", []),
+            "last_retry_decision": payload.get("loop", {}).get("last_retry_decision", {}),
+            "final_outcome": payload.get("loop", {}).get("final_outcome"),
         },
     )
 
@@ -165,6 +169,7 @@ def initialize_run_phase_state(
     target: str | None = None,
     prior_reflect: dict[str, Any] | None = None,
     review_context: dict[str, Any] | None = None,
+    loop_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     phase_state = {
         "schema_version": 1,
@@ -180,6 +185,7 @@ def initialize_run_phase_state(
         "next_hint": None,
         "prior_reflect": prior_reflect or {},
         "review_context": review_context or {},
+        "loop_context": loop_context or {},
         "command_authority": command_prompt_authority("run"),
         "created_at": utc_now(),
     }
@@ -213,6 +219,9 @@ def initialize_loop_controller(
             "active_child_run_id": None,
             "last_failure_summary": None,
             "last_reflect": {},
+            "last_retry_decision": {},
+            "retry_history": [],
+            "retry_limit": DEFAULT_LOOP_RETRY_LIMIT,
             "budget_exhausted_by": None,
             "final_outcome": None,
             "review_context": latest_fresh_review_context(
@@ -286,6 +295,7 @@ def _phase_input_for_run(handle: RunHandle, controller: dict[str, Any]) -> dict[
         "prior_artifacts": controller.get("artifacts", {}),
         "prior_reflect": controller.get("prior_reflect", {}),
         "review_context": controller.get("review_context", {}),
+        "loop_context": controller.get("loop_context", {}),
         "budget": {
             "remaining_exec_attempts": 1,
         },
@@ -319,6 +329,7 @@ def _maybe_activate_next_child(handle: RunHandle, controller: dict[str, Any]) ->
         iteration_index=iteration_index,
         prior_reflect=loop.get("last_reflect") if isinstance(loop.get("last_reflect"), dict) else {},
         review_context=loop.get("review_context") if isinstance(loop.get("review_context"), dict) else {},
+        loop_context=_build_loop_context(loop),
     )
     loop["active_child_run_id"] = child_handle.run_id
     child_ids = loop.get("child_run_ids") if isinstance(loop.get("child_run_ids"), list) else []
@@ -537,6 +548,107 @@ def _loop_budget_exhausted(controller: dict[str, Any]) -> bool:
     return False
 
 
+def _short_plain(value: Any, *, limit: int = 240) -> str:
+    text = str(value or "").strip().replace("\n", " ")
+    return text[:limit]
+
+
+def _compact_reflect(reflect: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(reflect, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for key in ("outcome", "failure_class", "root_cause", "next_plan_hint", "next_recommendation"):
+        value = reflect.get(key)
+        if isinstance(value, str) and value.strip():
+            compact[key] = _short_plain(value)
+    for key in ("evidence", "residual_risks"):
+        value = reflect.get(key)
+        if isinstance(value, list):
+            compact[key] = [_short_plain(item, limit=160) for item in value if isinstance(item, str) and item.strip()][:3]
+    return compact
+
+
+def _loop_failure_signature(child_result: dict[str, Any], reflect: dict[str, Any]) -> str:
+    failure_class = _short_plain(reflect.get("failure_class") or child_result.get("reason") or "validation_failed", limit=48)
+    root_cause = _short_plain(reflect.get("root_cause") or child_result.get("summary") or "unknown", limit=160)
+    return f"{failure_class}|{root_cause}"
+
+
+def _retry_history(loop: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = loop.get("retry_history")
+    return [dict(item) for item in rows if isinstance(item, dict)] if isinstance(rows, list) else []
+
+
+def _retry_count_for_signature(loop: dict[str, Any], signature: str) -> int:
+    return sum(
+        1
+        for item in _retry_history(loop)
+        if item.get("failure_signature") == signature and item.get("action") == "retry"
+    )
+
+
+def _loop_retry_decision(loop: dict[str, Any], child_result: dict[str, Any], reflect: dict[str, Any]) -> dict[str, Any]:
+    signature = _loop_failure_signature(child_result, reflect)
+    retry_limit = loop.get("retry_limit")
+    if not isinstance(retry_limit, int) or retry_limit < 0:
+        retry_limit = DEFAULT_LOOP_RETRY_LIMIT
+    reason = str(child_result.get("reason") or reflect.get("failure_class") or "validation_failed").strip()
+    next_plan_hint = str(reflect.get("next_plan_hint") or "").strip()
+    non_retryable_reasons = {
+        "needs_input",
+        "missing eval_entrypoint.command",
+        "lease_conflict",
+        "stopped",
+        "cancelled",
+        "worker bootstrap timeout",
+    }
+    if reason in non_retryable_reasons:
+        return {
+            "action": "stop",
+            "reason": reason,
+            "failure_signature": signature,
+            "next_plan_hint": next_plan_hint,
+        }
+    if not next_plan_hint:
+        return {
+            "action": "stop",
+            "reason": "missing_next_plan_hint",
+            "failure_signature": signature,
+            "next_plan_hint": next_plan_hint,
+        }
+    prior_retries = _retry_count_for_signature(loop, signature)
+    if prior_retries >= retry_limit:
+        return {
+            "action": "stop",
+            "reason": "repeat_failure_limit",
+            "failure_signature": signature,
+            "retry_count": prior_retries,
+            "max_retries": retry_limit,
+            "next_plan_hint": next_plan_hint,
+        }
+    return {
+        "action": "retry",
+        "reason": "bounded_retry",
+        "failure_signature": signature,
+        "retry_count": prior_retries + 1,
+        "max_retries": retry_limit,
+        "next_plan_hint": next_plan_hint,
+    }
+
+
+def _build_loop_context(loop: dict[str, Any]) -> dict[str, Any]:
+    history = _retry_history(loop)[-3:]
+    child_run_ids = [item for item in loop.get("child_run_ids", []) if isinstance(item, str)] if isinstance(loop.get("child_run_ids"), list) else []
+    context = {
+        "previous_failure_summary": _short_plain(loop.get("last_failure_summary")),
+        "previous_reflect": _compact_reflect(loop.get("last_reflect") if isinstance(loop.get("last_reflect"), dict) else {}),
+        "last_retry_decision": loop.get("last_retry_decision") if isinstance(loop.get("last_retry_decision"), dict) else {},
+        "recent_retry_history": history,
+        "recent_child_run_ids": child_run_ids[-3:],
+    }
+    return {key: value for key, value in context.items() if value not in ("", {}, [])}
+
+
 def create_child_run(
     parent_handle: RunHandle,
     *,
@@ -545,6 +657,7 @@ def create_child_run(
     iteration_index: int,
     prior_reflect: dict[str, Any] | None = None,
     review_context: dict[str, Any] | None = None,
+    loop_context: dict[str, Any] | None = None,
 ) -> RunHandle:
     from .ledger import create_run
 
@@ -573,6 +686,7 @@ def create_child_run(
         target=run.get("target"),
         prior_reflect=prior_reflect,
         review_context=review_context,
+        loop_context=loop_context,
     )
     return child
 
@@ -626,6 +740,13 @@ def _submit_phase_to_loop_parent(handle: RunHandle, *, phase: str, payload: dict
     child_controller = load_phase_state(RunHandle(project_root=handle.project_root, run_id=active_child_id))
     reflect_path = child_controller.get("artifacts", {}).get("reflect") if isinstance(child_controller.get("artifacts"), dict) else None
     loop["last_reflect"] = _read_json(Path(reflect_path)) if isinstance(reflect_path, str) and reflect_path else {}
+    retry_decision = _loop_retry_decision(loop, child_result, loop["last_reflect"])
+    retry_decision["child_run_id"] = active_child_id
+    retry_decision["decided_at"] = utc_now()
+    loop["last_retry_decision"] = retry_decision
+    retry_history = _retry_history(loop)
+    retry_history.append(retry_decision)
+    loop["retry_history"] = retry_history
     controller["loop"] = loop
     controller = _write_phase_state(handle, controller)
     _upsert_loop_controller_object(handle, controller)
@@ -646,6 +767,8 @@ def _submit_phase_to_loop_parent(handle: RunHandle, *, phase: str, payload: dict
             "last_failure_summary": loop.get("last_failure_summary"),
             "budget_exhausted_by": loop.get("budget_exhausted_by"),
             "final_outcome": "budget_exhausted",
+            "retry_decision": retry_decision,
+            "retry_history": loop.get("retry_history", []),
         }
         fail_run(
             handle.project_root,
@@ -661,12 +784,46 @@ def _submit_phase_to_loop_parent(handle: RunHandle, *, phase: str, payload: dict
             "reason": loop.get("budget_exhausted_by"),
             "result": result_payload,
         }
+    if retry_decision.get("action") != "retry":
+        loop = controller.get("loop") if isinstance(controller.get("loop"), dict) else {}
+        loop["final_outcome"] = "stopped_by_retry_policy"
+        controller["loop"] = loop
+        _write_phase_state(handle, controller)
+        _upsert_loop_controller_object(handle, controller)
+        result_payload = {
+            "phase_statuses": {"loop": "failed"},
+            "validate_passed": False,
+            "final_summary": child_result.get("summary"),
+            "artifacts": {"child_run_ids": loop.get("child_run_ids", [])},
+            "next_hint": retry_decision.get("next_plan_hint") or loop.get("last_reflect", {}).get("next_plan_hint"),
+            "iterations_attempted": loop.get("iterations_attempted"),
+            "child_run_ids": loop.get("child_run_ids", []),
+            "last_failure_summary": loop.get("last_failure_summary"),
+            "budget_exhausted_by": None,
+            "final_outcome": "stopped_by_retry_policy",
+            "retry_decision": retry_decision,
+            "retry_history": loop.get("retry_history", []),
+        }
+        fail_run(
+            handle.project_root,
+            handle.run_id,
+            summary=str(child_result.get("summary") or "loop stopped by retry policy"),
+            reason=str(retry_decision.get("reason") or "retry_policy_stop"),
+            result_payload=result_payload,
+        )
+        return {
+            "terminal": True,
+            "status": "failed",
+            "summary": child_result.get("summary"),
+            "reason": retry_decision.get("reason"),
+            "result": result_payload,
+        }
     _append_event(
         handle,
-        "loop iteration failed; next iteration may start",
+        "loop iteration failed; retry decision recorded",
         kind="loop",
         level="warning",
-        payload={"failed_child_run_id": active_child_id},
+        payload={"failed_child_run_id": active_child_id, "retry_decision": retry_decision},
     )
     _update_state(handle, phase="plan", progress_pct=max(1, int(handle.state_json().get("progress_pct") or 1)))
     return {
