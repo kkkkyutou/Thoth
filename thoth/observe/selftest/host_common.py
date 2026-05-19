@@ -1053,6 +1053,9 @@ def _run_host_real_flow(
     dashboard_port = int(_read_json(project_dir / ".thoth" / "project" / "project.json").get("dashboard", {}).get("port", 8501))
     if should_run("dashboard-start"):
         execute("dashboard-start", commands["dashboard_start"], timeout=60)
+        port_cache = project_dir / ".thoth" / "derived" / "dashboard.port"
+        if port_cache.exists():
+            dashboard_port = int(port_cache.read_text(encoding="utf-8").strip())
         dashboard_status: dict[str, Any] | None = None
         try:
             dashboard_status = _wait_for_http_json(

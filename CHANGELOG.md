@@ -4,6 +4,11 @@
 
 No pending changes.
 
+## [0.2.5] - 2026-05-19
+
+### Changed
+- Hardened `dashboard start` with workspace-aware port selection, automatic fallback ports, frontend dependency install/build, Vue shell readiness checks, and direct detached uvicorn process supervision.
+
 ## [0.2.4] - 2026-05-19
 
 ### Changed
