@@ -71,7 +71,8 @@ def _start_dashboard(project_dir: Path, *, recorder: Recorder, rebuild: bool = F
         raise RuntimeError(f"dashboard {action} failed")
     manifest = _read_json(project_dir / ".thoth" / "objects" / "project" / "project.json")
     payload = manifest.get("payload") if isinstance(manifest.get("payload"), dict) else {}
-    port = int(payload.get("dashboard", {}).get("port", 8501))
+    port_cache = project_dir / ".thoth" / "derived" / "dashboard.port"
+    port = int(port_cache.read_text(encoding="utf-8").strip()) if port_cache.exists() else int(payload.get("dashboard", {}).get("port", 8501))
 
     def _dashboard_ready() -> bool:
         try:

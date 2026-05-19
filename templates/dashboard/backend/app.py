@@ -436,6 +436,7 @@ async def api_system_status():
         runtime = runtime_overview(PROJECT_ROOT)
         return {
             "last_updated": runtime.get("last_runtime_update") or time.time(),
+            "project_root": str(PROJECT_ROOT.resolve()),
             "work_item_count": len(tasks), "module_count": len(modules),
             "cache_info": get_cache_info(),
             "runtime": runtime,
