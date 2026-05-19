@@ -227,6 +227,7 @@ def render_plugin_manifest() -> dict:
                 "Initialize Thoth in this repository and render project layers.",
                 "Start a durable Thoth run for the current task.",
             ],
+            "composerIcon": "./assets/thoth-icon.svg",
             "brandColor": "#3B82F6",
         },
     }
