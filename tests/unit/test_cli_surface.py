@@ -313,6 +313,19 @@ def test_cli_doctor_fix_preview_does_not_write_project_authority(tmp_path):
     assert not (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
 
 
+def test_cli_init_preview_does_not_apply_project_authority(tmp_path):
+    result = _run_cli(tmp_path, "init", "--preview")
+
+    assert result.returncode == 0, result.stderr
+    payload = _extract_envelope(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["body"]["result"]["operation"] == "preview"
+    assert (tmp_path / ".thoth" / "migrations" / payload["body"]["result"]["migration_id"] / "preview.json").exists()
+    assert not (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
+    assert not (tmp_path / "AGENTS.md").exists()
+    assert not (tmp_path / "CLAUDE.md").exists()
+
+
 def test_cli_init_migrate_accepts_positional_apply_and_removes_legacy_project(tmp_path):
     legacy_contract = tmp_path / ".thoth" / "project" / "contracts" / "contract-1.json"
     legacy_contract.parent.mkdir(parents=True)
@@ -330,6 +343,16 @@ def test_cli_init_migrate_accepts_positional_apply_and_removes_legacy_project(tm
     assert not (tmp_path / ".thoth" / "project").exists()
     work_item = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "contract-1.json").read_text(encoding="utf-8"))
     assert work_item["status"] == "blocked"
+
+
+def test_cli_init_migrate_flag_apply_remains_apply(tmp_path):
+    result = _run_cli(tmp_path, "init", "--migrate", "--apply")
+
+    assert result.returncode == 0, result.stderr
+    payload = _extract_envelope(result.stdout)
+    assert payload["status"] == "ok"
+    assert payload["body"]["result"]["apply"]["status"] == "applied"
+    assert (tmp_path / ".thoth" / "objects" / "project" / "project.json").exists()
 
 
 def test_cli_doctor_fix_accepts_positional_preview_without_mutation(tmp_path):

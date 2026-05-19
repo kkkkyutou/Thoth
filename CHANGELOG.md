@@ -4,6 +4,13 @@
 
 No pending changes.
 
+## [0.2.1] - 2026-05-19
+
+### Fixed
+- Fixed `thoth init --preview` so it writes only migration preview evidence and does not apply generated project authority files unless `--apply` is explicitly selected.
+- Added plugin-wrapper dependency bootstrapping through a user-local runtime venv so marketplace installs can run without relying on globally installed Python packages.
+- Broadened Codex micro-prompt runtime lookup to support both observed and shorter plugin cache layouts.
+
 ## [0.2.0] - 2026-05-14
 
 ### Added

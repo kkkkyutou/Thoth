@@ -109,8 +109,16 @@ def test_plugin_cli_entry_exists_for_shadow_safe_execution():
 
 
 def test_plugin_shell_wrapper_exists_for_fresh_install_envs():
-    """Fresh plugin installs should expose a shell-level thoth wrapper without pip install."""
+    """Fresh plugin installs should expose a shell-level thoth wrapper without global pip install."""
     wrapper_path = ROOT / "bin" / "thoth"
     assert wrapper_path.exists()
     content = wrapper_path.read_text(encoding="utf-8")
+    assert "required_modules_available" in content
+    assert "install_runtime_dependencies" in content
+    assert "bootstrap_runtime_venv" in content
+    assert "THOTH_RUNTIME_VENV" in content
+    assert '"pyyaml>=6.0"' in content
+    assert '"jsonschema>=4.0"' in content
+    assert '"fastapi>=0.100.0"' in content
+    assert '"uvicorn>=0.23.0"' in content
     assert 'exec "${PYTHON_BIN}" "${PLUGIN_ROOT}/scripts/thoth-cli-entry.py" "$@"' in content

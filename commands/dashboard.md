@@ -46,7 +46,7 @@ Report endpoint, failure point, and one notable runtime delta only.
 ### Hard Stops
 
 - Do not narrate the whole UI.
-- Do not restate healthy panels.
+- Do not omit the failure point or fabricate a runtime delta; when the result is clean, report the absence of failure as the finding.
 
 ### Reply Contract
 

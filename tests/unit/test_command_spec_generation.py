@@ -19,7 +19,7 @@ from thoth.projections import (
     render_plugin_manifest,
     sync_repository_surfaces,
 )
-from thoth.prompt_specs import codex_installed_runtime_shell_command
+from thoth.prompt_specs import COMMAND_PROMPT_SPECS, codex_installed_runtime_shell_command
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -61,6 +61,15 @@ def test_claude_doctor_surface_keeps_post_result_checks_minimal():
     assert "Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result." in rendered
     assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the doctor payload." in rendered
     assert "If work items are blocked or migration decisions are unresolved, ask with AskUserQuestion instead of guessing or fixing." in rendered
+
+
+def test_review_feedback_hard_stops_are_absolute():
+    assert "Do not exit the monitoring session before the RuntimeDriver signals a terminal state." in COMMAND_PROMPT_SPECS["run"].hard_stops
+    assert "Do not proceed to the next loop iteration before the validator signals terminal." in COMMAND_PROMPT_SPECS["loop"].hard_stops
+    assert (
+        "Do not omit the failure point or fabricate a runtime delta; when the result is clean, report the absence of failure as the finding."
+        in COMMAND_PROMPT_SPECS["dashboard"].hard_stops
+    )
 
 
 def test_claude_discuss_surface_preserves_structured_arguments():
@@ -120,6 +129,9 @@ def test_codex_runtime_shell_command_uses_installed_plugin_cache_without_checkou
     command = codex_installed_runtime_shell_command("$thoth run --executor codex --work-id task-1")
     assert "command -v thoth" in command
     assert ".codex/plugins/cache/thoth/thoth" in command
+    assert ".codex/plugins/cache/thoth/*" in command
+    assert ".codex/plugins/cache/*/thoth/*" in command
+    assert ".codex/plugins/cache/*/Thoth/*" in command
     assert ".codex/.tmp/marketplaces/thoth" in command
     assert "scripts/thoth-cli-entry.py" in command
     assert "--work-id task-1" in command

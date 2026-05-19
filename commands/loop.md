@@ -52,7 +52,7 @@ Advance the current bounded loop through foreground or sleeping RuntimeDriver mo
 ### Hard Stops
 
 - Do not decide extra iterations outside the recorded loop budget.
-- Do not skip validator output when judging success.
+- Do not proceed to the next loop iteration before the validator signals terminal.
 - Do not expand into iteration diaries or runtime narration.
 
 ### Reply Contract
