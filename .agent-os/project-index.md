@@ -3,7 +3,7 @@
 ## Current Truth
 
 - Objective: `OBJ-001`
-- Top next action: `TD-041`
+- Top next action: `TD-001`
 - Active workstreams: `WS-001`, `WS-002`, `WS-003`, `WS-004`, `WS-005`
 - Active blockers: None
 
@@ -23,7 +23,7 @@
 
 ## Top Next Action
 
-- `TD-041` `[doing]`: 优化 `dashboard` 一键启动：端口占用 / workspace 归属检测、自动换端口、前端依赖安装与构建、启动后可用性验证
+- `TD-001` `[ready]`: 将 `dev` / `main` 分流规则固化为仓库内可执行治理机制
 
 ## Active Blockers
 
@@ -31,6 +31,7 @@
 
 ## Recent Important Changes
 
+- 2026-05-19: 已验证并发布 `0.2.5` dashboard 启动补丁：`dashboard start` 现在会按 workspace 归属检测端口占用，发现首选端口被其他 workspace dashboard 或其他进程占用时自动选择后续可用端口；前端启动前会检查 `node_modules` / `.bin` symlink / core package 完整性并自动执行 `npm ci --legacy-peer-deps` 或 `npm install --legacy-peer-deps`，按需 build 后验证根页面是真实 Vue shell；后端启动改为 Python `subprocess.Popen(..., start_new_session=True)` 直接管理 uvicorn pid。真实 smoke 中默认 `8501` 被 `/tmp/thoth-demo-workspace` dashboard 占用，临时项目自动切到 `8502`，`/api/status` 与 Vue root shell 均验证通过。发布面提交 `663d0ca` 已推送到 `dev`，`main` 发布提交为 `2a8008b`；远端-only Claude/Codex marketplace 安装刷新已完成并核验 `version=0.2.5`。`TD-041` 已关闭，top next action 回到 `TD-001`。
 - 2026-05-19: 已验证并发布 `0.2.4` auto/loop 稳定性补丁：`loop` 现在记录 bounded retry decision / retry history，并把 compact `loop_context` 传给下一轮 child run；`auto` 现在有 controller-local worker lock、持久 controller event stream、低 churn idle heartbeat、`auto --stop` 级联停止 active child run。此前 `0.2.3` 的 `plan/reflect summary_budget_utf8=800` 发布面也已一起按 `dev -> main` cherry-pick 策略集成。发布面提交 `fa72d22` 已推送到 `dev`，`main` 发布提交为 `3afd5c8`；`origin/dev` 与 `origin/main` 已推送；远端-only Claude/Codex marketplace 安装刷新已完成，Claude `thoth@thoth` 与 Codex marketplace root runtime 均核验为 `version=0.2.4`。用户已指定下一步做 `dashboard` 一键启动与端口归属优化，登记为 `TD-041`。
 - 2026-05-14: `TD-039` 已验证并发布 `v0.2.0` stable compact release：package/plugin version、README / CHANGELOG / generated Claude/Codex plugin surfaces、`thoth init` 生成的 `AGENTS.md`/`CLAUDE.md`、runtime/read-model/dashboard/API/UI、自测 fixture 与 obsolete plugin residue 已统一到 `work_item` / `work_id` / `work_kind` / `runnable`。旧 `/tasks`、`/api/tasks`、current authority `task_id` 与 `work_type=task` 不再作为当前 public/runtime/dashboard 输出保留；legacy `task_id` 仅限 migration input / doctor rejection / 历史证据 / todo 非 authority 语境。发布面提交 `010c339` 已 cherry-pick 到 `main` 为 `094609c`，tag `v0.2.0` 打在 `094609c`；`origin/dev`、`origin/main` 与 tag 已推送；远端-only Claude/Codex marketplace 安装刷新已完成，Claude `thoth@thoth` 与 Codex marketplace root runtime 均核验为 `version=0.2.0`。
 - 2026-05-09: `TD-038` 已验证并发布 `0.1.15`：`discuss` 长对话现在可通过语义无损结构化 authority capsule 做 draft checkpoint 与显式 close，close 后把目标、非目标、约束、accepted/rejected decisions、acceptance、context evidence、risks、run instructions 与 open questions 写入 `work_item.payload.authority_context`，不新增公开命令或新 object kind。`run` / `loop` 的 `plan` phase 必须证明 `strict_task.authority_context` 覆盖完整；发现 open gaps 或未授权假设时以 `needs_input` terminal failed，不进入 `execute`；`execute` phase 必须读取 `plan.json` 并记录 `plan_artifact_read` / `plan_deviations`。验证：`py_compile` 通过，targeted pytest `64 passed in 597.00s` 与 `14 passed in 266.40s`，核心五项 selftest `overall_status=passed`；`main` 发布验证 targeted pytest `64 passed in 473.94s`、核心五项 selftest `overall_status=passed`；远端-only 安装刷新完成，Claude `thoth@thoth` 为 `0.1.15`，Codex marketplace upgrade 成功。

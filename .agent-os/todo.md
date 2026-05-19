@@ -42,8 +42,7 @@
 
 ## Doing
 
-- `TD-041` `[doing]`: 优化 `dashboard` 一键启动：先检测 `8501` 端口占用与已运行 dashboard 的 workspace 归属；若端口被占用或不是当前 workspace，则自动换端口直到可用；启动前自动完成前端依赖安装 / build / 后端启动；启动后验证真实 Vue dashboard 与 `/api/status` 可用
-  - Related items: `WS-002`, `WS-003`, `WS-005`, `REQ-014`, `REQ-024`, `REQ-027`
+- None
 
 ## Blocked
 
@@ -111,6 +110,16 @@
   - Evidence: 发布面提交 `fa72d22 feat: harden loop and auto controllers` 已推送到 `dev`；此前 `0.2.3` 发布面提交 `4989e50` 与本次 `fa72d22` 已按顺序 cherry-pick 到 `main`，分别为 `384c6ff` 与 `3afd5c8`。
   - Evidence: `main` 发布验证通过：同组 `py_compile`、`git diff --check`、manifest JSON、`bin/thoth doctor --version` 输出 `version=0.2.4`；targeted pytest 为 `46 passed in 66.45s` 与 `41 passed in 24.89s`。
   - Evidence: `origin/dev` 已推送 `caf8c5b..fa72d22`，`origin/main` 已推送 `65e0176..3afd5c8`；远端-only 安装刷新完成，Claude `thoth@thoth` 从 `0.2.2` 更新到 `0.2.4`，Codex marketplace root runtime `doctor --version` 输出 `version=0.2.4`。
+- `TD-041` `[verified]`: 优化 `dashboard` 一键启动、端口归属检测与前端依赖 / build 自恢复
+  - Related items: `WS-002`, `WS-003`, `WS-005`, `REQ-014`, `REQ-024`, `REQ-027`
+  - Evidence: `dashboard start` 现在会读取首选端口并检查端口 owner：同 workspace dashboard 会复用并补 metadata；其他 workspace dashboard、其他服务或未知占用会被视为冲突并继续扫描后续端口，直到找到可用端口。
+  - Evidence: 前端启动前会检查 `node_modules`、`.bin/vue-tsc` / `.bin/vite` symlink、`vue-tsc` / `vite` / `typescript` / `@vitejs/plugin-vue` 包完整性；缺失或 copytree 破坏 symlink 时自动执行 `npm ci --legacy-peer-deps`，无 lockfile 时执行 `npm install --legacy-peer-deps`；缺 dist、force rebuild 或源码新于 dist 时自动 `npm run build`。
+  - Evidence: 启动后不仅等待 `/api/status`，还会读取 `/` 并确认返回真实 Vue shell `<div id="app">`，避免再次出现 fallback HTML 被误报成功；`/api/status` 现在包含 `project_root` 便于 workspace 归属识别。
+  - Evidence: 后端启动从 `nohup bash -lc ... & echo $!` 改为 Python `subprocess.Popen(..., start_new_session=True)` 直接管理 uvicorn pid，stop 能按正确 PID 终止进程。
+  - Evidence: 发布版本 bump 到 `0.2.5`；`dev` 验证通过：`py_compile`、`git diff --check`、plugin manifest JSON 校验、`bin/thoth doctor --version` 输出 `version=0.2.5`、`templates/dashboard/frontend` 的 `npm run build` 通过；targeted pytest `15 passed in 22.80s` 与 `60 passed in 66.07s`。
+  - Evidence: 真实 smoke 在 `/tmp/thoth-dashboard-smoke-20260519-1708` 执行 `init -> dashboard start -> curl /api/status -> curl / -> dashboard stop`：默认 `8501` 被 `/tmp/thoth-demo-workspace` dashboard 占用，Thoth 自动选择 `8502`；首次启动自动 `npm ci --legacy-peer-deps` 与 `npm run build`；重启后 PID `585298` 保持运行，`/api/status` 返回当前临时 `project_root`，根页面包含 Vue shell，stop 成功。
+  - Evidence: 发布面提交 `663d0ca feat: harden dashboard startup` 已推送到 `dev`，并 cherry-pick 到 `main` 为 `2a8008b`；`main` 发布验证通过：py_compile、diff check、manifest JSON、`bin/thoth doctor --version` 输出 `version=0.2.5`、frontend build、targeted pytest `75 passed in 81.51s`；`origin/dev` 与 `origin/main` 已推送。
+  - Evidence: 远端-only 安装刷新完成：Claude `thoth@thoth` 从 `0.2.4` 更新到 `0.2.5`，Codex marketplace upgrade 成功；Claude cache runtime 与 Codex marketplace root runtime `doctor --version` 均输出 `version=0.2.5`。
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立
