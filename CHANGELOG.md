@@ -4,6 +4,11 @@
 
 No pending changes.
 
+## [0.2.3] - 2026-05-19
+
+### Changed
+- Increased `run` phase summary budgets for `plan` and `reflect` from 240 to 800 UTF-8 characters while keeping `execute` and `validate` at 240.
+
 ## [0.2.2] - 2026-05-19
 
 ### Fixed

@@ -269,7 +269,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "validation_plan",
             "risk_assessment",
         ),
-        summary_budget_utf8=240,
+        summary_budget_utf8=800,
         validator_policy="plan is read-only; incomplete authority terminalizes as needs_input before execute",
     ),
     "execute": PhasePromptSpec(
@@ -306,7 +306,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "Do not change validation verdicts.",
         ),
         required_fields=("summary", "outcome", "residual_risks", "evidence", "next_recommendation"),
-        summary_budget_utf8=240,
+        summary_budget_utf8=800,
         validator_policy="reflect always runs after validate and never overrides validate.passed",
     ),
 }

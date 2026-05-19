@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from thoth.prompt_specs import phase_prompt_authority
 from thoth.run.ledger import (
     append_protocol_event,
     complete_run,
@@ -38,6 +39,13 @@ def _plan_payload(summary: str = "plan ok") -> dict:
         "validation_plan": "run pytest",
         "risk_assessment": "low risk",
     }
+
+
+def test_plan_and_reflect_summary_budget_is_800():
+    assert phase_prompt_authority("plan")["summary_budget_utf8"] == 800
+    assert phase_prompt_authority("reflect")["summary_budget_utf8"] == 800
+    assert phase_prompt_authority("execute")["summary_budget_utf8"] == 240
+    assert phase_prompt_authority("validate")["summary_budget_utf8"] == 240
 
 
 def test_prepare_execution_writes_packet_and_live_dispatch(tmp_path):
@@ -257,6 +265,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     plan_packet = next_phase_payload(project, handle.run_id)
     assert plan_packet["phase"] == "plan"
     assert plan_packet["phase_authority"]["objective"].startswith("Produce the concrete execution plan")
+    assert plan_packet["phase_authority"]["summary_budget_utf8"] == 800
 
     submit_phase_output(
         project,
@@ -267,6 +276,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     execute_packet = next_phase_payload(project, handle.run_id)
     assert execute_packet["phase"] == "execute"
     assert execute_packet["phase_authority"]["objective"] != plan_packet["phase_authority"]["objective"]
+    assert execute_packet["phase_authority"]["summary_budget_utf8"] == 240
 
 
 def test_phase_output_rejects_overlong_summary(tmp_path):
@@ -282,7 +292,7 @@ def test_phase_output_rejects_overlong_summary(tmp_path):
         strict_task={"work_id": "task-1", "title": "Budget demo"},
         goal="close budget gap",
     )
-    too_long = "x" * 241
+    too_long = "x" * 801
     try:
         submit_phase_output(
             project,
@@ -302,7 +312,7 @@ def test_phase_output_rejects_overlong_summary(tmp_path):
         },
         )
     except ValueError as exc:
-        assert "plan.summary exceeds 240 UTF-8 chars" in str(exc)
+        assert "plan.summary exceeds 800 UTF-8 chars" in str(exc)
     else:
         raise AssertionError("expected summary budget failure")
 
@@ -330,7 +340,7 @@ def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp
             output_path.write_text(
                 json.dumps(
                     {
-                        "summary": "x" * 241,
+                        "summary": "x" * 801,
                         "authority_complete": True,
                         "authority_coverage": {"goal": True},
                         "open_gaps": [],
@@ -372,7 +382,7 @@ def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp
 
     assert payload["summary"] == "plan ok"
     assert len(prompts) == 2
-    assert "Previous output failed validation: plan.summary exceeds 240 UTF-8 chars" in prompts[1]
+    assert "Previous output failed validation: plan.summary exceeds 800 UTF-8 chars" in prompts[1]
 
 
 def test_external_worker_command_uses_executor_specific_cli(tmp_path):
