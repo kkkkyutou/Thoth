@@ -42,7 +42,8 @@
 
 ## Doing
 
-- None
+- `TD-041` `[doing]`: 优化 `dashboard` 一键启动：先检测 `8501` 端口占用与已运行 dashboard 的 workspace 归属；若端口被占用或不是当前 workspace，则自动换端口直到可用；启动前自动完成前端依赖安装 / build / 后端启动；启动后验证真实 Vue dashboard 与 `/api/status` 可用
+  - Related items: `WS-002`, `WS-003`, `WS-005`, `REQ-014`, `REQ-024`, `REQ-027`
 
 ## Blocked
 
@@ -101,6 +102,15 @@
   - Evidence: `main` 发布验证通过：targeted `py_compile`、`cd templates/dashboard/frontend && npm run build`、targeted pytest `112 passed in 632.30s`、核心五项 selftest `.tmp_pytest/thoth-selftest-v020-main-core.json` 为 `overall_status=passed`，生成时间 `2026-05-14T14:13:11Z`。
   - Evidence: tag `v0.2.0` 已打在 `main` 发布提交 `094609c`；`origin/dev` 已推送到 `f296eeb`，`origin/main` 已推送到 `094609c`，`origin/v0.2.0` 已创建。
   - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 输出从 `0.1.15` 更新到 `0.2.0`；`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.0`；Claude cache 与 Codex marketplace root 的 `doctor --version` 均输出 `version=0.2.0`。
+- `TD-040` `[verified]`: 强化 `loop` bounded retry 与 `auto` durable controller 运行稳定性
+  - Related items: `WS-002`, `WS-003`, `WS-005`, `REQ-024`, `REQ-032`, `REQ-035`
+  - Evidence: `loop` controller 现在记录 `retry_history` / `last_retry_decision` / `final_outcome`，失败 child run 会基于 non-retryable reason、`next_plan_hint` 与 repeat failure signature 做有限重试决策；下一轮 child run 的 phase packet 带 compact `loop_context`，用于避免重复上轮失败。
+  - Evidence: `auto` controller 现在通过 `.thoth/local/controllers/<controller_id>/worker.lock` 锁住 worker alive-check + spawn，worker 事件持久写入 `.thoth/local/controllers/<controller_id>/events.jsonl`，watch 会读取该事件流；idle 状态更新按 heartbeat 节流，`auto --stop` 会级联 stop 当前 active child run。
+  - Evidence: 发布版本 bump 到 `0.2.4`，并重新生成 Claude/Codex plugin manifests 与 marketplace metadata；`CHANGELOG.md`、`README.md`、`README.zh-CN.md` 已同步补丁版本。
+  - Evidence: `dev` 验证通过：`py_compile`、`git diff --check`、plugin manifest JSON 校验、`python -m thoth.cli sync`、`bin/thoth doctor --version` 输出 `version=0.2.4`；targeted pytest `tests/unit/test_run_state_machine.py tests/unit/test_runtime_protocol.py tests/unit/test_cli_surface.py` 为 `46 passed in 65.14s`，`tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py tests/unit/test_claude_bridge.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_object_controllers.py` 为 `41 passed in 23.69s`。
+  - Evidence: 发布面提交 `fa72d22 feat: harden loop and auto controllers` 已推送到 `dev`；此前 `0.2.3` 发布面提交 `4989e50` 与本次 `fa72d22` 已按顺序 cherry-pick 到 `main`，分别为 `384c6ff` 与 `3afd5c8`。
+  - Evidence: `main` 发布验证通过：同组 `py_compile`、`git diff --check`、manifest JSON、`bin/thoth doctor --version` 输出 `version=0.2.4`；targeted pytest 为 `46 passed in 66.45s` 与 `41 passed in 24.89s`。
+  - Evidence: `origin/dev` 已推送 `caf8c5b..fa72d22`，`origin/main` 已推送 `65e0176..3afd5c8`；远端-only 安装刷新完成，Claude `thoth@thoth` 从 `0.2.2` 更新到 `0.2.4`，Codex marketplace root runtime `doctor --version` 输出 `version=0.2.4`。
 - `TD-002` `[verified]`: 当前插件公开 surface、README 与安装行为已重新对齐
 - `TD-007` `[verified]`: `dev` 状态文档系统已初始化
 - `TD-010` `[verified]`: 官方平台资料治理层已建立
