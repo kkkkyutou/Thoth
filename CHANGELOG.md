@@ -4,6 +4,11 @@
 
 No pending changes.
 
+## [0.2.2] - 2026-05-19
+
+### Fixed
+- Fixed README inline-code formatting in the locked planning authority table row and published it as a new plugin version so remote-only host updates refresh installed marketplace caches.
+
 ## [0.2.1] - 2026-05-19
 
 ### Fixed
