@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.6.3" src="https://img.shields.io/badge/version-0.2.6.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.6.4" src="https://img.shields.io/badge/version-0.2.6.4-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.6.3 state layout patch</strong> · runtime evidence and dashboard cache stay local by default</p>
+  <p><strong>v0.2.6.4 authority/discovery patch</strong> · closed discussion authority reaches legacy work items, and dashboard sync refreshes stale scaffolds</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 
@@ -155,6 +155,8 @@ Portable authority is the Git state needed to continue work after a fresh clone.
 Runtime evidence is local by default. New projects get `.thoth/.gitignore` rules for `.thoth/runs/`, `.thoth/derived/`, `.thoth/docs/work-results/`, `.thoth/objects/run/`, `.thoth/objects/artifact/`, `.thoth/objects/controller/`, and `.thoth/objects/phase_result/`. These ledgers remain on disk for local audit, but a fresh machine should start a new run rather than attach to old PIDs, leases, workers, supervisors, or dashboard processes.
 
 Dashboard dependencies and cache are also local. Thoth writes idempotent ignore rules for `tools/dashboard/frontend/node_modules/`, `tools/dashboard/frontend/dist/`, Vite cache, backend Python cache, and the dashboard SQLite read model under `.thoth/derived/dashboard/`. If a team intentionally wants to carry a run to another machine, export a concise report with `thoth status --report` or archive the specific `.thoth/runs/<run_id>` evidence bundle explicitly; Thoth does not add every runtime ledger to Git by default.
+
+`thoth init --sync` refreshes the managed dashboard scaffold when the installed plugin has newer runtime/read-model fixes. The previous scaffold is copied to ignored `.thoth/derived/dashboard-sync-backups/` before overwrite, so stale dashboard code can be recovered without making local backup files Git-visible.
 
 Fresh-clone recovery means:
 

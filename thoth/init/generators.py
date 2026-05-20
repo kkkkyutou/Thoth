@@ -123,11 +123,35 @@ def generate_agent_os_docs(config: dict[str, Any], project_dir: Path) -> None:
         path.write_text(content, encoding="utf-8")
 
 
-def generate_dashboard(config: dict[str, Any], project_dir: Path) -> None:
+def _backup_dashboard_scaffold(project_dir: Path, dest: Path) -> dict[str, Any] | None:
+    if not dest.exists():
+        return None
+    backup_root = project_dir / ".thoth" / "derived" / "dashboard-sync-backups" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    backup_dest = backup_root / "tools" / "dashboard"
+    backup_dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(dest, backup_dest, dirs_exist_ok=True)
+    manifest = {
+        "schema_version": 1,
+        "created_at": _utc_iso(),
+        "reason": "thoth init --sync dashboard scaffold refresh",
+        "source": str(dest.relative_to(project_dir)),
+        "backup_path": str(backup_dest.relative_to(project_dir)),
+    }
+    (backup_root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
+def generate_dashboard(config: dict[str, Any], project_dir: Path, *, backup_existing: bool = False) -> dict[str, Any]:
     src = TEMPLATES_DIR / "dashboard"
     dest = project_dir / "tools" / "dashboard"
+    backup = _backup_dashboard_scaffold(project_dir, dest) if backup_existing else None
     shutil.copytree(src, dest, dirs_exist_ok=True)
     _write_dashboard_locale_selection(config, project_dir)
+    return {
+        "path": str(dest.relative_to(project_dir)),
+        "backup": backup,
+        "updated": True,
+    }
 
 
 def _write_dashboard_locale_selection(config: dict[str, Any], project_dir: Path) -> None:

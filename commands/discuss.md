@@ -38,6 +38,7 @@ THOTH_DISCUSS_ARGUMENTS_EOF
 - Use AskUserQuestion until compact authority categories are explicit: goal, constraints, decisions, risks, run_instructions, and open_questions.
 - On major semantic changes, write a draft authority checkpoint through `packet.protocol_commands.checkpoint_authority`.
 - When no material assumptions remain, close with the compact authority categories plus `packet.work_json_template` through `packet.protocol_commands.close_authority`.
+- When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.
 - Do not create ready work if any open_questions remain in the authority capsule.
 
 ## Authority Summary
@@ -60,6 +61,7 @@ Interrogate the user's idea until the compact authority categories are explicit:
 - When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.
 - When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, run_instructions, and open_questions.
 - Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.
+- When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.
 - Do not fabricate ready execution work items from unresolved decisions.
 - Do not repeat the packet or decision payload verbatim.
 

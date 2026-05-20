@@ -7,11 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from thoth.plan.authority_resolution import resolve_strict_task_authority
 from thoth.prompt_specs import build_review_result_shape, command_prompt_authority
 
 from .io import _read_json, _write_json
 from .lease import acquire_repo_lease
-from .ledger import _append_event, _update_state, _write_heartbeat, create_run
+from .ledger import _append_event, _update_state, _write_heartbeat, create_run, record_artifact
 from .model import LIVE_DISPATCH_MODE, SLEEP_DISPATCH_MODE, PROTOCOL_VERSION, RunHandle, _parse_iso8601, dispatch_mode_for, utc_now
 from .phases import (
     build_live_packet,
@@ -177,6 +178,9 @@ def prepare_execution(
     max_runtime_seconds: int | None = None,
 ) -> tuple[RunHandle, dict[str, Any]]:
     dispatch_mode = dispatch_mode_for(sleep_requested)
+    authority_resolution: dict[str, Any] | None = None
+    if isinstance(strict_task, dict):
+        strict_task, authority_resolution = resolve_strict_task_authority(project_root, strict_task)
     runtime_contract = normalize_runtime_contract(strict_task.get("runtime_contract") if isinstance(strict_task, dict) else None)
     resolved_max_runtime_seconds = max_runtime_seconds
     if command_id == "loop" and (not isinstance(resolved_max_runtime_seconds, int) or resolved_max_runtime_seconds <= 0):
@@ -204,6 +208,16 @@ def prepare_execution(
         _append_event(handle, "lease conflict", kind="error", level="error", payload={"reason": str(exc)})
         raise
     _mark_prepare_started(handle)
+    if authority_resolution:
+        resolution_path = handle.run_dir / "authority-resolution.json"
+        _write_json(resolution_path, authority_resolution)
+        record_artifact(
+            project_root,
+            handle.run_id,
+            path=str(resolution_path),
+            label="authority-resolution.json",
+            artifact_kind="authority",
+        )
     if command_id == "run" and isinstance(strict_task, dict):
         initialize_run_phase_state(handle, strict_task=strict_task, goal=goal or title, target=target)
     elif command_id == "loop" and isinstance(strict_task, dict):

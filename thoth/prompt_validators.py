@@ -432,6 +432,15 @@ def validate_phase_output(
             item_limit=RISK_LIMIT,
             warnings=normalization_warnings,
         )
+        if "discovery_tasks" in payload:
+            normalized["discovery_tasks"] = _normalize_text_list(
+                "plan.discovery_tasks",
+                payload.get("discovery_tasks"),
+                PLAN_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
+        else:
+            normalized["discovery_tasks"] = []
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "execute":

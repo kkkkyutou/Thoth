@@ -158,6 +158,9 @@ def minimal_task_authority(strict_task: dict[str, Any]) -> dict[str, Any]:
     }
     if isinstance(strict_task.get("review_expectation"), dict):
         payload["review_expectation"] = strict_task.get("review_expectation")
+    authority_resolution = strict_task.get("_authority_resolution")
+    if isinstance(authority_resolution, dict) and authority_resolution.get("source") != "work_item_payload_compat":
+        payload["_authority_resolution"] = authority_resolution
     return payload
 
 
@@ -310,6 +313,10 @@ def _phase_input_for_run(handle: RunHandle, controller: dict[str, Any]) -> dict[
     }
     if phase == "execute":
         packet["required_plan_artifact"] = controller.get("artifacts", {}).get("plan") if isinstance(controller.get("artifacts"), dict) else None
+        plan_artifact = packet.get("required_plan_artifact")
+        plan_payload = _read_json(Path(plan_artifact)) if isinstance(plan_artifact, str) else {}
+        discovery_tasks = plan_payload.get("discovery_tasks") if isinstance(plan_payload.get("discovery_tasks"), list) else []
+        packet["discovery_tasks"] = discovery_tasks
     return packet
 
 

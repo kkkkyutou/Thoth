@@ -26,6 +26,8 @@ from thoth.init.render import (
     parse_config,
 )
 from thoth.init.service import initialize_project, preview_project_migration, sync_project_layer
+from thoth.objects import Store
+from thoth.run.phases import default_validate_output_schema
 
 
 @pytest.fixture
@@ -328,3 +330,83 @@ def test_sync_project_layer_refreshes_dashboard_locale(tmp_path):
 
     locale_file = tmp_path / "tools" / "dashboard" / "frontend" / "src" / "generated" / "locale.ts"
     assert "defaultLocale = 'en'" in locale_file.read_text(encoding="utf-8")
+
+
+def test_sync_project_layer_updates_dashboard_with_ignored_backup(base_config, tmp_path):
+    initialize_project(base_config, tmp_path)
+    dashboard_file = tmp_path / "tools" / "dashboard" / "backend" / "progress_calculator.py"
+    dashboard_file.write_text("drifted dashboard\n", encoding="utf-8")
+
+    result = sync_project_layer(tmp_path)
+
+    assert "drifted dashboard" not in dashboard_file.read_text(encoding="utf-8")
+    backup = result["dashboard"]["backup"]
+    assert backup is not None
+    backup_path = tmp_path / backup["backup_path"] / "backend" / "progress_calculator.py"
+    assert "drifted dashboard" in backup_path.read_text(encoding="utf-8")
+    assert "/derived/" in (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
+
+    dashboard_file.write_text("second drift\n", encoding="utf-8")
+    second = sync_project_layer(tmp_path)
+    assert second["dashboard"]["backup"]["backup_path"] != backup["backup_path"]
+
+
+def test_sync_project_layer_backfills_legacy_discussion_authority(base_config, tmp_path):
+    initialize_project(base_config, tmp_path)
+    store = Store(tmp_path)
+    closure = {
+        "schema_version": 1,
+        "source_discussion_id": "DISC-sync",
+        "source_decision_ids": [],
+        "semantic_events": [],
+        "goal": "closed sync goal",
+        "constraints": ["closed"],
+        "accepted_decisions": [],
+        "rejected_options": [],
+        "acceptance": {"normalized_summary": "pytest passes"},
+        "run_instructions": ["run pytest"],
+        "open_questions": [],
+        "completeness": {"is_closed": True, "unresolved_count": 0, "blocking_reasons": []},
+    }
+    store.create(
+        kind="discussion",
+        object_id="DISC-sync",
+        status="closed",
+        title="Closed sync authority",
+        summary="Closed sync authority",
+        source="test",
+        payload={"closure": closure},
+    )
+    store.create(
+        kind="work_item",
+        object_id="legacy-work",
+        status="ready",
+        title="Legacy work",
+        summary="Legacy work",
+        source="test",
+        payload={
+            "work_kind": "execution",
+            "runnable": True,
+            "goal": "Run legacy work",
+            "context": "DISC-sync closed",
+            "constraints": ["local"],
+            "execution_plan": ["edit", "test"],
+            "eval_contract": {
+                "entrypoint": {"command": "pytest -q"},
+                "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                "failure_classes": ["runtime_drift"],
+                "validate_output_schema": default_validate_output_schema(),
+            },
+            "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+            "scheduling": {"priority": 0},
+            "decisions": ["DISC-sync"],
+            "missing_questions": [],
+        },
+    )
+
+    result = sync_project_layer(tmp_path)
+    updated = store.read("work_item", "legacy-work")
+    authority_context = updated["payload"]["authority_context"]
+
+    assert authority_context["source_discussion_id"] == "DISC-sync"
+    assert result["authority_repairs"][0]["work_id"] == "legacy-work"

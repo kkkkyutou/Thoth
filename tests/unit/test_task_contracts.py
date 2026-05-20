@@ -190,6 +190,21 @@ def test_discussion_authority_close_with_open_questions_needs_input(tmp_path):
     assert compiler["summary"]["work_item_counts"]["ready"] == 0
 
 
+def test_discussion_authority_close_requires_stable_work_id(tmp_path):
+    ensure_work_authority_tree(tmp_path)
+    discussion = create_discussion_placeholder(tmp_path, "Close runtime work")
+    capsule = _closed_authority_capsule()
+    capsule["work_item"] = dict(capsule["work_item"])
+    capsule["work_item"].pop("work_id", None)
+
+    result = close_discussion_authority(tmp_path, discussion_id=discussion["discussion_id"], capsule=capsule)
+    compiler = compile_task_authority(tmp_path)
+
+    assert result["status"] == "needs_input"
+    assert "closed authority work_item requires stable work_id" in result["diagnostics"]["work_item_ready_errors"]
+    assert compiler["summary"]["work_item_counts"]["ready"] == 0
+
+
 def test_doctor_reads_object_graph_and_flags_legacy_yaml(tmp_path):
     ensure_work_authority_tree(tmp_path)
     legacy_task = tmp_path / ".agent-os" / "research-tasks" / "frontend" / "f1" / "task-1.yaml"
