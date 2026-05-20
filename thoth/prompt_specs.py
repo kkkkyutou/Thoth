@@ -271,7 +271,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "validation_plan",
             "risk_assessment",
         ),
-        summary_budget_utf8=800,
+        summary_budget_utf8=1200,
         validator_policy="plan is read-only; incomplete authority terminalizes as needs_input before execute",
     ),
     "execute": PhasePromptSpec(
@@ -284,7 +284,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "Do not run destructive delete/reset commands.",
         ),
         required_fields=("summary", "plan_artifact_read", "plan_deviations", "files_touched", "commands_run", "artifacts"),
-        summary_budget_utf8=240,
+        summary_budget_utf8=800,
         validator_policy="execute follows the plan artifact; validator remains the acceptance authority",
     ),
     "validate": PhasePromptSpec(
@@ -296,7 +296,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "Do not skip eval_entrypoint.command when it exists.",
         ),
         required_fields=("summary", "passed", "metric_name", "metric_value", "threshold", "checks"),
-        summary_budget_utf8=240,
+        summary_budget_utf8=800,
         validator_policy="validator output alone decides whether the run completes or enters reflect",
     ),
     "reflect": PhasePromptSpec(
@@ -308,7 +308,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "Do not change validation verdicts.",
         ),
         required_fields=("summary", "outcome", "residual_risks", "evidence", "next_recommendation"),
-        summary_budget_utf8=800,
+        summary_budget_utf8=1200,
         validator_policy="reflect always runs after validate and never overrides validate.passed",
     ),
 }
@@ -402,6 +402,7 @@ def render_phase_worker_prompt(
         f"Objective: {authority.get('objective')}",
         f"Required fields: {', '.join(str(item) for item in required_fields)}",
         f"Summary budget UTF-8 bytes: {authority.get('summary_budget_utf8')}",
+        "Narrative fields may be complete but must stay compact; runtime normalizes over-budget single-line text and records _normalization_warnings.",
         f"Validator policy: {authority.get('validator_policy')}",
     ]
     loop_context = phase_packet.get("loop_context")
