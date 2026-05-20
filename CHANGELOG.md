@@ -4,6 +4,18 @@
 
 No pending changes.
 
+## [0.2.6.4] - 2026-05-20
+
+### Changed
+- `run` and `loop` now resolve missing `strict_task.authority_context` from embedded work authority, linked closed discussions, legacy `DISC-*` work references, or a compact ready-work compatibility context, and record `authority-resolution.json` for audit.
+- `plan` now supports optional `discovery_tasks` so path search, source checkout discovery, target directory creation, imports, and test-entry creation can proceed to `execute` instead of being misclassified as user authority gaps.
+- `thoth init --sync` now refreshes the project-local managed dashboard scaffold and backs up the previous scaffold under ignored `.thoth/derived/dashboard-sync-backups/`.
+
+### Fixed
+- Prevented `discuss close` from creating timestamp work items when the close payload omits a stable `work_id`; the command now returns `needs_input` and asks for an explicit work binding.
+- Kept broad goal wording from blocking execution when `eval_contract` and constraints already define the current run acceptance boundary.
+- Ensured older project-local dashboard code can be upgraded through `init --sync`, so ready work with failed latest attempts remains ready, does not display as completed, and does not contribute completion progress.
+
 ## [0.2.6.3] - 2026-05-20
 
 ### Changed

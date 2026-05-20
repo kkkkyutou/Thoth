@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.6.3" src="https://img.shields.io/badge/version-0.2.6.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.6.4" src="https://img.shields.io/badge/version-0.2.6.4-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.2.6.3 state layout 补丁</strong> · runtime evidence 与 dashboard cache 默认保持本机本地</p>
+  <p><strong>v0.2.6.4 authority/discovery 补丁</strong> · closed discussion authority 可进入旧 work item，dashboard sync 会刷新过期 scaffold</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth 概念首屏图" />
 </div>
 
@@ -155,6 +155,8 @@ Portable authority 是换电脑后继续工作的 Git 状态。应提交 `AGENTS
 Runtime evidence 默认是本机状态。新项目会生成 `.thoth/.gitignore`，忽略 `.thoth/runs/`、`.thoth/derived/`、`.thoth/docs/work-results/`、`.thoth/objects/run/`、`.thoth/objects/artifact/`、`.thoth/objects/controller/` 和 `.thoth/objects/phase_result/`。这些 ledger 仍保留在磁盘上供本机复盘，但新机器应该从 authority 启动新的 run，而不是接管旧机器上的 PID、lease、worker、supervisor 或 dashboard 进程。
 
 Dashboard 依赖与缓存也默认是本机状态。Thoth 会幂等写入 ignore 规则，忽略 `tools/dashboard/frontend/node_modules/`、`tools/dashboard/frontend/dist/`、Vite cache、backend Python cache，以及 `.thoth/derived/dashboard/` 下的 dashboard SQLite read model。如果团队确实需要把某个 run 带到另一台机器，应显式用 `thoth status --report` 导出简明报告，或手动归档指定 `.thoth/runs/<run_id>` evidence bundle；Thoth 不会默认把全部 runtime ledger 加进 Git。
+
+`thoth init --sync` 会在已安装插件包含新的 runtime/read-model 修复时刷新受管 dashboard scaffold。覆盖前旧 scaffold 会备份到已忽略的 `.thoth/derived/dashboard-sync-backups/`，因此可以恢复旧文件，但不会让本地备份污染 Git 状态。
 
 Fresh clone 的恢复语义是：
 

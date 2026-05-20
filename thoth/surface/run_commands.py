@@ -92,6 +92,22 @@ def _reject_missing_work_id(*, command_id: str, args, project_root: Path) -> int
     return 2
 
 
+def _reject_authority_resolution(*, command_id: str, project_root: Path, work_id: str, reason: str) -> int:
+    print_envelope(
+        command=command_id,
+        status="needs_input",
+        summary=f"`{command_id}` could not resolve closed authority for {work_id}.",
+        body={
+            "work_id": work_id,
+            "reason": reason,
+            "guidance": "Run `thoth init --sync` to backfill unambiguous legacy authority, or return to `thoth discuss` to bind this work item to a single closed discussion.",
+        },
+        refs=output_refs(work_items_dir(project_root), compiler_state_path(project_root)),
+        checks=[{"name": "authority_context_resolved", "ok": False, "detail": reason}],
+    )
+    return 2
+
+
 def _resolve_executor(args) -> str:
     explicit = str(getattr(args, "executor", "") or "").strip().lower()
     if explicit:
@@ -136,7 +152,12 @@ def handle_prepare(args, parser, *, project_root: Path) -> int:
         title = str(strict_task.get("title") or f"Review: {work_id}")
     elif args.command_id == "review" and not (args.target or args.goal):
         parser.exit(2, "thoth: error: Review prepare requires --target or --goal.\n")
-    handle, packet = prepare_execution(root, command_id=args.command_id, title=title, work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=strict_task, target=args.target, goal=args.goal or title)
+    try:
+        handle, packet = prepare_execution(root, command_id=args.command_id, title=title, work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=strict_task, target=args.target, goal=args.goal or title)
+    except ValueError as exc:
+        if work_id and "authority" in str(exc):
+            return _reject_authority_resolution(command_id=args.command_id, project_root=root, work_id=work_id, reason=str(exc))
+        raise
     if packet.get("dispatch_mode") != LIVE_DISPATCH_MODE:
         spawn_supervisor(handle)
         packet["worker_spawned"] = True
@@ -154,18 +175,23 @@ def handle_review(args, parser, *, project_root: Path) -> int:
     strict_task = None
     if review_work_id:
         strict_task = load_work_for_execution(project_root, review_work_id, require_ready=True)
-    handle, packet = prepare_execution(
-        project_root,
-        command_id="review",
-        title=f"Review: {content}",
-        work_id=review_work_id,
-        host=args.host,
-        executor=_resolve_executor(args),
-        sleep_requested=False,
-        strict_task=strict_task,
-        target=content,
-        goal=getattr(args, "goal", None) or content,
-    )
+    try:
+        handle, packet = prepare_execution(
+            project_root,
+            command_id="review",
+            title=f"Review: {content}",
+            work_id=review_work_id,
+            host=args.host,
+            executor=_resolve_executor(args),
+            sleep_requested=False,
+            strict_task=strict_task,
+            target=content,
+            goal=getattr(args, "goal", None) or content,
+        )
+    except ValueError as exc:
+        if review_work_id and "authority" in str(exc):
+            return _reject_authority_resolution(command_id="review", project_root=project_root, work_id=review_work_id, reason=str(exc))
+        raise
     print_envelope(command="review", status="ok", summary=f"Prepared live review packet for {content}", body={"packet": packet, "note_path": str(note_path)}, refs=output_refs(note_path, handle.run_dir), checks=[{"name": "live_only", "ok": packet.get("dispatch_mode") == LIVE_DISPATCH_MODE}])
     return 0
 
@@ -193,7 +219,12 @@ def handle_run_or_loop(args, parser, *, project_root: Path) -> int:
     if not work_id:
         return _reject_missing_work_id(command_id=args.command, args=args, project_root=project_root)
     task = load_work_for_execution(project_root, work_id, require_ready=True)
-    handle, packet = prepare_execution(project_root, command_id=args.command, title=str(task.get("title") or work_id), work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=task, goal=getattr(args, "goal", None) or str(task.get("title") or work_id))
+    try:
+        handle, packet = prepare_execution(project_root, command_id=args.command, title=str(task.get("title") or work_id), work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=task, goal=getattr(args, "goal", None) or str(task.get("title") or work_id))
+    except ValueError as exc:
+        if "authority" in str(exc):
+            return _reject_authority_resolution(command_id=args.command, project_root=project_root, work_id=work_id, reason=str(exc))
+        raise
     if packet.get("dispatch_mode") != LIVE_DISPATCH_MODE:
         spawn_supervisor(handle)
         packet["worker_spawned"] = True

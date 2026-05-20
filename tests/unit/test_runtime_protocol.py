@@ -8,6 +8,7 @@ from pathlib import Path
 
 from thoth.prompt_validators import utf8_len, validate_phase_output
 from thoth.prompt_specs import phase_prompt_authority
+from thoth.objects import Store
 from thoth.run.driver import execute_runtime_controller
 from thoth.run.ledger import (
     _update_state,
@@ -72,6 +73,18 @@ def test_plan_gap_schema_drift_normalizes_jsonish_items():
     assert normalized["_normalization_warnings"][0]["reason"] == "coerced_to_json_string"
 
 
+def test_plan_discovery_tasks_do_not_trigger_authority_gap():
+    payload = {
+        **_plan_payload("discover source paths"),
+        "discovery_tasks": ["locate TRELLIS2 source tree", "create missing target test file"],
+    }
+
+    normalized = validate_phase_output("plan", payload)
+
+    assert normalized["discovery_tasks"] == ["locate TRELLIS2 source tree", "create missing target test file"]
+    assert normalized["open_gaps"] == []
+
+
 def test_phase_summary_budgets_are_relaxed():
     assert phase_prompt_authority("plan")["summary_budget_utf8"] == 1200
     assert phase_prompt_authority("reflect")["summary_budget_utf8"] == 1200
@@ -103,6 +116,63 @@ def test_plan_long_fields_normalize_without_schema_failure():
     warning_fields = {row["field"] for row in normalized["_normalization_warnings"]}
     assert "plan.validation_plan" in warning_fields
     assert "plan.open_gaps" in warning_fields
+
+
+def test_prepare_execution_synthesizes_authority_from_legacy_discussion_ref(tmp_path):
+    project = _prepare_project(tmp_path)
+    store = Store(project)
+    closure = {
+        "schema_version": 1,
+        "source_discussion_id": "DISC-closed",
+        "source_decision_ids": [],
+        "semantic_events": [],
+        "goal": "closed goal",
+        "constraints": ["closed constraint"],
+        "accepted_decisions": [],
+        "rejected_options": [],
+        "acceptance": {"normalized_summary": "pytest passes"},
+        "run_instructions": ["run pytest"],
+        "open_questions": [],
+        "completeness": {"is_closed": True, "unresolved_count": 0, "blocking_reasons": []},
+    }
+    store.create(
+        kind="discussion",
+        object_id="DISC-closed",
+        status="closed",
+        title="Closed authority",
+        summary="Closed authority",
+        source="test",
+        payload={"closure": closure},
+    )
+    strict_task = {
+        "work_id": "task-1",
+        "title": "Legacy work",
+        "goal_statement": "Run legacy work",
+        "context": "EVA design: DISC-closed (closed)",
+        "constraints": ["local"],
+        "implementation_recipe": ["edit", "test"],
+        "eval_entrypoint": {"command": "pytest -q"},
+        "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
+        "decision_ids": ["DISC-closed"],
+        "validate_output_schema": default_validate_output_schema(),
+    }
+
+    handle, packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Legacy work",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task=strict_task,
+        goal="Run legacy work",
+    )
+
+    assert packet["strict_task"]["authority_context"]["source_discussion_id"] == "DISC-closed"
+    assert packet["strict_task"]["_authority_resolution"]["source"] == "legacy_discussion_ref"
+    resolution = json.loads((handle.run_dir / "authority-resolution.json").read_text(encoding="utf-8"))
+    assert resolution["source"] == "legacy_discussion_ref"
 
 
 def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failure():

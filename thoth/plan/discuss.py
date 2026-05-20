@@ -458,7 +458,18 @@ def close_discussion_authority(
         ]
         authority_context["completeness"]["is_closed"] = False
         authority_context["completeness"]["unresolved_count"] = len(authority_context["open_questions"])
-    ready_errors = work_item_input_ready_errors(work_payload) if work_payload else []
+    missing_work_id = False
+    if work_payload and not str(work_payload.get("work_id") or work_payload.get("object_id") or "").strip():
+        missing_work_id = True
+        authority_context["open_questions"] = [
+            *authority_context.get("open_questions", []),
+            "closed authority work_item requires stable work_id",
+        ]
+        authority_context["completeness"]["is_closed"] = False
+        authority_context["completeness"]["unresolved_count"] = len(authority_context["open_questions"])
+    ready_errors = work_item_input_ready_errors(work_payload) if work_payload and not missing_work_id else []
+    if missing_work_id:
+        ready_errors = ["closed authority work_item requires stable work_id"]
 
     payload = _discussion_payload(current)
     payload["closure"] = authority_context

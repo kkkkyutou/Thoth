@@ -60,6 +60,6 @@
 ## 5. 本子树的具体边界
 
 - `initialize_project()` 是 audit-first apply orchestration，不是“新建项目向导”。
-- `sync_project_layer()` 只重建 canonical 投影与派生层，不得偷偷接管新的 repo surface。
+- `sync_project_layer()` 可按用户批准受管刷新 Thoth-owned dashboard scaffold；刷新前必须备份到 ignored local state，并保持 host projection / source-map 可审计。
 - `build_init_preview()` 的 `create/update/preserve/remove` 是 init 语义的核心 authority；新增规则时先想清楚是否会误伤已有仓库。
 - `generate_host_projections()` 输出的是宿主投影，不是宿主私有策略分叉点。

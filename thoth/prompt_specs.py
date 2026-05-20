@@ -217,6 +217,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
             "When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.",
             "When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, run_instructions, and open_questions.",
             "Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.",
+            "When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.",
             "Do not fabricate ready execution work items from unresolved decisions.",
             "Do not repeat the packet or decision payload verbatim.",
         ),
@@ -255,7 +256,8 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
         hard_stops=(
             "Do not modify project files.",
             "Do not change the work item goal, constraints, or validation entrypoint.",
-            "Do not use assumptions that are absent from strict_task.authority_context.",
+            "Do not assume user intent, acceptance, constraints, rejected options, permission, or cost outside strict_task.authority_context.",
+            "Do not treat missing paths, dirs, tests, imports, or dependency locations as authority gaps; use discovery_tasks/execution_steps.",
             "If authority_context has open questions or contradictions, set authority_complete=false and list open_gaps.",
             "Do not hand-edit .thoth ledgers.",
         ),
@@ -272,7 +274,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "risk_assessment",
         ),
         summary_budget_utf8=1200,
-        validator_policy="plan is read-only; incomplete authority terminalizes as needs_input before execute",
+        validator_policy="plan is read-only; only unresolved user authority terminalizes as needs_input; executable discovery belongs to execute",
     ),
     "execute": PhasePromptSpec(
         phase="execute",
@@ -411,7 +413,9 @@ def render_phase_worker_prompt(
     if output_path:
         lines.append(f"Runtime driver capture path: `{output_path}`.")
     if phase == "plan":
-        lines.append("Check `strict_task.authority_context`; set authority_complete=false with open_gaps if any user decision, acceptance bar, constraint, or rejected option is missing or contradictory.")
+        lines.append("Set authority_complete=false only when user intent, acceptance, constraints, rejected options, permission, or cost is missing/contradictory.")
+        lines.append("Put missing paths, sources, target dirs, tests, imports, and dependency locations in optional `discovery_tasks`; continue.")
+        lines.append("If goal is broad but eval contract is concrete, use that contract and record a risk.")
         lines.append("Do not invent authority; the plan may only prepare execution for already closed discussion authority.")
     if phase == "execute":
         lines.append("Read `required_plan_artifact` or `prior_artifacts.plan` before touching files and set plan_artifact_read=true only after doing so.")
@@ -426,7 +430,7 @@ def render_phase_worker_prompt(
 
 Phase Packet
 ```json
-{json.dumps(phase_packet, ensure_ascii=False, indent=2)}
+{json.dumps(phase_packet, ensure_ascii=False)}
 ```
 """
 
@@ -463,7 +467,7 @@ def build_codex_public_command_prompt(
             )
         )
     if command_id in {"run", "loop"}:
-        lines.append("Plan must prove coverage of strict_task.authority_context before execute; needs_input routes back to discuss.")
+        lines.append("Plan must prove user-authority coverage before execute; executable discovery such as finding paths or creating missing target files should flow into execute, not needs_input.")
     elif command_id == "review":
         lines.extend(
             (
@@ -478,6 +482,7 @@ def build_codex_public_command_prompt(
                 "If the command returns a command packet, use that packet as the only authority for the follow-up action.",
                 "Checkpoint major semantic changes through packet.protocol_commands.checkpoint_authority.",
                 "Close only by filling compact authority categories plus packet.work_json_template, then executing packet.protocol_commands.close_authority.",
+                "When closing authority for an existing work item, preserve that stable work_id in work_json_template; do not omit work_id and create a timestamp work item.",
                 "Do not restate packet fields or expand into teaching prose.",
             )
         )

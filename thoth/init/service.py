@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from thoth.plan.compiler import compile_task_authority
+from thoth.plan.authority_resolution import resolve_strict_task_authority
 from thoth.plan.results import rebuild_work_results_from_runs
 from thoth.plan.store import load_project_manifest, upsert_work_result
-from thoth.objects import Store, normalize_scheduling
+from thoth.objects import ActiveExecutionLock, Store, flatten_work_item, normalize_scheduling
 from thoth.run.phases import default_validate_output_schema
 
 from .audit import (
@@ -363,7 +364,7 @@ def import_legacy_work_items(project_dir: Path, migration_dir: Path) -> dict[str
     return {"status": "imported", **payload}
 
 
-def sync_project_layer(project_dir: Path) -> None:
+def sync_project_layer(project_dir: Path) -> dict[str, Any] | None:
     """Regenerate project-local projections from canonical authority/config."""
     manifest = load_project_manifest(project_dir)
     project = manifest.get("project", {}) if isinstance(manifest, dict) else {}
@@ -380,6 +381,8 @@ def sync_project_layer(project_dir: Path) -> None:
         "theme": dashboard.get("theme", "warm-bear"),
     }
     generate_thoth_runtime(normalized, project_dir)
+    authority_repairs = backfill_work_item_authority_contexts(project_dir)
+    dashboard_result = generate_dashboard(normalized, project_dir, backup_existing=True)
     _write_dashboard_locale_selection(normalized, project_dir)
     generate_host_projections(normalized, project_dir)
     generate_codex_hook_projection(project_dir)
@@ -387,3 +390,59 @@ def sync_project_layer(project_dir: Path) -> None:
     preview = build_init_preview(project_dir, audit)
     _write_source_map(project_dir, audit, preview)
     compile_task_authority(project_dir)
+    return {
+        "authority_repairs": authority_repairs,
+        "dashboard": dashboard_result,
+        "source_map": str(project_dir / ".thoth" / "docs" / "source-map.json"),
+    }
+
+
+def backfill_work_item_authority_contexts(project_dir: Path) -> list[dict[str, Any]]:
+    """Persist closed discussion authority into legacy ready work items during sync."""
+
+    store = Store(project_dir)
+    repairs: list[dict[str, Any]] = []
+    for obj in store.list("work_item"):
+        work_id = str(obj.get("object_id") or "")
+        if not work_id:
+            continue
+        payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+        existing = payload.get("authority_context")
+        completeness = existing.get("completeness") if isinstance(existing, dict) else {}
+        if isinstance(completeness, dict) and completeness.get("is_closed") is True:
+            continue
+        try:
+            strict_task = flatten_work_item(obj)
+            enriched, resolution = resolve_strict_task_authority(
+                project_dir,
+                strict_task,
+                allow_work_item_fallback=False,
+            )
+        except (ValueError, ActiveExecutionLock):
+            continue
+        authority_context = enriched.get("authority_context")
+        if not isinstance(authority_context, dict):
+            continue
+        updated_payload = dict(payload)
+        updated_payload["authority_context"] = authority_context
+        try:
+            store.update(
+                "work_item",
+                work_id,
+                expected_revision=int(obj.get("revision", 0)),
+                updates={"payload": updated_payload},
+                history_summary="sync backfilled closed authority_context",
+                source="init --sync",
+            )
+        except ActiveExecutionLock:
+            repairs.append({"work_id": work_id, "status": "skipped_active"})
+            continue
+        repairs.append(
+            {
+                "work_id": work_id,
+                "status": "backfilled",
+                "source": resolution.get("source"),
+                "source_ids": resolution.get("source_ids", []),
+            }
+        )
+    return repairs
