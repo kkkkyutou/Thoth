@@ -2,6 +2,15 @@
 
 ## Entries
 
+- 2026-05-20 10:10 UTC [0.2.6.3 repo-local state layout release]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
+  - State changes: 修复 Thoth 使用后污染宿主项目 `git status` 的问题。新增 `thoth/state_layout.py`，把项目状态分为 Git-portable authority、默认本机 runtime evidence、dashboard deps/cache 三层；`generate_thoth_runtime()` 现在通过 `ensure_project_gitignore_rules()` 幂等追加 `.gitignore`、`.thoth/.gitignore` 与 dashboard 局部 ignore，不覆盖用户规则。生成的 `AGENTS.md` / `CLAUDE.md` 明确 portable authority allowlist，README / README.zh-CN / CHANGELOG 同步说明 fresh clone 只能从 committed authority 启动新 run，不能接管旧机器 PID、lease、worker、supervisor 或 dashboard 进程。
+  - State changes: `status --json` 与 dashboard read model 改为基于 `.thoth/objects/project|work_item|discussion|decision` 只读恢复 counts，不再为了 status 写 compiler summary 或要求 `.thoth/runs/*` Git-tracked；dashboard SQLite read model 从项目根迁到 `.thoth/derived/dashboard/research.db`；compiler/source-map 写入跳过 timestamp-only 变化，降低 sync churn。
+  - Evidence produced: `dev` 发布面提交 `7939143 fix: isolate local thoth runtime state`；验证通过 `python -m py_compile ...`、显式文件级 pytest `107 passed in 106.56s`、`cd templates/dashboard/frontend && npm run build`、manifest JSON 校验、`git diff --check`、`bin/thoth doctor --version` 输出 `version=0.2.6.3`。
+  - Evidence produced: 发布面已按默认策略 cherry-pick 到 `main` 为 `0ea8485 fix: isolate local thoth runtime state`；`main` 上同组验证通过：`py_compile`、显式文件级 pytest `107 passed in 116.03s`、dashboard frontend build、manifest JSON 校验、`git diff --check`、`bin/thoth doctor --version` 输出 `version=0.2.6.3`。`origin/dev` 已推送 `14afa82..7939143`，`origin/main` 已推送 `4b7d0c7..0ea8485`。
+  - Evidence produced: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功，`claude plugin update thoth@thoth --scope user` 显示从 `0.2.6.2` 更新到 `0.2.6.3`；`codex plugin marketplace upgrade thoth` 成功。Codex marketplace root `/root/.codex/.tmp/marketplaces/thoth/bin/thoth doctor --version` 与 Claude cache `/root/.claude/plugins/cache/thoth/thoth/0.2.6.3/bin/thoth doctor --version` 均输出 `version=0.2.6.3`。
+  - Next likely action: 回到 `TD-001`，继续把 `dev` / `main` 分流规则固化为仓库内可执行治理机制；若用户回到 demo_project，可先运行安装态 `thoth status --json` 或 `thoth init --sync` 补 ignore 规则，但不要自动启动新的 demo_project run/auto。
+
 - 2026-05-09 00:00 UTC [repo-local Git credential and dev blocker push]
   - Worked on: `OBJ-001`, `WS-001`, `WS-003`
   - State changes: 按用户要求只在当前仓库配置 GitHub 认证，不修改全局 git config：移除本仓库临时 `extraHeader` 后，改为 repo-local `credential.helper=store --file=.git/thoth-github-credentials`，remote URL 保持 `https://github.com/SeeleAI/Thoth.git`，不把 token 写入 remote URL。
