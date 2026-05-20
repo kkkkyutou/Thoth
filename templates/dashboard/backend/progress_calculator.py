@@ -57,7 +57,7 @@ def _strict_task_progress(task: dict[str, Any]) -> float:
     if ready_state == "validated":
         return 100.0
     if ready_state in {"failed", "abandoned"}:
-        return 100.0
+        return 0.0
     if ready_state == "active":
         return 50.0
     if ready_state == "ready":

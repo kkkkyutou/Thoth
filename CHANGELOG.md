@@ -4,6 +4,12 @@
 
 No pending changes.
 
+## [0.2.6.1] - 2026-05-20
+
+### Fixed
+- Changed dashboard and read-model progress semantics so `failed` / `abandoned` work-item authority no longer contributes `100%` completion progress.
+- Kept failed work items displayed as `failed` rather than folding them into `completed` or `blocked`.
+
 ## [0.2.6] - 2026-05-20
 
 ### Changed

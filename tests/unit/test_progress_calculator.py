@@ -19,6 +19,7 @@ from progress_calculator import (
     get_task_status,
     status_counts,
 )
+from thoth.observe.read_model import task_progress_pct, task_runtime_status
 
 
 # ---------------------------------------------------------------------------
@@ -275,8 +276,20 @@ def test_strict_work_item_statuses_preserve_runtime_semantics():
     assert get_task_status(active) == "in_progress"
     assert calculate_task_progress(active) == 50.0
     assert get_task_status(failed) == "failed"
-    assert calculate_task_progress(failed) == 100.0
+    assert calculate_task_progress(failed) == 0.0
     assert get_task_status(draft) == "pending"
+
+
+def test_failed_authority_does_not_contribute_completion_progress():
+    failed = {"work_id": "work-failed", "ready_state": "failed"}
+    abandoned = {"work_id": "work-abandoned", "ready_state": "abandoned"}
+
+    assert get_task_status(failed) == "failed"
+    assert calculate_task_progress(failed) == 0.0
+    assert calculate_task_progress(abandoned) == 0.0
+    assert task_runtime_status(failed) == "failed"
+    assert task_progress_pct(failed) == 0.0
+    assert calculate_global_progress([failed, abandoned]) == 0.0
 
 
 def test_strict_status_counts_do_not_fold_failed_into_blocked():
