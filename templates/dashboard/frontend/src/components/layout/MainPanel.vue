@@ -9,6 +9,7 @@ import ActivityPanel from '@/components/panels/ActivityPanel.vue'
 import CockpitPanel from '@/components/panels/CockpitPanel.vue'
 import SystemPanel from '@/components/panels/SystemPanel.vue'
 import TodoPanel from '@/components/todo/TodoPanel.vue'
+import WorkItemsPanel from '@/views/WorkItemsPanel.vue'
 import { locale } from '@/locales'
 import { useDashboardStore } from '@/stores/dashboard'
 import type { WorkbenchTab } from '@/types'
@@ -37,6 +38,9 @@ const tabRoute: Record<WorkbenchTab, string> = {
 }
 
 function activateTab(tab: WorkbenchTab) {
+  if (tab === 'detail') {
+    store.clearSelection()
+  }
   store.setActiveTab(tab)
   router.push(tabRoute[tab])
 }
@@ -67,9 +71,7 @@ function activateTab(tab: WorkbenchTab) {
           v-else-if="store.activeTab === 'detail' && store.selectedModule"
           :key="store.selectedModule.id"
         />
-        <div v-else-if="store.activeTab === 'detail'" key="empty-detail" class="main-panel__placeholder card">
-          {{ locale.detail.empty }}
-        </div>
+        <WorkItemsPanel v-else-if="store.activeTab === 'detail'" key="work-items" />
         <DagChart v-else-if="store.activeTab === 'dag'" key="dag" />
         <GanttChart v-else-if="store.activeTab === 'gantt'" key="gantt" />
         <TodoPanel v-else-if="store.activeTab === 'todo'" key="todo" />

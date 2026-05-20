@@ -32,7 +32,9 @@ from runtime_loader import (
     get_active_run_for_work_item,
     get_run_detail,
     get_run_events,
+    get_run_worker_logs,
     get_work_item_runs,
+    get_work_item_runtime_summary,
     runtime_overview,
 )
 from progress_calculator import (
@@ -188,8 +190,7 @@ def _summarize_phases(task: dict) -> dict:
 def _attach_runtime(work_item: dict) -> dict:
     payload = dict(work_item)
     work_id = str(work_item.get("work_id", "") or work_item.get("id", ""))
-    payload["active_run"] = get_active_run_for_work_item(PROJECT_ROOT, work_id)
-    payload["run_count"] = len(get_work_item_runs(PROJECT_ROOT, work_id))
+    payload.update(get_work_item_runtime_summary(PROJECT_ROOT, work_id))
     return payload
 
 
@@ -489,6 +490,20 @@ async def api_run_events(run_id: str, after_seq: Optional[int] = Query(None), li
         raise
     except Exception as exc:
         logger.error("Error in /api/runs/%s/events: %s", run_id, traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.get("/api/runs/{run_id}/worker-logs")
+async def api_run_worker_logs(run_id: str, phase: Optional[str] = Query(None), tail: int = Query(20000, ge=1000, le=200000)):
+    try:
+        payload = get_run_worker_logs(PROJECT_ROOT, run_id, phase=phase, tail=tail)
+        if payload is None:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error in /api/runs/%s/worker-logs: %s", run_id, traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 

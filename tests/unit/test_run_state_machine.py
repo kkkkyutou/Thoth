@@ -212,7 +212,7 @@ def test_plan_authority_gap_terminalizes_before_execute(tmp_path):
         payload={
             **_plan_payload("needs input"),
             "authority_complete": False,
-            "open_gaps": ["acceptance not closed"],
+            "open_gaps": [{"field": "authority_context", "reason": "empty"}],
         },
     )
 
@@ -222,6 +222,11 @@ def test_plan_authority_gap_terminalizes_before_execute(tmp_path):
     run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
     assert run_result["status"] == "failed"
     assert run_result["checks"][0]["detail"] == "needs_input"
+    plan_artifact = json.loads((handle.run_dir / "plan.json").read_text(encoding="utf-8"))
+    assert plan_artifact["open_gaps"] == ['{"field":"authority_context","reason":"empty"}']
+    assert plan_artifact["_normalization_warnings"][0]["field"] == "plan.open_gaps"
+    phase_state = json.loads((handle.run_dir / "phase_state.json").read_text(encoding="utf-8"))
+    assert "execute" not in phase_state["phase_statuses"]
 
 
 def test_execute_requires_plan_artifact_read(tmp_path):

@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .io import _read_json
-from .ledger import _append_event, fail_run, heartbeat_run
+from .lease import release_repo_lease
+from .ledger import _append_event, _update_run, _update_state, _write_stopped_result, fail_run, heartbeat_run
 from .model import ACTIVE_STATUSES, RunHandle, utc_now
 from .phases import PhaseDriver, next_phase_payload, submit_phase_output
+from .supervisor import write_run_supervisor
 
 
 class RuntimeEventSink(Protocol):
@@ -92,6 +94,16 @@ def _fail_missing_eval(handle: RunHandle, sink: RuntimeEventSink, phase_packet: 
     return 1
 
 
+def _terminalize_stopped_attempt(handle: RunHandle) -> None:
+    state = handle.state_json()
+    if state.get("status") != "stopped":
+        _update_state(handle, status="stopped", phase="stopped", progress_pct=100, supervisor_state="stopped")
+    _write_stopped_result(handle)
+    _update_run(handle, attachable=False)
+    release_repo_lease(handle.project_root, handle.run_id)
+    write_run_supervisor(handle, state="stopped", runtime="runtime_driver")
+
+
 def execute_runtime_controller(
     project_root: Path,
     run_id: str,
@@ -118,12 +130,13 @@ def execute_runtime_controller(
     while True:
         state = handle.state_json()
         if state.get("status") == "stopping":
+            _terminalize_stopped_attempt(handle)
             _emit(handle, event_sink, "thoth.run.terminal", status="stopped", summary="stop requested")
             return 0
         if state.get("status") not in ACTIVE_STATUSES:
             terminal_status = state.get("status")
             _emit(handle, event_sink, "thoth.run.terminal", status=terminal_status, summary="run already terminal")
-            return 0 if terminal_status == "completed" else 1
+            return 0 if terminal_status in {"completed", "stopped"} else 1
 
         phase_packet = next_phase_payload(project_root, run_id)
         if phase_packet.get("terminal") is True:
@@ -151,7 +164,16 @@ def execute_runtime_controller(
         )
         try:
             phase_output = driver.execute_phase(handle=handle, phase_packet=phase_packet)
+            state_after_worker = handle.state_json()
+            if state_after_worker.get("status") in {"stopping", "stopped"}:
+                _terminalize_stopped_attempt(handle)
+                _emit(handle, event_sink, "thoth.run.terminal", status="stopped", summary="stop requested")
+                return 0
             response = submit_phase_output(project_root, run_id, phase=phase, payload=phase_output)
+        except InterruptedError as exc:
+            _terminalize_stopped_attempt(handle)
+            _emit(handle, event_sink, "thoth.run.terminal", status="stopped", summary=str(exc) or "stop requested")
+            return 0
         except Exception as exc:
             summary = f"{phase} phase failed."
             reason = str(exc)

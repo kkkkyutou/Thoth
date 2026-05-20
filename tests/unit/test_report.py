@@ -108,7 +108,10 @@ def test_parse_run_log_entries():
 
 
 def test_task_completed_and_created_helpers():
-    task = {"generated_at": "2026-01-15T10:00:00Z", "work_result": {"updated_at": "2026-02-15T17:00:00Z"}}
+    task = {
+        "generated_at": "2026-01-15T10:00:00Z",
+        "work_result": {"updated_at": "2026-02-15T17:00:00Z", "usable": True, "meets_goal": True},
+    }
     assert is_task_completed(task)
     assert task_created_in_range(task, datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 31, 23, 59, 59, tzinfo=timezone.utc))
     assert task_completed_in_range(task, datetime(2026, 2, 1, tzinfo=timezone.utc), datetime(2026, 2, 28, 23, 59, 59, tzinfo=timezone.utc))

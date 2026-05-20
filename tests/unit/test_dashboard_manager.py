@@ -97,6 +97,7 @@ def test_start_dashboard_uses_next_free_port_when_preferred_is_occupied(monkeypa
     assert result["status"] == "ok"
     assert result["port"] == 8502
     assert result["reused"] is False
+    assert "warnings" in result
     assert launched == [8502]
     assert (tmp_path / ".thoth" / "derived" / "dashboard.port").read_text(encoding="utf-8").strip() == "8502"
 
@@ -128,4 +129,22 @@ def test_start_dashboard_reuses_same_workspace_dashboard_without_metadata(monkey
     assert result["port"] == 8501
     assert result["pid"] == 4321
     assert result["reused"] is True
+    assert "warnings" in result
     assert (tmp_path / ".thoth" / "derived" / "dashboard.pid").read_text(encoding="utf-8").strip() == "4321"
+
+
+def test_dashboard_rebuild_documents_not_scaffold_sync(monkeypatch, tmp_path):
+    started: list[bool] = []
+
+    monkeypatch.setattr(dashboard, "stop_dashboard", lambda _root: {"status": "ok", "action": "stop"})
+
+    def fake_start(_root: Path, *, rebuild: bool = False) -> dict:
+        started.append(rebuild)
+        return {"status": "ok", "action": "start", "summary": "Dashboard running", "warnings": []}
+
+    monkeypatch.setattr(dashboard, "start_dashboard", fake_start)
+
+    result = dashboard.rebuild_dashboard(tmp_path)
+
+    assert started == [True]
+    assert "does not sync dashboard scaffold templates" in result["rebuild_note"]

@@ -179,12 +179,30 @@ def get_work_item_runs(project_root: Path, work_id: str) -> list[dict[str, Any]]
     ]
 
 
+def _select_active_or_stale_run(runs: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    for run in runs:
+        if str(run.get("status") or "") in ACTIVE_RUN_STATUSES:
+            return run
+    return None
+
+
 def get_active_run_for_work_item(project_root: Path, work_id: str) -> Optional[dict[str, Any]]:
     work_runs = get_work_item_runs(project_root, work_id)
-    for run in work_runs:
-        if run.get("is_active"):
-            return run
+    return _select_active_or_stale_run(work_runs)
+
+
+def get_latest_run_for_work_item(project_root: Path, work_id: str) -> Optional[dict[str, Any]]:
+    work_runs = get_work_item_runs(project_root, work_id)
     return work_runs[0] if work_runs else None
+
+
+def get_work_item_runtime_summary(project_root: Path, work_id: str) -> dict[str, Any]:
+    work_runs = get_work_item_runs(project_root, work_id)
+    return {
+        "active_run": _select_active_or_stale_run(work_runs),
+        "latest_run": work_runs[0] if work_runs else None,
+        "run_count": len(work_runs),
+    }
 
 
 def get_run_detail(project_root: Path, run_id: str) -> Optional[dict[str, Any]]:
@@ -199,6 +217,7 @@ def get_run_detail(project_root: Path, run_id: str) -> Optional[dict[str, Any]]:
         "heartbeat": {"last_heartbeat_at": summary.get("last_heartbeat_at")},
         "artifacts": _read_json(run_dir / "artifacts.json"),
         "result": _read_json(run_dir / "result.json"),
+        "worker_logs": get_run_worker_logs(project_root, run_id, tail=4000),
     }
 
 
@@ -221,6 +240,38 @@ def get_run_events(project_root: Path, run_id: str, *, after_seq: Optional[int] 
         "next_after_seq": payload[-1]["seq"] if payload else after_seq,
         "has_more": has_more,
     }
+
+
+def get_run_worker_logs(project_root: Path, run_id: str, *, phase: Optional[str] = None, tail: int = 20000) -> Optional[dict[str, Any]]:
+    project_root = project_root.resolve()
+    run_dir = _runs_dir(project_root) / run_id
+    if not run_dir.is_dir():
+        return None
+    log_dir = run_dir / "worker-logs"
+    tail_limit = max(1000, min(int(tail), 200000))
+    phases: list[str] = []
+    if isinstance(phase, str) and phase.strip():
+        phases = [phase.strip()]
+    elif log_dir.is_dir():
+        discovered = {
+            path.name.rsplit(".", 2)[0]
+            for path in log_dir.glob("*.log")
+            if path.name.endswith((".stdout.log", ".stderr.log"))
+        }
+        phases = sorted(discovered)
+    payload: dict[str, Any] = {"run_id": run_id, "tail": tail_limit, "logs": {}}
+    for phase_name in phases:
+        stdout_path = log_dir / f"{phase_name}.stdout.log"
+        stderr_path = log_dir / f"{phase_name}.stderr.log"
+        payload["logs"][phase_name] = {
+            "phase": phase_name,
+            "stdout": _file_info(stdout_path, project_root, limit=tail_limit),
+            "stderr": _file_info(stderr_path, project_root, limit=tail_limit),
+        }
+    state = _read_json(run_dir / "state.json")
+    payload["current_phase"] = state.get("phase")
+    payload["status"] = state.get("status")
+    return payload
 
 
 def runtime_overview(project_root: Path) -> dict[str, Any]:
@@ -269,3 +320,27 @@ def _list_auto_controllers(project_root: Path) -> list[dict[str, Any]]:
         )
     rows.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
     return rows
+
+
+def _tail_text(path: Path, *, limit: int) -> str:
+    if not path.exists():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if len(text) <= limit:
+        return text
+    return text[-limit:]
+
+
+def _file_info(path: Path, project_root: Path, *, limit: int) -> dict[str, Any]:
+    exists = path.exists()
+    stat = path.stat() if exists else None
+    return {
+        "path": str(path.resolve().relative_to(project_root)) if exists else None,
+        "exists": exists,
+        "size": stat.st_size if stat else 0,
+        "mtime": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z") if stat else None,
+        "tail": _tail_text(path, limit=limit) if exists else "",
+    }

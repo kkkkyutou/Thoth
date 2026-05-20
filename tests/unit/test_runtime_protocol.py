@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
+from thoth.prompt_validators import validate_phase_output
 from thoth.prompt_specs import phase_prompt_authority
+from thoth.run.driver import execute_runtime_controller
 from thoth.run.ledger import (
+    _update_state,
     append_protocol_event,
     complete_run,
     fail_run,
@@ -39,6 +43,33 @@ def _plan_payload(summary: str = "plan ok") -> dict:
         "validation_plan": "run pytest",
         "risk_assessment": "low risk",
     }
+
+
+def _execute_payload(summary: str = "exec ok") -> dict:
+    return {
+        "summary": summary,
+        "plan_artifact_read": True,
+        "plan_deviations": [],
+        "files_touched": [],
+        "commands_run": [],
+        "artifacts": [],
+    }
+
+
+def test_plan_gap_schema_drift_normalizes_jsonish_items():
+    payload = {
+        **_plan_payload("authority incomplete"),
+        "authority_complete": False,
+        "open_gaps": [{"field": "authority_context", "reason": "empty"}],
+        "forbidden_assumptions_used": [None, False, 3],
+    }
+
+    normalized = validate_phase_output("plan", payload)
+
+    assert normalized["open_gaps"] == ['{"field":"authority_context","reason":"empty"}']
+    assert normalized["forbidden_assumptions_used"] == ["null", "false", "3"]
+    assert normalized["_normalization_warnings"][0]["field"] == "plan.open_gaps"
+    assert normalized["_normalization_warnings"][0]["reason"] == "coerced_to_json_string"
 
 
 def test_plan_and_reflect_summary_budget_is_800():
@@ -318,7 +349,7 @@ def test_phase_output_rejects_overlong_summary(tmp_path):
         raise AssertionError("expected summary budget failure")
 
 
-def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp_path):
+def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
         project,
@@ -335,8 +366,10 @@ def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp
     output_path = handle.run_dir / "plan.worker-output.json"
     prompts: list[str] = []
 
-    def _fake_run(command, cwd, stdout, stderr, text, env, timeout):
+    def _fake_process(command, handle, stdout_path, stderr_path, env, timeout_seconds):
         prompts.append(command[-1])
+        stdout_path.write_text(f"attempt {len(prompts)} stdout\n", encoding="utf-8")
+        stderr_path.write_text(f"attempt {len(prompts)} stderr\n", encoding="utf-8")
         if len(prompts) == 1:
             output_path.write_text(
                 json.dumps(
@@ -375,15 +408,178 @@ def test_external_worker_retries_with_shorter_correction_prompt(monkeypatch, tmp
                 + "\n",
                 encoding="utf-8",
             )
-        return type("Proc", (), {"returncode": 0})()
+        return 0
 
-    monkeypatch.setattr("thoth.run.worker.subprocess.run", _fake_run)
+    monkeypatch.setattr("thoth.run.worker._run_phase_worker_process", _fake_process)
     driver = ExternalWorkerPhaseDriver(executor="codex", timeout_seconds=5)
     payload = driver.execute_phase(handle=handle, phase_packet=phase_packet)
 
     assert payload["summary"] == "plan ok"
     assert len(prompts) == 2
     assert "Previous output failed validation: plan.summary exceeds 800 UTF-8 bytes" in prompts[1]
+    invalid_output = handle.run_dir / "worker-invalid" / "plan.attempt-1.worker-output.json"
+    validation_error = handle.run_dir / "worker-invalid" / "plan.attempt-1.validation-error.txt"
+    archived_stdout = handle.run_dir / "worker-invalid" / "plan.attempt-1.stdout.log"
+    assert invalid_output.exists()
+    assert validation_error.exists()
+    assert archived_stdout.read_text(encoding="utf-8").strip() == "attempt 1 stdout"
+    assert "plan.summary exceeds 800 UTF-8 bytes" in validation_error.read_text(encoding="utf-8")
+    assert json.loads(output_path.read_text(encoding="utf-8"))["summary"] == "plan ok"
+    artifacts = json.loads((handle.run_dir / "artifacts.json").read_text(encoding="utf-8"))["artifacts"]
+    assert any(row["kind"] == "invalid_worker_output" and row["path"] == str(invalid_output) for row in artifacts)
+    assert any(row["kind"] == "worker_validation_error" and row["path"] == str(validation_error) for row in artifacts)
+
+
+def test_external_worker_timeout_reports_phase_worker_timeout_and_tails(monkeypatch, tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Timeout demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Timeout demo"},
+        goal="timeout bad worker output",
+    )
+    phase_packet = next_phase_payload(project, handle.run_id)
+
+    def _fake_timeout(command, handle, stdout_path, stderr_path, env, timeout_seconds):
+        stdout_path.write_text("worker still thinking\n", encoding="utf-8")
+        stderr_path.write_text("no output yet\n", encoding="utf-8")
+        raise subprocess.TimeoutExpired(command, timeout_seconds)
+
+    monkeypatch.setattr("thoth.run.worker._run_phase_worker_process", _fake_timeout)
+    driver = ExternalWorkerPhaseDriver(executor="codex", timeout_seconds=5)
+    try:
+        driver.execute_phase(handle=handle, phase_packet=phase_packet)
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected phase worker timeout")
+
+    assert "phase_worker_timeout" in message
+    assert "worker still thinking" in message
+    assert "no output yet" in message
+    validation_error = handle.run_dir / "worker-invalid" / "plan.attempt-1.validation-error.txt"
+    assert validation_error.exists()
+    assert "phase_worker_timeout" in validation_error.read_text(encoding="utf-8")
+
+
+def test_external_worker_final_schema_failure_mentions_invalid_artifacts(monkeypatch, tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Final invalid demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Final invalid demo"},
+        goal="preserve invalid worker output",
+    )
+    phase_packet = next_phase_payload(project, handle.run_id)
+    attempts = 0
+
+    def _fake_invalid(command, handle, stdout_path, stderr_path, env, timeout_seconds):
+        nonlocal attempts
+        attempts += 1
+        (handle.run_dir / "plan.worker-output.json").write_text(
+            json.dumps({"summary": "missing required fields"}) + "\n",
+            encoding="utf-8",
+        )
+        stdout_path.write_text(f"attempt {attempts}\n", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr("thoth.run.worker._run_phase_worker_process", _fake_invalid)
+    driver = ExternalWorkerPhaseDriver(executor="codex", timeout_seconds=5)
+    try:
+        driver.execute_phase(handle=handle, phase_packet=phase_packet)
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected final schema failure")
+
+    invalid_output = handle.run_dir / "worker-invalid" / "plan.attempt-2.worker-output.json"
+    validation_error = handle.run_dir / "worker-invalid" / "plan.attempt-2.validation-error.txt"
+    assert attempts == 2
+    assert invalid_output.exists()
+    assert validation_error.exists()
+    assert f"invalid_output={invalid_output}" in message
+    assert f"validation_error={validation_error}" in message
+    assert "plan output missing required fields" in message
+
+
+def test_external_worker_uses_phase_specific_default_timeouts(monkeypatch, tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Timeout defaults",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Timeout defaults",
+            "eval_entrypoint": {"command": "pytest -q"},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="check timeout defaults",
+    )
+    seen: list[tuple[str, float | None]] = []
+
+    def _fake_process(command, handle, stdout_path, stderr_path, env, timeout_seconds):
+        phase = "execute" if any("execute.worker-output.json" in str(item) for item in command) else "plan"
+        seen.append((phase, timeout_seconds))
+        output_path = handle.run_dir / f"{phase}.worker-output.json"
+        payload = _execute_payload() if phase == "execute" else _plan_payload()
+        output_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+        stdout_path.write_text("", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr("thoth.run.worker._run_phase_worker_process", _fake_process)
+    driver = ExternalWorkerPhaseDriver(executor="codex")
+    plan_packet = next_phase_payload(project, handle.run_id)
+    plan_payload = driver.execute_phase(handle=handle, phase_packet=plan_packet)
+    submit_phase_output(project, handle.run_id, phase="plan", payload=plan_payload)
+    execute_packet = next_phase_payload(project, handle.run_id)
+    driver.execute_phase(handle=handle, phase_packet=execute_packet)
+
+    assert seen == [("plan", 900.0), ("execute", None)]
+
+
+def test_runtime_driver_stop_during_phase_writes_stopped_attempt(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Stop demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Stop demo", "eval_entrypoint": {"command": "pytest -q"}},
+        goal="stop cleanly",
+    )
+
+    class StopDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            _update_state(handle, status="stopping", phase="stopping", supervisor_state="stopping")
+            raise InterruptedError("stop requested")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=StopDriver())
+
+    assert status == 0
+    state = json.loads((handle.run_dir / "state.json").read_text(encoding="utf-8"))
+    result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
+    assert state["status"] == "stopped"
+    assert result["status"] == "stopped"
 
 
 def test_external_worker_command_uses_executor_specific_cli(tmp_path):

@@ -16,7 +16,9 @@ PROTOCOL_VERSION = 1
 WORKER_HEARTBEAT_INTERVAL_SECONDS = 15.0
 WORKER_RETRY_LIMIT = 2
 WORKER_RETRY_WINDOW_SECONDS = 90.0
-DEFAULT_EXTERNAL_WORKER_TIMEOUT_SECONDS = 15 * 60
+DEFAULT_PLAN_WORKER_TIMEOUT_SECONDS = 15 * 60
+DEFAULT_REFLECT_WORKER_TIMEOUT_SECONDS = 10 * 60
+DEFAULT_EXTERNAL_WORKER_TIMEOUT_SECONDS = DEFAULT_PLAN_WORKER_TIMEOUT_SECONDS
 CLAUDE_EXTERNAL_WORKER_ALLOWED_TOOLS = "Read,Glob,Grep,Bash,Edit,Write,Task,Monitor"
 
 def utc_now() -> str:
@@ -44,7 +46,7 @@ def _age_seconds(iso_utc: Any) -> float | None:
 
 
 def default_executor() -> str:
-    return "claude"
+    return "codex"
 
 
 def dispatch_mode_for(sleep_requested: bool) -> str:

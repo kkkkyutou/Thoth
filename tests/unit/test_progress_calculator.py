@@ -265,3 +265,48 @@ def test_get_task_status_pending():
     """A task with all phases pending should have status 'pending'."""
     task = _make_task("t1")
     assert get_task_status(task) == "pending"
+
+
+def test_strict_work_item_statuses_preserve_runtime_semantics():
+    active = {"work_id": "work-active", "ready_state": "active"}
+    failed = {"work_id": "work-failed", "ready_state": "failed"}
+    draft = {"work_id": "work-draft", "ready_state": "draft"}
+
+    assert get_task_status(active) == "in_progress"
+    assert calculate_task_progress(active) == 50.0
+    assert get_task_status(failed) == "failed"
+    assert calculate_task_progress(failed) == 100.0
+    assert get_task_status(draft) == "pending"
+
+
+def test_strict_status_counts_do_not_fold_failed_into_blocked():
+    counts = status_counts([
+        {"work_id": "work-ready", "ready_state": "ready"},
+        {"work_id": "work-active", "ready_state": "active"},
+        {"work_id": "work-failed", "ready_state": "failed"},
+    ])
+
+    assert counts["ready"] == 1
+    assert counts["in_progress"] == 1
+    assert counts["failed"] == 1
+    assert counts["blocked"] == 0
+
+
+def test_failed_attempt_does_not_override_ready_work_status():
+    task = {
+        "work_id": "work-ready-after-failure",
+        "ready_state": "ready",
+        "work_result": {
+            "status": "attempt_failed",
+            "usable": False,
+            "meets_goal": False,
+            "latest_attempt": {"run_id": "run-failed", "status": "failed"},
+        },
+    }
+
+    assert get_task_status(task) == "ready"
+    assert calculate_task_progress(task) == 15.0
+    counts = status_counts([task])
+    assert counts["ready"] == 1
+    assert counts["failed"] == 0
+    assert counts["completed"] == 0

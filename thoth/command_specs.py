@@ -177,8 +177,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         intelligence_tier="none",
         packet_authority_mode="result_envelope",
         acceptance="Dashboard reads .thoth/runs data only and renders host/executor/runtime distinctions explicitly.",
-        scope_can=("Start the dashboard", "Report dashboard endpoints"),
-        scope_cannot=("Read host session state as runtime truth",),
+        scope_can=("Start the dashboard", "Install frontend dependencies and rebuild dist", "Report dashboard endpoints"),
+        scope_cannot=("Read host session state as runtime truth", "Use rebuild as scaffold template sync"),
         lifecycle=("serve",),
     ),
 )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from thoth.objects import ActiveExecutionLock, Store, flatten_work_item, work_item_ready_errors
+from thoth.init.service import initialize_project
 from thoth.plan.compiler import compile_task_authority
 from thoth.plan.discuss import checkpoint_discussion_authority, close_discussion_authority
 from thoth.plan.doctor import build_doctor_payload
@@ -15,8 +16,9 @@ from thoth.plan.store import (
     upsert_decision,
     upsert_work_result,
 )
-from thoth.run.ledger import create_run
+from thoth.run.ledger import create_run, fail_run
 from thoth.run.phases import default_validate_output_schema
+from thoth.run.service import stop_run
 
 
 def _ready_work_payload(decision_id: str = "DEC-001") -> dict:
@@ -225,6 +227,28 @@ def test_doctor_rejects_object_tree_without_project_object(tmp_path):
     assert checks["project-object-present"]["ok"] is False
 
 
+def test_doctor_dashboard_ready_warning_does_not_fail_overall(tmp_path):
+    initialize_project({}, tmp_path)
+    store = Store(tmp_path)
+    project = store.read("project", "project")
+    payload = dict(project["payload"])
+    project_payload = dict(payload.get("project") or {})
+    project_payload["directions"] = []
+    payload["project"] = project_payload
+    store.update(
+        "project",
+        "project",
+        expected_revision=project["revision"],
+        updates={"payload": payload},
+        history_summary="clear directions for dashboard warning test",
+    )
+
+    payload = build_doctor_payload(tmp_path)
+
+    assert payload["overall_ok"] is True
+    assert any(warning["id"] == "dashboard-project-directions" for warning in payload["warnings"])
+
+
 def test_work_result_read_view_uses_docs_not_work_item_authority(tmp_path):
     ensure_work_authority_tree(tmp_path)
     upsert_work_result(
@@ -259,3 +283,41 @@ def test_active_run_locks_work_item_mutation(tmp_path):
         assert "work_item:work-1" in str(exc)
     else:
         raise AssertionError("active work item mutation should be rejected")
+
+
+def test_failed_run_records_attempt_without_closing_ready_work(tmp_path):
+    ensure_work_authority_tree(tmp_path)
+    upsert_decision(tmp_path, {"decision_id": "DEC-001", "question": "Method", "status": "frozen", "candidate_method_ids": ["a"], "unresolved_gaps": []})
+    upsert_work_item(tmp_path, _ready_work_payload())
+    handle = create_run(tmp_path, kind="run", title="Run", work_id="work-1", work_revision=1, host="codex", executor="codex")
+
+    fail_run(tmp_path, handle.run_id, summary="Plan failed.", reason="phase worker did not write plan output")
+
+    work_result = load_work_result(tmp_path, "work-1")
+    assert work_result["status"] == "attempt_failed"
+    assert work_result["usable"] is False
+    assert work_result["meets_goal"] is False
+    assert work_result["latest_attempt"]["run_id"] == handle.run_id
+    assert work_result["latest_attempt"]["status"] == "failed"
+    assert work_result["attempt_count"] == 1
+    assert work_result["failed_attempt_count"] == 1
+    assert Store(tmp_path).read("work_item", "work-1")["status"] == "ready"
+    assert load_work_for_execution(tmp_path, "work-1")["ready_state"] == "ready"
+
+
+def test_stopped_run_records_attempt_without_closing_ready_work(tmp_path):
+    ensure_work_authority_tree(tmp_path)
+    upsert_decision(tmp_path, {"decision_id": "DEC-001", "question": "Method", "status": "frozen", "candidate_method_ids": ["a"], "unresolved_gaps": []})
+    upsert_work_item(tmp_path, _ready_work_payload())
+    handle = create_run(tmp_path, kind="run", title="Run", work_id="work-1", work_revision=1, host="codex", executor="codex")
+
+    stop_run(tmp_path, handle.run_id)
+
+    work_result = load_work_result(tmp_path, "work-1")
+    assert work_result["status"] == "attempt_stopped"
+    assert work_result["latest_attempt"]["run_id"] == handle.run_id
+    assert work_result["latest_attempt"]["status"] == "stopped"
+    assert work_result["attempt_count"] == 1
+    assert work_result["stopped_attempt_count"] == 1
+    assert Store(tmp_path).read("work_item", "work-1")["status"] == "ready"
+    assert load_work_for_execution(tmp_path, "work-1")["ready_state"] == "ready"

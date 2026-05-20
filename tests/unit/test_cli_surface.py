@@ -156,6 +156,58 @@ def test_cli_discuss_records_note(tmp_path):
     packet = envelope["body"]["packet"]
     assert packet["packet_kind"] == "discussion_authority"
     assert "record-discussion-authority" in packet["protocol_commands"]["close_authority"]
+    assert packet["required_authority_categories"] == [
+        "goal",
+        "constraints",
+        "decisions",
+        "risks",
+        "run_instructions",
+        "open_questions",
+    ]
+    assert "non_goals" not in packet["required_authority_categories"]
+    assert "work_json_template" in packet
+    assert packet["required_work_json_fields"]
+    assert packet["open_discussion_candidates"][0]["discussion_id"] == envelope["body"]["discussion"]["discussion_id"]
+
+
+def test_cli_discuss_continuation_appends_open_discussion(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    first = _run_cli(tmp_path, "discuss", "plan", "dashboard", "work")
+    assert first.returncode == 0
+    first_payload = json.loads(first.stdout)
+    discussion_id = first_payload["body"]["discussion"]["discussion_id"]
+
+    second = _run_cli(tmp_path, "discuss", "继续", discussion_id, "add", "constraint")
+
+    assert second.returncode == 0, second.stderr
+    second_payload = json.loads(second.stdout)
+    assert second_payload["body"]["discussion_mode"] == "appended"
+    discussions = list((tmp_path / ".thoth" / "objects" / "discussion").glob("*.json"))
+    assert len(discussions) == 1
+    stored = json.loads(discussions[0].read_text(encoding="utf-8"))
+    assert stored["object_id"] == discussion_id
+    assert [row["content"] for row in stored["payload"]["messages"]] == [
+        "plan dashboard work",
+        f"继续 {discussion_id} add constraint",
+    ]
+
+
+def test_cli_discuss_work_json_missing_fields_creates_blocked_with_diagnostics(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    result = _run_cli(
+        tmp_path,
+        "discuss",
+        "--work-json",
+        json.dumps({"work_id": "blocked-work", "title": "Blocked Work", "work_kind": "execution", "runnable": True}),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["body"]["work_item"]["status"] == "blocked"
+    assert "eval_contract.entrypoint.command is required" in payload["body"]["work_item_ready_errors"]
+    assert "required_work_json_fields" in payload["body"]
+    stored = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "blocked-work.json").read_text(encoding="utf-8"))
+    assert stored["status"] == "blocked"
 
 
 def test_cli_record_discussion_authority_closes_work(tmp_path):
@@ -231,6 +283,68 @@ def test_cli_record_discussion_authority_closes_work(tmp_path):
     work_item = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "close-work.json").read_text(encoding="utf-8"))
     assert work_item["payload"]["authority_context"]["source_discussion_id"] == discussion_id
     assert work_item["status"] == "ready"
+
+
+def test_cli_record_discussion_authority_needs_input_lists_missing_fields(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    result = _run_cli(tmp_path, "discuss", "close", "with", "missing", "validator")
+    discussion_id = json.loads(result.stdout)["body"]["discussion"]["discussion_id"]
+    capsule_path = tmp_path / "authority-missing.json"
+    capsule_path.write_text(
+        json.dumps(
+            {
+                "goal": {"source_summary": "关闭这个工作。", "normalized_summary": "Close this work."},
+                "constraints": ["temp-project"],
+                "accepted_decisions": [
+                    {
+                        "decision_id": "DEC-close-missing",
+                        "question": "Close which work?",
+                        "selected_values": {"work": "close-work"},
+                        "status": "frozen",
+                        "unresolved_gaps": [],
+                    }
+                ],
+                "open_questions": [],
+                "completeness": {"is_closed": True},
+                "work_item": {
+                    "work_id": "close-missing",
+                    "title": "Close Missing",
+                    "status": "ready",
+                    "work_kind": "execution",
+                    "runnable": True,
+                    "goal": "Close this work.",
+                    "context": "test",
+                    "constraints": ["temp-project"],
+                    "execution_plan": ["Run validator."],
+                    "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+                    "missing_questions": [],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    close = _run_cli(
+        tmp_path,
+        "record-discussion-authority",
+        "--project-root",
+        str(tmp_path),
+        "--discussion-id",
+        discussion_id,
+        "--mode",
+        "close",
+        "--authority-json-file",
+        str(capsule_path),
+    )
+
+    assert close.returncode == 2
+    payload = json.loads(close.stdout)
+    diagnostics = payload["body"]["diagnostics"]
+    assert "eval_contract" in diagnostics["missing_work_json_fields"]
+    assert "eval_contract.entrypoint.command is required" in diagnostics["work_item_ready_errors"]
+    assert "next_minimal_json" in diagnostics
+    assert not (tmp_path / ".thoth" / "objects" / "work_item" / "close-missing.json").exists()
 
 
 def test_cli_discuss_accepts_structured_decision_payload(tmp_path):

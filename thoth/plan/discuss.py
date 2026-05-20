@@ -7,7 +7,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from thoth.objects import ActiveExecutionLock, Store, active_work_ids, slugify, utc_now
+from thoth.objects import (
+    ActiveExecutionLock,
+    REQUIRED_WORK_PAYLOAD_FIELDS,
+    Store,
+    active_work_ids,
+    slugify,
+    utc_now,
+    work_item_input_ready_errors,
+)
 
 from .store import upsert_decision, upsert_work_item
 
@@ -25,6 +33,36 @@ SEMANTIC_EVENT_TYPES = {
     "run_instruction",
 }
 
+COMPACT_AUTHORITY_CATEGORIES = (
+    "goal",
+    "constraints",
+    "decisions",
+    "risks",
+    "run_instructions",
+    "open_questions",
+)
+
+PUBLIC_WORK_JSON_REQUIRED_FIELDS = (
+    "work_kind",
+    "runnable",
+    *REQUIRED_WORK_PAYLOAD_FIELDS,
+)
+
+_CONTINUATION_HINTS = (
+    "continue",
+    "continuation",
+    "follow up",
+    "follow-up",
+    "same discussion",
+    "append",
+    "继续",
+    "续上",
+    "接着",
+    "刚才",
+    "上面",
+    "同一个讨论",
+)
+
 
 def _normalize_string(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
@@ -38,6 +76,180 @@ def _normalize_string_list(value: Any) -> list[str]:
 
 def _stable_id(prefix: str, value: str) -> str:
     return f"{prefix}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{slugify(value)[:24]}"
+
+
+def example_minimal_ready_work_item() -> dict[str, Any]:
+    return {
+        "work_id": "replace-with-stable-work-id",
+        "title": "Replace With Work Title",
+        "status": "ready",
+        "work_kind": "execution",
+        "runnable": True,
+        "goal": "One concrete, user-authorized outcome.",
+        "context": "module-or-scope",
+        "module": "module-id",
+        "direction": "direction-id",
+        "constraints": ["Known hard constraint."],
+        "execution_plan": ["Do the smallest implementation slice.", "Run the validator."],
+        "eval_contract": {
+            "entrypoint": {"command": "pytest -q tests/path_or_nodeid.py"},
+            "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
+            "failure_classes": ["regression"],
+            "validate_output_schema": {"type": "object"},
+        },
+        "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 28800}},
+        "decisions": ["DEC-replace-with-frozen-decision"],
+        "missing_questions": [],
+    }
+
+
+def example_blocked_work_item() -> dict[str, Any]:
+    payload = example_minimal_ready_work_item()
+    payload.update(
+        {
+            "work_id": "replace-with-blocked-work-id",
+            "status": "blocked",
+            "runnable": False,
+            "eval_contract": {},
+            "missing_questions": ["Name the validator command or acceptance evidence."],
+        }
+    )
+    return payload
+
+
+def work_json_template() -> dict[str, Any]:
+    return {
+        "required_work_json_fields": list(PUBLIC_WORK_JSON_REQUIRED_FIELDS),
+        "work_json_template": example_minimal_ready_work_item(),
+        "example_minimal_ready_work_item": example_minimal_ready_work_item(),
+        "example_blocked_work_item": example_blocked_work_item(),
+    }
+
+
+def _missing_work_json_fields(work_payload: dict[str, Any] | None) -> list[str]:
+    if not isinstance(work_payload, dict) or not work_payload:
+        return list(PUBLIC_WORK_JSON_REQUIRED_FIELDS)
+    missing: list[str] = []
+    for field in PUBLIC_WORK_JSON_REQUIRED_FIELDS:
+        value = work_payload.get(field)
+        if value in (None, "", [], {}):
+            missing.append(field)
+    return missing
+
+
+def close_needs_input_diagnostics(
+    *,
+    authority_context: dict[str, Any],
+    work_payload: dict[str, Any] | None,
+    ready_errors: list[str] | None = None,
+) -> dict[str, Any]:
+    open_questions = _normalize_string_list(authority_context.get("open_questions"))
+    missing_fields = _missing_work_json_fields(work_payload)
+    ready_error_rows = list(ready_errors or [])
+    missing_items: list[str] = []
+    if not isinstance(work_payload, dict) or not work_payload:
+        missing_items.append("work_item")
+    if open_questions:
+        missing_items.append("open_questions")
+    if missing_fields:
+        missing_items.append("work_item_fields")
+    if ready_error_rows:
+        missing_items.append("work_item_ready_errors")
+    next_minimal_json: dict[str, Any] = {
+        "open_questions": [],
+        "completeness": {"is_closed": True},
+    }
+    if "work_item" in missing_items or ready_error_rows or missing_fields:
+        next_minimal_json["work_item"] = example_minimal_ready_work_item()
+    return {
+        "missing_items": sorted(set(missing_items)),
+        "open_questions": open_questions,
+        "missing_work_json_fields": missing_fields,
+        "work_item_ready_errors": ready_error_rows,
+        "next_minimal_json": next_minimal_json,
+    }
+
+
+def _discussion_candidate_from_object(obj: dict[str, Any]) -> dict[str, Any]:
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    return {
+        "discussion_id": str(obj.get("object_id") or ""),
+        "status": str(obj.get("status") or ""),
+        "title": str(obj.get("title") or obj.get("summary") or obj.get("object_id") or ""),
+        "summary": str(obj.get("summary") or ""),
+        "updated_at": str(obj.get("updated_at") or ""),
+        "message_count": len(messages),
+        "open_questions": _normalize_string_list(payload.get("open_questions")),
+        "_path": str(obj.get("_path") or ""),
+    }
+
+
+def open_discussion_candidates(project_root: Path, *, limit: int = 5) -> list[dict[str, Any]]:
+    rows = [
+        _discussion_candidate_from_object(item)
+        for item in Store(project_root).list("discussion")
+        if item.get("status") == "inquiring"
+    ]
+    rows.sort(key=lambda item: (item.get("updated_at") or "", item.get("discussion_id") or ""), reverse=True)
+    return rows[: max(0, limit)]
+
+
+def match_open_discussion_for_message(project_root: Path, content: str) -> dict[str, Any] | None:
+    normalized = content.lower()
+    candidates = open_discussion_candidates(project_root, limit=5)
+    for candidate in candidates:
+        discussion_id = str(candidate.get("discussion_id") or "")
+        if discussion_id and discussion_id.lower() in normalized:
+            return candidate
+    if any(hint in normalized for hint in _CONTINUATION_HINTS):
+        return candidates[0] if candidates else None
+    return None
+
+
+def append_discussion_message(
+    project_root: Path,
+    *,
+    discussion_id: str,
+    content: str,
+    host: str = "codex",
+) -> dict[str, Any]:
+    store = Store(project_root)
+    current = store.read("discussion", discussion_id)
+    if not current:
+        raise FileNotFoundError(f"discussion:{discussion_id} not found")
+    if current.get("status") != "inquiring":
+        raise ValueError(f"discussion:{discussion_id} is not open")
+    payload = _discussion_payload(current)
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    payload["messages"] = [
+        *messages,
+        {"role": "user", "content": content, "created_at": utc_now(), "host": host},
+    ]
+    payload["last_message_at"] = utc_now()
+    updated = store.update(
+        "discussion",
+        discussion_id,
+        expected_revision=int(current.get("revision", 0)),
+        updates={
+            "summary": str(current.get("summary") or current.get("title") or discussion_id),
+            "payload": payload,
+        },
+        history_summary="discussion message appended",
+        source=f"discuss:{host}",
+    )
+    candidate = _discussion_candidate_from_object(updated)
+    candidate.update(
+        {
+            "schema_version": updated.get("schema_version"),
+            "kind": "discussion",
+            "object_id": updated.get("object_id"),
+            "question": updated.get("summary") or updated.get("title"),
+            "unresolved_gaps": candidate["open_questions"],
+            "_path": str(store.path("discussion", discussion_id)),
+        }
+    )
+    return candidate
 
 
 def _normalize_event(raw: Any, index: int, *, status: str) -> dict[str, Any] | None:
@@ -246,6 +458,7 @@ def close_discussion_authority(
         ]
         authority_context["completeness"]["is_closed"] = False
         authority_context["completeness"]["unresolved_count"] = len(authority_context["open_questions"])
+    ready_errors = work_item_input_ready_errors(work_payload) if work_payload else []
 
     payload = _discussion_payload(current)
     payload["closure"] = authority_context
@@ -253,13 +466,19 @@ def close_discussion_authority(
     payload["open_questions"] = authority_context["open_questions"]
     payload["linked_decision_ids"] = decision_ids
 
-    if authority_context["open_questions"] or not authority_context["completeness"]["is_closed"]:
+    if authority_context["open_questions"] or not authority_context["completeness"]["is_closed"] or ready_errors:
+        diagnostics = close_needs_input_diagnostics(
+            authority_context=authority_context,
+            work_payload=work_payload,
+            ready_errors=ready_errors,
+        )
+        payload["close_needs_input"] = diagnostics
         updated = store.update(
             "discussion",
             discussion_id,
             expected_revision=int(current.get("revision", 0)),
             updates={"status": "inquiring", "payload": payload},
-            history_summary="discussion authority close rejected by open questions",
+            history_summary="discussion authority close needs input",
             source="discuss",
         )
         return {
@@ -268,6 +487,7 @@ def close_discussion_authority(
             "authority_context": authority_context,
             "decisions": decision_rows,
             "work_item": None,
+            "diagnostics": diagnostics,
         }
 
     work_id = str(work_payload.get("work_id") or work_payload.get("object_id") or "")

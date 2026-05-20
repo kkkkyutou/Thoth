@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 from typing import Any
 
 from .prompt_specs import phase_prompt_spec
@@ -68,6 +69,79 @@ def _require_string_list(field: str, value: Any, limit: int) -> list[str]:
     if not isinstance(value, list):
         raise ValueError(f"{field} must be a list")
     return [_require_short_text(f"{field}[{index}]", item, limit) for index, item in enumerate(value)]
+
+
+def _truncate_utf8_single_line(text: str, limit: int) -> tuple[str, bool]:
+    single_line = re.sub(r"\s+", " ", text).strip()
+    if utf8_len(single_line) <= limit:
+        return single_line, single_line != text.strip()
+    suffix = "..."
+    budget = max(0, limit - utf8_len(suffix))
+    raw = single_line.encode("utf-8")[:budget]
+    while raw:
+        try:
+            truncated = raw.decode("utf-8")
+            return truncated + suffix, True
+        except UnicodeDecodeError:
+            raw = raw[:-1]
+    return suffix[:limit], True
+
+
+def _compact_json_string(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _normalize_jsonish_string_list(
+    field: str,
+    value: Any,
+    limit: int,
+    *,
+    warnings: list[dict[str, Any]],
+) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list")
+    rows: list[str] = []
+    for index, item in enumerate(value):
+        warning: dict[str, Any] | None = None
+        if isinstance(item, str):
+            text = item
+        else:
+            text = _compact_json_string(item)
+            warning = {
+                "field": field,
+                "index": index,
+                "reason": "coerced_to_json_string",
+                "original_type": type(item).__name__,
+            }
+        normalized, changed = _truncate_utf8_single_line(text, limit)
+        if changed:
+            if warning is None:
+                warning = {
+                    "field": field,
+                    "index": index,
+                    "reason": "normalized_single_line",
+                    "original_type": type(item).__name__,
+                }
+            else:
+                warning["truncated_or_compacted"] = True
+            warning["limit_utf8_bytes"] = limit
+            warning["original_utf8_bytes"] = utf8_len(str(text))
+        if not normalized:
+            if warning is None:
+                warning = {
+                    "field": field,
+                    "index": index,
+                    "reason": "empty_item_normalized",
+                    "original_type": type(item).__name__,
+                }
+            warning["limit_utf8_bytes"] = limit
+        if warning is not None:
+            warnings.append(warning)
+        rows.append(normalized)
+    return rows
 
 
 def _require_plan_field(field: str, value: Any, limit: int) -> Any:
@@ -137,16 +211,23 @@ def validate_phase_output(
         phase_prompt_spec(phase).summary_budget_utf8,
     )
     if phase == "plan":
+        normalization_warnings: list[dict[str, Any]] = []
         normalized["authority_complete"] = _require_bool("plan.authority_complete", payload.get("authority_complete"))
         coverage = payload.get("authority_coverage")
         if not isinstance(coverage, (list, dict)):
             raise ValueError("plan.authority_coverage must be a list or object")
         normalized["authority_coverage"] = coverage
-        normalized["open_gaps"] = _require_string_list("plan.open_gaps", payload.get("open_gaps"), ROOT_CAUSE_LIMIT)
-        normalized["forbidden_assumptions_used"] = _require_string_list(
+        normalized["open_gaps"] = _normalize_jsonish_string_list(
+            "plan.open_gaps",
+            payload.get("open_gaps"),
+            ROOT_CAUSE_LIMIT,
+            warnings=normalization_warnings,
+        )
+        normalized["forbidden_assumptions_used"] = _normalize_jsonish_string_list(
             "plan.forbidden_assumptions_used",
             payload.get("forbidden_assumptions_used"),
             ROOT_CAUSE_LIMIT,
+            warnings=normalization_warnings,
         )
         normalized["execution_steps"] = _require_string_list(
             "plan.execution_steps",
@@ -161,6 +242,7 @@ def validate_phase_output(
         else:
             normalized["validation_plan"] = _require_short_text("plan.validation_plan", validation_plan, ROOT_CAUSE_LIMIT)
         normalized["risk_assessment"] = _require_plan_field("plan.risk_assessment", payload.get("risk_assessment"), RISK_LIMIT)
+        normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "execute":
         normalized["plan_artifact_read"] = _require_bool("execute.plan_artifact_read", payload.get("plan_artifact_read"))

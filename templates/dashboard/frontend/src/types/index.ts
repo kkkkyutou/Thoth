@@ -94,6 +94,29 @@ export interface RunDetail extends RunSummary {
   heartbeat: Record<string, unknown>
   artifacts: Record<string, unknown>
   result?: Record<string, unknown>
+  worker_logs?: RunWorkerLogs
+}
+
+export interface RunWorkerLogFile {
+  path?: string | null
+  exists: boolean
+  size: number
+  mtime?: string | null
+  tail: string
+}
+
+export interface RunWorkerLogPhase {
+  phase: string
+  stdout: RunWorkerLogFile
+  stderr: RunWorkerLogFile
+}
+
+export interface RunWorkerLogs {
+  run_id: string
+  current_phase?: string | null
+  status?: string | null
+  tail: number
+  logs: Record<string, RunWorkerLogPhase>
 }
 
 export interface WorkResult {
@@ -110,13 +133,18 @@ export interface WorkResult {
   last_closure_at?: string | null
   metrics?: Record<string, unknown>
   latest_run?: Record<string, unknown>
+  latest_attempt?: Record<string, unknown>
   latest_review?: Record<string, unknown>
+  attempt_count?: number
+  failed_attempt_count?: number
+  stopped_attempt_count?: number
 }
 
 export interface WorkItem {
   id: string
   work_id?: string
   title: string
+  authority_status?: string
   type?: string
   direction: string
   module: string
@@ -141,6 +169,7 @@ export interface WorkItem {
   computed_status: WorkItemStatus
   computed_progress: number
   active_run?: RunSummary | null
+  latest_run?: RunSummary | null
   run_count?: number
 }
 
@@ -193,10 +222,26 @@ export interface BlockedWorkItem {
 export interface RuntimeOverview {
   active_run_count: number
   stale_run_count: number
+  active_auto_count?: number
+  active_auto_controllers?: AutoControllerSummary[]
   active_runs: RunSummary[]
   last_runtime_update?: string | null
   progress_source: string
   host_breakdown?: string[]
+}
+
+export interface AutoControllerSummary {
+  controller_id: string
+  status?: string | null
+  state?: string | null
+  elapsed_seconds?: number | null
+  min_runtime_seconds?: number | null
+  rounds_attempted?: number | null
+  active_run_id?: string | null
+  queue_count?: number
+  completed_count?: number
+  failed_count?: number
+  updated_at?: string | null
 }
 
 export interface ProgressData {
@@ -274,6 +319,7 @@ export interface TimelineItem {
   end_date: string | null
   estimated_hours: number
   spent_hours?: number
+  dependencies?: string[]
 }
 
 export interface Milestone {
@@ -315,6 +361,7 @@ export interface TodoProject {
 
 export interface SystemStatus {
   last_updated: number | string
+  project_root: string
   work_item_count: number
   module_count: number
   cache_info: Record<string, unknown>
@@ -385,6 +432,8 @@ export interface ResearchConfig {
     port?: number
     theme?: string
   }
+  runtime?: Record<string, unknown>
+  hosts?: Record<string, unknown>
 }
 
 export interface WorkItemFilters {

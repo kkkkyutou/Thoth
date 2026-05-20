@@ -13,6 +13,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
+from thoth.observe.dashboard_contract import dashboard_static_contract_warnings
 from thoth.observe.read_model import load_config
 
 DEFAULT_DASHBOARD_PORT = 8501
@@ -422,6 +423,7 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
     metadata_port = _read_port(project_root)
     preferred_port = metadata_port or dashboard_port(project_root)
     frontend_status = _ensure_frontend_ready(project_root, force_build=rebuild)
+    contract_warnings = dashboard_static_contract_warnings(project_root / "tools" / "dashboard")
     if _process_alive(pid) and _pid_matches_dashboard(project_root, pid):
         port = metadata_port or dashboard_port(project_root)
         _wait_for_dashboard_status(project_root, port)
@@ -435,6 +437,7 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
             "url": f"http://localhost:{port}",
             "reused": True,
             "frontend": frontend_status,
+            "warnings": contract_warnings,
         }
     _cleanup_dashboard_metadata(project_root)
 
@@ -460,6 +463,7 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
             "frontend": frontend_status,
             "port_owner": port_owner,
             "checked_ports": checked_ports,
+            "warnings": contract_warnings,
         }
     log_path = _log_file(project_root)
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -514,6 +518,7 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
         "frontend": frontend_status,
         "port_owner": port_owner,
         "checked_ports": checked_ports,
+        "warnings": contract_warnings,
     }
 
 
@@ -535,7 +540,12 @@ def stop_dashboard(project_root: Path) -> dict[str, Any]:
 
 def rebuild_dashboard(project_root: Path) -> dict[str, Any]:
     stop_dashboard(project_root)
-    return start_dashboard(project_root, rebuild=True)
+    result = start_dashboard(project_root, rebuild=True)
+    result["rebuild_note"] = (
+        "dashboard rebuild installs frontend dependencies, builds dist, and restarts the server; "
+        "it does not sync dashboard scaffold templates. Use `thoth init --sync` for managed scaffold updates."
+    )
+    return result
 
 
 def manage_dashboard(project_root: Path, action: str) -> dict[str, Any]:

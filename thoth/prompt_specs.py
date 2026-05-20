@@ -137,6 +137,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         hard_stops=(
             "Do not narrate the whole UI.",
             "Do not omit the failure point or fabricate a runtime delta; when the result is clean, report the absence of failure as the finding.",
+            "Do not describe dashboard rebuild as scaffold sync; rebuild only installs dependencies, builds dist, and restarts.",
         ),
         reply_budget_utf8=56,
         result_style="brief operator receipt",
@@ -208,13 +209,14 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="command_packet",
-        objective="Interrogate the user's idea until goals, constraints, success criteria, risks, and authority are explicit; preserve semantic decisions as draft checkpoints and close only when no material assumptions remain.",
+        objective="Interrogate the user's idea until the compact authority categories are explicit: goal, constraints, decisions, risks, run_instructions, and open_questions.",
         hard_stops=(
             "Do not modify source code.",
             "Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority.",
             "Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.",
             "When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.",
-            "When closing, translate the discussion into semantic-lossless authority: goal, non-goals, constraints, accepted decisions, rejected options, acceptance, context evidence, risks, run instructions, and open questions.",
+            "When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, run_instructions, and open_questions.",
+            "Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.",
             "Do not fabricate ready execution work items from unresolved decisions.",
             "Do not repeat the packet or decision payload verbatim.",
         ),
@@ -474,7 +476,7 @@ def build_codex_public_command_prompt(
             (
                 "If the command returns a command packet, use that packet as the only authority for the follow-up action.",
                 "Checkpoint major semantic changes through packet.protocol_commands.checkpoint_authority.",
-                "Close only by translating the discussion into semantic-lossless authority and executing packet.protocol_commands.close_authority.",
+                "Close only by filling compact authority categories plus packet.work_json_template, then executing packet.protocol_commands.close_authority.",
                 "Do not restate packet fields or expand into teaching prose.",
             )
         )

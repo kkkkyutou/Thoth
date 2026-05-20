@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import shlex
 import signal
 import subprocess
@@ -31,7 +32,8 @@ from .driver import SilentSink, execute_runtime_controller
 from .phases import PhaseDriver, next_phase_payload
 from .model import (
     CLAUDE_EXTERNAL_WORKER_ALLOWED_TOOLS,
-    DEFAULT_EXTERNAL_WORKER_TIMEOUT_SECONDS,
+    DEFAULT_PLAN_WORKER_TIMEOUT_SECONDS,
+    DEFAULT_REFLECT_WORKER_TIMEOUT_SECONDS,
     SLEEP_DISPATCH_MODE,
     WORKER_HEARTBEAT_INTERVAL_SECONDS,
     WORKER_RETRY_LIMIT,
@@ -146,11 +148,89 @@ def _worker_log_dir(handle: RunHandle) -> Path:
     return path
 
 
-def _worker_timeout_seconds(run_payload: dict[str, Any]) -> float:
-    configured = run_payload.get("max_runtime_seconds")
-    if isinstance(configured, int) and configured > 0:
-        return float(configured + 180)
-    return float(DEFAULT_EXTERNAL_WORKER_TIMEOUT_SECONDS)
+def _worker_invalid_dir(handle: RunHandle) -> Path:
+    path = handle.run_dir / "worker-invalid"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _timeout_from_env(phase: str) -> float | None | object:
+    names = (
+        f"THOTH_{phase.upper()}_WORKER_TIMEOUT_SECONDS",
+        f"THOTH_WORKER_TIMEOUT_SECONDS_{phase.upper()}",
+    )
+    for name in names:
+        raw = os.environ.get(name)
+        if raw is None:
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        return value if value > 0 else None
+    return _NO_TIMEOUT_OVERRIDE
+
+
+def _timeout_from_mapping(value: Any, phase: str) -> float | None:
+    if not isinstance(value, dict):
+        return None
+    candidates = (
+        value.get(f"{phase}_worker_timeout_seconds"),
+        value.get(f"{phase}_timeout_seconds"),
+        value.get("worker_timeout_seconds") if phase in {"plan", "reflect"} else None,
+    )
+    phase_timeouts = value.get("phase_timeouts")
+    if isinstance(phase_timeouts, dict):
+        candidates = (*candidates, phase_timeouts.get(phase))
+    worker_timeouts = value.get("worker_timeouts")
+    if isinstance(worker_timeouts, dict):
+        candidates = (*candidates, worker_timeouts.get(phase))
+    for candidate in candidates:
+        if isinstance(candidate, (int, float)):
+            return float(candidate) if candidate > 0 else None
+    return None
+
+
+def _runtime_contract_timeout(phase_packet: dict[str, Any], phase: str) -> float | None:
+    strict_task = phase_packet.get("strict_task")
+    if not isinstance(strict_task, dict):
+        return None
+    runtime_contract = strict_task.get("runtime_contract")
+    timeout = _timeout_from_mapping(runtime_contract, phase)
+    if timeout is not None:
+        return timeout
+    if phase == "validate" and isinstance(runtime_contract, dict):
+        validation = runtime_contract.get("validation")
+        timeout = _timeout_from_mapping(validation, phase)
+        if timeout is not None:
+            return timeout
+    return None
+
+
+_NO_TIMEOUT_OVERRIDE = object()
+
+
+def _phase_worker_timeout_seconds(
+    phase: str,
+    *,
+    run_payload: dict[str, Any],
+    phase_packet: dict[str, Any],
+) -> float | None:
+    env_timeout = _timeout_from_env(phase)
+    if env_timeout is not _NO_TIMEOUT_OVERRIDE:
+        return env_timeout  # type: ignore[return-value]
+    policy_timeout = _runtime_contract_timeout(phase_packet, phase)
+    if policy_timeout is not None:
+        return policy_timeout
+    if phase == "plan":
+        return float(DEFAULT_PLAN_WORKER_TIMEOUT_SECONDS)
+    if phase == "reflect":
+        return float(DEFAULT_REFLECT_WORKER_TIMEOUT_SECONDS)
+    if phase == "execute":
+        configured = run_payload.get("max_runtime_seconds")
+        if isinstance(configured, int) and configured > 0:
+            return float(configured)
+    return None
 
 
 def _normalize_worker_executor(executor: Any) -> str:
@@ -360,6 +440,154 @@ def _extract_json_object_from_text(text: str) -> dict[str, Any]:
     return {}
 
 
+def _terminate_process_group(proc: subprocess.Popen[Any]) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        proc.terminate()
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(0.05)
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        proc.kill()
+
+
+def _run_phase_worker_process(
+    command: list[str],
+    *,
+    handle: RunHandle,
+    stdout_path: Path,
+    stderr_path: Path,
+    env: dict[str, str],
+    timeout_seconds: float | None,
+) -> int:
+    with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
+        proc = subprocess.Popen(
+            command,
+            cwd=str(handle.project_root),
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+        deadline = time.time() + timeout_seconds if timeout_seconds is not None else None
+        while True:
+            returncode = proc.poll()
+            if returncode is not None:
+                return int(returncode)
+            if str(handle.state_json().get("status") or "") in {"stopping", "stopped"}:
+                _terminate_process_group(proc)
+                raise InterruptedError("run stopped during phase worker")
+            if deadline is not None and time.time() >= deadline:
+                _terminate_process_group(proc)
+                raise subprocess.TimeoutExpired(command, timeout_seconds)
+            time.sleep(0.2)
+
+
+def _load_worker_output_payload(output_path: Path) -> tuple[dict[str, Any], str | None]:
+    if not output_path.exists():
+        return {}, f"{output_path.name} was not written"
+    try:
+        data = json.loads(output_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {}, f"invalid JSON: {exc.msg} at line {exc.lineno} column {exc.colno}"
+    except OSError as exc:
+        return {}, f"could not read worker output: {exc}"
+    if not isinstance(data, dict):
+        return {}, "JSON root must be an object"
+    return data, None
+
+
+def _archive_worker_diagnostic(
+    *,
+    handle: RunHandle,
+    phase: str,
+    attempt_index: int,
+    output_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    error_text: str,
+    error_kind: str,
+) -> dict[str, str]:
+    invalid_dir = _worker_invalid_dir(handle)
+    prefix = f"{phase}.attempt-{attempt_index}"
+    refs: dict[str, str] = {}
+    if output_path.exists():
+        invalid_output_path = invalid_dir / f"{prefix}.worker-output.json"
+        output_path.replace(invalid_output_path)
+        refs["invalid_output"] = str(invalid_output_path)
+        record_artifact(
+            handle.project_root,
+            handle.run_id,
+            path=str(invalid_output_path),
+            label=invalid_output_path.name,
+            artifact_kind="invalid_worker_output",
+            metadata={"phase": phase, "attempt": attempt_index, "error_kind": error_kind},
+        )
+    error_path = invalid_dir / f"{prefix}.validation-error.txt"
+    error_path.write_text(error_text.rstrip() + "\n", encoding="utf-8")
+    refs["validation_error"] = str(error_path)
+    record_artifact(
+        handle.project_root,
+        handle.run_id,
+        path=str(error_path),
+        label=error_path.name,
+        artifact_kind="worker_validation_error",
+        metadata={"phase": phase, "attempt": attempt_index, "error_kind": error_kind},
+    )
+    for source_path, suffix in ((stdout_path, "stdout.log"), (stderr_path, "stderr.log")):
+        if not source_path.exists():
+            continue
+        archived_log = invalid_dir / f"{prefix}.{suffix}"
+        shutil.copyfile(source_path, archived_log)
+        refs[suffix.replace(".log", "_log")] = str(archived_log)
+        record_artifact(
+            handle.project_root,
+            handle.run_id,
+            path=str(archived_log),
+            label=archived_log.name,
+            artifact_kind="log",
+            metadata={"phase": phase, "attempt": attempt_index, "error_kind": error_kind},
+        )
+    return refs
+
+
+def _format_worker_failure(
+    *,
+    phase: str,
+    error: str,
+    refs: dict[str, str] | None = None,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+) -> str:
+    parts = [error]
+    if refs:
+        for key in ("invalid_output", "validation_error", "stdout_log", "stderr_log"):
+            value = refs.get(key)
+            if value:
+                parts.append(f"{key}={value}")
+    if stdout_path is not None:
+        stdout_tail = _tail_text(stdout_path)
+        if stdout_tail.strip():
+            parts.append(f"{phase}.stdout tail:\n{stdout_tail}")
+    if stderr_path is not None:
+        stderr_tail = _tail_text(stderr_path)
+        if stderr_tail.strip():
+            parts.append(f"{phase}.stderr tail:\n{stderr_tail}")
+    return "\n".join(part for part in parts if part).strip()
+
+
 class TestPhaseDriver:
     """Deterministic phase driver for integration tests and explicit seams."""
 
@@ -426,9 +654,15 @@ class TestPhaseDriver:
 class ExternalWorkerPhaseDriver:
     """Run one phase via non-interactive Codex or Claude worker commands."""
 
-    def __init__(self, *, executor: str, timeout_seconds: float) -> None:
+    def __init__(self, *, executor: str, timeout_seconds: float | None = None, run_payload: dict[str, Any] | None = None) -> None:
         self.executor = executor
         self.timeout_seconds = timeout_seconds
+        self.run_payload = run_payload or {}
+
+    def _timeout_for_phase(self, phase: str, phase_packet: dict[str, Any]) -> float | None:
+        if self.timeout_seconds is not None:
+            return self.timeout_seconds
+        return _phase_worker_timeout_seconds(phase, run_payload=self.run_payload, phase_packet=phase_packet)
 
     def execute_phase(self, *, handle: RunHandle, phase_packet: dict[str, Any]) -> dict[str, Any]:
         phase = str(phase_packet.get("phase") or "")
@@ -436,6 +670,7 @@ class ExternalWorkerPhaseDriver:
         output_path = handle.run_dir / f"{phase}.worker-output.json"
         stdout_path = _worker_log_dir(handle) / f"{phase}.stdout.log"
         stderr_path = _worker_log_dir(handle) / f"{phase}.stderr.log"
+        timeout_seconds = self._timeout_for_phase(phase, phase_packet)
         env = dict(os.environ)
         existing = env.get("PYTHONPATH", "")
         repo_root = Path(__file__).resolve().parent.parent
@@ -447,8 +682,23 @@ class ExternalWorkerPhaseDriver:
         validate_schema = phase_packet.get("output_contract", {}).get("validate_output_schema")
         max_attempts = max(1, int(WORKER_RETRY_LIMIT))
         last_error = ""
+        last_refs: dict[str, str] = {}
         before_deleted = _deleted_tracked_files(handle.project_root) if phase == "execute" else []
         for attempt_index in range(1, max_attempts + 1):
+            if str(handle.state_json().get("status") or "") in {"stopping", "stopped"}:
+                raise InterruptedError("run stopped before phase worker completed")
+            if output_path.exists():
+                stale_error = f"pre-existing canonical {output_path.name} archived before {phase} attempt {attempt_index}"
+                last_refs = _archive_worker_diagnostic(
+                    handle=handle,
+                    phase=phase,
+                    attempt_index=attempt_index,
+                    output_path=output_path,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    error_text=stale_error,
+                    error_kind="stale_output",
+                )
             correction_error = last_error if attempt_index > 1 else None
             prompt = render_phase_worker_prompt(
                 phase_packet=phase_packet,
@@ -465,19 +715,46 @@ class ExternalWorkerPhaseDriver:
                 label=prompt_path.name,
                 artifact_kind="prompt",
             )
-            if output_path.exists():
-                output_path.unlink()
             command = external_worker_command(self.executor, handle.project_root, prompt, phase=phase, output_path=output_path)
-            with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
-                proc = subprocess.run(
+            try:
+                returncode = _run_phase_worker_process(
                     command,
-                    cwd=str(handle.project_root),
-                    stdout=stdout_handle,
-                    stderr=stderr_handle,
-                    text=True,
+                    handle=handle,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
                     env=env,
-                    timeout=self.timeout_seconds,
+                    timeout_seconds=timeout_seconds,
                 )
+            except subprocess.TimeoutExpired as exc:
+                record_artifact(handle.project_root, handle.run_id, path=str(stdout_path), label=stdout_path.name, artifact_kind="log")
+                record_artifact(handle.project_root, handle.run_id, path=str(stderr_path), label=stderr_path.name, artifact_kind="log")
+                timeout_error = (
+                    f"phase_worker_timeout: phase worker timed out for {phase}: "
+                    f"executor={self.executor} timeout_seconds={timeout_seconds}"
+                )
+                last_refs = _archive_worker_diagnostic(
+                    handle=handle,
+                    phase=phase,
+                    attempt_index=attempt_index,
+                    output_path=output_path,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    error_text=timeout_error,
+                    error_kind="phase_worker_timeout",
+                )
+                raise RuntimeError(
+                    _format_worker_failure(
+                        phase=phase,
+                        error=timeout_error,
+                        refs=last_refs,
+                        stdout_path=stdout_path,
+                        stderr_path=stderr_path,
+                    )
+                ) from exc
+            except InterruptedError:
+                record_artifact(handle.project_root, handle.run_id, path=str(stdout_path), label=stdout_path.name, artifact_kind="log")
+                record_artifact(handle.project_root, handle.run_id, path=str(stderr_path), label=stderr_path.name, artifact_kind="log")
+                raise
             record_artifact(handle.project_root, handle.run_id, path=str(stdout_path), label=stdout_path.name, artifact_kind="log")
             record_artifact(handle.project_root, handle.run_id, path=str(stderr_path), label=stderr_path.name, artifact_kind="log")
             if phase == "execute":
@@ -485,11 +762,11 @@ class ExternalWorkerPhaseDriver:
                 new_deleted = [path for path in after_deleted if path not in before_deleted]
                 if new_deleted:
                     raise RuntimeError("execute deleted tracked files: " + ", ".join(new_deleted[:8]))
-            if proc.returncode != 0:
+            if returncode != 0:
                 stdout_tail = _tail_text(stdout_path)
                 stderr_tail = _tail_text(stderr_path)
                 raise RuntimeError(
-                    f"phase worker failed for {phase}: executor={self.executor} returncode={proc.returncode}\n{stdout_tail}\n{stderr_tail}".strip()
+                    f"phase worker failed for {phase}: executor={self.executor} returncode={returncode}\n{stdout_tail}\n{stderr_tail}".strip()
                 )
             if not output_path.exists():
                 extracted = _extract_json_object_from_text(_tail_text(stdout_path, limit=20000))
@@ -497,19 +774,53 @@ class ExternalWorkerPhaseDriver:
                     _write_json(output_path, extracted)
             if not output_path.exists():
                 last_error = f"{output_path.name} was not written"
-                if attempt_index < max_attempts:
-                    continue
-                stdout_tail = _tail_text(stdout_path)
-                stderr_tail = _tail_text(stderr_path)
-                raise RuntimeError(
-                    f"phase worker did not write {output_path.name} for {phase}\n{stdout_tail}\n{stderr_tail}".strip()
+                if str(handle.state_json().get("status") or "") in {"stopping", "stopped"}:
+                    raise InterruptedError("run stopped before phase worker wrote output")
+                last_refs = _archive_worker_diagnostic(
+                    handle=handle,
+                    phase=phase,
+                    attempt_index=attempt_index,
+                    output_path=output_path,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    error_text=last_error,
+                    error_kind="missing_output",
                 )
-            payload = _read_json(output_path)
-            if not payload:
-                last_error = "output was not a single JSON object"
                 if attempt_index < max_attempts:
                     continue
-                raise RuntimeError(f"phase worker wrote invalid JSON for {phase}: {output_path}")
+                raise RuntimeError(
+                    _format_worker_failure(
+                        phase=phase,
+                        error=f"phase worker did not write {output_path.name} for {phase}",
+                        refs=last_refs,
+                        stdout_path=stdout_path,
+                        stderr_path=stderr_path,
+                    )
+                )
+            payload, parse_error = _load_worker_output_payload(output_path)
+            if parse_error is not None:
+                last_error = parse_error
+                last_refs = _archive_worker_diagnostic(
+                    handle=handle,
+                    phase=phase,
+                    attempt_index=attempt_index,
+                    output_path=output_path,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    error_text=parse_error,
+                    error_kind="invalid_json",
+                )
+                if attempt_index < max_attempts:
+                    continue
+                raise RuntimeError(
+                    _format_worker_failure(
+                        phase=phase,
+                        error=f"phase worker wrote invalid JSON for {phase}: {parse_error}",
+                        refs=last_refs,
+                        stdout_path=stdout_path,
+                        stderr_path=stderr_path,
+                    )
+                )
             try:
                 return validate_phase_output(
                     phase,
@@ -518,10 +829,36 @@ class ExternalWorkerPhaseDriver:
                 )
             except ValueError as exc:
                 last_error = str(exc)
+                last_refs = _archive_worker_diagnostic(
+                    handle=handle,
+                    phase=phase,
+                    attempt_index=attempt_index,
+                    output_path=output_path,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    error_text=last_error,
+                    error_kind="schema_validation",
+                )
                 if attempt_index < max_attempts:
                     continue
-                raise RuntimeError(f"phase worker produced invalid {phase} output: {exc}") from exc
-        raise RuntimeError(f"phase worker exhausted retries for {phase}: {last_error or 'unknown error'}")
+                raise RuntimeError(
+                    _format_worker_failure(
+                        phase=phase,
+                        error=f"phase worker produced invalid {phase} output: {exc}",
+                        refs=last_refs,
+                        stdout_path=stdout_path,
+                        stderr_path=stderr_path,
+                    )
+                ) from exc
+        raise RuntimeError(
+            _format_worker_failure(
+                phase=phase,
+                error=f"phase worker exhausted retries for {phase}: {last_error or 'unknown error'}",
+                refs=last_refs,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+            )
+        )
 
 
 def _test_external_worker_mode() -> str:
@@ -553,6 +890,7 @@ def worker_main(project_root: Path, run_id: str) -> int:
     def _mark_stop(_signum, _frame):
         nonlocal interrupted, child_pid
         interrupted = True
+        _update_state(handle, status="stopping", phase="stopping", supervisor_state="stopping")
         if child_pid is not None:
             try:
                 os.killpg(child_pid, signal.SIGTERM)
@@ -583,7 +921,7 @@ def worker_main(project_root: Path, run_id: str) -> int:
         driver = TestPhaseDriver("complete")
     else:
         executor = _normalize_worker_executor(run_payload.get("executor"))
-        driver = ExternalWorkerPhaseDriver(executor=executor, timeout_seconds=_worker_timeout_seconds(run_payload))
+        driver = ExternalWorkerPhaseDriver(executor=executor, run_payload=run_payload)
 
     try:
         status = execute_runtime_controller(project_root, run_id, driver=driver, sink=SilentSink())

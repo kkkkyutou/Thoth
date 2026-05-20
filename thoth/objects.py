@@ -611,6 +611,17 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
     eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
     runtime_policy = payload.get("runtime_policy") if isinstance(payload.get("runtime_policy"), dict) else {}
     scheduling = normalize_scheduling(payload.get("scheduling"))
+    links = _normalize_links(obj.get("links"))
+    depends_on: list[dict[str, str]] = []
+    for link in links:
+        if link.get("type") != "depends_on":
+            continue
+        target = link.get("target", "")
+        parsed = parse_object_ref(target)
+        if parsed and parsed[0] == "work_item":
+            depends_on.append({"work_id": parsed[1], "type": "hard"})
+        elif target:
+            depends_on.append({"work_id": target.split(":", 1)[-1], "type": "hard"})
     work_id = str(obj.get("object_id") or "")
     flattened = {
         "schema_version": obj.get("schema_version"),
@@ -620,12 +631,15 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
         "title": obj.get("title", work_id),
         "summary": obj.get("summary", ""),
         "status": obj.get("status"),
+        "authority_status": obj.get("status"),
         "revision": obj.get("revision"),
         "ready_state": obj.get("status"),
         "runnable": payload.get("runnable") is True,
         "work_kind": payload.get("work_kind"),
         "goal_statement": payload.get("goal"),
         "context": payload.get("context"),
+        "module": payload.get("module") or payload.get("context") or "strict",
+        "direction": payload.get("direction") or "general",
         "constraints": payload.get("constraints", []),
         "implementation_recipe": payload.get("execution_plan", []),
         "eval_entrypoint": eval_contract.get("entrypoint", {}),
@@ -639,7 +653,8 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
         "review_expectation": eval_contract.get("review_expectation"),
         "decision_ids": payload.get("decisions", []),
         "authority_context": payload.get("authority_context", {}),
-        "links": obj.get("links", []),
+        "depends_on": depends_on,
+        "links": links,
         "created_at": obj.get("created_at"),
         "updated_at": obj.get("updated_at"),
         "_path": obj.get("_path"),
@@ -685,6 +700,8 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
         "runnable": bool(payload.get("runnable", True)),
         "goal": payload.get("goal") or title,
         "context": payload.get("context") or "",
+        "module": payload.get("module") or payload.get("context") or "strict",
+        "direction": payload.get("direction") or "general",
         "constraints": payload.get("constraints") or [],
         "execution_plan": payload.get("execution_plan") or [],
         "eval_contract": payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {},
@@ -702,6 +719,16 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
     elif status == "ready" and ready_errors:
         status = "blocked"
     return work_id, status, work_payload
+
+
+def work_item_input_ready_errors(payload: dict[str, Any]) -> list[str]:
+    """Return ready-gate diagnostics for a public work-json payload."""
+
+    try:
+        _work_id, _status, work_payload = work_item_from_payload(payload)
+    except SchemaError as exc:
+        return [str(exc)]
+    return work_item_ready_errors(work_payload)
 
 
 def summarize_object_graph(project_root: Path, *, ensure_tree: bool = True) -> dict[str, Any]:

@@ -105,7 +105,9 @@ def test_task_current_phase_with_verdict():
 
 
 def test_is_task_completed():
-    assert is_task_completed({"work_result": {"updated_at": "2026-04-24T00:00:00Z"}})
+    assert is_task_completed({"work_result": {"updated_at": "2026-04-24T00:00:00Z", "usable": True, "meets_goal": True}})
+    assert is_task_completed({"ready_state": "validated"})
+    assert not is_task_completed({"work_result": {"updated_at": "2026-04-24T00:00:00Z", "status": "attempt_failed"}})
     assert not is_task_completed({"ready_state": "blocked"})
 
 
