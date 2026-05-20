@@ -4,6 +4,18 @@
 
 No pending changes.
 
+## [0.2.6.3] - 2026-05-20
+
+### Changed
+- Split repo-local Thoth state into portable authority, local runtime evidence, and dashboard dependency/cache layers.
+- `thoth init` and `thoth init --sync` now append idempotent ignore rules for `.thoth/runs/`, `.thoth/derived/`, generated work-results, runtime object kinds, dashboard frontend `node_modules/` / `dist/`, and local dashboard cache.
+- `status --json` and dashboard read models derive work counts from portable authority without requiring Git-tracked run ledgers.
+
+### Fixed
+- Prevented new run/loop/review/auto ledgers, worker logs, invalid worker outputs, dashboard PID/log/status files, local leases, and dashboard dependencies from appearing in `git status --short` by default.
+- Moved the dashboard SQLite read model under ignored `.thoth/derived/dashboard/` local state.
+- Preserved ready work item authority when the latest attempt failed or stopped, while keeping failed/stopped/abandoned attempts out of completion progress.
+
 ## [0.2.6.2] - 2026-05-20
 
 ### Changed

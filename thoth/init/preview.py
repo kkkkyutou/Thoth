@@ -34,9 +34,11 @@ def _utc_iso() -> str:
 
 def _managed_path_list() -> list[str]:
     base = [
+        ".gitignore",
         ".pre-commit-config.yaml",
         "AGENTS.md",
         "CLAUDE.md",
+        ".thoth/.gitignore",
         ".thoth/objects/project/project.json",
         ".thoth/docs/project.json",
         ".thoth/docs/agent-entry.md",
@@ -47,6 +49,9 @@ def _managed_path_list() -> list[str]:
         ".thoth/migrations/.gitkeep",
         ".thoth/derived/.gitkeep",
         ".thoth/derived/codex-hooks.json",
+        "tools/dashboard/.gitignore",
+        "tools/dashboard/frontend/.gitignore",
+        "tools/dashboard/backend/.gitignore",
     ]
     base.extend(f"scripts/{name}" for name in GENERATED_SCRIPT_FILES)
     base.extend(GENERATED_TEST_FILES)
@@ -81,10 +86,15 @@ def build_init_preview(project_dir: Path, audit: dict[str, Any]) -> dict[str, An
     }
 
     managed_update_targets = {
+        ".gitignore",
         ".pre-commit-config.yaml",
         "AGENTS.md",
         "CLAUDE.md",
+        ".thoth/.gitignore",
         ".thoth/derived/codex-hooks.json",
+        "tools/dashboard/.gitignore",
+        "tools/dashboard/frontend/.gitignore",
+        "tools/dashboard/backend/.gitignore",
         "tools/dashboard",
     }
     managed_update_targets.update(f"scripts/{name}" for name in GENERATED_SCRIPT_FILES)

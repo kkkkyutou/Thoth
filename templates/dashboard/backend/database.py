@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[3] / "research.db"
+DB_PATH = Path(__file__).resolve().parents[3] / ".thoth" / "derived" / "dashboard" / "research.db"
 
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS research_events (
@@ -49,6 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_todo_tasks_completed ON todo_tasks(completed);
 
 
 def get_conn() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")

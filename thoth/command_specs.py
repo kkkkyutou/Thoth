@@ -40,6 +40,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         needs_hooks=True,
         scope_can=(
             "Create canonical .thoth project authority files",
+            "Append idempotent ignore rules for local runtime evidence, dashboard cache, and dependencies",
             "Generate AGENTS.md and CLAUDE.md from the same renderer",
             "Generate a Codex hooks projection under .thoth/derived for global or repo-local host wiring",
             "Generate dashboard, tests, helper scripts, and config",
@@ -176,7 +177,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         route_class="mechanical_fast",
         intelligence_tier="none",
         packet_authority_mode="result_envelope",
-        acceptance="Dashboard reads .thoth/runs data only and renders host/executor/runtime distinctions explicitly.",
+        acceptance="Dashboard derives work state from portable authority plus local .thoth/runs data, without requiring runtime ledgers to be Git-tracked.",
         scope_can=("Start the dashboard", "Install frontend dependencies and rebuild dist", "Report dashboard endpoints"),
         scope_cannot=("Read host session state as runtime truth", "Use rebuild as scaffold template sync"),
         lifecycle=("serve",),

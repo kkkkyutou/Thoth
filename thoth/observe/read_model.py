@@ -9,9 +9,10 @@ from typing import Any
 
 import yaml
 
+from thoth.objects import summarize_object_graph
+from thoth.plan.compiler import collect_legacy_authority_rows
 from thoth.plan.store import (
     load_work_items,
-    load_compiler_state,
     load_project_manifest,
     load_work_result,
 )
@@ -118,15 +119,30 @@ def blocking_tasks(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def quick_health(project_root: Path) -> tuple[bool, str]:
     manifest = project_root / ".thoth" / "objects" / "project" / "project.json"
-    compiler = project_root / ".thoth" / "docs" / "object-graph-summary.json"
-    if not manifest.exists() or not compiler.exists():
-        return False, "Missing canonical Thoth object authority files"
+    authority_root = project_root / ".thoth" / "objects"
+    if not manifest.exists() or not authority_root.exists():
+        return False, "Missing canonical Thoth portable authority files"
     entries = load_run_log_recent(project_root, 1)
     if entries:
         match = re.match(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2})", entries[-1])
         if match:
             return True, f"Last run-log update: {time_ago(match.group(1))}"
     return True, "Strict authority present"
+
+
+def read_only_compiler_state(project_root: Path) -> dict[str, Any]:
+    graph = summarize_object_graph(project_root, ensure_tree=False)
+    summary = dict(graph.get("summary", {}))
+    summary["legacy_authority_count"] = len(collect_legacy_authority_rows(project_root))
+    return {
+        "schema_version": graph.get("schema_version"),
+        "generated_at": graph.get("generated_at"),
+        "summary": summary,
+        "blocked_work_ids": graph.get("blocked_work_ids", []),
+        "invalid_work_ids": graph.get("invalid_work_ids", []),
+        "problems": graph.get("problems", []),
+        "source": "portable_authority",
+    }
 
 
 def time_ago(iso_str: str | None) -> str:
@@ -314,7 +330,7 @@ def derive_gantt_rows(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def overview_summary_read_model(project_root: Path) -> dict[str, Any]:
     work_items = load_tasks(project_root)
     config = load_config(project_root)
-    compiler_state = load_compiler_state(project_root)
+    compiler_state = read_only_compiler_state(project_root)
     healthy, health_message = quick_health(project_root)
     ready_count = sum(1 for item in work_items if str(item.get("ready_state") or "") == "ready")
     total_count = len(work_items)

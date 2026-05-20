@@ -14,6 +14,7 @@ from thoth.command_specs import COMMAND_SPECS
 from thoth.plan.compiler import compile_task_authority
 from thoth.plan.store import ensure_work_authority_tree
 from thoth.objects import Store
+from thoth.state_layout import PORTABLE_AUTHORITY_PATHS, ensure_project_gitignore_rules
 
 LEGACY_CONFIG_FILE = ".research-config.yaml"
 ROOT = Path(__file__).resolve().parents[2]
@@ -141,6 +142,7 @@ def _write_dashboard_locale_selection(config: dict[str, Any], project_dir: Path)
 
 def render_project_instructions(config: dict[str, Any]) -> str:
     commands = "\n".join(f"- `{spec.command_id}`: {spec.summary}" for spec in COMMAND_SPECS)
+    portable_paths = "\n".join(f"- `{path}`" for path in PORTABLE_AUTHORITY_PATHS)
     return textwrap.dedent(f"""\
 # Thoth Project Instructions
 
@@ -148,8 +150,12 @@ This document is the canonical human-readable project instruction source for `{c
 
 ## Runtime Authority
 
-- `.thoth` is the only runtime authority.
-- Canonical storage lives in `.thoth/objects/<kind>/<object_id>.json`.
+- Git-portable authority is an allowlist, not the whole `.thoth` tree.
+- Commit the portable authority paths:
+{portable_paths}
+- Runtime evidence lives under `.thoth/runs`, `.thoth/derived`, generated work-results, and runtime object kinds such as run/artifact/controller/phase_result; these are local by default and ignored by Git.
+- A fresh clone resumes from committed authority by running `thoth status --json` and starting a new `thoth run --work-id ...`; it cannot attach to old machine-local processes, PIDs, leases, workers, or dashboard state.
+- Canonical planning storage lives in `.thoth/objects/<kind>/<object_id>.json`.
 - Planning authority is object-graph driven: `discussion -> decision -> work_item`.
 - `work_item` replaces old contract/task authority; runnable work must be `ready`.
 - `run` and `loop` only execute ready runnable work by `--work-id`.
@@ -177,6 +183,7 @@ def generate_thoth_runtime(config: dict[str, Any], project_dir: Path) -> None:
     thoth_dir = project_dir / ".thoth"
     for rel in ("objects", "docs", "runs", "migrations", "derived"):
         (thoth_dir / rel).mkdir(parents=True, exist_ok=True)
+    ensure_project_gitignore_rules(project_dir)
     ensure_work_authority_tree(project_dir)
     directions = [_normalize_direction_entry(direction, index) for index, direction in enumerate(config.get("directions", []))]
     project_payload = {
@@ -275,7 +282,7 @@ def generate_scripts(config: dict[str, Any], project_dir: Path) -> None:
     scripts_dir.mkdir(parents=True, exist_ok=True)
     scripts = {
         "install-hooks.sh": "#!/usr/bin/env bash\nset -e\npre-commit install\n",
-        "check-required-files.sh": "#!/usr/bin/env bash\nset -e\nfor f in .thoth/objects/project/project.json .thoth/docs/agent-entry.md .thoth/docs/object-graph-summary.json .thoth/derived/codex-hooks.json; do test -f \"$f\" || { echo \"MISSING: $f\"; exit 1; }; done\n",
+        "check-required-files.sh": "#!/usr/bin/env bash\nset -e\nfor f in .thoth/objects/project/project.json .thoth/docs/agent-entry.md .thoth/docs/object-graph-summary.json .thoth/.gitignore; do test -f \"$f\" || { echo \"MISSING: $f\"; exit 1; }; done\n",
         "thoth-cli.sh": "#!/usr/bin/env bash\nset -euo pipefail\nROOT=\"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\"\ncd \"$ROOT\"\nif command -v thoth >/dev/null 2>&1; then\n  exec thoth \"$@\"\nfi\nif [ -n \"${THOTH_SOURCE_ROOT:-}\" ]; then\n  export PYTHONPATH=\"${THOTH_SOURCE_ROOT}${PYTHONPATH:+:${PYTHONPATH}}\"\n  exec python -m thoth.cli \"$@\"\nfi\necho \"Missing Thoth shell wrapper. Install drift: expected 'thoth' on PATH or THOTH_SOURCE_ROOT for source-checkout fallback.\" >&2\nexit 1\n",
         "session-end-check.sh": "#!/usr/bin/env bash\nset -euo pipefail\nbash scripts/thoth-cli.sh init --sync\nbash scripts/thoth-cli.sh doctor\nbash scripts/check-required-files.sh\n",
         "validate-all.sh": "#!/usr/bin/env bash\nset -euo pipefail\nbash scripts/thoth-cli.sh init --sync\nbash scripts/thoth-cli.sh doctor\nbash scripts/check-required-files.sh\n",
@@ -288,6 +295,7 @@ def generate_scripts(config: dict[str, Any], project_dir: Path) -> None:
 
 
 def render_host_projection(config: dict[str, Any]) -> str:
+    portable_paths = "\n".join(f"- `{path}`" for path in PORTABLE_AUTHORITY_PATHS)
     return textwrap.dedent(f"""\
 # AGENTS.md
 
@@ -309,6 +317,10 @@ This file is a generated project operation contract for `{config["name"]}`.
 ## Runtime Rules
 
 - Planning authority lives in `.thoth/objects/discussion`, `.thoth/objects/decision`, and `.thoth/objects/work_item`.
+- Git-portable authority is this allowlist:
+{portable_paths}
+- Runtime evidence and local process state live under ignored paths such as `.thoth/runs/`, `.thoth/derived/`, `.thoth/docs/work-results/`, `.thoth/objects/run/`, `.thoth/objects/artifact/`, `.thoth/objects/controller/`, and `.thoth/objects/phase_result/`.
+- A fresh clone can continue from committed authority with `thoth status --json` and a new `thoth run --work-id ...`; it must not try to attach to old PIDs, leases, workers, or dashboard processes.
 - There is no standalone Contract kind; goal, constraints, execution plan, eval, runtime policy, and decisions live inside `work_item.payload`.
 - Current executable authority uses `work_item`, `work_id`, `work_kind`, and `runnable`.
 - Legacy `task_id` and `work_type` inputs may be read only by managed migration; current authority objects must not write them.
@@ -420,11 +432,12 @@ from pathlib import Path
 REQUIRED_FILES = [
     "AGENTS.md",
     "CLAUDE.md",
+    ".gitignore",
+    ".thoth/.gitignore",
     ".thoth/objects/project/project.json",
     ".thoth/docs/agent-entry.md",
     ".thoth/docs/object-graph-summary.json",
     ".thoth/docs/legacy-audit.json",
-    ".thoth/derived/codex-hooks.json",
 ]
 
 

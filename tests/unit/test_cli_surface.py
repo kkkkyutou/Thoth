@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +32,24 @@ def _run_cli(tmp_path: Path, *args: str, env: dict[str, str] | None = None) -> s
         capture_output=True,
         env=merged_env,
     )
+
+
+def _git(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
+def _copy_path(src: Path, dst: Path) -> None:
+    if src.is_dir():
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+    else:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
 
 
 def _write_task(
@@ -132,6 +151,8 @@ def test_cli_init_creates_project_layer(tmp_path):
     assert (tmp_path / ".thoth" / "docs" / "project.json").exists()
     assert (tmp_path / "AGENTS.md").exists()
     assert (tmp_path / ".thoth" / "derived" / "codex-hooks.json").exists()
+    assert "/runs/" in (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
+    assert "node_modules/" in (tmp_path / "tools" / "dashboard" / "frontend" / ".gitignore").read_text(encoding="utf-8")
 
 
 def test_cli_help_shows_minimal_public_commands(tmp_path):
@@ -388,6 +409,99 @@ def test_cli_sync_regenerates_project_layer(tmp_path):
     result = _run_cli(tmp_path, "init", "--sync")
     assert result.returncode == 0
     assert "drifted" not in agents_path.read_text(encoding="utf-8")
+
+
+def test_cli_sync_appends_ignore_rules_without_duplicates(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    (tmp_path / ".gitignore").write_text("custom.out\n", encoding="utf-8")
+
+    first = _run_cli(tmp_path, "init", "--sync")
+    second = _run_cli(tmp_path, "init", "--sync")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    root_ignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    thoth_ignore = (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
+    assert "custom.out" in root_ignore
+    assert root_ignore.splitlines().count("/research.db") == 1
+    assert thoth_ignore.splitlines().count("/runs/") == 1
+    assert thoth_ignore.splitlines().count("/docs/work-results/") == 1
+
+
+def test_cli_status_recovers_from_portable_authority_without_runtime_dirs(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path, "portable-work")
+
+    clone = tmp_path / "fresh-clone"
+    clone.mkdir()
+    for rel in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".gitignore",
+        ".thoth/.gitignore",
+        ".thoth/objects/project",
+        ".thoth/objects/work_item",
+        ".thoth/objects/discussion",
+        ".thoth/objects/decision",
+        ".thoth/docs/agent-entry.md",
+        ".thoth/docs/project.json",
+        ".thoth/docs/source-map.json",
+    ):
+        src = tmp_path / rel
+        if src.exists():
+            _copy_path(src, clone / rel)
+
+    result = _run_cli(clone, "status", "--json", env={"THOTH_LOCAL_STATE_DIR": str(clone / ".machine-state")})
+
+    assert result.returncode == 0, result.stderr
+    payload = _extract_json_object(result.stdout)
+    assert payload["compiler"]["work_item_counts"]["ready"] == 1
+    assert payload["active_run_count"] == 0
+    assert not (clone / ".thoth" / "runs").exists()
+    assert not (clone / ".thoth" / "derived").exists()
+
+
+def test_cli_run_runtime_ledgers_do_not_dirty_git_status(tmp_path):
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "test@test.com")
+    _git(tmp_path, "config", "user.name", "Test")
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path, "git-clean-work")
+    assert _run_cli(tmp_path, "init", "--sync").returncode == 0
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-m", "init thoth authority")
+
+    result = _run_cli(
+        tmp_path,
+        "run",
+        "--work-id",
+        "git-clean-work",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert list((tmp_path / ".thoth" / "runs").glob("run-*"))
+    assert list((tmp_path / ".thoth" / "objects" / "run").glob("run-*.json"))
+    assert list((tmp_path / ".thoth" / "objects" / "artifact").glob("*.json"))
+    assert list((tmp_path / ".thoth" / "objects" / "phase_result").glob("*.json"))
+
+    (tmp_path / "tools" / "dashboard" / "frontend" / "node_modules" / "pkg").mkdir(parents=True)
+    (tmp_path / "tools" / "dashboard" / "frontend" / "node_modules" / "pkg" / "index.js").write_text("", encoding="utf-8")
+    (tmp_path / "tools" / "dashboard" / "frontend" / "dist").mkdir(exist_ok=True)
+    (tmp_path / "tools" / "dashboard" / "frontend" / "dist" / "index.html").write_text("<div id=\"app\"></div>", encoding="utf-8")
+    (tmp_path / "research.db").write_text("", encoding="utf-8")
+    (tmp_path / ".thoth" / "derived" / "dashboard.pid").write_text("123\n", encoding="utf-8")
+
+    status = _git(tmp_path, "status", "--short", "--untracked-files=all").stdout
+
+    assert ".thoth/runs/" not in status
+    assert ".thoth/objects/run/" not in status
+    assert ".thoth/objects/artifact/" not in status
+    assert ".thoth/objects/phase_result/" not in status
+    assert ".thoth/docs/work-results/" not in status
+    assert ".thoth/derived/" not in status
+    assert "node_modules/" not in status
+    assert "tools/dashboard/frontend/dist/" not in status
+    assert "research.db" not in status
 
 
 def test_cli_status_json(tmp_path):

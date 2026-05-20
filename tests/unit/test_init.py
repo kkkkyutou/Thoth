@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,8 @@ def test_generate_thoth_runtime(base_config, tmp_path):
     assert manifest["payload"]["project"]["name"] == "UnitTestProject"
     assert manifest["payload"]["dashboard"]["port"] == 8501
     assert (tmp_path / ".thoth" / "docs" / "object-graph-summary.json").exists()
+    assert (tmp_path / ".thoth" / ".gitignore").exists()
+    assert "/runs/" in (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
 
 
 def test_generate_pre_commit_config(base_config, tmp_path):
@@ -244,6 +247,66 @@ def test_initialize_project_preserves_host_owned_codex_root(base_config, tmp_pat
     preview = json.loads((tmp_path / ".thoth" / "migrations" / result["migration_id"] / "preview.json").read_text(encoding="utf-8"))
     assert ".codex" not in preview["update"]
     assert result["displaced_conflicts"] == []
+
+
+def test_initialize_project_appends_gitignore_rules_idempotently(base_config, tmp_path):
+    (tmp_path / ".gitignore").write_text("# user rules\ncustom.log\n", encoding="utf-8")
+    (tmp_path / ".thoth").mkdir()
+    (tmp_path / ".thoth" / ".gitignore").write_text("# user thoth rules\n/runs/\n", encoding="utf-8")
+
+    initialize_project(base_config, tmp_path)
+    sync_project_layer(tmp_path)
+    sync_project_layer(tmp_path)
+
+    root_ignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    thoth_ignore = (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
+    frontend_ignore = (tmp_path / "tools" / "dashboard" / "frontend" / ".gitignore").read_text(encoding="utf-8")
+    root_lines = root_ignore.splitlines()
+    thoth_lines = thoth_ignore.splitlines()
+    frontend_lines = frontend_ignore.splitlines()
+
+    assert "custom.log" in root_ignore
+    assert root_lines.count("/research.db") == 1
+    assert thoth_lines.count("/runs/") == 1
+    assert thoth_lines.count("/objects/run/") == 1
+    assert frontend_lines.count("node_modules/") == 1
+    assert frontend_lines.count("dist/") == 1
+
+
+def test_init_git_status_shows_authority_but_not_runtime_cache(base_config, tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+
+    initialize_project(base_config, tmp_path)
+    (tmp_path / ".thoth" / "runs" / "run-local" / "state.json").parent.mkdir(parents=True)
+    (tmp_path / ".thoth" / "runs" / "run-local" / "state.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".thoth" / "objects" / "run" / "run-local.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".thoth" / "objects" / "artifact" / "artifact-local.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".thoth" / "objects" / "controller" / "controller-local.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".thoth" / "objects" / "phase_result" / "phase-local.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".thoth" / "docs" / "work-results" / "work.result.json").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".thoth" / "docs" / "work-results" / "work.result.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".thoth" / "derived" / "dashboard.pid").write_text("123\n", encoding="utf-8")
+    (tmp_path / "tools" / "dashboard" / "frontend" / "node_modules" / "pkg").mkdir(parents=True)
+    (tmp_path / "tools" / "dashboard" / "frontend" / "node_modules" / "pkg" / "index.js").write_text("", encoding="utf-8")
+
+    status = subprocess.run(
+        ["git", "status", "--short", "--untracked-files=all"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    assert "?? .thoth/objects/project/project.json" in status
+    assert "?? .thoth/.gitignore" in status
+    assert ".thoth/runs/" not in status
+    assert ".thoth/objects/run/" not in status
+    assert ".thoth/objects/artifact/" not in status
+    assert ".thoth/objects/controller/" not in status
+    assert ".thoth/objects/phase_result/" not in status
+    assert ".thoth/docs/work-results/" not in status
+    assert ".thoth/derived/" not in status
+    assert "node_modules/" not in status
 
 
 def test_sync_project_layer_refreshes_dashboard_locale(tmp_path):

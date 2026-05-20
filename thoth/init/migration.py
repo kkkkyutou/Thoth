@@ -83,6 +83,22 @@ def _managed_directory_conflicts(project_dir: Path) -> list[str]:
     return sorted(conflicts)
 
 
+def _read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _without_generated_at(payload: dict[str, Any]) -> dict[str, Any]:
+    comparable = dict(payload)
+    comparable.pop("generated_at", None)
+    return comparable
+
+
 def _write_source_map(project_dir: Path, audit: dict[str, Any], preview: dict[str, Any]) -> None:
     payload = {
         "schema_version": 1,
@@ -110,4 +126,7 @@ def _write_source_map(project_dir: Path, audit: dict[str, Any], preview: dict[st
     }
     path = project_dir / ".thoth" / "docs" / "source-map.json"
     path.parent.mkdir(parents=True, exist_ok=True)
+    current = _read_json(path)
+    if current and _without_generated_at(current) == _without_generated_at(payload):
+        return
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.6.2" src="https://img.shields.io/badge/version-0.2.6.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.6.3" src="https://img.shields.io/badge/version-0.2.6.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.6.2 phase budget patch</strong> · long phase evidence is normalized instead of retried</p>
+  <p><strong>v0.2.6.3 state layout patch</strong> · runtime evidence and dashboard cache stay local by default</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 
@@ -144,7 +144,30 @@ Humans should not spend their attention tracking every grain of sand in the funn
 | Work Item | Freeze goal, constraints, execution plan, eval, runtime policy, and decisions. | Discussion, decisions, requirements, acceptance rules | Ready or blocked work item |
 | Run | Execute one frozen `work_id@revision` through phase results. | Work item, controller policy, host surface | `.thoth/objects/run` plus `.thoth/runs/<run_id>` ledger |
 | Result | Produce a mechanical verdict instead of narration alone. | Validator outputs, artifacts, runtime checks | Structured result and acceptance evidence |
-| Dashboard | Let humans read the final state without replaying the chat. | Ledgers, read models, derived summaries | Inspectable project truth |
+| Dashboard | Let humans read the final state without replaying the chat. | Portable authority plus local ledgers and read models | Inspectable project truth |
+
+## Portable Authority And Local State
+
+Thoth project state is intentionally split into three layers.
+
+Portable authority is the Git state needed to continue work after a fresh clone. Commit `AGENTS.md`, `CLAUDE.md` when the Claude surface is enabled, `.thoth/objects/project/`, `.thoth/objects/work_item/`, `.thoth/objects/discussion/`, `.thoth/objects/decision/`, `.thoth/docs/agent-entry.md`, `.thoth/docs/project.json`, and `.thoth/docs/source-map.json`. These files define the project, discussion history, decisions, and runnable work item graph.
+
+Runtime evidence is local by default. New projects get `.thoth/.gitignore` rules for `.thoth/runs/`, `.thoth/derived/`, `.thoth/docs/work-results/`, `.thoth/objects/run/`, `.thoth/objects/artifact/`, `.thoth/objects/controller/`, and `.thoth/objects/phase_result/`. These ledgers remain on disk for local audit, but a fresh machine should start a new run rather than attach to old PIDs, leases, workers, supervisors, or dashboard processes.
+
+Dashboard dependencies and cache are also local. Thoth writes idempotent ignore rules for `tools/dashboard/frontend/node_modules/`, `tools/dashboard/frontend/dist/`, Vite cache, backend Python cache, and the dashboard SQLite read model under `.thoth/derived/dashboard/`. If a team intentionally wants to carry a run to another machine, export a concise report with `thoth status --report` or archive the specific `.thoth/runs/<run_id>` evidence bundle explicitly; Thoth does not add every runtime ledger to Git by default.
+
+Fresh-clone recovery means:
+
+```bash
+git clone <repo>
+cd <repo>
+codex plugin marketplace upgrade thoth
+thoth doctor --version
+thoth status --json
+thoth run --work-id <ready-work-id>
+```
+
+That flow resumes from committed authority and starts new local runtime evidence. It does not take over old machine-local processes.
 
 ## Quick Start
 
@@ -234,7 +257,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 
 | Command | Host Surface | Purpose | Input | Result |
 | --- | --- | --- | --- | --- |
-| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit, initialize, migrate, or resync canonical Thoth authority. | `--sync`, `--migrate preview`, `--migrate apply`, `--migrate --preview`, `--migrate --apply`, or optional config payload | `.thoth` authority, migration ledger, generated projections, dashboard scaffolding, scripts, and tests |
+| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit, initialize, migrate, or resync canonical Thoth authority. | `--sync`, `--migrate preview`, `--migrate apply`, `--migrate --preview`, `--migrate --apply`, or optional config payload | Portable `.thoth` authority, migration ledger, ignore rules, generated projections, dashboard scaffolding, scripts, and tests |
 | `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | Record planning decisions without entering code execution. | Topic, decision payload, or work payload | Updated discussion, decision, or work_item objects plus generated docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | Execute one ready work item through a durable runtime packet. | `--work-id`, optional host or executor controls, optional attach/watch/stop | Durable run ledger with state, events, phase results, artifacts, and terminal result |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | Iterate on one ready work item through a controller service. | `--work-id`, optional resume or sleep controls | Controller object, child run lineage, and bounded iteration history |
@@ -242,13 +265,13 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | Run the priority queue while the user is away. | Optional `--sleep`, `--rounds`, `--scope`, or explicit `--work-id` | Auto controller, child loop lineage, monitor events, and terminal or paused summary |
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
-| `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by `.thoth` ledgers |
+| `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by authority plus local `.thoth` ledgers |
 
 ## Why Trust It
 
 | Signal | What you can inspect |
 | --- | --- |
-| Durable runtime truth | `.thoth/runs/*` keeps run, state, events, artifacts, and result payloads. |
+| Local runtime truth | `.thoth/runs/*` keeps run, state, events, artifacts, and result payloads on the current machine by default. |
 | Locked planning authority | `.thoth/objects/discussion/`, `.thoth/objects/decision/`, and `.thoth/objects/work_item/` define what execution is allowed to do. |
 | Script-backed verification | Validators, doctor checks, and selftests decide pass or fail mechanically. |
 | Shared read model | `status`, `report`, and `dashboard` all read from the same authority instead of chat memory. |
