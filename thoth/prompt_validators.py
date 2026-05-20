@@ -29,14 +29,15 @@ PHASE_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 
 REVIEW_SUMMARY_LIMIT = 48
 REVIEW_TITLE_LIMIT = 32
-LIST_SHORT_ITEM_LIMIT = 96
-COMMAND_ITEM_LIMIT = 160
-PLAN_ITEM_LIMIT = 240
-NEXT_HINT_LIMIT = 160
-ROOT_CAUSE_LIMIT = 240
+LIST_SHORT_ITEM_LIMIT = 1024
+COMMAND_ITEM_LIMIT = 1024
+PLAN_ITEM_LIMIT = 1024
+NEXT_HINT_LIMIT = 1200
+ROOT_CAUSE_LIMIT = 1200
 FAILURE_CLASS_LIMIT = 32
 METRIC_NAME_LIMIT = 80
-RISK_LIMIT = 240
+RISK_LIMIT = 1200
+STRUCTURED_FIELD_TOTAL_LIMIT = 4096
 
 
 def utf8_len(text: str) -> int:
@@ -94,6 +95,195 @@ def _compact_json_string(value: Any) -> str:
         return str(value)
 
 
+def _add_normalization_warning(
+    warnings: list[dict[str, Any]],
+    *,
+    field: str,
+    reason: str,
+    original_type: str,
+    limit: int,
+    original_utf8_bytes: int | None = None,
+    index: int | None = None,
+    truncated_or_compacted: bool = False,
+) -> None:
+    warning: dict[str, Any] = {
+        "field": field,
+        "reason": reason,
+        "original_type": original_type,
+        "limit_utf8_bytes": limit,
+    }
+    if index is not None:
+        warning["index"] = index
+    if original_utf8_bytes is not None:
+        warning["original_utf8_bytes"] = original_utf8_bytes
+    if truncated_or_compacted:
+        warning["truncated_or_compacted"] = True
+    warnings.append(warning)
+
+
+def _normalize_text_field(
+    field: str,
+    value: Any,
+    limit: int,
+    *,
+    warnings: list[dict[str, Any]],
+    coerce_jsonish: bool = False,
+    required: bool = True,
+    warning_field: str | None = None,
+    index: int | None = None,
+) -> str:
+    original_type = type(value).__name__
+    coerced = False
+    if isinstance(value, str):
+        raw = value
+    elif coerce_jsonish:
+        raw = _compact_json_string(value)
+        coerced = True
+    else:
+        raise ValueError(f"{field} must be a string")
+    normalized, changed = _truncate_utf8_single_line(raw, limit)
+    if required and not normalized:
+        raise ValueError(f"{field} must not be empty")
+    if changed or coerced:
+        reason = "coerced_to_json_string" if coerced else "normalized_single_line"
+        _add_normalization_warning(
+            warnings,
+            field=warning_field or field,
+            index=index,
+            reason=reason,
+            original_type=original_type,
+            limit=limit,
+            original_utf8_bytes=utf8_len(str(raw)),
+            truncated_or_compacted=changed and coerced,
+        )
+    return normalized
+
+
+def _normalize_text_list(
+    field: str,
+    value: Any,
+    limit: int,
+    *,
+    warnings: list[dict[str, Any]],
+    coerce_jsonish: bool = True,
+) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list")
+    return [
+        _normalize_text_field(
+            f"{field}[{index}]",
+            item,
+            limit,
+            warnings=warnings,
+            coerce_jsonish=coerce_jsonish,
+            required=False,
+            warning_field=field,
+            index=index,
+        )
+        for index, item in enumerate(value)
+    ]
+
+
+def _normalize_structured_value(
+    field: str,
+    value: Any,
+    *,
+    item_limit: int,
+    warnings: list[dict[str, Any]],
+) -> Any:
+    if isinstance(value, str):
+        return _normalize_text_field(field, value, item_limit, warnings=warnings, required=False)
+    if isinstance(value, list):
+        return [
+            _normalize_structured_value(
+                f"{field}[{index}]",
+                item,
+                item_limit=item_limit,
+                warnings=warnings,
+            )
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, dict):
+        return {
+            str(key): _normalize_structured_value(
+                f"{field}.{key}",
+                item,
+                item_limit=item_limit,
+                warnings=warnings,
+            )
+            for key, item in value.items()
+        }
+    return value
+
+
+def _normalize_flexible_field(
+    field: str,
+    value: Any,
+    *,
+    scalar_limit: int,
+    item_limit: int,
+    total_limit: int = STRUCTURED_FIELD_TOTAL_LIMIT,
+    warnings: list[dict[str, Any]],
+) -> Any:
+    if isinstance(value, (dict, list)):
+        normalized = _normalize_structured_value(field, value, item_limit=item_limit, warnings=warnings)
+        compact = _compact_json_string(normalized)
+        compact_len = utf8_len(compact)
+        if compact_len > total_limit:
+            truncated, _changed = _truncate_utf8_single_line(compact, total_limit)
+            _add_normalization_warning(
+                warnings,
+                field=field,
+                reason="structured_total_truncated",
+                original_type=type(value).__name__,
+                limit=total_limit,
+                original_utf8_bytes=compact_len,
+                truncated_or_compacted=True,
+            )
+            return truncated
+        return normalized
+    return _normalize_text_field(field, value, scalar_limit, warnings=warnings)
+
+
+def _normalize_mixed_list(
+    field: str,
+    value: Any,
+    *,
+    item_limit: int,
+    warnings: list[dict[str, Any]],
+) -> list[Any]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list")
+    normalized: list[Any] = []
+    for index, item in enumerate(value):
+        item_field = f"{field}[{index}]"
+        if isinstance(item, str):
+            normalized.append(
+                _normalize_text_field(
+                    item_field,
+                    item,
+                    item_limit,
+                    warnings=warnings,
+                    required=False,
+                    warning_field=field,
+                    index=index,
+                )
+            )
+        elif isinstance(item, (dict, list)):
+            normalized.append(
+                _normalize_flexible_field(
+                    item_field,
+                    item,
+                    scalar_limit=item_limit,
+                    item_limit=item_limit,
+                    warnings=warnings,
+                )
+            )
+        else:
+            normalized.append(item)
+    return normalized
+
+
 def _normalize_jsonish_string_list(
     field: str,
     value: Any,
@@ -101,47 +291,7 @@ def _normalize_jsonish_string_list(
     *,
     warnings: list[dict[str, Any]],
 ) -> list[str]:
-    if not isinstance(value, list):
-        raise ValueError(f"{field} must be a list")
-    rows: list[str] = []
-    for index, item in enumerate(value):
-        warning: dict[str, Any] | None = None
-        if isinstance(item, str):
-            text = item
-        else:
-            text = _compact_json_string(item)
-            warning = {
-                "field": field,
-                "index": index,
-                "reason": "coerced_to_json_string",
-                "original_type": type(item).__name__,
-            }
-        normalized, changed = _truncate_utf8_single_line(text, limit)
-        if changed:
-            if warning is None:
-                warning = {
-                    "field": field,
-                    "index": index,
-                    "reason": "normalized_single_line",
-                    "original_type": type(item).__name__,
-                }
-            else:
-                warning["truncated_or_compacted"] = True
-            warning["limit_utf8_bytes"] = limit
-            warning["original_utf8_bytes"] = utf8_len(str(text))
-        if not normalized:
-            if warning is None:
-                warning = {
-                    "field": field,
-                    "index": index,
-                    "reason": "empty_item_normalized",
-                    "original_type": type(item).__name__,
-                }
-            warning["limit_utf8_bytes"] = limit
-        if warning is not None:
-            warnings.append(warning)
-        rows.append(normalized)
-    return rows
+    return _normalize_text_list(field, value, limit, warnings=warnings, coerce_jsonish=True)
 
 
 def _require_plan_field(field: str, value: Any, limit: int) -> Any:
@@ -158,7 +308,13 @@ def _require_plan_field(field: str, value: Any, limit: int) -> Any:
     return _require_short_text(field, value, limit)
 
 
-def _require_check_list(field: str, value: Any, *, limit: int) -> list[dict[str, Any]]:
+def _require_check_list(
+    field: str,
+    value: Any,
+    *,
+    limit: int,
+    warnings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         raise ValueError(f"{field} must be a list")
     rows: list[dict[str, Any]] = []
@@ -169,7 +325,13 @@ def _require_check_list(field: str, value: Any, *, limit: int) -> list[dict[str,
         name = item.get("name")
         ok = item.get("ok")
         if name is not None:
-            normalized["name"] = _require_short_text(f"{field}[{index}].name", name, limit)
+            normalized["name"] = _normalize_text_field(
+                f"{field}[{index}].name",
+                name,
+                limit,
+                warnings=warnings,
+                required=False,
+            )
         if ok is not None:
             if not isinstance(ok, bool):
                 raise ValueError(f"{field}[{index}].ok must be a boolean")
@@ -177,7 +339,13 @@ def _require_check_list(field: str, value: Any, *, limit: int) -> list[dict[str,
         for key in ("detail", "summary"):
             raw = item.get(key)
             if raw is not None:
-                normalized[key] = _require_short_text(f"{field}[{index}].{key}", raw, limit)
+                normalized[key] = _normalize_text_field(
+                    f"{field}[{index}].{key}",
+                    raw,
+                    limit,
+                    warnings=warnings,
+                    required=False,
+                )
         for key, raw in item.items():
             if key not in {"name", "ok", "detail", "summary"}:
                 normalized[key] = raw
@@ -205,13 +373,14 @@ def validate_phase_output(
         raise ValueError(f"{phase} output missing required fields: {', '.join(missing)}")
 
     normalized = dict(payload)
-    normalized["summary"] = _require_short_text(
+    normalization_warnings: list[dict[str, Any]] = []
+    normalized["summary"] = _normalize_text_field(
         f"{phase}.summary",
         payload.get("summary"),
         phase_prompt_spec(phase).summary_budget_utf8,
+        warnings=normalization_warnings,
     )
     if phase == "plan":
-        normalization_warnings: list[dict[str, Any]] = []
         normalized["authority_complete"] = _require_bool("plan.authority_complete", payload.get("authority_complete"))
         coverage = payload.get("authority_coverage")
         if not isinstance(coverage, (list, dict)):
@@ -220,50 +389,84 @@ def validate_phase_output(
         normalized["open_gaps"] = _normalize_jsonish_string_list(
             "plan.open_gaps",
             payload.get("open_gaps"),
-            ROOT_CAUSE_LIMIT,
+            PLAN_ITEM_LIMIT,
             warnings=normalization_warnings,
         )
         normalized["forbidden_assumptions_used"] = _normalize_jsonish_string_list(
             "plan.forbidden_assumptions_used",
             payload.get("forbidden_assumptions_used"),
-            ROOT_CAUSE_LIMIT,
+            PLAN_ITEM_LIMIT,
             warnings=normalization_warnings,
         )
-        normalized["execution_steps"] = _require_string_list(
+        normalized["execution_steps"] = _normalize_text_list(
             "plan.execution_steps",
             payload.get("execution_steps"),
             PLAN_ITEM_LIMIT,
+            warnings=normalization_warnings,
         )
-        normalized["files_expected"] = _require_plan_field("plan.files_expected", payload.get("files_expected"), COMMAND_ITEM_LIMIT)
-        normalized["commands_expected"] = _require_plan_field("plan.commands_expected", payload.get("commands_expected"), COMMAND_ITEM_LIMIT)
-        validation_plan = payload.get("validation_plan")
-        if isinstance(validation_plan, dict):
-            normalized["validation_plan"] = validation_plan
-        else:
-            normalized["validation_plan"] = _require_short_text("plan.validation_plan", validation_plan, ROOT_CAUSE_LIMIT)
-        normalized["risk_assessment"] = _require_plan_field("plan.risk_assessment", payload.get("risk_assessment"), RISK_LIMIT)
+        normalized["files_expected"] = _normalize_flexible_field(
+            "plan.files_expected",
+            payload.get("files_expected"),
+            scalar_limit=COMMAND_ITEM_LIMIT,
+            item_limit=COMMAND_ITEM_LIMIT,
+            warnings=normalization_warnings,
+        )
+        normalized["commands_expected"] = _normalize_flexible_field(
+            "plan.commands_expected",
+            payload.get("commands_expected"),
+            scalar_limit=COMMAND_ITEM_LIMIT,
+            item_limit=COMMAND_ITEM_LIMIT,
+            warnings=normalization_warnings,
+        )
+        normalized["validation_plan"] = _normalize_flexible_field(
+            "plan.validation_plan",
+            payload.get("validation_plan"),
+            scalar_limit=ROOT_CAUSE_LIMIT,
+            item_limit=PLAN_ITEM_LIMIT,
+            warnings=normalization_warnings,
+        )
+        normalized["risk_assessment"] = _normalize_flexible_field(
+            "plan.risk_assessment",
+            payload.get("risk_assessment"),
+            scalar_limit=RISK_LIMIT,
+            item_limit=RISK_LIMIT,
+            warnings=normalization_warnings,
+        )
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "execute":
         normalized["plan_artifact_read"] = _require_bool("execute.plan_artifact_read", payload.get("plan_artifact_read"))
         if not normalized["plan_artifact_read"]:
             raise ValueError("execute.plan_artifact_read must be true")
-        normalized["plan_deviations"] = _require_string_list(
+        normalized["plan_deviations"] = _normalize_text_list(
             "execute.plan_deviations",
             payload.get("plan_deviations"),
-            ROOT_CAUSE_LIMIT,
+            PLAN_ITEM_LIMIT,
+            warnings=normalization_warnings,
         )
         if not isinstance(payload.get("files_touched"), list):
             raise ValueError("execute.files_touched must be a list")
         if not isinstance(payload.get("artifacts"), list):
             raise ValueError("execute.artifacts must be a list")
-        normalized["commands_run"] = _require_string_list(
+        normalized["commands_run"] = _normalize_text_list(
             "execute.commands_run",
             payload.get("commands_run"),
             COMMAND_ITEM_LIMIT,
+            warnings=normalization_warnings,
         )
-        normalized["files_touched"] = payload.get("files_touched")
-        normalized["artifacts"] = payload.get("artifacts")
+        normalized["files_touched"] = _normalize_mixed_list(
+            "execute.files_touched",
+            payload.get("files_touched"),
+            item_limit=COMMAND_ITEM_LIMIT,
+            warnings=normalization_warnings,
+        )
+        normalized["artifacts"] = _normalize_mixed_list(
+            "execute.artifacts",
+            payload.get("artifacts"),
+            item_limit=COMMAND_ITEM_LIMIT,
+            warnings=normalization_warnings,
+        )
+        normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "validate":
         if not isinstance(payload.get("passed"), bool):
@@ -273,7 +476,12 @@ def validate_phase_output(
             payload.get("metric_name"),
             METRIC_NAME_LIMIT,
         )
-        normalized["checks"] = _require_check_list("validate.checks", payload.get("checks"), limit=LIST_SHORT_ITEM_LIMIT)
+        normalized["checks"] = _require_check_list(
+            "validate.checks",
+            payload.get("checks"),
+            limit=LIST_SHORT_ITEM_LIMIT,
+            warnings=normalization_warnings,
+        )
         if validate_schema and validate_schema.get("type") == "object":
             required_fields = validate_schema.get("required")
             if isinstance(required_fields, list):
@@ -283,26 +491,30 @@ def validate_phase_output(
                         "validate output missing schema-required fields: "
                         + ", ".join(str(field) for field in missing_schema_fields)
                     )
+        normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "reflect":
         outcome = str(payload.get("outcome") or "").strip().lower()
         if outcome not in {"passed", "failed"}:
             raise ValueError("reflect.outcome must be passed|failed")
         normalized["outcome"] = outcome
-        normalized["residual_risks"] = _require_string_list(
+        normalized["residual_risks"] = _normalize_text_list(
             "reflect.residual_risks",
             payload.get("residual_risks"),
-            ROOT_CAUSE_LIMIT,
+            LIST_SHORT_ITEM_LIMIT,
+            warnings=normalization_warnings,
         )
-        normalized["evidence"] = _require_string_list(
+        normalized["evidence"] = _normalize_text_list(
             "reflect.evidence",
             payload.get("evidence"),
-            ROOT_CAUSE_LIMIT,
+            LIST_SHORT_ITEM_LIMIT,
+            warnings=normalization_warnings,
         )
-        normalized["next_recommendation"] = _require_short_text(
+        normalized["next_recommendation"] = _normalize_text_field(
             "reflect.next_recommendation",
             payload.get("next_recommendation"),
             ROOT_CAUSE_LIMIT,
+            warnings=normalization_warnings,
         )
         if outcome == "failed":
             for field, limit in (
@@ -312,7 +524,15 @@ def validate_phase_output(
             ):
                 if field not in payload:
                     raise ValueError(f"reflect output missing required failure field: {field}")
-                normalized[field] = _require_short_text(f"reflect.{field}", payload.get(field), limit)
+                if field == "failure_class":
+                    normalized[field] = _require_short_text(f"reflect.{field}", payload.get(field), limit)
+                else:
+                    normalized[field] = _normalize_text_field(
+                        f"reflect.{field}",
+                        payload.get(field),
+                        limit,
+                        warnings=normalization_warnings,
+                    )
         elif any(field in payload for field in ("failure_class", "root_cause", "next_plan_hint")):
             for field, limit in (
                 ("failure_class", FAILURE_CLASS_LIMIT),
@@ -320,7 +540,16 @@ def validate_phase_output(
                 ("next_plan_hint", NEXT_HINT_LIMIT),
             ):
                 if field in payload:
-                    normalized[field] = _require_short_text(f"reflect.{field}", payload.get(field), limit)
+                    if field == "failure_class":
+                        normalized[field] = _require_short_text(f"reflect.{field}", payload.get(field), limit)
+                    else:
+                        normalized[field] = _normalize_text_field(
+                            f"reflect.{field}",
+                            payload.get(field),
+                            limit,
+                            warnings=normalization_warnings,
+                        )
+        normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     raise ValueError(f"unsupported phase: {phase}")
 

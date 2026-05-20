@@ -6,7 +6,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from thoth.prompt_validators import validate_phase_output
+from thoth.prompt_validators import utf8_len, validate_phase_output
 from thoth.prompt_specs import phase_prompt_authority
 from thoth.run.driver import execute_runtime_controller
 from thoth.run.ledger import (
@@ -72,11 +72,126 @@ def test_plan_gap_schema_drift_normalizes_jsonish_items():
     assert normalized["_normalization_warnings"][0]["reason"] == "coerced_to_json_string"
 
 
-def test_plan_and_reflect_summary_budget_is_800():
-    assert phase_prompt_authority("plan")["summary_budget_utf8"] == 800
-    assert phase_prompt_authority("reflect")["summary_budget_utf8"] == 800
-    assert phase_prompt_authority("execute")["summary_budget_utf8"] == 240
-    assert phase_prompt_authority("validate")["summary_budget_utf8"] == 240
+def test_phase_summary_budgets_are_relaxed():
+    assert phase_prompt_authority("plan")["summary_budget_utf8"] == 1200
+    assert phase_prompt_authority("reflect")["summary_budget_utf8"] == 1200
+    assert phase_prompt_authority("execute")["summary_budget_utf8"] == 800
+    assert phase_prompt_authority("validate")["summary_budget_utf8"] == 800
+
+
+def test_plan_long_fields_normalize_without_schema_failure():
+    long_text = "x" * 1500
+    payload = {
+        **_plan_payload(long_text),
+        "open_gaps": [long_text],
+        "forbidden_assumptions_used": [{"reason": long_text}],
+        "execution_steps": [long_text],
+        "files_expected": [long_text],
+        "commands_expected": [long_text],
+        "validation_plan": long_text,
+        "risk_assessment": {"summary": long_text},
+    }
+
+    normalized = validate_phase_output("plan", payload)
+
+    assert utf8_len(normalized["summary"]) <= 1200
+    assert utf8_len(normalized["open_gaps"][0]) <= 1024
+    assert utf8_len(normalized["execution_steps"][0]) <= 1024
+    assert utf8_len(normalized["commands_expected"][0]) <= 1024
+    assert utf8_len(normalized["validation_plan"]) <= 1200
+    assert utf8_len(normalized["risk_assessment"]["summary"]) <= 1200
+    warning_fields = {row["field"] for row in normalized["_normalization_warnings"]}
+    assert "plan.validation_plan" in warning_fields
+    assert "plan.open_gaps" in warning_fields
+
+
+def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failure():
+    long_text = "y" * 1300
+
+    execute = validate_phase_output(
+        "execute",
+        {
+            **_execute_payload(long_text),
+            "plan_deviations": [long_text],
+            "files_touched": [long_text],
+            "commands_run": [long_text],
+            "artifacts": [{"path": long_text}],
+        },
+    )
+    assert utf8_len(execute["summary"]) <= 800
+    assert utf8_len(execute["commands_run"][0]) <= 1024
+    assert execute["_normalization_warnings"]
+
+    validate = validate_phase_output(
+        "validate",
+        {
+            "summary": long_text,
+            "passed": False,
+            "metric_name": "checks",
+            "metric_value": 0,
+            "threshold": 1,
+            "checks": [{"name": "check", "ok": False, "detail": long_text}],
+        },
+    )
+    assert utf8_len(validate["summary"]) <= 800
+    assert utf8_len(validate["checks"][0]["detail"]) <= 1024
+    assert validate["_normalization_warnings"]
+
+    reflect = validate_phase_output(
+        "reflect",
+        {
+            "summary": long_text,
+            "outcome": "failed",
+            "residual_risks": [long_text],
+            "evidence": [long_text],
+            "next_recommendation": long_text,
+            "failure_class": "runtime_drift",
+            "root_cause": long_text,
+            "next_plan_hint": long_text,
+        },
+    )
+    assert utf8_len(reflect["summary"]) <= 1200
+    assert utf8_len(reflect["root_cause"]) <= 1200
+    assert utf8_len(reflect["next_plan_hint"]) <= 1200
+    assert reflect["_normalization_warnings"]
+
+
+def test_mechanical_phase_fields_remain_strict():
+    try:
+        validate_phase_output(
+            "validate",
+            {
+                "summary": "validator ran",
+                "passed": "false",
+                "metric_name": "checks",
+                "metric_value": 0,
+                "threshold": 1,
+                "checks": [],
+            },
+        )
+    except ValueError as exc:
+        assert "validate.passed must be a boolean" in str(exc)
+    else:
+        raise AssertionError("validate.passed should remain a strict boolean")
+
+    try:
+        validate_phase_output(
+            "reflect",
+            {
+                "summary": "reflect",
+                "outcome": "failed",
+                "residual_risks": [],
+                "evidence": [],
+                "next_recommendation": "retry",
+                "failure_class": "x" * 40,
+                "root_cause": "validator failed",
+                "next_plan_hint": "fix implementation",
+            },
+        )
+    except ValueError as exc:
+        assert "reflect.failure_class exceeds 32 UTF-8 bytes" in str(exc)
+    else:
+        raise AssertionError("reflect.failure_class should remain a strict short label")
 
 
 def test_prepare_execution_writes_packet_and_live_dispatch(tmp_path):
@@ -297,7 +412,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     plan_packet = next_phase_payload(project, handle.run_id)
     assert plan_packet["phase"] == "plan"
     assert plan_packet["phase_authority"]["objective"].startswith("Produce the concrete execution plan")
-    assert plan_packet["phase_authority"]["summary_budget_utf8"] == 800
+    assert plan_packet["phase_authority"]["summary_budget_utf8"] == 1200
 
     submit_phase_output(
         project,
@@ -308,10 +423,10 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     execute_packet = next_phase_payload(project, handle.run_id)
     assert execute_packet["phase"] == "execute"
     assert execute_packet["phase_authority"]["objective"] != plan_packet["phase_authority"]["objective"]
-    assert execute_packet["phase_authority"]["summary_budget_utf8"] == 240
+    assert execute_packet["phase_authority"]["summary_budget_utf8"] == 800
 
 
-def test_phase_output_rejects_overlong_summary(tmp_path):
+def test_phase_output_normalizes_overlong_summary(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
         project,
@@ -324,11 +439,10 @@ def test_phase_output_rejects_overlong_summary(tmp_path):
         strict_task={"work_id": "task-1", "title": "Budget demo"},
         goal="close budget gap",
     )
-    too_long = "x" * 801
-    try:
-        submit_phase_output(
-            project,
-            handle.run_id,
+    too_long = "x" * 1300
+    result = submit_phase_output(
+        project,
+        handle.run_id,
         phase="plan",
         payload={
             "summary": too_long,
@@ -342,11 +456,12 @@ def test_phase_output_rejects_overlong_summary(tmp_path):
             "validation_plan": "run pytest",
             "risk_assessment": "low risk",
         },
-        )
-    except ValueError as exc:
-        assert "plan.summary exceeds 800 UTF-8 bytes" in str(exc)
-    else:
-        raise AssertionError("expected summary budget failure")
+    )
+
+    assert result["next_phase"] == "execute"
+    plan_artifact = json.loads((handle.run_dir / "plan.json").read_text(encoding="utf-8"))
+    assert utf8_len(plan_artifact["summary"]) <= 1200
+    assert plan_artifact["_normalization_warnings"][0]["field"] == "plan.summary"
 
 
 def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_path):
@@ -374,8 +489,8 @@ def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_
             output_path.write_text(
                 json.dumps(
                     {
-                        "summary": "x" * 801,
-                        "authority_complete": True,
+                        "summary": "plan bad",
+                        "authority_complete": "yes",
                         "authority_coverage": {"goal": True},
                         "open_gaps": [],
                         "forbidden_assumptions_used": [],
@@ -416,14 +531,14 @@ def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_
 
     assert payload["summary"] == "plan ok"
     assert len(prompts) == 2
-    assert "Previous output failed validation: plan.summary exceeds 800 UTF-8 bytes" in prompts[1]
+    assert "Previous output failed validation: plan.authority_complete must be a boolean" in prompts[1]
     invalid_output = handle.run_dir / "worker-invalid" / "plan.attempt-1.worker-output.json"
     validation_error = handle.run_dir / "worker-invalid" / "plan.attempt-1.validation-error.txt"
     archived_stdout = handle.run_dir / "worker-invalid" / "plan.attempt-1.stdout.log"
     assert invalid_output.exists()
     assert validation_error.exists()
     assert archived_stdout.read_text(encoding="utf-8").strip() == "attempt 1 stdout"
-    assert "plan.summary exceeds 800 UTF-8 bytes" in validation_error.read_text(encoding="utf-8")
+    assert "plan.authority_complete must be a boolean" in validation_error.read_text(encoding="utf-8")
     assert json.loads(output_path.read_text(encoding="utf-8"))["summary"] == "plan ok"
     artifacts = json.loads((handle.run_dir / "artifacts.json").read_text(encoding="utf-8"))["artifacts"]
     assert any(row["kind"] == "invalid_worker_output" and row["path"] == str(invalid_output) for row in artifacts)

@@ -4,6 +4,16 @@
 
 No pending changes.
 
+## [0.2.6.2] - 2026-05-20
+
+### Changed
+- Relaxed four-phase worker output budgets: `plan` / `reflect` summaries now allow 1200 UTF-8 bytes, `execute` / `validate` summaries allow 800, and narrative evidence/list fields allow 1024-1200 depending on field role.
+- Normalized over-budget narrative, evidence, command, and path fields into compact single-line text with `_normalization_warnings` instead of rejecting the phase output and retrying.
+
+### Fixed
+- Prevented overlong `plan.validation_plan` and similar non-semantic verbosity from triggering phase-worker schema retries when the core authority result can already terminalize, such as `needs_input`.
+- Kept mechanical protocol fields strict, including booleans, phase outcomes, validate schema requirements, metric names, and short failure-class labels.
+
 ## [0.2.6.1] - 2026-05-20
 
 ### Fixed
