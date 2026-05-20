@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from thoth.run.model import default_executor
 from .handlers import handle_command
 
 
@@ -42,7 +41,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     orchestration_parser = add_internal_parser("orchestration")
     orchestration_parser.add_argument("--work-id", action="append", dest="work_ids", default=[])
     orchestration_parser.add_argument("--host", default="codex")
-    orchestration_parser.add_argument("--executor", default=default_executor())
+    orchestration_parser.add_argument("--executor")
 
     auto_parser = sub.add_parser("auto")
     auto_parser.add_argument("--work-id", action="append", dest="work_ids", default=[])
@@ -51,7 +50,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     auto_parser.add_argument("--rounds", type=int)
     auto_parser.add_argument("--min-runtime-seconds", type=int, default=8 * 60 * 60)
     auto_parser.add_argument("--host", default="codex")
-    auto_parser.add_argument("--executor", default=default_executor())
+    auto_parser.add_argument("--executor")
     auto_parser.add_argument("--sleep", action="store_true")
     auto_parser.add_argument("--watch")
     auto_parser.add_argument("--stop")

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from thoth.plan.store import upsert_work_item, upsert_decision
+from thoth.plan.store import upsert_work_item, upsert_decision, upsert_work_result
 from thoth.run.phases import default_validate_output_schema
 
 ROOT = Path(__file__).parent.parent.parent
@@ -117,6 +117,9 @@ def _setup_project(tmp_path: Path, monkeypatch) -> None:
         {"seq": 1, "ts": "2026-04-23T01:01:00Z", "kind": "log", "message": "started"},
         {"seq": 2, "ts": "2026-04-23T01:10:00Z", "kind": "log", "message": "still running"},
     ])
+    (runs_dir / "run-1" / "worker-logs").mkdir(parents=True)
+    (runs_dir / "run-1" / "worker-logs" / "plan.stdout.log").write_text("worker stdout latest line", encoding="utf-8")
+    (runs_dir / "run-1" / "worker-logs" / "plan.stderr.log").write_text("worker stderr latest line", encoding="utf-8")
     _write_json(
         tmp_path / ".thoth" / "objects" / "controller" / "controller-auto-1.json",
         {
@@ -155,9 +158,31 @@ def test_work_item_endpoint_includes_active_run(monkeypatch, tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["work_items"][0]["active_run"]["run_id"] == "run-1"
+    assert body["work_items"][0]["latest_run"]["run_id"] == "run-1"
     assert body["work_items"][0]["run_count"] == 1
     assert body["work_items"][0]["active_run"]["host"] == "codex"
     assert body["work_items"][0]["active_run"]["attachable"] is True
+
+
+def test_active_run_endpoint_does_not_return_terminal_latest_run(monkeypatch, tmp_path):
+    _setup_project(tmp_path, monkeypatch)
+    state_path = tmp_path / ".thoth" / "runs" / "run-1" / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.update({"status": "completed", "phase": "completed", "progress_pct": 100})
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    dashboard_app.invalidate_cache()
+    client = TestClient(dashboard_app.app)
+
+    active = client.get("/api/work-items/task-1/active-run")
+    assert active.status_code == 200
+    assert active.json() is None
+
+    detail = client.get("/api/work-items/task-1")
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["active_run"] is None
+    assert payload["latest_run"]["run_id"] == "run-1"
+    assert payload["run_count"] == 1
 
 
 def test_runtime_progress_and_event_endpoints(monkeypatch, tmp_path):
@@ -187,9 +212,32 @@ def test_runtime_progress_and_event_endpoints(monkeypatch, tmp_path):
     assert payload["events"][0]["seq"] == 2
     assert payload["next_after_seq"] == 2
 
+    detail = client.get("/api/runs/run-1")
+    assert detail.status_code == 200
+    assert detail.json()["worker_logs"]["logs"]["plan"]["stdout"]["tail"] == "worker stdout latest line"
+
+    logs = client.get("/api/runs/run-1/worker-logs?phase=plan&tail=1000")
+    assert logs.status_code == 200
+    logs_payload = logs.json()
+    assert logs_payload["run_id"] == "run-1"
+    assert logs_payload["logs"]["plan"]["stdout"]["tail"] == "worker stdout latest line"
+    assert logs_payload["logs"]["plan"]["stderr"]["tail"] == "worker stderr latest line"
+
 
 def test_overview_summary_and_gantt_endpoints(monkeypatch, tmp_path):
     _setup_project(tmp_path, monkeypatch)
+    upsert_work_result(
+        tmp_path,
+        "task-1",
+        {
+            "source": "unit",
+            "usable": True,
+            "meets_goal": True,
+            "conclusion": "Runtime dashboard conclusion",
+            "evidence_paths": ["reports/runtime.md"],
+            "updated_at": "2026-04-23T02:00:00Z",
+        },
+    )
     dashboard_app.invalidate_cache()
     client = TestClient(dashboard_app.app)
 
@@ -199,13 +247,14 @@ def test_overview_summary_and_gantt_endpoints(monkeypatch, tmp_path):
     assert summary_payload["headline"]["total_work_items"] == 1
     assert summary_payload["runtime"]["active_run_count"] == 1
     assert summary_payload["runtime"]["active_auto_count"] == 1
-    assert summary_payload["recent_conclusions"] == []
+    assert summary_payload["recent_conclusions"][0]["module"] == "f1"
+    assert summary_payload["recent_conclusions"][0]["direction"] == "frontend"
 
     gantt = client.get("/api/gantt")
     assert gantt.status_code == 200
     gantt_payload = gantt.json()
     assert gantt_payload[0]["id"] == "task-1"
-    assert gantt_payload[0]["status"] == "ready"
+    assert gantt_payload[0]["status"] == "completed"
     assert gantt_payload[0]["dependencies"] == []
 
 

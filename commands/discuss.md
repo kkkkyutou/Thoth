@@ -35,9 +35,9 @@ THOTH_DISCUSS_ARGUMENTS_EOF
 - Do not hand-edit `.thoth` or manually call runtime protocol commands; the Thoth RuntimeDriver advances phases.
 - If `packet.dispatch_mode` is `external_worker`, do not duplicate the work locally; report the run id, worker mode, and the correct follow-up only.
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
-- Use AskUserQuestion until goals, non-goals, constraints, accepted decisions, rejected options, acceptance, context evidence, risks, run instructions, and open questions are explicit.
+- Use AskUserQuestion until compact authority categories are explicit: goal, constraints, decisions, risks, run_instructions, and open_questions.
 - On major semantic changes, write a draft authority checkpoint through `packet.protocol_commands.checkpoint_authority`.
-- When no material assumptions remain, write a semantic-lossless closure through `packet.protocol_commands.close_authority`.
+- When no material assumptions remain, close with the compact authority categories plus `packet.work_json_template` through `packet.protocol_commands.close_authority`.
 - Do not create ready work if any open_questions remain in the authority capsule.
 
 ## Authority Summary
@@ -50,7 +50,7 @@ THOTH_DISCUSS_ARGUMENTS_EOF
 
 ### Objective
 
-Interrogate the user's idea until goals, constraints, success criteria, risks, and authority are explicit; preserve semantic decisions as draft checkpoints and close only when no material assumptions remain.
+Interrogate the user's idea until the compact authority categories are explicit: goal, constraints, decisions, risks, run_instructions, and open_questions.
 
 ### Hard Stops
 
@@ -58,7 +58,8 @@ Interrogate the user's idea until goals, constraints, success criteria, risks, a
 - Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority.
 - Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.
 - When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.
-- When closing, translate the discussion into semantic-lossless authority: goal, non-goals, constraints, accepted decisions, rejected options, acceptance, context evidence, risks, run instructions, and open questions.
+- When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, run_instructions, and open_questions.
+- Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.
 - Do not fabricate ready execution work items from unresolved decisions.
 - Do not repeat the packet or decision payload verbatim.
 

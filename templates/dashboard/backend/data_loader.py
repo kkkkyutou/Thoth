@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
+from thoth.objects import flatten_work_item as _flatten_authority_work_item
 
 
 _cache: dict[str, Any] = {}
@@ -117,19 +118,17 @@ def _read_directions_from_config(base_dir: Path) -> tuple[str, ...]:
     directions = [row["id"] for row in _direction_entries(project_root)]
     if directions:
         return tuple(directions)
-    task_dir = project_root / ".thoth" / "objects" / "work_item"
+    work_item_dir = project_root / ".thoth" / "objects" / "work_item"
     found = sorted(
         {
-            payload.get("direction")
-            for path in task_dir.glob("*.json")
+            row.get("direction")
+            for path in work_item_dir.glob("*.json")
             for payload in [_read_json(path) or {}]
-            if isinstance(payload.get("direction"), str) and payload.get("direction")
+            for row in [_flatten_work_item(payload, path) or {}]
+            if isinstance(row.get("direction"), str) and row.get("direction")
         }
     )
     return tuple(found)
-
-
-DIRECTIONS = _read_directions_from_config(Path(__file__).resolve().parents[3])
 
 
 def _load_work_result_map(project_root: Path) -> dict[str, dict[str, Any]]:
@@ -140,8 +139,14 @@ def _load_work_result_map(project_root: Path) -> dict[str, dict[str, Any]]:
             payload = _read_json(path)
             work_id = payload.get("work_id") if payload else None
             if isinstance(work_id, str) and work_id:
-                payload["_path"] = str(path)
-                rows[work_id] = payload
+                row = dict(payload)
+                latest_run = row.get("latest_run") if isinstance(row.get("latest_run"), dict) else {}
+                if "latest_attempt" not in row and latest_run:
+                    row["latest_attempt"] = latest_run
+                if row.get("status") in {"failed", "stopped"}:
+                    row["status"] = f"attempt_{row['status']}"
+                row["_path"] = str(path)
+                rows[work_id] = row
     return rows
 
 
@@ -150,38 +155,14 @@ def _flatten_work_item(payload: dict[str, Any], path: Path) -> dict[str, Any] | 
     if not isinstance(work_id, str) or not work_id:
         return None
     work_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
-    eval_contract = work_payload.get("eval_contract") if isinstance(work_payload.get("eval_contract"), dict) else {}
-    row = {
-        "schema_version": payload.get("schema_version"),
-        "kind": "work_item",
-        "id": work_id,
-        "work_id": work_id,
-        "title": payload.get("title") or work_id,
-        "summary": payload.get("summary") or "",
-        "module": work_payload.get("module") or work_payload.get("context") or "strict",
-        "direction": work_payload.get("direction") or "general",
-        "ready_state": payload.get("status"),
-        "status": payload.get("status"),
-        "runnable": work_payload.get("runnable") is True,
-        "work_kind": work_payload.get("work_kind"),
-        "goal_statement": work_payload.get("goal") or "",
-        "implementation_recipe": work_payload.get("execution_plan") or [],
-        "constraints": work_payload.get("constraints") or [],
-        "eval_entrypoint": eval_contract.get("entrypoint") or {},
-        "primary_metric": eval_contract.get("primary_metric") or {},
-        "failure_classes": eval_contract.get("failure_classes") or [],
-        "validate_output_schema": eval_contract.get("validate_output_schema") or {},
-        "decision_ids": work_payload.get("decisions") or [],
-        "depends_on": [
-            {"work_id": str(link.get("target", "")).split(":", 1)[-1], "type": "hard"}
-            for link in payload.get("links", [])
-            if isinstance(link, dict) and link.get("type") == "depends_on"
-        ],
-        "created_at": payload.get("created_at"),
-        "updated_at": payload.get("updated_at"),
-        "_path": str(path),
-    }
+    row = _flatten_authority_work_item({**payload, "_path": str(path)})
+    row["module"] = row.get("module") or work_payload.get("module") or work_payload.get("context") or "strict"
+    row["direction"] = row.get("direction") or work_payload.get("direction") or "general"
+    row["_path"] = str(path)
     return row
+
+
+DIRECTIONS = _read_directions_from_config(Path(__file__).resolve().parents[3])
 
 
 def _load_compiled_tasks(project_root: Path) -> list[dict[str, Any]]:
@@ -300,6 +281,8 @@ def load_project_config(base_dir: str | Path) -> dict[str, Any]:
     manifest = _load_manifest(project_root)
     project = manifest.get("project", {}) if isinstance(manifest, dict) else {}
     dashboard = manifest.get("dashboard", {}) if isinstance(manifest, dict) else {}
+    runtime = manifest.get("runtime", {}) if isinstance(manifest, dict) else {}
+    hosts = manifest.get("hosts", {}) if isinstance(manifest, dict) else {}
     payload = {
         "project": {
             "name": project.get("name", project_root.name),
@@ -311,6 +294,8 @@ def load_project_config(base_dir: str | Path) -> dict[str, Any]:
             "phases": project.get("phases", []),
         },
         "dashboard": dashboard,
+        "runtime": runtime if isinstance(runtime, dict) else {},
+        "hosts": hosts if isinstance(hosts, dict) else {},
     }
     return _set_cache("project_config", payload)
 
@@ -319,10 +304,10 @@ def load_everything(base_dir: str | Path) -> dict:
     project_root = _infer_project_root(base_dir)
     return {
         "modules": load_modules(project_root),
-        "tasks": load_all_tasks(project_root),
+        "work_items": load_all_tasks(project_root),
         "paper_mapping": get_paper_mapping(project_root),
         "compiler_state": load_compiler_state(project_root),
         "decisions": load_decisions(project_root),
-        "work_items": load_work_item_refs(project_root),
+        "work_item_refs": load_work_item_refs(project_root),
         "config": load_project_config(project_root),
     }

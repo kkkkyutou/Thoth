@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { api } from '@/api/client'
 import { locale } from '@/locales'
 import { useDashboardStore } from '@/stores/dashboard'
+import type { RunSummary, RunWorkerLogs } from '@/types'
 
 const store = useDashboardStore()
 const task = computed(() => store.selectedWorkItem!)
+const workerLogs = ref<RunWorkerLogs | null>(null)
 
 const verdictLabel = computed(() => {
   const result = task.value.work_result
@@ -16,6 +19,38 @@ const verdictLabel = computed(() => {
 
 const conclusion = computed(
   () => task.value.work_result?.conclusion || task.value.work_result?.current_summary || '',
+)
+
+const displayRun = computed<RunSummary | null>(() => task.value.active_run ?? task.value.latest_run ?? null)
+
+const latestAttempt = computed(() => task.value.work_result?.latest_attempt ?? task.value.work_result?.latest_run ?? null)
+
+const latestAttemptStatus = computed(() => {
+  const status = latestAttempt.value?.status
+  return typeof status === 'string' ? status : ''
+})
+
+function isRuntimeActive(run?: RunSummary | null): boolean {
+  return !!run && ['queued', 'running', 'waiting_input', 'stopping', 'paused'].includes(run.status)
+}
+
+async function reloadWorkerLogs() {
+  const runId = displayRun.value?.run_id
+  if (!runId) {
+    workerLogs.value = null
+    return
+  }
+  workerLogs.value = await api.getRunWorkerLogs(runId, null, 20000)
+}
+
+watch(
+  () => displayRun.value?.run_id,
+  () => {
+    reloadWorkerLogs().catch(() => {
+      workerLogs.value = null
+    })
+  },
+  { immediate: true },
 )
 
 function renderJson(value: unknown): string {
@@ -69,6 +104,7 @@ function renderJson(value: unknown): string {
       <h3>{{ locale.detail.readiness }}</h3>
       <dl class="task-detail__kv">
         <dt>ready_state</dt><dd>{{ task.ready_state || '—' }}</dd>
+        <dt>authority_status</dt><dd>{{ task.authority_status || task.ready_state || '—' }}</dd>
         <dt>blocking_reason</dt><dd>{{ task.blocking_reason || '—' }}</dd>
       </dl>
     </article>
@@ -115,10 +151,24 @@ function renderJson(value: unknown): string {
       <h3>{{ locale.detail.runtime }}</h3>
       <dl class="task-detail__kv">
         <dt>run_count</dt><dd>{{ task.run_count ?? 0 }}</dd>
-        <dt>active_run</dt><dd>{{ task.active_run?.run_id || '—' }}</dd>
-        <dt>host</dt><dd>{{ task.active_run?.host || '—' }}</dd>
-        <dt>phase</dt><dd>{{ task.active_run?.phase || task.active_run?.status || '—' }}</dd>
+        <dt>current_run</dt><dd>{{ task.active_run?.run_id || '—' }}</dd>
+        <dt>latest_run</dt><dd>{{ task.latest_run?.run_id || '—' }}</dd>
+        <dt>latest_attempt</dt><dd>{{ latestAttemptStatus || '—' }}</dd>
+        <dt>host</dt><dd>{{ task.active_run?.host || task.latest_run?.host || '—' }}</dd>
+        <dt>phase</dt>
+        <dd>
+          <span v-if="isRuntimeActive(displayRun)" class="runtime-spinner" aria-hidden="true"></span>
+          {{ task.active_run?.phase || task.active_run?.status || task.latest_run?.phase || task.latest_run?.status || '—' }}
+        </dd>
       </dl>
+      <button v-if="displayRun" class="task-detail__button" @click="reloadWorkerLogs">Reload</button>
+      <div v-if="workerLogs && Object.keys(workerLogs.logs || {}).length" class="task-detail__logs">
+        <div v-for="log in workerLogs.logs" :key="log.phase" class="task-detail__log">
+          <strong>{{ log.phase }}</strong>
+          <pre v-if="log.stdout.tail">{{ log.stdout.tail }}</pre>
+          <pre v-if="log.stderr.tail" class="stderr">{{ log.stderr.tail }}</pre>
+        </div>
+      </div>
     </article>
   </section>
 </template>
@@ -167,6 +217,57 @@ function renderJson(value: unknown): string {
 .task-detail__kv dt {
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+.runtime-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border: 2px solid rgba(133, 100, 4, 0.2);
+  border-top-color: #856404;
+  border-radius: 50%;
+  animation: runtime-spin 0.8s linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes runtime-spin {
+  to { transform: rotate(360deg); }
+}
+
+.task-detail__button {
+  margin-top: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.task-detail__logs {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.task-detail__log {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.task-detail__log pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.task-detail__log pre.stderr {
+  color: #721c24;
 }
 
 .task-detail__list {

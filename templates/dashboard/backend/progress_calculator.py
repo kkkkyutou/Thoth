@@ -35,13 +35,31 @@ def _has_strict_shape(task: dict[str, Any]) -> bool:
     return "ready_state" in task or "work_id" in task
 
 
+def _strict_display_status(task: dict[str, Any]) -> str:
+    ready_state = str(task.get("ready_state") or task.get("authority_status") or task.get("status") or "blocked")
+    return {
+        "ready": "ready",
+        "validated": "completed",
+        "active": "in_progress",
+        "failed": "failed",
+        "draft": "pending",
+        "blocked": "blocked",
+        "invalid": "invalid",
+        "abandoned": "failed",
+    }.get(ready_state, "blocked")
+
+
 def _strict_task_progress(task: dict[str, Any]) -> float:
     work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
-    ready_state = str(task.get("ready_state") or "blocked")
-    if work_result.get("updated_at"):
+    ready_state = str(task.get("ready_state") or task.get("authority_status") or task.get("status") or "blocked")
+    if work_result.get("usable") is True and work_result.get("meets_goal") is True:
         return 100.0
     if ready_state == "validated":
         return 100.0
+    if ready_state in {"failed", "abandoned"}:
+        return 100.0
+    if ready_state == "active":
+        return 50.0
     if ready_state == "ready":
         return 15.0
     if ready_state == "blocked":
@@ -65,18 +83,10 @@ def calculate_task_progress(task: dict) -> float:
 def get_task_status(task: dict) -> str:
     if _has_strict_shape(task):
         work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
-        if work_result.get("updated_at"):
-            if work_result.get("usable") is True and work_result.get("meets_goal") is True:
-                return "completed"
-            return "failed"
-        ready_state = str(task.get("ready_state") or "blocked")
-        if ready_state == "ready":
-            return "ready"
-        if ready_state == "validated":
+        ready_state = str(task.get("ready_state") or task.get("authority_status") or task.get("status") or "blocked")
+        if ready_state == "validated" or (work_result.get("usable") is True and work_result.get("meets_goal") is True):
             return "completed"
-        if ready_state == "invalid":
-            return "invalid"
-        return "blocked"
+        return _strict_display_status(task)
 
     phases = task.get("phases")
     if not phases or not isinstance(phases, dict):

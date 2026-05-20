@@ -26,7 +26,6 @@ from thoth.run.worker import (
     TestPhaseDriver,
     _normalize_worker_executor,
     _test_external_worker_mode,
-    _worker_timeout_seconds,
     spawn_supervisor,
     supervisor_main,
     worker_main,
@@ -97,8 +96,7 @@ def _resolve_executor(args) -> str:
     explicit = str(getattr(args, "executor", "") or "").strip().lower()
     if explicit:
         return "codex" if explicit == "codex" else "claude"
-    host = str(getattr(args, "host", "") or "").strip().lower()
-    return "codex" if host == "codex" else "claude"
+    return "codex"
 
 
 def _driver_for_handle(handle):
@@ -106,7 +104,7 @@ def _driver_for_handle(handle):
     if test_mode in {"complete", "fail"}:
         return TestPhaseDriver(test_mode)
     executor = _normalize_worker_executor(handle.run_json().get("executor"))
-    return ExternalWorkerPhaseDriver(executor=executor, timeout_seconds=_worker_timeout_seconds(handle.run_json()))
+    return ExternalWorkerPhaseDriver(executor=executor, run_payload=handle.run_json())
 
 
 def _auto_preflight_failures(doctor: dict) -> list[dict]:

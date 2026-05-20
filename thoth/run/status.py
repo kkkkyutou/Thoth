@@ -21,6 +21,9 @@ def build_status_payload(project_root: Path) -> dict[str, Any]:
         "compiler": compile_task_authority(project_root).get("summary", {}),
         "runtime_defaults": {
             "default_executor": default_executor(),
+            "public_execution_default_executor": "codex",
+            "codex_surface_default_executor": "codex",
+            "claude_execution_default_executor": "codex",
             "live_dispatch_mode": LIVE_DISPATCH_MODE,
             "sleep_dispatch_mode": SLEEP_DISPATCH_MODE,
         },

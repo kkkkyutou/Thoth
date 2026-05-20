@@ -47,6 +47,7 @@ Report endpoint, failure point, and one notable runtime delta only.
 
 - Do not narrate the whole UI.
 - Do not omit the failure point or fabricate a runtime delta; when the result is clean, report the absence of failure as the finding.
+- Do not describe dashboard rebuild as scaffold sync; rebuild only installs dependencies, builds dist, and restarts.
 
 ### Reply Contract
 

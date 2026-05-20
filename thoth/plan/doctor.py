@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from thoth.objects import OBJECT_KINDS, Store, summarize_object_graph, validate_object_envelope
+from thoth.observe.dashboard_contract import dashboard_ready_warnings, dashboard_static_contract_warnings
 
 from .compiler import collect_legacy_authority_rows
 from .paths import SCHEMA_VERSION, authority_root, compiler_state_path, docs_root, project_manifest_path, work_items_dir
@@ -97,6 +98,10 @@ def build_doctor_payload(project_root: Path) -> dict[str, Any]:
     legacy_detail = f"legacy_authority_count={legacy_authority_count}"
     if legacy_rows:
         legacy_detail += " " + "; ".join(f"{item.get('legacy_path')}:{item.get('reason')}" for item in legacy_rows[:5])
+    warnings = [
+        *dashboard_ready_warnings(project_root),
+        *dashboard_static_contract_warnings(project_root / "tools" / "dashboard"),
+    ]
 
     checks = [
         {
@@ -167,6 +172,7 @@ def build_doctor_payload(project_root: Path) -> dict[str, Any]:
         "project_root": str(project_root.resolve()),
         "overall_ok": overall_ok,
         "checks": checks,
+        "warnings": warnings,
         "compiler": {
             "schema_version": SCHEMA_VERSION,
             "generated_at": graph.get("generated_at"),
@@ -222,6 +228,13 @@ def render_doctor_text(payload: dict[str, Any]) -> str:
         lines.append("Problems:")
         for item in problems[:20]:
             lines.append(f"- {item}")
+    warnings = payload.get("warnings", [])
+    if warnings:
+        lines.append("")
+        lines.append("Warnings:")
+        for item in warnings[:20]:
+            if isinstance(item, dict):
+                lines.append(f"- WARN {item.get('id')}: {item.get('detail')}")
     return "\n".join(lines) + "\n"
 
 

@@ -68,8 +68,10 @@ def apply_run_result_to_work_result(
     result["last_attempt_at"] = finished_at
     result["evidence_paths"] = evidence_paths
     result["recent_evidence"] = evidence_paths
+    previous_run_refs = [value for value in result.get("recent_run_refs", []) if isinstance(value, str)] if isinstance(result.get("recent_run_refs"), list) else []
+    is_new_attempt_ref = bool(run_id) and run_id not in previous_run_refs
     if run_id:
-        result["recent_run_refs"] = _merge_recent_refs(result.get("recent_run_refs"), run_id)
+        result["recent_run_refs"] = _merge_recent_refs(previous_run_refs, run_id)
 
     if kind == "review":
         findings = result_payload.get("findings") if isinstance(result_payload.get("findings"), list) else []
@@ -82,22 +84,36 @@ def apply_run_result_to_work_result(
         }
         return result
 
-    result["status"] = status or result.get("status") or "idle"
+    terminal_status = status or result.get("status") or "idle"
+    if terminal_status == "completed":
+        result["status"] = "completed"
+    elif terminal_status in {"failed", "stopped"}:
+        result["status"] = f"attempt_{terminal_status}"
+    else:
+        result["status"] = terminal_status
     result["source"] = "run_result"
-    result["usable"] = status == "completed"
-    result["meets_goal"] = status == "completed"
-    result["failure_class"] = None if status == "completed" else _first_failed_check_name(run_result.get("checks")) or str(run_result.get("reason") or "run_failed")
+    result["usable"] = terminal_status == "completed"
+    result["meets_goal"] = terminal_status == "completed"
+    result["failure_class"] = None if terminal_status == "completed" else _first_failed_check_name(run_result.get("checks")) or str(run_result.get("reason") or f"run_{terminal_status}")
     result["conclusion"] = summary
     result["current_summary"] = summary
     result["metrics"] = result_payload.get("metrics", {}) if isinstance(result_payload.get("metrics"), dict) else {}
-    result["latest_run"] = {
+    latest_attempt = {
         "run_id": run_id,
         "kind": kind,
-        "status": status,
+        "status": terminal_status,
         "summary": summary,
         "finished_at": finished_at,
     }
-    if status == "completed":
+    result["latest_attempt"] = latest_attempt
+    result["latest_run"] = latest_attempt
+    if terminal_status == "failed" and is_new_attempt_ref:
+        result["failed_attempt_count"] = int(result.get("failed_attempt_count") or 0) + 1
+    if terminal_status == "stopped" and is_new_attempt_ref:
+        result["stopped_attempt_count"] = int(result.get("stopped_attempt_count") or 0) + 1
+    if is_new_attempt_ref:
+        result["attempt_count"] = int(result.get("attempt_count") or 0) + 1
+    if terminal_status == "completed":
         result["last_closure_at"] = finished_at
     return result
 

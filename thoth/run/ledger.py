@@ -412,7 +412,6 @@ def fail_run(
         run_result=run_result,
         artifacts_payload=artifacts_payload,
     )
-    _close_work_item_from_run(handle, status="failed")
     return handle
 
 
@@ -450,19 +449,23 @@ def _close_work_item_from_run(handle: RunHandle, *, status: str) -> None:
 
 def _write_stopped_result(handle: RunHandle) -> None:
     run = handle.run_json()
-    _write_json(
-        handle.run_dir / "result.json",
-        {
-            "schema_version": PROTOCOL_VERSION,
-            "run_id": handle.run_id,
-            "work_id": run.get("work_id"),
-            "work_revision": run.get("work_revision"),
-            "kind": run.get("kind"),
-            "status": "stopped",
-            "summary": "Run stopped before completion.",
-            "checks": [],
-            "result": {},
-            "updated_at": utc_now(),
-            "finished_at": utc_now(),
-        },
+    run_result = {
+        "schema_version": PROTOCOL_VERSION,
+        "run_id": handle.run_id,
+        "work_id": run.get("work_id"),
+        "work_revision": run.get("work_revision"),
+        "kind": run.get("kind"),
+        "status": "stopped",
+        "summary": "Run stopped before completion.",
+        "checks": [],
+        "result": {},
+        "updated_at": utc_now(),
+        "finished_at": utc_now(),
+    }
+    _write_json(handle.run_dir / "result.json", run_result)
+    update_work_result_from_run_result(
+        handle.project_root,
+        run_payload=run,
+        run_result=run_result,
+        artifacts_payload=_read_json(handle.run_dir / "artifacts.json"),
     )

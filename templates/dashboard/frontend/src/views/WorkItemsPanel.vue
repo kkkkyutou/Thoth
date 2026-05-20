@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
-import type { RunEvent, RunSummary, WorkItem, WorkItemListResponse, WorkItemFilters, WorkItemStatus } from '@/types'
+import type { RunEvent, RunSummary, RunWorkerLogs, WorkItem, WorkItemListResponse, WorkItemFilters, WorkItemStatus } from '@/types'
 
 const work_items = ref<WorkItem[]>([])
 const total = ref(0)
@@ -16,9 +16,10 @@ const workItemRuns = ref<Record<string, RunSummary[]>>({})
 const activeRuns = ref<Record<string, RunSummary | null>>({})
 const runEvents = ref<Record<string, RunEvent[]>>({})
 const runEventCursor = ref<Record<string, number | null>>({})
+const workerLogs = ref<Record<string, RunWorkerLogs | null>>({})
 const detailLoading = ref<Record<string, boolean>>({})
 let pollHandle: number | null = null
-const DEFAULT_POLL_MS = 10 * 60 * 1000
+const DEFAULT_POLL_MS = 2000
 const parsedPollMs = Number(import.meta.env.VITE_THOTH_DASHBOARD_POLL_MS ?? DEFAULT_POLL_MS)
 const pollMs = Number.isFinite(parsedPollMs) && parsedPollMs >= 250 ? parsedPollMs : DEFAULT_POLL_MS
 
@@ -59,11 +60,16 @@ async function loadWorkItemRuntime(workId: string) {
     if (!displayRunId) {
       runEvents.value[workId] = []
       runEventCursor.value[workId] = null
+      workerLogs.value[workId] = null
       return
     }
-    const eventsPayload = await api.getRunEvents(displayRunId, null, 50)
+    const [eventsPayload, logsPayload] = await Promise.all([
+      api.getRunEvents(displayRunId, null, 50),
+      api.getRunWorkerLogs(displayRunId, null, 20000),
+    ])
     runEvents.value[workId] = eventsPayload.events
     runEventCursor.value[workId] = eventsPayload.next_after_seq ?? null
+    workerLogs.value[workId] = logsPayload
   } catch (e) {
     error.value = String(e)
   } finally {
@@ -83,6 +89,13 @@ async function refreshExpandedWorkItemRuntime() {
     runEvents.value[workId] = [...(runEvents.value[workId] ?? []), ...delta.events].slice(-200)
     runEventCursor.value[workId] = delta.next_after_seq ?? runEventCursor.value[workId]
   }
+  workerLogs.value[workId] = await api.getRunWorkerLogs(runId, null, 20000)
+}
+
+async function reloadWorkerLogs(workId: string) {
+  const runId = activeRuns.value[workId]?.run_id ?? workItemRuns.value[workId]?.[0]?.run_id
+  if (!runId) return
+  workerLogs.value[workId] = await api.getRunWorkerLogs(runId, null, 20000)
 }
 
 function prevPage() {
@@ -117,6 +130,16 @@ function statusClass(status: string): string {
 
 function runtimeStatusClass(status?: string | null): string {
   return 'runtime-status runtime-' + (status || 'unknown').replace(/_/g, '-')
+}
+
+function isRuntimeActive(run?: RunSummary | null): boolean {
+  return !!run && ['queued', 'running', 'waiting_input', 'stopping', 'paused'].includes(run.status)
+}
+
+function latestAttemptLabel(task: WorkItem): string {
+  const attempt = task.work_result?.latest_attempt ?? task.work_result?.latest_run
+  const status = typeof attempt?.status === 'string' ? attempt.status : ''
+  return status && status !== 'completed' ? `Latest attempt: ${status}` : ''
 }
 
 function formatTime(value?: string | null): string {
@@ -154,8 +177,11 @@ onBeforeUnmount(() => {
         <option value="">All statuses</option>
         <option value="pending">Pending</option>
         <option value="in_progress">In Progress</option>
+        <option value="ready">Ready</option>
         <option value="completed">Completed</option>
         <option value="blocked">Blocked</option>
+        <option value="invalid">Invalid</option>
+        <option value="failed">Failed</option>
       </select>
       <button class="filter-btn" @click="applyFilters">Filter</button>
     </div>
@@ -178,15 +204,19 @@ onBeforeUnmount(() => {
             <span>Direction: {{ task.direction }}</span>
             <span>Progress: {{ task.computed_progress.toFixed(0) }}%</span>
             <span>Runs: {{ task.run_count ?? 0 }}</span>
+            <span v-if="latestAttemptLabel(task)" class="attempt-chip">{{ latestAttemptLabel(task) }}</span>
           </div>
           <p v-if="task.hypothesis" class="task-hypothesis">{{ task.hypothesis }}</p>
 
           <div class="runtime-card">
             <template v-if="activeRuns[task.id]">
               <div class="runtime-head">
-                <strong>Active Run</strong>
-                <span :class="runtimeStatusClass(activeRuns[task.id]?.status)">
-                  {{ activeRuns[task.id]?.status }}
+                <strong>Current Run</strong>
+                <span class="runtime-state">
+                  <span v-if="isRuntimeActive(activeRuns[task.id])" class="runtime-spinner" aria-hidden="true"></span>
+                  <span :class="runtimeStatusClass(activeRuns[task.id]?.status)">
+                    {{ activeRuns[task.id]?.status }}
+                  </span>
                 </span>
               </div>
               <div class="runtime-meta">
@@ -224,7 +254,10 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="history-section">
-                <h5>Recent Logs</h5>
+                <div class="history-heading">
+                  <h5>Recent Logs</h5>
+                  <button class="inline-btn" @click="reloadWorkerLogs(task.id)">Reload</button>
+                </div>
                 <div v-if="(runEvents[task.id] || []).length" class="log-list">
                   <div v-for="event in runEvents[task.id]" :key="`${task.id}-${event.seq}`" class="log-row">
                     <span class="log-seq">#{{ event.seq }}</span>
@@ -234,6 +267,21 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div v-else class="runtime-empty">No runtime events yet.</div>
+              </div>
+
+              <div class="history-section">
+                <div class="history-heading">
+                  <h5>Worker Output</h5>
+                  <button class="inline-btn" @click="reloadWorkerLogs(task.id)">Reload</button>
+                </div>
+                <div v-if="workerLogs[task.id] && Object.keys(workerLogs[task.id]?.logs || {}).length" class="worker-log-list">
+                  <div v-for="log in workerLogs[task.id]?.logs" :key="log.phase" class="worker-log-block">
+                    <div class="worker-log-title">{{ log.phase }}</div>
+                    <pre v-if="log.stdout.tail" class="worker-log-text">{{ log.stdout.tail }}</pre>
+                    <pre v-if="log.stderr.tail" class="worker-log-text stderr">{{ log.stderr.tail }}</pre>
+                  </div>
+                </div>
+                <div v-else class="runtime-empty">No worker output yet.</div>
               </div>
             </template>
           </div>
@@ -355,6 +403,9 @@ onBeforeUnmount(() => {
 .status-in-progress { background: #FFF3CD; color: #856404; }
 .status-completed { background: #D4EDDA; color: #155724; }
 .status-blocked { background: #F8D7DA; color: #721C24; }
+.status-ready { background: #D8ECFF; color: #16446f; }
+.status-invalid { background: #F5D0E3; color: #6c193f; }
+.status-failed { background: #F5D9C4; color: #6c3510; }
 
 .task-title {
   font-size: 16px;
@@ -368,6 +419,11 @@ onBeforeUnmount(() => {
   font-size: 13px;
   opacity: 0.7;
   flex-wrap: wrap;
+}
+
+.attempt-chip {
+  font-weight: 700;
+  color: #6c3510;
 }
 
 .task-hypothesis {
@@ -389,6 +445,26 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+}
+
+.runtime-state,
+.history-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runtime-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(133, 100, 4, 0.2);
+  border-top-color: #856404;
+  border-radius: 50%;
+  animation: runtime-spin 0.8s linear infinite;
+}
+
+@keyframes runtime-spin {
+  to { transform: rotate(360deg); }
 }
 
 .runtime-meta {
@@ -442,6 +518,47 @@ onBeforeUnmount(() => {
 .history-section h5 {
   margin-bottom: 8px;
   font-size: 14px;
+}
+
+.inline-btn {
+  border: 1px solid var(--color-border);
+  background: var(--color-card-bg);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.worker-log-list {
+  display: grid;
+  gap: 10px;
+}
+
+.worker-log-block {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--color-bg);
+}
+
+.worker-log-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.worker-log-text {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-size: 12px;
+}
+
+.worker-log-text.stderr {
+  color: #721c24;
 }
 
 .history-list,

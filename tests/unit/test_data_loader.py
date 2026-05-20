@@ -42,6 +42,8 @@ def _write_project_object(tmp_path: Path, *, directions: list[dict] | None = Non
                 "phases": [{"id": "survey", "weight": 20}],
             },
             "dashboard": {"port": 8600, "theme": "warm-bear"},
+            "runtime": {"authority": ".thoth/objects"},
+            "hosts": {"codex": {"projection": "AGENTS.md"}},
         },
     )
 
@@ -95,6 +97,12 @@ def test_directions_from_manifest(tmp_path):
     assert directions == ("frontend", "backend")
 
 
+def test_directions_fall_back_to_work_item_payload(tmp_path):
+    _write_work_item(tmp_path)
+    directions = _read_directions_from_config(tmp_path)
+    assert directions == ("frontend",)
+
+
 def test_load_all_tasks_attaches_work_results(tmp_path):
     invalidate_cache()
     _write_project_object(tmp_path)
@@ -113,6 +121,9 @@ def test_load_all_tasks_attaches_work_results(tmp_path):
     )
     tasks = load_all_tasks(tmp_path)
     assert tasks[0]["id"] == "task-1"
+    assert tasks[0]["authority_status"] == "validated"
+    assert tasks[0]["module"] == "f1"
+    assert tasks[0]["direction"] == "frontend"
     assert tasks[0]["work_result"]["source"] == "legacy_import"
 
 
@@ -131,3 +142,5 @@ def test_load_project_config_uses_manifest(tmp_path):
     assert config["project"]["name"] == "Loader Demo"
     assert config["research"]["directions"][0]["id"] == "frontend"
     assert config["dashboard"]["port"] == 8600
+    assert config["runtime"]["authority"] == ".thoth/objects"
+    assert config["hosts"]["codex"]["projection"] == "AGENTS.md"

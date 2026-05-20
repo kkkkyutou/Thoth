@@ -8,10 +8,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from thoth.plan.discuss import checkpoint_discussion_authority, close_discussion_authority, load_authority_json
+from thoth.plan.discuss import (
+    COMPACT_AUTHORITY_CATEGORIES,
+    PUBLIC_WORK_JSON_REQUIRED_FIELDS,
+    append_discussion_message,
+    checkpoint_discussion_authority,
+    close_discussion_authority,
+    load_authority_json,
+    match_open_discussion_for_message,
+    open_discussion_candidates,
+    work_json_template,
+)
 from thoth.plan.compiler import compile_task_authority
 from thoth.plan.store import create_discussion_placeholder, upsert_work_item, upsert_decision
-from thoth.objects import ActiveExecutionLock, active_work_ids
+from thoth.objects import ActiveExecutionLock, active_work_ids, work_item_input_ready_errors
 from thoth.surface.envelope import output_refs, print_envelope
 
 
@@ -54,6 +64,26 @@ def _discussion_protocol_commands(project_root: Path, discussion_id: str) -> dic
     }
 
 
+def _discussion_packet(project_root: Path, discussion_id: str) -> dict[str, Any]:
+    template = work_json_template()
+    return {
+        "packet_kind": "discussion_authority",
+        "discussion_id": discussion_id,
+        "protocol_commands": _discussion_protocol_commands(project_root, discussion_id),
+        "required_authority_categories": list(COMPACT_AUTHORITY_CATEGORIES),
+        "authority_category_map": {
+            "goal": "desired outcome, excluded scope, and success bar",
+            "constraints": "hard constraints, resources, timing, and forbidden assumptions",
+            "decisions": "settled choices, rejected alternatives, and evidence anchors",
+            "risks": "known risks and failure classes",
+            "run_instructions": "execution plan and validator intent",
+            "open_questions": "material unanswered questions; must be empty for ready work",
+        },
+        "open_discussion_candidates": open_discussion_candidates(project_root),
+        **template,
+    }
+
+
 def handle_discuss(args, parser, *, project_root: Path) -> int:
     content = (getattr(args, "goal", None) or " ".join(getattr(args, "rest", []) or [])).strip()
     work_payload = json.loads(args.work_json) if getattr(args, "work_json", None) else None
@@ -73,6 +103,7 @@ def handle_discuss(args, parser, *, project_root: Path) -> int:
         decision = upsert_decision(project_root, json.loads(args.decision_json))
         body: dict[str, Any] = {"decision": decision, "note_path": str(note_path)}
     elif isinstance(work_payload, dict):
+        ready_errors = work_item_input_ready_errors(work_payload)
         try:
             work = upsert_work_item(project_root, work_payload)
         except ActiveExecutionLock as exc:
@@ -84,29 +115,35 @@ def handle_discuss(args, parser, *, project_root: Path) -> int:
                 checks=[{"name": "active_work_lock", "ok": False, "detail": "work mutation rejected"}],
             )
             return 3
-        body = {"work_item": work, "note_path": str(note_path)}
+        template = work_json_template()
+        body = {
+            "work_item": work,
+            "note_path": str(note_path),
+            "required_work_json_fields": list(PUBLIC_WORK_JSON_REQUIRED_FIELDS),
+            "work_item_ready_errors": ready_errors,
+            "work_json_examples": {
+                "minimal_ready": template["example_minimal_ready_work_item"],
+                "blocked": template["example_blocked_work_item"],
+            },
+        }
     else:
-        decision = create_discussion_placeholder(project_root, content, host="codex")
+        matched_discussion = match_open_discussion_for_message(project_root, content)
+        if matched_discussion:
+            decision = append_discussion_message(
+                project_root,
+                discussion_id=str(matched_discussion["discussion_id"]),
+                content=content,
+                host="codex",
+            )
+            discussion_mode = "appended"
+        else:
+            decision = create_discussion_placeholder(project_root, content, host="codex")
+            discussion_mode = "created"
         body = {
             "discussion": decision,
+            "discussion_mode": discussion_mode,
             "note_path": str(note_path),
-            "packet": {
-                "packet_kind": "discussion_authority",
-                "discussion_id": decision["discussion_id"],
-                "protocol_commands": _discussion_protocol_commands(project_root, decision["discussion_id"]),
-                "required_authority_categories": [
-                    "goal",
-                    "non_goals",
-                    "constraints",
-                    "accepted_decisions",
-                    "rejected_options",
-                    "acceptance",
-                    "context_evidence",
-                    "risks",
-                    "run_instructions",
-                    "open_questions",
-                ],
-            },
+            "packet": _discussion_packet(project_root, decision["discussion_id"]),
         }
     compiler = compile_task_authority(project_root)
     summary = compiler.get("summary", {})
@@ -124,7 +161,20 @@ def handle_discuss(args, parser, *, project_root: Path) -> int:
         ),
         body={**body, "compiler": compiler},
         refs=output_refs(note_path, project_root / ".thoth" / "docs" / "object-graph-summary.json"),
-        checks=[{"name": "object_graph_ready", "ok": True, "detail": str(work_counts.get("ready", 0))}],
+        checks=[
+            {"name": "object_graph_ready", "ok": True, "detail": str(work_counts.get("ready", 0))},
+            *(
+                [
+                    {
+                        "name": "work_item_ready",
+                        "ok": not body.get("work_item_ready_errors"),
+                        "detail": "; ".join(str(item) for item in body.get("work_item_ready_errors", [])) or "ready",
+                    }
+                ]
+                if isinstance(body.get("work_item_ready_errors"), list)
+                else []
+            ),
+        ],
     )
     return 0
 
@@ -141,7 +191,18 @@ def handle_record_discussion_authority(args, parser, *, project_root: Path) -> i
             result = close_discussion_authority(root, discussion_id=args.discussion_id, capsule=capsule)
             status = str(result.get("status") or "ok")
             if status == "needs_input":
-                summary = f"Discussion {args.discussion_id} still has authority gaps."
+                diagnostics = result.get("diagnostics") if isinstance(result.get("diagnostics"), dict) else {}
+                missing = diagnostics.get("missing_items") if isinstance(diagnostics.get("missing_items"), list) else []
+                fields = diagnostics.get("missing_work_json_fields") if isinstance(diagnostics.get("missing_work_json_fields"), list) else []
+                questions = diagnostics.get("open_questions") if isinstance(diagnostics.get("open_questions"), list) else []
+                parts: list[str] = []
+                if missing:
+                    parts.append("missing=" + ",".join(str(item) for item in missing))
+                if fields:
+                    parts.append("work_fields=" + ",".join(str(item) for item in fields))
+                if questions:
+                    parts.append(f"open_questions={len(questions)}")
+                summary = f"Discussion {args.discussion_id} needs input: {'; '.join(parts) if parts else 'authority gaps remain'}."
             else:
                 summary = f"Closed discussion authority for {args.discussion_id}"
     except ActiveExecutionLock as exc:
@@ -152,12 +213,37 @@ def handle_record_discussion_authority(args, parser, *, project_root: Path) -> i
             checks=[{"name": "active_work_lock", "ok": False, "detail": "authority close rejected"}],
         )
         return 3
+    diagnostics = result.get("diagnostics") if isinstance(result, dict) and isinstance(result.get("diagnostics"), dict) else {}
+    checks = [{"name": "authority_recorded", "ok": status == "ok", "detail": args.mode}]
+    if status == "needs_input":
+        open_questions = diagnostics.get("open_questions") if isinstance(diagnostics.get("open_questions"), list) else []
+        missing_fields = diagnostics.get("missing_work_json_fields") if isinstance(diagnostics.get("missing_work_json_fields"), list) else []
+        ready_errors = diagnostics.get("work_item_ready_errors") if isinstance(diagnostics.get("work_item_ready_errors"), list) else []
+        checks.extend(
+            [
+                {
+                    "name": "open_questions_closed",
+                    "ok": not open_questions,
+                    "detail": "; ".join(str(item) for item in open_questions) or "closed",
+                },
+                {
+                    "name": "required_work_json_fields",
+                    "ok": not missing_fields,
+                    "detail": ", ".join(str(item) for item in missing_fields) or "present",
+                },
+                {
+                    "name": "work_item_ready",
+                    "ok": not ready_errors,
+                    "detail": "; ".join(str(item) for item in ready_errors) or "ready",
+                },
+            ]
+        )
     print_envelope(
         command="record-discussion-authority",
         status=status,
         summary=summary,
-        body={"result": result},
+        body={"result": result, **({"diagnostics": diagnostics} if diagnostics else {})},
         refs=output_refs(root / ".thoth" / "objects" / "discussion" / f"{args.discussion_id}.json"),
-        checks=[{"name": "authority_recorded", "ok": status == "ok", "detail": args.mode}],
+        checks=checks,
     )
     return 0 if status == "ok" else 2

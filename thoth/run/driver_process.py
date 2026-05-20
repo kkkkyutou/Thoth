@@ -17,7 +17,6 @@ from .worker import (
     TestPhaseDriver,
     _normalize_worker_executor,
     _test_external_worker_mode,
-    _worker_timeout_seconds,
 )
 
 
@@ -46,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     def _mark_stop(_signum, _frame):
         nonlocal interrupted
         interrupted = True
+        _update_state(handle, status="stopping", phase="stopping", supervisor_state="stopping")
 
     signal.signal(signal.SIGTERM, _mark_stop)
     signal.signal(signal.SIGINT, _mark_stop)
@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         driver = TestPhaseDriver("complete")
     else:
         executor = _normalize_worker_executor(run_payload.get("executor"))
-        driver = ExternalWorkerPhaseDriver(executor=executor, timeout_seconds=_worker_timeout_seconds(run_payload))
+        driver = ExternalWorkerPhaseDriver(executor=executor, run_payload=run_payload)
 
     try:
         status = execute_runtime_controller(project_root, args.run_id, driver=driver, sink=SilentSink())

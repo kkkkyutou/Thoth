@@ -177,6 +177,9 @@ def load_work_results(project_root: Path) -> list[dict[str, Any]]:
     for path in _iter_work_result_files(project_root):
         payload = _read_json(path)
         if payload:
+            work_id = payload.get("work_id")
+            if isinstance(work_id, str) and work_id:
+                payload = _normalize_work_result(work_id, payload)
             payload.setdefault("_path", str(path))
             rows.append(payload)
     return rows
@@ -192,7 +195,8 @@ def load_work_result_map(project_root: Path) -> dict[str, dict[str, Any]]:
 
 
 def load_work_result(project_root: Path, work_id: str) -> dict[str, Any]:
-    return _read_json(work_result_path(project_root, work_id))
+    payload = _read_json(work_result_path(project_root, work_id))
+    return _normalize_work_result(work_id, payload) if payload else {}
 
 
 def load_compiler_state(project_root: Path) -> dict[str, Any]:
@@ -246,8 +250,12 @@ def _normalize_work_result(work_id: str, payload: dict[str, Any]) -> dict[str, A
         result["metrics"] = {}
     if not isinstance(result.get("latest_run"), dict):
         result["latest_run"] = {}
+    if not isinstance(result.get("latest_attempt"), dict):
+        result["latest_attempt"] = result["latest_run"] if isinstance(result.get("latest_run"), dict) else {}
     if not isinstance(result.get("latest_review"), dict):
         result["latest_review"] = {}
+    if result.get("status") in {"failed", "stopped"}:
+        result["status"] = f"attempt_{result['status']}"
     if result.get("current_summary") in ("", []):
         result["current_summary"] = None
     return result

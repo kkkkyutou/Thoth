@@ -21,7 +21,12 @@ from thoth.run.service import list_active_runs
 
 def load_config(project_root: Path) -> dict[str, Any]:
     manifest = load_project_manifest(project_root)
-    return {"project": manifest.get("project", {}), "dashboard": manifest.get("dashboard", {})}
+    return {
+        "project": manifest.get("project", {}),
+        "dashboard": manifest.get("dashboard", {}),
+        "runtime": manifest.get("runtime", {}),
+        "hosts": manifest.get("hosts", {}),
+    }
 
 
 def load_tasks(project_root: Path) -> list[dict[str, Any]]:
@@ -71,12 +76,17 @@ def load_todo_next(project_root: Path) -> list[tuple[str, str, str]]:
 
 def is_task_completed(task: dict[str, Any]) -> bool:
     work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
-    return bool(work_result.get("updated_at"))
+    ready_state = str(task.get("ready_state") or task.get("authority_status") or task.get("status") or "")
+    return ready_state == "validated" or (
+        work_result.get("usable") is True and work_result.get("meets_goal") is True
+    )
 
 
 def task_completed_in_range(task: dict[str, Any], from_date: datetime, to_date: datetime) -> bool:
+    if not is_task_completed(task):
+        return False
     work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
-    updated_at = work_result.get("updated_at")
+    updated_at = work_result.get("last_closure_at") or work_result.get("updated_at")
     if not isinstance(updated_at, str) or not updated_at:
         return False
     try:
@@ -172,27 +182,32 @@ def task_created_at(task: dict[str, Any]) -> str | None:
 
 def task_runtime_status(task: dict[str, Any]) -> str:
     work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
-    if work_result.get("updated_at"):
-        if work_result.get("usable") is True and work_result.get("meets_goal") is True:
-            return "completed"
-        return "failed"
-    ready_state = str(task.get("ready_state") or "blocked")
-    if ready_state == "ready":
-        return "ready"
-    if ready_state == "validated":
+    ready_state = str(task.get("ready_state") or task.get("authority_status") or task.get("status") or "blocked")
+    if ready_state == "validated" or (work_result.get("usable") is True and work_result.get("meets_goal") is True):
         return "completed"
-    if ready_state == "invalid":
-        return "invalid"
-    return "blocked"
+    return {
+        "ready": "ready",
+        "validated": "completed",
+        "active": "in_progress",
+        "failed": "failed",
+        "draft": "pending",
+        "blocked": "blocked",
+        "invalid": "invalid",
+        "abandoned": "failed",
+    }.get(ready_state, "blocked")
 
 
 def task_progress_pct(task: dict[str, Any]) -> float:
     work_result = task.get("work_result") if isinstance(task.get("work_result"), dict) else {}
-    if work_result.get("updated_at"):
+    if work_result.get("usable") is True and work_result.get("meets_goal") is True:
         return 100.0
-    ready_state = str(task.get("ready_state") or "blocked")
+    ready_state = str(task.get("ready_state") or task.get("authority_status") or task.get("status") or "blocked")
     if ready_state == "validated":
         return 100.0
+    if ready_state in {"failed", "abandoned"}:
+        return 100.0
+    if ready_state == "active":
+        return 50.0
     if ready_state == "ready":
         return 15.0
     if ready_state == "blocked":

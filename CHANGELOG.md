@@ -4,6 +4,19 @@
 
 No pending changes.
 
+## [0.2.6] - 2026-05-20
+
+### Changed
+- Stabilized the Codex default executor path for public `run` / `loop` / `review` / `auto` execution while preserving explicit Claude executor selection.
+- Changed failed and stopped run projections to `attempt_failed` / `attempt_stopped` so ready work items stay runnable after a failed or stopped attempt.
+- Added phase-specific stall guards: `plan` defaults to 900 seconds, `reflect` defaults to 600 seconds, and `execute` / `validate` no longer use short fixed default timeouts.
+
+### Fixed
+- Normalized JSON-like `plan.open_gaps` and `plan.forbidden_assumptions_used` items into compact strings, so incomplete authority terminalizes as `needs_input` instead of entering schema retries.
+- Preserved invalid worker outputs, validation errors, stdout, and stderr under `worker-invalid/` before retrying phase workers.
+- Added worker-log dashboard reload support and run detail log tails for active or recently failed phase workers.
+- Ensured phase-worker timeout and stop paths kill the worker process group and terminalize as failed timeout attempts or stopped attempts instead of hanging foreground drivers.
+
 ## [0.2.5] - 2026-05-19
 
 ### Changed

@@ -7,8 +7,10 @@ import type {
   ResearchConfig,
   RunDetail,
   RunEventPage,
+  RunWorkerLogs,
   RunSummary,
   SystemStatus,
+  TimelineItem,
   WorkItem,
   WorkItemFilters,
   WorkItemListResponse,
@@ -61,9 +63,15 @@ export const api = {
     params.set('limit', String(limit))
     return request<RunEventPage>(`/runs/${runId}/events?${params.toString()}`)
   },
+  getRunWorkerLogs: (runId: string, phase?: string | null, tail = 20000) => {
+    const params = new URLSearchParams()
+    if (phase) params.set('phase', phase)
+    params.set('tail', String(tail))
+    return request<RunWorkerLogs>(`/runs/${runId}/worker-logs?${params.toString()}`)
+  },
 
   getDag: () => request<DagData>('/dag'),
-  getTimeline: () => request<GanttRow[]>('/timeline'),
+  getTimeline: () => request<TimelineItem[]>('/timeline'),
   getGantt: () => request<GanttRow[]>('/gantt'),
   getMilestones: () => request<Milestone[]>('/milestones'),
   getActivity: (limit = 50) => request<ActivityEvent[]>(`/activity?limit=${limit}`),

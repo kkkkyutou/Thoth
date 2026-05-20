@@ -15,6 +15,37 @@ from .ledger import _append_event, _update_run, _update_state, _write_heartbeat,
 from .model import ACTIVE_STATUSES, LIVE_DISPATCH_MODE, SLEEP_DISPATCH_MODE, TERMINAL_STATUSES, RunHandle
 from .supervisor import supervisor_process_alive
 
+def _terminate_supervisor_tree(supervisor: dict[str, Any], *, project_root: Path, run_id: str) -> None:
+    pid = supervisor.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
+        return
+    if not supervisor_process_alive(supervisor, project_root=project_root, run_id=run_id):
+        return
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+    except PermissionError:
+        os.kill(pid, signal.SIGTERM)
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        if not supervisor_process_alive(supervisor, project_root=project_root, run_id=run_id):
+            return
+        time.sleep(0.05)
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+    except PermissionError:
+        os.kill(pid, signal.SIGKILL)
+
+
 def stop_run(project_root: Path, run_id: str) -> None:
     handle = RunHandle(project_root=project_root.resolve(), run_id=run_id)
     run_payload = handle.run_json()
@@ -30,10 +61,7 @@ def stop_run(project_root: Path, run_id: str) -> None:
             _write_stopped_result(handle)
             _update_run(handle, attachable=False)
             release_repo_lease(project_root, run_id)
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+        _terminate_supervisor_tree(supervisor, project_root=project_root, run_id=run_id)
         return
     if handle.state_json().get("status") in TERMINAL_STATUSES:
         release_repo_lease(project_root, run_id)
