@@ -391,8 +391,28 @@ def next_phase_payload(project_root: Path, run_id: str) -> dict[str, Any]:
     return _phase_input_for_run(handle, controller)
 
 
-def _require_phase_payload(phase: str, payload: dict[str, Any], *, validate_schema: dict[str, Any] | None = None) -> dict[str, Any]:
-    return validate_phase_output(phase, payload, validate_schema=validate_schema)
+def _prior_validate_payload(controller: dict[str, Any]) -> dict[str, Any] | None:
+    artifacts = controller.get("artifacts") if isinstance(controller.get("artifacts"), dict) else {}
+    validate_artifact = artifacts.get("validate")
+    if not isinstance(validate_artifact, str) or not validate_artifact:
+        return None
+    payload = _read_json(Path(validate_artifact))
+    return payload if isinstance(payload, dict) and payload else None
+
+
+def _require_phase_payload(
+    phase: str,
+    payload: dict[str, Any],
+    *,
+    validate_schema: dict[str, Any] | None = None,
+    prior_validate_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return validate_phase_output(
+        phase,
+        payload,
+        validate_schema=validate_schema,
+        prior_validate_payload=prior_validate_payload,
+    )
 
 
 def _write_phase_artifact(handle: RunHandle, phase: str, payload: dict[str, Any]) -> str:
@@ -523,6 +543,7 @@ def submit_phase_output(project_root: Path, run_id: str, *, phase: str, payload:
         phase,
         payload,
         validate_schema=validate_schema if isinstance(validate_schema, dict) else None,
+        prior_validate_payload=_prior_validate_payload(controller) if phase == "reflect" else None,
     )
     heartbeat_run(project_root, run_id, phase=phase, progress_pct=RUN_PHASE_PROGRESS.get(phase, 50), note=f"{phase} output received")
     outcome = _phase_outcome_for_run(handle, controller, phase, normalized_payload)

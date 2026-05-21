@@ -327,6 +327,8 @@ def suggest_work_items_for_query(project_root: Path, query: str, *, limit: int =
     query_tokens = _tokenize_work_query(normalized_query)
     scored: list[tuple[float, dict[str, Any]]] = []
     for work in work_items:
+        if work.get("hidden") is True:
+            continue
         ready_state = str(work.get("ready_state") or "")
         runnable = work.get("runnable") is True
         text = _work_search_text(work)

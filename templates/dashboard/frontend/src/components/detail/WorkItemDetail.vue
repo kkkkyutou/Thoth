@@ -3,11 +3,11 @@ import { computed, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import { locale } from '@/locales'
 import { useDashboardStore } from '@/stores/dashboard'
-import type { RunSummary, RunWorkerLogs } from '@/types'
+import type { RunDetail, RunSummary } from '@/types'
 
 const store = useDashboardStore()
 const task = computed(() => store.selectedWorkItem!)
-const workerLogs = ref<RunWorkerLogs | null>(null)
+const runDetail = ref<RunDetail | null>(null)
 
 const verdictLabel = computed(() => {
   const result = task.value.work_result
@@ -37,21 +37,23 @@ function isRuntimeActive(run?: RunSummary | null): boolean {
 async function reloadWorkerLogs() {
   const runId = displayRun.value?.run_id
   if (!runId) {
-    workerLogs.value = null
+    runDetail.value = null
     return
   }
-  workerLogs.value = await api.getRunWorkerLogs(runId, null, 20000)
+  runDetail.value = await api.getRun(runId)
 }
 
 watch(
   () => displayRun.value?.run_id,
   () => {
     reloadWorkerLogs().catch(() => {
-      workerLogs.value = null
+      runDetail.value = null
     })
   },
   { immediate: true },
 )
+
+const phaseCards = computed(() => runDetail.value?.phase_cards ?? [])
 
 function renderJson(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
@@ -162,11 +164,31 @@ function renderJson(value: unknown): string {
         </dd>
       </dl>
       <button v-if="displayRun" class="task-detail__button" @click="reloadWorkerLogs">Reload</button>
-      <div v-if="workerLogs && Object.keys(workerLogs.logs || {}).length" class="task-detail__logs">
-        <div v-for="log in workerLogs.logs" :key="log.phase" class="task-detail__log">
-          <strong>{{ log.phase }}</strong>
-          <pre v-if="log.stdout.tail">{{ log.stdout.tail }}</pre>
-          <pre v-if="log.stderr.tail" class="stderr">{{ log.stderr.tail }}</pre>
+      <div v-if="phaseCards.length" class="task-detail__phase-cards">
+        <div
+          v-for="card in phaseCards"
+          :key="card.phase"
+          class="task-detail__phase-card"
+        >
+          <div class="task-detail__phase-head">
+            <strong>{{ card.label }}</strong>
+            <span class="pill" :class="`badge-${card.status}`">{{ card.status }}</span>
+          </div>
+          <p v-if="card.summary" class="task-detail__text">{{ card.summary }}</p>
+          <ul v-if="card.warnings?.length" class="task-detail__warnings">
+            <li v-for="warning in card.warnings" :key="warning">{{ warning }}</li>
+          </ul>
+          <div
+            v-for="section in card.sections"
+            :key="`${card.phase}-${section.title}`"
+            class="task-detail__phase-section"
+          >
+            <h4>{{ section.title }}</h4>
+            <ul class="task-detail__list">
+              <li v-for="item in section.items" :key="item">{{ item }}</li>
+            </ul>
+            <p v-if="section.truncated" class="task-detail__muted">More evidence is available in the run artifacts.</p>
+          </div>
         </div>
       </div>
     </article>
@@ -245,29 +267,46 @@ function renderJson(value: unknown): string {
   cursor: pointer;
 }
 
-.task-detail__logs {
+.task-detail__phase-cards {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin-top: 12px;
 }
 
-.task-detail__log {
+.task-detail__phase-card {
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 10px;
+  padding: 12px;
+  background: var(--surface-muted);
 }
 
-.task-detail__log pre {
-  max-height: 260px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
+.task-detail__phase-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.task-detail__phase-section {
+  margin-top: 10px;
+}
+
+.task-detail__phase-section h4 {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.task-detail__warnings {
   margin: 8px 0 0;
-  font-size: 12px;
+  padding-left: 18px;
+  color: #8a5a17;
 }
 
-.task-detail__log pre.stderr {
-  color: #721c24;
+.task-detail__muted {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
 }
 
 .task-detail__list {

@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "templates" / "dash
 from runtime_loader import (
     get_active_run_for_work_item,
     get_latest_run_for_work_item,
+    get_run_detail,
     get_run_events,
     get_run_worker_logs,
     get_work_item_runs,
@@ -109,3 +110,75 @@ def test_get_run_worker_logs_returns_phase_stdout_and_stderr_tails(tmp_path, mon
     assert payload["logs"]["plan"]["stdout"]["tail"].endswith("stdout-tail")
     assert len(payload["logs"]["plan"]["stdout"]["tail"]) == 1000
     assert payload["logs"]["plan"]["stderr"]["tail"] == "stderr-tail"
+
+
+def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
+    project_root = tmp_path
+    runs_dir = project_root / ".thoth" / "runs"
+    monkeypatch.setenv("THOTH_RUNS_DIR", str(runs_dir))
+    run_dir = runs_dir / "run-cards"
+    _write_json(run_dir / "run.json", {"run_id": "run-cards", "work_id": "work-cards"})
+    _write_json(run_dir / "state.json", {"status": "failed", "phase": "reflect"})
+    _write_json(
+        run_dir / "phase_state.json",
+        {
+            "phase_statuses": {"plan": "completed", "execute": "completed", "validate": "failed"},
+            "artifacts": {
+                "plan": str(run_dir / "plan.json"),
+                "execute": str(run_dir / "execute.json"),
+                "validate": str(run_dir / "validate.json"),
+            },
+        },
+    )
+    _write_json(run_dir / "result.json", {"status": "failed", "summary": "reflect phase failed"})
+    _write_json(
+        run_dir / "plan.json",
+        {
+            "summary": "plan summary",
+            "authority_complete": True,
+            "open_gaps": [],
+            "forbidden_assumptions_used": [],
+            "discovery_tasks": ["locate dependency"],
+            "execution_steps": ["repair dependency"],
+            "validation_plan": "run pytest",
+        },
+    )
+    _write_json(
+        run_dir / "execute.json",
+        {
+            "summary": "execute summary",
+            "dependency_actions": [{"package": "flex_gemm", "scope": ".vendor"}],
+            "debug_attempts": ["retried import"],
+            "verification_steps": ["pytest -k flex_gemm"],
+            "files_touched": ["src/demo.py"],
+            "commands_run": ["python -m pytest -q"],
+            "artifacts": [],
+        },
+    )
+    _write_json(
+        run_dir / "validate.json",
+        {
+            "summary": "validate failed",
+            "passed": False,
+            "metric_name": "bitwise",
+            "metric_value": 0,
+            "threshold": 1,
+            "checks": [{"name": "flex_gemm", "passed": False, "details": "No module named flex_gemm"}],
+        },
+    )
+    invalid_dir = run_dir / "worker-invalid"
+    invalid_dir.mkdir(parents=True)
+    (invalid_dir / "reflect.attempt-2.validation-error.txt").write_text(
+        "reflect output missing required failure field: failure_class\n",
+        encoding="utf-8",
+    )
+
+    detail = get_run_detail(project_root, "run-cards")
+
+    assert detail is not None
+    cards = {card["phase"]: card for card in detail["phase_cards"]}
+    assert cards["plan"]["sections"][1]["items"] == ["locate dependency"]
+    assert any("flex_gemm" in item for section in cards["execute"]["sections"] for item in section["items"])
+    assert any("FAIL flex_gemm" in item for item in cards["validate"]["sections"][1]["items"])
+    assert cards["reflect"]["status"] == "failed"
+    assert cards["reflect"]["warnings"] == ["reflect: invalid_output_diagnostic"]

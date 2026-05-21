@@ -457,7 +457,7 @@ def test_external_worker_prompt_mentions_protocol_and_limits(tmp_path):
     assert "Runtime driver capture path" in prompt
     assert "Summary budget UTF-8 bytes" in prompt
     assert len(json.dumps(packet, ensure_ascii=False)) < 4200
-    assert len(prompt) < 5800
+    assert len(prompt) < 7000
 
 
 def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
@@ -481,7 +481,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     )
     plan_packet = next_phase_payload(project, handle.run_id)
     assert plan_packet["phase"] == "plan"
-    assert plan_packet["phase_authority"]["objective"].startswith("Produce the concrete execution plan")
+    assert plan_packet["phase_authority"]["objective"].startswith("Act as the top-level planner")
     assert plan_packet["phase_authority"]["summary_budget_utf8"] == 1200
 
     submit_phase_output(
@@ -532,6 +532,99 @@ def test_phase_output_normalizes_overlong_summary(tmp_path):
     plan_artifact = json.loads((handle.run_dir / "plan.json").read_text(encoding="utf-8"))
     assert utf8_len(plan_artifact["summary"]) <= 1200
     assert plan_artifact["_normalization_warnings"][0]["field"] == "plan.summary"
+
+
+def test_phase_prompt_includes_execute_role_contract(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Role demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Role demo"},
+        goal="exercise role prompt",
+    )
+    submit_phase_output(project, handle.run_id, phase="plan", payload=_plan_payload())
+
+    prompt = build_external_worker_prompt(handle, {})
+
+    assert "Phase role contract:" in prompt
+    assert "Role: senior implementation engineer." in prompt
+    assert "Repo-local dependency repair is allowed" in prompt
+    assert "Optional structured fields for human dashboards" in prompt
+
+
+def test_execute_output_accepts_structured_debug_fields():
+    payload = validate_phase_output(
+        "execute",
+        {
+            "summary": "execute done",
+            "plan_artifact_read": True,
+            "plan_deviations": [],
+            "files_touched": [],
+            "commands_run": [],
+            "artifacts": [],
+            "debug_attempts": [{"name": "flex_gemm import", "status": "fixed"}],
+            "dependency_actions": [{"package": "flex_gemm", "scope": ".vendor"}],
+            "verification_steps": [{"command": "pytest -k flex_gemm", "passed": True}],
+            "resolved_failures": ["ModuleNotFoundError: flex_gemm"],
+            "remaining_failures": [],
+        },
+    )
+
+    assert payload["debug_attempts"][0]["name"] == "flex_gemm import"
+    assert payload["dependency_actions"][0]["scope"] == ".vendor"
+
+
+def test_reflect_failure_fields_are_synthesized_from_validate_evidence():
+    payload = validate_phase_output(
+        "reflect",
+        {
+            "summary": "reflect failed validation",
+            "outcome": "failed",
+            "residual_risks": [],
+            "evidence": ["validate failed"],
+            "next_recommendation": "repair dependency",
+        },
+        prior_validate_payload={
+            "summary": "pytest failed",
+            "passed": False,
+            "metric_name": "bitwise_identical",
+            "metric_value": 0.0,
+            "threshold": 1.0,
+            "checks": [
+                {"name": "test_flex_gemm", "passed": False, "details": "ModuleNotFoundError: No module named 'flex_gemm'"},
+            ],
+        },
+    )
+
+    assert payload["failure_class"] == "dependency_missing"
+    assert "flex_gemm" in payload["root_cause"]
+    assert "test_flex_gemm" in payload["next_plan_hint"]
+    assert any(item["field"] == "reflect.failure_class" for item in payload["_normalization_warnings"])
+
+
+def test_execute_worker_has_no_default_timeout_from_run_payload(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Timeout policy demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Timeout policy demo"},
+        goal="execute should not inherit loop budget",
+    )
+    submit_phase_output(project, handle.run_id, phase="plan", payload=_plan_payload())
+    phase_packet = next_phase_payload(project, handle.run_id)
+    driver = ExternalWorkerPhaseDriver(executor="codex", run_payload={"max_runtime_seconds": 1})
+
+    assert driver._timeout_for_phase("execute", phase_packet) is None
 
 
 def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_path):

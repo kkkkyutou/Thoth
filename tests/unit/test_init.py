@@ -25,7 +25,7 @@ from thoth.init.render import (
     generate_thoth_runtime,
     parse_config,
 )
-from thoth.init.service import initialize_project, preview_project_migration, sync_project_layer
+from thoth.init.service import abandon_duplicate_timestamp_work_items, initialize_project, preview_project_migration, sync_project_layer
 from thoth.objects import Store
 from thoth.run.phases import default_validate_output_schema
 
@@ -410,3 +410,59 @@ def test_sync_project_layer_backfills_legacy_discussion_authority(base_config, t
 
     assert authority_context["source_discussion_id"] == "DISC-sync"
     assert result["authority_repairs"][0]["work_id"] == "legacy-work"
+
+
+def test_sync_abandons_timestamp_duplicate_work_item(tmp_path):
+    store = Store(tmp_path)
+    eval_contract = {
+        "entrypoint": {"command": "python -m pytest src/demo_test.py -v"},
+        "primary_metric": {"name": "ok", "direction": "gte", "threshold": 1},
+        "failure_classes": ["metric_not_reached"],
+        "validate_output_schema": default_validate_output_schema(),
+    }
+    payload = {
+        "work_kind": "execution",
+        "runnable": True,
+        "goal": "Copy core modules",
+        "context": "closed discussion",
+        "module": "phase0",
+        "direction": "infra",
+        "constraints": ["bitwise"],
+        "execution_plan": ["copy", "test"],
+        "eval_contract": eval_contract,
+        "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+        "scheduling": {"priority": 0},
+        "decisions": ["DISC-demo"],
+        "missing_questions": [],
+    }
+    store.create(
+        kind="work_item",
+        object_id="DEMO00-T0.1",
+        status="ready",
+        title="Stable work",
+        summary="Copy core modules",
+        source="test",
+        payload=payload,
+    )
+    store.create(
+        kind="work_item",
+        object_id="work-20260520T100057Z-work",
+        status="ready",
+        title="work-20260520T100057Z-work",
+        summary="Copy core modules",
+        source="discuss",
+        payload=dict(payload),
+    )
+
+    repairs = abandon_duplicate_timestamp_work_items(tmp_path)
+    duplicate = store.read("work_item", "work-20260520T100057Z-work")
+    stable = store.read("work_item", "DEMO00-T0.1")
+
+    assert repairs[0]["status"] == "abandoned"
+    assert duplicate["status"] == "abandoned"
+    assert duplicate["payload"]["hidden"] is True
+    assert duplicate["payload"]["superseded_by"] == "work_item:DEMO00-T0.1"
+    assert {"type": "supersedes", "target": "work_item:work-20260520T100057Z-work"} in stable["links"]
+
+    second = abandon_duplicate_timestamp_work_items(tmp_path)
+    assert second[0]["status"] == "already_abandoned"
