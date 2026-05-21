@@ -23,6 +23,7 @@ from thoth.run.guidance import append_run_guidance, guidance_path
 from thoth.run.model import RunHandle
 from thoth.run.packets import LIVE_DISPATCH_MODE, prepare_execution
 from thoth.run.phases import load_phase_state
+from thoth.run.reconcile import reconcile_run
 from thoth.run.service import attach_run, list_active_runs, resume_run, stop_run
 from thoth.run.worker import (
     ExternalWorkerPhaseDriver,
@@ -306,6 +307,22 @@ def handle_review(args, parser, *, project_root: Path) -> int:
 
 def handle_run_or_loop(args, parser, *, project_root: Path) -> int:
     guidance_message = _prompt_query(args)
+    if args.command == "run" and getattr(args, "reconcile", None):
+        result = reconcile_run(project_root, str(args.reconcile))
+        status = "ok" if result.get("status") == "ok" else "needs_input"
+        print_envelope(
+            command="run",
+            status=status,
+            summary=(
+                f"Reconciled historical run {args.reconcile}"
+                if status == "ok"
+                else f"Run {args.reconcile} was not safe to reconcile: {result.get('reason')}"
+            ),
+            body={"result": result},
+            refs=output_refs(project_root / ".thoth" / "runs" / str(args.reconcile)),
+            checks=[{"name": "reconcile_safe", "ok": status == "ok", "detail": str(result.get("reason") or "ok")}],
+        )
+        return 0 if status == "ok" else 2
     if getattr(args, "attach", None):
         if guidance_message:
             entries = _append_guidance_to_run(project_root, args.attach, message=guidance_message, source="host_agent")

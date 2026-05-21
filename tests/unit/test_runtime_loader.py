@@ -178,7 +178,21 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
                 "python_executable": "/opt/conda/envs/thoth-demo/bin/python",
                 "exit_code": 1,
                 "passed": False,
+                "stdout_log_path": ".thoth/runs/run-cards/worker-logs/official-validator.stdout.log",
+                "stderr_log_path": ".thoth/runs/run-cards/worker-logs/official-validator.stderr.log",
             },
+            "observed_validation": {
+                "command": "python -m pytest -q",
+                "expected_command": "python -m pytest -q",
+                "exit_code": 1,
+                "passed": False,
+                "command_matches": True,
+                "metric_threshold_met": False,
+                "metric_value": 0,
+            },
+            "runtime_contract_health": "failed",
+            "failure_class": "execution_error",
+            "acceptance_state": "not_closed",
         },
     )
     invalid_dir = run_dir / "worker-invalid"
@@ -196,6 +210,8 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
     assert any("flex_gemm" in item for section in cards["execute"]["sections"] for item in section["items"])
     assert any("/opt/conda/envs/thoth-demo/bin/python" in item for section in cards["execute"]["sections"] for item in section["items"])
     assert any("/opt/conda/envs/thoth-demo/bin/python" in item for section in cards["validate"]["sections"] for item in section["items"])
+    assert any("runtime_contract_health=failed" in item for section in cards["validate"]["sections"] for item in section["items"])
+    assert any("metric_threshold_met=False" in item for section in cards["validate"]["sections"] for item in section["items"])
     assert any("FAIL flex_gemm" in item for section in cards["validate"]["sections"] for item in section["items"])
     assert cards["reflect"]["status"] == "failed"
     assert cards["reflect"]["warnings"] == ["reflect: invalid_output_diagnostic"]

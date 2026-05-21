@@ -59,4 +59,4 @@ Finish the current strict task through the four-phase RuntimeDriver while preser
 
 - reply_budget_utf8: `36`
 - result_style: terminal receipt only
-- validator_policy: plan first; execute returns official validator receipt; validate confirms it; reflect may feed back once
+- validator_policy: plan first; execute returns official validator receipt; validate normalizes/confirms it; reflect retries only business failures

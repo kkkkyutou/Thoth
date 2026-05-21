@@ -26,6 +26,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--attach")
     run_parser.add_argument("--watch")
     run_parser.add_argument("--stop")
+    run_parser.add_argument("--reconcile")
 
     loop_parser = sub.add_parser("loop")
     loop_parser.add_argument("--goal", default="loop")

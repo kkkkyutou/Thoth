@@ -50,7 +50,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         ),
         reply_budget_utf8=36,
         result_style="terminal receipt only",
-        validator_policy="plan first; execute returns official validator receipt; validate confirms it; reflect may feed back once",
+        validator_policy="plan first; execute returns official validator receipt; validate normalizes/confirms it; reflect retries only business failures",
     ),
     "loop": CommandPromptSpec(
         command_id="loop",
@@ -333,21 +333,24 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "Repo-local dependency repair is allowed: use local source discovery, .vendor/task-local installs, mirrors/proxies, builds, and focused smoke tests when they are necessary for the validator.",
         "Do not stop at the first missing module or short network timeout; record attempts and keep pursuing viable repo-local fixes until the task is solved, the issue is outside authority, or the user stops the run.",
         "Run the official eval_entrypoint.command before returning whenever the task can reach it, using the same interpreter, cwd, PATH, CUDA visibility, and environment you used for implementation debugging.",
-        "Return a compact official_validation_receipt with command, cwd, python_executable, env_summary, exit_code, passed, checks_summary, stdout_log, and stderr_log.",
+        "Return a compact official_validation_receipt with command, cwd, python_executable, env_summary, exit_code, passed, metric_value when available, checks_summary, stdout_log_path/stderr_log_path when available, or inline stdout_log/stderr_log as fallback.",
         "Apply temporary invocation/live guidance when it helps execution, but reject guidance that changes authority, validators, metrics, or thresholds.",
     ),
     "validate": (
         "Role: mechanical acceptance receipt verifier.",
         "Do not start a new host worker; confirm the official_validation_receipt from execute.",
-        "Treat command mismatch, missing receipt, missing logs, non-zero exit code, or passed=false as validation failure.",
+        "Normalize inline stdout/stderr receipt evidence into run logs when needed; empty stderr is acceptable when the official validator succeeded.",
+        "Treat command mismatch, missing receipt, missing stdout evidence, non-zero exit code, passed=false, or metric below threshold as validation failure.",
+        "Classify receipt/log contract hygiene as runtime_contract_error, not project implementation failure.",
         "Do not repair implementation, install dependencies, rewrite tests, or reinterpret the threshold in this phase.",
     ),
     "reflect": (
         "Role: human-style senior reviewer.",
         "Do not continue engineering execution; use plan, execute, and validate artifacts as evidence.",
         "On success, record compact lessons, pitfalls, evidence, and residual scientific/algorithmic risks.",
-        "On failure, act like the human supervisor: be direct, forbid fallback/metric weakening, and tell execute to continue solving the concrete bug under the same validator.",
-        "If validation failed, include failure_class, root_cause, next_plan_hint, corrective_prompt, retry_authorized, retry_target=execute, and retry_budget=1; keep them evidence-based.",
+        "On business failure, act like the human supervisor: be direct, forbid fallback/metric weakening, and tell execute to continue solving the concrete bug under the same validator.",
+        "Do not authorize execute retries for runtime_contract_error, receipt/log schema hygiene, missing stdout evidence, or reconciliation-only historical failures.",
+        "If validation failed for business reasons, include failure_class, root_cause, next_plan_hint, corrective_prompt, retry_authorized, retry_target=execute, and retry_budget=1; keep them evidence-based.",
     ),
 }
 
@@ -464,12 +467,13 @@ def render_phase_worker_prompt(
         lines.append("Read `required_plan_artifact` or `prior_artifacts.plan` before touching files and set plan_artifact_read=true only after doing so.")
         lines.append("Follow the plan artifact; if deviation is necessary, list it in plan_deviations without changing the goal or validator.")
         lines.append("Use focused validation during execute as an engineering feedback loop, then run the official eval_entrypoint.command before returning whenever reachable.")
-        lines.append("Return `official_validation_receipt` with command, cwd, python_executable, env_summary, exit_code, passed, checks_summary, stdout_log, and stderr_log. The later validate phase mechanically confirms this receipt instead of launching a separate worker.")
+        lines.append("Return `official_validation_receipt` with command, cwd, python_executable, env_summary, exit_code, passed, metric_value when available, checks_summary, stdout_log_path/stderr_log_path when available, or inline stdout_log/stderr_log as fallback. The later validate phase mechanically normalizes and confirms this receipt instead of launching a separate worker.")
         lines.append("If you repair dependencies, prefer repo-local or task-local locations such as `.vendor`; do not mutate global environments unless the work item explicitly authorizes it.")
         lines.append("Do not wait for reflect to solve engineering bugs; debug imports, CUDA visibility, local dependency shims, build issues, and test failures here when they are inside task authority.")
         lines.append("Optional structured fields for human dashboards: debug_attempts, verification_steps, dependency_actions, resolved_failures, remaining_failures.")
     if phase == "reflect":
-        lines.append("If validate failed and the issue is still inside task authority, return retry_authorized=true, retry_target=\"execute\", retry_budget=1, and a direct corrective_prompt for the next execute cycle.")
+        lines.append("If validate failed for a project/business issue still inside task authority, return retry_authorized=true, retry_target=\"execute\", retry_budget=1, and a direct corrective_prompt for the next execute cycle.")
+        lines.append("If validate failure_class or runtime_contract_health is runtime_contract_error, return retry_authorized=false and explain the Thoth runtime/reconcile issue instead of sending execute back to edit the project.")
         lines.append("The corrective_prompt should preserve the original goal, validator, metric, and threshold while telling execute to continue debugging the concrete failure.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:
@@ -515,7 +519,7 @@ def build_codex_public_command_prompt(
                 "If the command streams runtime events, report progress and risks from those events only.",
                 "Stay in the same session until the RuntimeDriver reaches terminal state unless --sleep was requested.",
                 "Runtime lifecycle is plan -> execute -> validate -> reflect; auto advances selected work through child loops.",
-                "In current runtime semantics, execute owns implementation plus the official validator run; validate mechanically confirms execute's official_validation_receipt.",
+                "In current runtime semantics, execute owns implementation plus the official validator run; validate mechanically normalizes and confirms execute's official_validation_receipt.",
                 "Do not hand-edit `.thoth`; let the Thoth runtime driver advance phases.",
                 "If the user sends a natural-language correction while a live run/loop/auto is active, inject it into the active run guidance inbox through the packet protocol or installed runtime instead of merely replying with advice.",
                 "Treat such live corrections as temporary guidance: they may steer execution and debugging, but they must not rewrite work authority or validation criteria.",

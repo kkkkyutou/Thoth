@@ -78,6 +78,21 @@ def _receipt_payload(handle, *, passed: bool = True, command: str = "pytest -q")
     }
 
 
+def _inline_receipt_payload(*, passed: bool = True, command: str = "pytest -q", metric_value: float | int = 1) -> dict:
+    return {
+        "command": command,
+        "cwd": "/tmp/project",
+        "python_executable": "/opt/conda/bin/python",
+        "env_summary": {"CUDA_VISIBLE_DEVICES": "0"},
+        "exit_code": 0 if passed else 1,
+        "passed": passed,
+        "metric_value": metric_value,
+        "checks_summary": ["official validator passed" if passed else "official validator failed"],
+        "stdout_log": "============================= test session starts =============================\n3 passed\n",
+        "stderr_log": "[empty stderr captured]",
+    }
+
+
 def test_plan_gap_schema_drift_normalizes_jsonish_items():
     payload = {
         **_plan_payload("authority incomplete"),
@@ -733,6 +748,186 @@ def test_runtime_validate_mechanically_confirms_execute_receipt_without_worker(t
     assert "official_command_matches" in {check["name"] for check in validate_payload["checks"]}
 
 
+def test_runtime_validate_normalizes_inline_receipt_logs_and_preserves_metric(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Inline receipt demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Inline receipt demo",
+            "eval_entrypoint": {"command": "pytest -q"},
+            "primary_metric": {"name": "bitwise_identical", "direction": "gte", "threshold": 1.0},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="normalize inline validator logs",
+    )
+
+    class InlineReceiptDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                return {
+                    **_execute_payload(),
+                    "official_validation_receipt": _inline_receipt_payload(metric_value=1.0),
+                }
+            if phase == "reflect":
+                return {
+                    "summary": "reflect passed",
+                    "outcome": "passed",
+                    "residual_risks": [],
+                    "evidence": ["inline receipt normalized"],
+                    "next_recommendation": "close run",
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=InlineReceiptDriver())
+
+    assert status == 0
+    validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
+    assert validate_payload["passed"] is True
+    assert validate_payload["metric_name"] == "bitwise_identical"
+    assert validate_payload["metric_value"] == 1.0
+    assert validate_payload["runtime_contract_health"] == "ok"
+    receipt = validate_payload["official_validation_receipt"]
+    assert Path(receipt["stdout_log_path"]).exists()
+    assert Path(receipt["stderr_log_path"]).exists()
+    assert "3 passed" in Path(receipt["stdout_log_path"]).read_text(encoding="utf-8")
+    assert validate_payload["_normalization_warnings"]
+    run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
+    assert run_result["result"]["metrics"]["bitwise_identical"] == 1.0
+    assert run_result["result"]["observed_validation"]["metric_threshold_met"] is True
+
+
+def test_runtime_validate_does_not_treat_missing_stdout_path_as_inline_log(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Missing stdout path demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Missing stdout path demo",
+            "eval_entrypoint": {"command": "pytest -q"},
+            "primary_metric": {"name": "checks", "threshold": 1},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="do not convert a missing path into proof",
+    )
+
+    class MissingStdoutPathDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                return {
+                    **_execute_payload(),
+                    "official_validation_receipt": {
+                        "command": "pytest -q",
+                        "cwd": str(project),
+                        "python_executable": "/opt/conda/bin/python",
+                        "exit_code": 0,
+                        "passed": True,
+                        "metric_value": 1,
+                        "checks_summary": ["passed"],
+                        "stdout_log_path": ".thoth/runs/run-missing/missing.stdout.log",
+                        "stderr_log": "[empty stderr captured]",
+                    },
+                }
+            if phase == "reflect":
+                return {
+                    "summary": "reflect failed",
+                    "outcome": "failed",
+                    "residual_risks": [],
+                    "evidence": ["validate failed on missing stdout path"],
+                    "next_recommendation": "fix runtime receipt contract",
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=MissingStdoutPathDriver())
+
+    assert status == 1
+    validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
+    assert validate_payload["runtime_contract_health"] == "runtime_contract_error"
+    assert any(check["name"] == "stdout_evidence_present" and check["ok"] is False for check in validate_payload["checks"])
+    assert not (handle.run_dir / "worker-logs" / "official-validator.stdout.log").exists()
+
+
+def test_runtime_contract_error_does_not_retry_execute_from_reflect(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Runtime contract demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Runtime contract demo",
+            "eval_entrypoint": {"command": "pytest -q"},
+            "primary_metric": {"name": "checks", "threshold": 1},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="do not retry execute for receipt hygiene",
+    )
+    calls: list[str] = []
+
+    class MissingStdoutDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            calls.append(phase)
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                return {
+                    **_execute_payload(),
+                    "official_validation_receipt": {
+                        "command": "pytest -q",
+                        "cwd": str(project),
+                        "python_executable": "/opt/conda/bin/python",
+                        "exit_code": 0,
+                        "passed": True,
+                        "metric_value": 1,
+                        "checks_summary": ["passed"],
+                        "stderr_log": "[empty stderr captured]",
+                    },
+                }
+            if phase == "reflect":
+                return {
+                    "summary": "reflect failed",
+                    "outcome": "failed",
+                    "residual_risks": [],
+                    "evidence": ["validate failed on receipt evidence"],
+                    "next_recommendation": "fix runtime receipt contract",
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=MissingStdoutDriver())
+
+    assert status == 1
+    assert calls == ["plan", "execute", "reflect"]
+    validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
+    assert validate_payload["runtime_contract_health"] == "runtime_contract_error"
+    reflect_payload = json.loads((handle.run_dir / "reflect.json").read_text(encoding="utf-8"))
+    assert reflect_payload["failure_class"] == "runtime_contract_error"
+    assert reflect_payload["retry_authorized"] is False
+    assert "do not edit the project implementation" in reflect_payload["next_plan_hint"]
+
+
 def test_reflect_feedback_retries_execute_once_inside_single_run(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
@@ -905,6 +1100,42 @@ def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_
     artifacts = json.loads((handle.run_dir / "artifacts.json").read_text(encoding="utf-8"))["artifacts"]
     assert any(row["kind"] == "invalid_worker_output" and row["path"] == str(invalid_output) for row in artifacts)
     assert any(row["kind"] == "worker_validation_error" and row["path"] == str(validation_error) for row in artifacts)
+
+
+def test_external_worker_archives_stale_output_outside_invalid_dir(monkeypatch, tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Stale output demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Stale output demo"},
+        goal="archive stale canonical output cleanly",
+    )
+    phase_packet = next_phase_payload(project, handle.run_id)
+    output_path = handle.run_dir / "plan.worker-output.json"
+    output_path.write_text(json.dumps({"summary": "stale"}) + "\n", encoding="utf-8")
+
+    def _fake_process(command, handle, phase, stdout_path, stderr_path, env, timeout_seconds):
+        output_path.write_text(json.dumps(_plan_payload("fresh plan")) + "\n", encoding="utf-8")
+        stdout_path.write_text("fresh stdout\n", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr("thoth.run.worker._run_phase_worker_process", _fake_process)
+    driver = ExternalWorkerPhaseDriver(executor="codex", timeout_seconds=5)
+    payload = driver.execute_phase(handle=handle, phase_packet=phase_packet)
+
+    assert payload["summary"] == "fresh plan"
+    archived_output = handle.run_dir / "worker-archived" / "plan.attempt-1.worker-output.json"
+    assert archived_output.exists()
+    assert not (handle.run_dir / "worker-invalid" / "plan.attempt-1.worker-output.json").exists()
+    artifacts = json.loads((handle.run_dir / "artifacts.json").read_text(encoding="utf-8"))["artifacts"]
+    assert any(row["kind"] == "worker_stale_output" and row["path"] == str(archived_output) for row in artifacts)
+    assert not any(row["kind"] == "invalid_worker_output" and row["path"] == str(archived_output) for row in artifacts)
 
 
 def test_external_worker_timeout_reports_phase_worker_timeout_and_tails(monkeypatch, tmp_path):

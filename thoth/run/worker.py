@@ -155,6 +155,12 @@ def _worker_invalid_dir(handle: RunHandle) -> Path:
     return path
 
 
+def _worker_archived_dir(handle: RunHandle) -> Path:
+    path = handle.run_dir / "worker-archived"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _worker_interrupted_dir(handle: RunHandle) -> Path:
     path = handle.run_dir / "worker-interrupted"
     path.mkdir(parents=True, exist_ok=True)
@@ -642,6 +648,59 @@ def _archive_worker_diagnostic(
     return refs
 
 
+def _archive_stale_worker_output(
+    *,
+    handle: RunHandle,
+    phase: str,
+    attempt_index: int,
+    output_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    note: str,
+) -> dict[str, str]:
+    archived_dir = _worker_archived_dir(handle)
+    prefix = f"{phase}.attempt-{attempt_index}"
+    refs: dict[str, str] = {}
+    if output_path.exists():
+        archived_output_path = archived_dir / f"{prefix}.worker-output.json"
+        output_path.replace(archived_output_path)
+        refs["archived_output"] = str(archived_output_path)
+        record_artifact(
+            handle.project_root,
+            handle.run_id,
+            path=str(archived_output_path),
+            label=archived_output_path.name,
+            artifact_kind="worker_stale_output",
+            metadata={"phase": phase, "attempt": attempt_index, "reason": "stale_output"},
+        )
+    note_path = archived_dir / f"{prefix}.archive-note.txt"
+    note_path.write_text(note.rstrip() + "\n", encoding="utf-8")
+    refs["archive_note"] = str(note_path)
+    record_artifact(
+        handle.project_root,
+        handle.run_id,
+        path=str(note_path),
+        label=note_path.name,
+        artifact_kind="worker_archive_note",
+        metadata={"phase": phase, "attempt": attempt_index, "reason": "stale_output"},
+    )
+    for source_path, suffix in ((stdout_path, "stdout.log"), (stderr_path, "stderr.log")):
+        if not source_path.exists():
+            continue
+        archived_log = archived_dir / f"{prefix}.{suffix}"
+        shutil.copyfile(source_path, archived_log)
+        refs[suffix.replace(".log", "_log")] = str(archived_log)
+        record_artifact(
+            handle.project_root,
+            handle.run_id,
+            path=str(archived_log),
+            label=archived_log.name,
+            artifact_kind="log",
+            metadata={"phase": phase, "attempt": attempt_index, "reason": "stale_output"},
+        )
+    return refs
+
+
 def _format_worker_failure(
     *,
     phase: str,
@@ -790,15 +849,14 @@ class ExternalWorkerPhaseDriver:
                 raise InterruptedError("run stopped before phase worker completed")
             if output_path.exists():
                 stale_error = f"pre-existing canonical {output_path.name} archived before {phase} attempt {attempt_index}"
-                last_refs = _archive_worker_diagnostic(
+                last_refs = _archive_stale_worker_output(
                     handle=handle,
                     phase=phase,
                     attempt_index=attempt_index,
                     output_path=output_path,
                     stdout_path=stdout_path,
                     stderr_path=stderr_path,
-                    error_text=stale_error,
-                    error_kind="stale_output",
+                    note=stale_error,
                 )
             correction_error = last_error if attempt_index > 1 else None
             prompt = render_phase_worker_prompt(

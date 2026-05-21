@@ -471,13 +471,182 @@ def _primary_metric_threshold(strict_task: dict[str, Any]) -> Any:
     return metric.get("threshold", 1)
 
 
+def _primary_metric_direction(strict_task: dict[str, Any]) -> str:
+    metric = strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {}
+    direction = str(metric.get("direction") or "gte").strip().lower()
+    aliases = {
+        "min": "gte",
+        "at_least": "gte",
+        ">=": "gte",
+        "max": "lte",
+        "at_most": "lte",
+        "<=": "lte",
+        ">": "gt",
+        "<": "lt",
+        "==": "eq",
+        "=": "eq",
+    }
+    return aliases.get(direction, direction if direction in {"gte", "lte", "gt", "lt", "eq"} else "gte")
+
+
+def _metric_meets_threshold(value: Any, threshold: Any, *, direction: str) -> bool:
+    if isinstance(value, bool):
+        value = int(value)
+    if isinstance(threshold, bool):
+        threshold = int(threshold)
+    if isinstance(value, (int, float)) and isinstance(threshold, (int, float)):
+        if direction == "lte":
+            return float(value) <= float(threshold)
+        if direction == "lt":
+            return float(value) < float(threshold)
+        if direction == "gt":
+            return float(value) > float(threshold)
+        if direction == "eq":
+            return float(value) == float(threshold)
+        return float(value) >= float(threshold)
+    if direction == "eq":
+        return value == threshold
+    return bool(value)
+
+
 def _path_exists_from_receipt(project_root: Path, value: Any) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
-    path = Path(value)
-    if not path.is_absolute():
-        path = project_root / path
-    return path.exists()
+    try:
+        path = Path(value)
+        if not path.is_absolute():
+            path = project_root / path
+        return path.exists()
+    except OSError:
+        return False
+
+
+def _receipt_log_path(project_root: Path, value: Any) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        path = Path(value)
+        if not path.is_absolute():
+            path = project_root / path
+        return path if path.exists() else None
+    except OSError:
+        return None
+
+
+def _write_normalized_receipt_log(
+    *,
+    handle: RunHandle,
+    name: str,
+    content: str,
+    source_field: str,
+    warnings: list[dict[str, Any]],
+) -> str:
+    log_dir = handle.run_dir / "worker-logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    path = log_dir / f"official-validator.{name}.log"
+    path.write_text(content, encoding="utf-8")
+    warnings.append(
+        {
+            "field": source_field,
+            "reason": "receipt_log_materialized",
+            "path": str(path),
+        }
+    )
+    record_artifact(
+        handle.project_root,
+        handle.run_id,
+        path=str(path),
+        label=path.name,
+        artifact_kind="log",
+        metadata={"phase": "validate", "source": "official_validation_receipt", "stream": name},
+    )
+    return str(path)
+
+
+def _normalize_receipt_logs(
+    *,
+    handle: RunHandle,
+    receipt: dict[str, Any],
+    observed_success: bool,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], bool]:
+    normalized = dict(receipt)
+    warnings: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
+
+    stdout_path_value = normalized.get("stdout_log_path")
+    stdout_inline_value = normalized.get("stdout_log")
+    stdout_path = _receipt_log_path(handle.project_root, stdout_path_value)
+    if stdout_path is None:
+        stdout_path = _receipt_log_path(handle.project_root, stdout_inline_value)
+    if stdout_path is None and isinstance(stdout_inline_value, str) and stdout_inline_value:
+        stdout_path = Path(
+            _write_normalized_receipt_log(
+                handle=handle,
+                name="stdout",
+                content=stdout_inline_value,
+                source_field="stdout_log",
+                warnings=warnings,
+            )
+        )
+    stdout_ok = stdout_path is not None and stdout_path.exists()
+    checks.append(
+        {
+            "name": "stdout_evidence_present",
+            "ok": stdout_ok,
+            "detail": str(stdout_path) if stdout_ok else "stdout evidence missing",
+        }
+    )
+
+    stderr_path_value = normalized.get("stderr_log_path")
+    stderr_inline_value = normalized.get("stderr_log")
+    stderr_path = _receipt_log_path(handle.project_root, stderr_path_value)
+    if stderr_path is None:
+        stderr_path = _receipt_log_path(handle.project_root, stderr_inline_value)
+    if stderr_path is None:
+        if isinstance(stderr_inline_value, str) and stderr_inline_value:
+            stderr_path = Path(
+                _write_normalized_receipt_log(
+                    handle=handle,
+                    name="stderr",
+                    content=stderr_inline_value,
+                    source_field="stderr_log",
+                    warnings=warnings,
+                )
+            )
+        elif observed_success:
+            stderr_path = Path(
+                _write_normalized_receipt_log(
+                    handle=handle,
+                    name="stderr",
+                    content="",
+                    source_field="stderr_log",
+                    warnings=warnings,
+                )
+            )
+            normalized["stderr_was_empty"] = True
+    stderr_ok = stderr_path is not None and stderr_path.exists()
+    checks.append(
+        {
+            "name": "stderr_evidence_present_or_empty",
+            "ok": stderr_ok or observed_success,
+            "detail": str(stderr_path) if stderr_ok else ("empty stderr accepted" if observed_success else "stderr evidence missing"),
+        }
+    )
+
+    if stdout_ok:
+        normalized["stdout_log_path"] = str(stdout_path)
+        normalized["stdout_log"] = str(stdout_path)
+    if stderr_ok:
+        normalized["stderr_log_path"] = str(stderr_path)
+        normalized["stderr_log"] = str(stderr_path)
+    checks.append(
+        {
+            "name": "receipt_logs_normalized",
+            "ok": stdout_ok and (stderr_ok or observed_success),
+            "detail": f"warnings={len(warnings)}",
+        }
+    )
+    return normalized, checks, warnings, stdout_ok and (stderr_ok or observed_success)
 
 
 def _execute_receipt_payload(phase_packet: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -491,6 +660,8 @@ def _execute_receipt_payload(phase_packet: dict[str, Any]) -> tuple[dict[str, An
 def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str, Any]) -> dict[str, Any]:
     """Confirm execute's official validator receipt without launching another worker."""
 
+    run_id = str(phase_packet.get("run_id") or "")
+    handle = RunHandle(project_root=project_root.resolve(), run_id=run_id)
     strict_task = phase_packet.get("strict_task") if isinstance(phase_packet.get("strict_task"), dict) else {}
     execute_payload, receipt = _execute_receipt_payload(phase_packet)
     expected_command = _compact_whitespace(
@@ -504,6 +675,7 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
     receipt_present = bool(receipt)
     checks.append({"name": "receipt_present", "ok": receipt_present, "detail": "execute returned official_validation_receipt" if receipt_present else "execute output did not include official_validation_receipt"})
 
+    command_matches = True
     if expected_command:
         command_matches = actual_command == expected_command
         checks.append(
@@ -521,10 +693,29 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
     receipt_passed = receipt.get("passed") if receipt else None
     checks.append({"name": "receipt_passed", "ok": receipt_passed is True, "detail": f"passed={receipt_passed!r}"})
 
-    stdout_log = receipt.get("stdout_log") if receipt else None
-    stderr_log = receipt.get("stderr_log") if receipt else None
-    logs_ok = _path_exists_from_receipt(project_root, stdout_log) and _path_exists_from_receipt(project_root, stderr_log)
-    checks.append({"name": "validation_logs_exist", "ok": logs_ok, "detail": f"stdout_log={stdout_log or '<missing>'} stderr_log={stderr_log or '<missing>'}"})
+    command_success = bool(exit_ok and receipt_passed is True)
+    observed_metric = execute_payload.get("metric_value")
+    if not isinstance(observed_metric, (int, float, bool)):
+        observed_metric = receipt.get("metric_value") if receipt else None
+    if not isinstance(observed_metric, (int, float, bool)):
+        observed_metric = 1 if command_success else 0
+    threshold = _primary_metric_threshold(strict_task)
+    direction = _primary_metric_direction(strict_task)
+    metric_ok = _metric_meets_threshold(observed_metric, threshold, direction=direction)
+    checks.append(
+        {
+            "name": "metric_threshold_met",
+            "ok": metric_ok,
+            "detail": f"value={observed_metric!r} direction={direction} threshold={threshold!r}",
+        }
+    )
+
+    normalized_receipt, log_checks, log_warnings, logs_ok = _normalize_receipt_logs(
+        handle=handle,
+        receipt=receipt if receipt else {},
+        observed_success=command_success,
+    )
+    checks.extend(log_checks)
 
     checks_summary = receipt.get("checks_summary") if receipt else None
     if isinstance(checks_summary, list):
@@ -532,17 +723,44 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
             checks.append({"name": f"receipt_check_{index}", "ok": True, "detail": _short_plain(item, limit=240)})
 
     passed = bool(receipt_present and all(check.get("ok") is not False for check in checks) and receipt_passed is True)
+    observed_success = bool(command_success and command_matches and metric_ok)
     failed = [str(check.get("name") or "check") for check in checks if check.get("ok") is False]
     summary = "Official validator receipt passed." if passed else "Official validator receipt failed: " + ", ".join(failed[:5])
+    runtime_contract_problem = bool(command_success and (not command_matches or not logs_ok))
+    if passed:
+        failure_class = None
+        runtime_contract_health = "ok"
+    elif runtime_contract_problem:
+        failure_class = "runtime_contract_error"
+        runtime_contract_health = "runtime_contract_error"
+    elif not metric_ok:
+        failure_class = "metric_not_reached"
+        runtime_contract_health = "failed"
+    else:
+        failure_class = "execution_error"
+        runtime_contract_health = "failed"
     return {
         "summary": summary,
         "passed": passed,
         "metric_name": _primary_metric_name(strict_task),
-        "metric_value": 1 if passed else 0,
-        "threshold": _primary_metric_threshold(strict_task),
+        "metric_value": observed_metric if command_success else 0,
+        "threshold": threshold,
         "checks": checks,
-        "official_validation_receipt": receipt,
+        "official_validation_receipt": normalized_receipt,
         "execute_summary": execute_payload.get("summary"),
+        "observed_validation": {
+            "command": actual_command,
+            "passed": observed_success,
+            "exit_code": exit_code,
+            "metric_value": observed_metric if command_success else 0,
+            "metric_threshold_met": metric_ok,
+            "expected_command": expected_command,
+            "command_matches": command_matches,
+        },
+        "runtime_contract_health": runtime_contract_health,
+        "failure_class": failure_class,
+        "acceptance_state": "validated" if passed else "not_closed",
+        "_normalization_warnings": log_warnings,
     }
 
 
@@ -565,6 +783,10 @@ def _build_run_result_payload(controller: dict[str, Any]) -> dict[str, Any]:
         "next_hint": controller.get("next_hint"),
         "metrics": metrics,
         "primary_metric": strict_task.get("primary_metric", {}),
+        "observed_validation": validate_payload.get("observed_validation") if isinstance(validate_payload.get("observed_validation"), dict) else {},
+        "runtime_contract_health": validate_payload.get("runtime_contract_health"),
+        "acceptance_state": validate_payload.get("acceptance_state"),
+        "failure_class": validate_payload.get("failure_class"),
     }
 
 
@@ -621,6 +843,13 @@ def _archive_phase_artifacts_for_reflect_retry(handle: RunHandle, controller: di
 
 def _reflect_authorizes_execute_retry(controller: dict[str, Any], payload: dict[str, Any]) -> bool:
     if bool(controller.get("validate_passed")):
+        return False
+    prior_validate = _prior_validate_payload(controller) or {}
+    if prior_validate.get("runtime_contract_health") == "runtime_contract_error":
+        return False
+    if prior_validate.get("failure_class") == "runtime_contract_error":
+        return False
+    if payload.get("failure_class") == "runtime_contract_error":
         return False
     if payload.get("retry_authorized") is not True:
         return False
@@ -821,6 +1050,7 @@ def _loop_retry_decision(loop: dict[str, Any], child_result: dict[str, Any], ref
     next_plan_hint = str(reflect.get("next_plan_hint") or "").strip()
     non_retryable_reasons = {
         "needs_input",
+        "runtime_contract_error",
         "missing eval_entrypoint.command",
         "lease_conflict",
         "stopped",

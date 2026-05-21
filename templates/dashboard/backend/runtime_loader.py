@@ -334,16 +334,33 @@ def _execute_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
     receipt = payload.get("official_validation_receipt") if isinstance(payload.get("official_validation_receipt"), dict) else {}
+    observed = payload.get("observed_validation") if isinstance(payload.get("observed_validation"), dict) else {}
     metric = [
         f"{payload.get('metric_name') or 'metric'}={payload.get('metric_value')} threshold={payload.get('threshold')}",
         f"passed={payload.get('passed')}",
     ]
+    runtime_contract = [
+        f"runtime_contract_health={payload.get('runtime_contract_health') or ''}",
+        f"failure_class={payload.get('failure_class') or ''}",
+        f"acceptance_state={payload.get('acceptance_state') or ''}",
+    ]
+    observed_items: list[str] = []
+    if observed:
+        observed_items = [
+            f"command={observed.get('command') or ''}",
+            f"expected={observed.get('expected_command') or ''}",
+            f"exit_code={observed.get('exit_code')!r} passed={observed.get('passed')!r}",
+            f"command_matches={observed.get('command_matches')!r} metric_threshold_met={observed.get('metric_threshold_met')!r}",
+            f"metric_value={observed.get('metric_value')!r}",
+        ]
     receipt_items: list[str] = []
     if receipt:
         receipt_items = [
             f"command={receipt.get('command') or ''}",
             f"python={receipt.get('python_executable') or ''}",
             f"exit_code={receipt.get('exit_code')!r} passed={receipt.get('passed')!r}",
+            f"stdout={receipt.get('stdout_log_path') or receipt.get('stdout_log') or ''}",
+            f"stderr={receipt.get('stderr_log_path') or receipt.get('stderr_log') or ''}",
         ]
     check_items: list[str] = []
     checks = payload.get("checks")
@@ -357,7 +374,13 @@ def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
             name = check.get("name") or "check"
             detail = check.get("detail") or check.get("details") or check.get("summary") or ""
             check_items.append(_short_text(f"{status} {name}: {detail}"))
-    sections = [_section("Metric", metric), _section("Receipt", receipt_items), _section("Checks", check_items, limit=12)]
+    sections = [
+        _section("Metric", metric),
+        _section("Runtime contract", runtime_contract),
+        _section("Observed validation", observed_items, limit=8),
+        _section("Receipt", receipt_items, limit=8),
+        _section("Checks", check_items, limit=12),
+    ]
     return [section for section in sections if section]
 
 

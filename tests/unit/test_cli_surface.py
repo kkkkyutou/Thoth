@@ -13,7 +13,8 @@ from thoth.objects import Store
 from thoth.plan.store import load_work_for_execution, upsert_work_item, upsert_decision
 from thoth.run.controllers import create_auto_controller
 from thoth.run.packets import prepare_execution
-from thoth.run.phases import default_validate_output_schema
+from thoth.run.ledger import fail_run
+from thoth.run.phases import default_validate_output_schema, submit_phase_output
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -502,6 +503,78 @@ def test_cli_run_runtime_ledgers_do_not_dirty_git_status(tmp_path):
     assert "node_modules/" not in status
     assert "tools/dashboard/frontend/dist/" not in status
     assert "research.db" not in status
+
+
+def test_cli_run_reconcile_closes_failed_run_with_passing_execute_receipt(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path, "reconcile-work", eval_command="pytest -q")
+    strict_task = load_work_for_execution(tmp_path, "reconcile-work")
+    handle, _packet = prepare_execution(
+        tmp_path,
+        command_id="run",
+        title="Reconcile Work",
+        work_id="reconcile-work",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task=strict_task,
+        goal="reconcile old run",
+    )
+    submit_phase_output(
+        tmp_path,
+        handle.run_id,
+        phase="plan",
+        payload={
+            "summary": "plan ok",
+            "authority_complete": True,
+            "authority_coverage": {"goal": True},
+            "open_gaps": [],
+            "forbidden_assumptions_used": [],
+            "execution_steps": ["run validator"],
+            "files_expected": [],
+            "commands_expected": ["pytest -q"],
+            "validation_plan": "run pytest",
+            "risk_assessment": "low risk",
+        },
+    )
+    submit_phase_output(
+        tmp_path,
+        handle.run_id,
+        phase="execute",
+        payload={
+            "summary": "execute passed official pytest",
+            "plan_artifact_read": True,
+            "plan_deviations": [],
+            "files_touched": [],
+            "commands_run": ["pytest -q"],
+            "artifacts": [],
+            "official_validation_receipt": {
+                "command": "pytest -q",
+                "cwd": str(tmp_path),
+                "python_executable": sys.executable,
+                "exit_code": 0,
+                "passed": True,
+                "metric_value": 1,
+                "checks_summary": ["3 passed"],
+                "stdout_log": "3 passed\n",
+                "stderr_log": "[empty stderr captured]",
+            },
+        },
+    )
+    fail_run(tmp_path, handle.run_id, summary="Historical runtime contract failure.", reason="execution_error")
+
+    result = _run_cli(tmp_path, "run", "--reconcile", handle.run_id)
+
+    assert result.returncode == 0, result.stderr
+    envelope = _extract_envelope(result.stdout)
+    assert envelope["status"] == "ok"
+    run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
+    assert run_result["status"] == "completed"
+    assert run_result["result"]["reconciled"] is True
+    assert run_result["result"]["validate_passed"] is True
+    assert (handle.run_dir / "reconcile.json").exists()
+    work_item = Store(tmp_path).read("work_item", "reconcile-work")
+    assert work_item["status"] == "validated"
 
 
 def test_cli_status_json(tmp_path):

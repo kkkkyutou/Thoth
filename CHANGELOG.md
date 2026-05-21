@@ -4,6 +4,21 @@
 
 No pending changes.
 
+## [0.2.6.8] - 2026-05-21
+
+### Changed
+- `validate` now treats execute's `official_validation_receipt` as the business acceptance source while normalizing inline `stdout_log` / `stderr_log` fields into run-local log artifacts.
+- `reflect` no longer sends receipt/log contract hygiene back to `execute`; `runtime_contract_error` is treated as a Thoth runtime contract issue rather than a project implementation failure.
+- Dashboard validate cards now show observed validation facts, runtime contract health, normalized receipt paths, and acceptance state as structured sections.
+
+### Added
+- `thoth run --reconcile <run_id>` can safely reconcile historical failed/stopped runs when the existing execute receipt already proves the official validator command passed with the required metric.
+- Stale canonical worker outputs are archived under `worker-archived/` instead of `worker-invalid/`, reserving `worker-invalid/` for true schema/JSON/worker-output failures.
+
+### Fixed
+- Prevented passed official validators from failing solely because stdout/stderr evidence was inline text, an empty stderr sentinel, or a path-shaped receipt field needing materialization.
+- Preserved runtime-generated `_normalization_warnings` through validate schema normalization so dashboards and run artifacts retain the real receipt contract history.
+
 ## [0.2.6.7] - 2026-05-21
 
 ### Changed

@@ -122,6 +122,11 @@ def _add_normalization_warning(
     warnings.append(warning)
 
 
+def _existing_normalization_warnings(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = payload.get("_normalization_warnings")
+    return [dict(item) for item in rows if isinstance(item, dict)] if isinstance(rows, list) else []
+
+
 def _normalize_text_field(
     field: str,
     value: Any,
@@ -395,6 +400,10 @@ def _validate_text_for_failure(validate_payload: dict[str, Any] | None, failed_c
 
 
 def _infer_failure_class(validate_payload: dict[str, Any] | None, failed_check: dict[str, Any]) -> str:
+    if isinstance(validate_payload, dict):
+        for key in ("failure_class", "runtime_contract_health"):
+            if validate_payload.get(key) == "runtime_contract_error":
+                return "runtime_contract_error"
     text = _validate_text_for_failure(validate_payload, failed_check).lower()
     if any(marker in text for marker in ("module not found", "modulenotfounderror", "no module named", "importerror")):
         return "dependency_missing"
@@ -432,7 +441,10 @@ def _synthesize_reflect_failure_fields(
         root_source = str(prior_validate_payload.get("summary") or "")
     root_cause = root_source or "validation failed; no detailed failed check was available"
     check_name = failed_check.get("name") if isinstance(failed_check.get("name"), str) else ""
-    if check_name:
+    runtime_contract_error = failure_class == "runtime_contract_error"
+    if runtime_contract_error:
+        next_hint = "fix the Thoth runtime receipt contract or reconcile the run; do not edit the project implementation"
+    elif check_name:
         next_hint = f"repair validation failure in {check_name} and rerun the official validator"
     else:
         next_hint = "repair the validation failure and rerun the official validator"
@@ -440,18 +452,28 @@ def _synthesize_reflect_failure_fields(
     synthesized.setdefault("failure_class", failure_class)
     synthesized.setdefault("root_cause", root_cause)
     synthesized.setdefault("next_plan_hint", next_hint)
-    synthesized.setdefault(
-        "corrective_prompt",
-        (
-            "Do not weaken the validator, metric, threshold, or work goal. "
-            f"Repair the implementation issue shown by validate evidence: {root_cause}. "
-            "Continue as a senior engineer, debug the concrete failure, rerun focused checks, "
-            "then rerun the official validator in the same runtime environment and return a fresh official_validation_receipt."
-        ),
-    )
-    synthesized.setdefault("retry_authorized", True)
+    if runtime_contract_error:
+        synthesized.setdefault(
+            "corrective_prompt",
+            (
+                "Do not retry execute and do not edit project code for this failure. "
+                f"The validate evidence points to Thoth runtime receipt/log contract hygiene: {root_cause}. "
+                "Fix the runtime contract or use the explicit reconcile path for a historical run whose official validator already passed."
+            ),
+        )
+    else:
+        synthesized.setdefault(
+            "corrective_prompt",
+            (
+                "Do not weaken the validator, metric, threshold, or work goal. "
+                f"Repair the implementation issue shown by validate evidence: {root_cause}. "
+                "Continue as a senior engineer, debug the concrete failure, rerun focused checks, "
+                "then rerun the official validator in the same runtime environment and return a fresh official_validation_receipt."
+            ),
+        )
+    synthesized.setdefault("retry_authorized", not runtime_contract_error)
     synthesized.setdefault("retry_target", "execute")
-    synthesized.setdefault("retry_budget", 1)
+    synthesized.setdefault("retry_budget", 0 if runtime_contract_error else 1)
     for field in missing:
         _add_normalization_warning(
             warnings,
@@ -607,6 +629,7 @@ def validate_phase_output(
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "validate":
+        preexisting_warnings = _existing_normalization_warnings(payload)
         if not isinstance(payload.get("passed"), bool):
             raise ValueError("validate.passed must be a boolean")
         normalized["metric_name"] = _require_short_text(
@@ -629,7 +652,7 @@ def validate_phase_output(
                         "validate output missing schema-required fields: "
                         + ", ".join(str(field) for field in missing_schema_fields)
                     )
-        normalized["_normalization_warnings"] = normalization_warnings
+        normalized["_normalization_warnings"] = [*preexisting_warnings, *normalization_warnings]
         return normalized
     if phase == "reflect":
         outcome = str(payload.get("outcome") or "").strip().lower()
