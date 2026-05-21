@@ -13,6 +13,9 @@
   - Evidence: Targeted pytest `tests/unit/test_command_spec_generation.py tests/unit/test_runtime_protocol.py tests/unit/test_run_state_machine.py tests/unit/test_cli_surface.py tests/unit/test_runtime_loader.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_plugin_surface.py` 为 `112 passed in 135.72s`。
   - Evidence: `templates/dashboard/frontend` 的 `npm run build` 通过，仅保留既有 Vite chunk-size warning；`git diff --check` 通过；`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json`、`.agents/plugins/marketplace.json` 均通过 `python -m json.tool`。
   - Evidence: `bin/thoth doctor --version` 输出 `version=0.2.6.8`、`last_updated=2026-05-21T16:20:42Z`。
+  - Evidence: 发布面提交 `98f4b9e fix: normalize validator receipts for 0.2.6.8` 已 cherry-pick 到 `main` 为 `54d23e3`；`origin/dev` 已推送到 `37445c5`，`origin/main` 已推送到 `54d23e3`。
+  - Evidence: `main` 上同组 `py_compile`、targeted pytest `112 passed in 135.01s`、dashboard frontend build、`git diff --check`、四个 plugin/marketplace JSON 校验与 `bin/thoth doctor --version` 均通过，版本为 `0.2.6.8`。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 从 `0.2.6.7` 更新到 `0.2.6.8`；`codex plugin marketplace upgrade thoth` 成功。Claude cache runtime 与 Codex marketplace root runtime 的 `doctor --version` 均输出 `version=0.2.6.8`。
   - Conclusion: 当前 checkout 已验证 validate 会归一化 inline stdout/stderr receipt logs、保留 runtime `_normalization_warnings`，`runtime_contract_error` 不再反哺 execute，`run --reconcile <run_id>` 可在 execute 官方 validator 已通过时闭合历史 failed/stopped run，stale worker output 不再进入 `worker-invalid/`。
 
 - `EV-001` related to `WS-003`: 当前公开命令面已稳定为显式 `/thoth:*` 与单一 `$thoth <command>`
