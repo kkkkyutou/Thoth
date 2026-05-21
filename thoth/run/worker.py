@@ -226,10 +226,6 @@ def _phase_worker_timeout_seconds(
         return float(DEFAULT_PLAN_WORKER_TIMEOUT_SECONDS)
     if phase == "reflect":
         return float(DEFAULT_REFLECT_WORKER_TIMEOUT_SECONDS)
-    if phase == "execute":
-        configured = run_payload.get("max_runtime_seconds")
-        if isinstance(configured, int) and configured > 0:
-            return float(configured)
     return None
 
 
@@ -507,6 +503,17 @@ def _load_worker_output_payload(output_path: Path) -> tuple[dict[str, Any], str 
     if not isinstance(data, dict):
         return {}, "JSON root must be an object"
     return data, None
+
+
+def _prior_validate_payload_for_phase(phase_packet: dict[str, Any]) -> dict[str, Any] | None:
+    artifacts = phase_packet.get("prior_artifacts")
+    if not isinstance(artifacts, dict):
+        return None
+    validate_path = artifacts.get("validate")
+    if not isinstance(validate_path, str) or not validate_path:
+        return None
+    payload = _read_json(Path(validate_path))
+    return payload if isinstance(payload, dict) and payload else None
 
 
 def _archive_worker_diagnostic(
@@ -826,6 +833,7 @@ class ExternalWorkerPhaseDriver:
                     phase,
                     payload,
                     validate_schema=validate_schema if isinstance(validate_schema, dict) else None,
+                    prior_validate_payload=_prior_validate_payload_for_phase(phase_packet) if phase == "reflect" else None,
                 )
             except ValueError as exc:
                 last_error = str(exc)

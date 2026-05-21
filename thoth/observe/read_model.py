@@ -33,6 +33,8 @@ def load_config(project_root: Path) -> dict[str, Any]:
 def load_tasks(project_root: Path) -> list[dict[str, Any]]:
     tasks = []
     for work in load_work_items(project_root):
+        if work.get("hidden") is True:
+            continue
         item = dict(work)
         work_id = item.get("work_id")
         if isinstance(work_id, str) and work_id:

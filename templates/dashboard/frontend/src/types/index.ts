@@ -94,7 +94,23 @@ export interface RunDetail extends RunSummary {
   heartbeat: Record<string, unknown>
   artifacts: Record<string, unknown>
   result?: Record<string, unknown>
+  phase_cards?: RunPhaseCard[]
   worker_logs?: RunWorkerLogs
+}
+
+export interface RunPhaseCardSection {
+  title: string
+  items: string[]
+  truncated?: boolean
+}
+
+export interface RunPhaseCard {
+  phase: string
+  label: string
+  status: string
+  summary: string
+  warnings: string[]
+  sections: RunPhaseCardSection[]
 }
 
 export interface RunWorkerLogFile {

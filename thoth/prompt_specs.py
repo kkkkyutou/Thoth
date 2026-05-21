@@ -252,7 +252,7 @@ INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_P
 PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     "plan": PhasePromptSpec(
         phase="plan",
-        objective="Produce the concrete execution plan for the frozen strict task after proving coverage of the discussion authority context.",
+        objective="Act as the top-level planner for the frozen strict task: prove user-authority coverage, then produce an executable plan without weakening agent discovery.",
         hard_stops=(
             "Do not modify project files.",
             "Do not change the work item goal, constraints, or validation entrypoint.",
@@ -278,20 +278,21 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     ),
     "execute": PhasePromptSpec(
         phase="execute",
-        objective="Perform the smallest execution slice needed for the strict task and the approved plan before validation.",
+        objective="Act as a senior implementation engineer: follow the approved plan, debug engineering failures inside the repo-local boundary, and make the validator as likely to pass as possible.",
         hard_stops=(
             "Do not hand-edit .thoth ledgers.",
             "Do not terminalize the full run from inside execute.",
             "Read and follow prior_artifacts.plan before changing files; record any deviation.",
             "Do not run destructive delete/reset commands.",
+            "Do not change the work item goal, validation entrypoint, metric, or acceptance threshold.",
         ),
         required_fields=("summary", "plan_artifact_read", "plan_deviations", "files_touched", "commands_run", "artifacts"),
         summary_budget_utf8=800,
-        validator_policy="execute follows the plan artifact; validator remains the acceptance authority",
+        validator_policy="execute follows the plan artifact and may self-debug implementation/dependency issues; validate remains the final acceptance authority",
     ),
     "validate": PhasePromptSpec(
         phase="validate",
-        objective="Run the official validator and return a mechanical pass/fail result.",
+        objective="Act as an independent acceptance verifier: run the official validator exactly and return a mechanical pass/fail result.",
         hard_stops=(
             "Do not repair code inside validate.",
             "Do not guess pass/fail from intuition.",
@@ -303,7 +304,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     ),
     "reflect": PhasePromptSpec(
         phase="reflect",
-        objective="Summarize the validation outcome, evidence, residual risks, and the next recommendation.",
+        objective="Act as a research and systems reviewer: summarize validation evidence, residual algorithmic/scientific risks, repeated pitfalls, and the next recommendation.",
         hard_stops=(
             "Do not keep executing.",
             "Do not run extra commands.",
@@ -312,6 +313,34 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
         required_fields=("summary", "outcome", "residual_risks", "evidence", "next_recommendation"),
         summary_budget_utf8=1200,
         validator_policy="reflect always runs after validate and never overrides validate.passed",
+    ),
+}
+
+
+PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
+    "plan": (
+        "Role: top-level planner.",
+        "Be strict about user authority: intent, acceptance, constraints, rejected options, permission, and cost must be covered by strict_task.authority_context.",
+        "Be permissive about executable discovery: missing paths, source locations, target directories, imports, dependency locations, and test files belong in discovery_tasks or execution_steps, not open_gaps.",
+        "If the eval contract is concrete, plan against that contract even when surrounding prose is broader; record the broader wording as risk instead of blocking execution.",
+    ),
+    "execute": (
+        "Role: senior implementation engineer.",
+        "Use the agent tools intelligently and make a maximal good-faith engineering effort inside the repository boundary.",
+        "When imports, builds, tests, paths, or dependencies fail, diagnose, repair, and rerun focused checks before returning output.",
+        "Repo-local dependency repair is allowed: use local source discovery, .vendor/task-local installs, mirrors/proxies, builds, and focused smoke tests when they are necessary for the validator.",
+        "Do not stop at the first missing module or short network timeout; record attempts and keep pursuing viable repo-local fixes until the task is solved, the issue is outside authority, or the user stops the run.",
+    ),
+    "validate": (
+        "Role: independent acceptance verifier.",
+        "Run the official eval entrypoint exactly when it exists and report the actual result.",
+        "Do not repair implementation, install dependencies, rewrite tests, or reinterpret the threshold in this phase.",
+    ),
+    "reflect": (
+        "Role: research and systems reviewer.",
+        "Do not continue engineering execution; use plan, execute, and validate artifacts as evidence.",
+        "Focus on the validation conclusion, root cause, repeated pitfalls, scientific/algorithmic risks, and concrete next recommendation.",
+        "If validation failed, include failure_class, root_cause, and next_plan_hint; keep them compact and evidence-based.",
     ),
 }
 
@@ -394,6 +423,7 @@ def render_phase_worker_prompt(
         authority = phase_prompt_authority(phase)
     hard_stops = authority.get("hard_stops") if isinstance(authority.get("hard_stops"), list) else []
     required_fields = authority.get("required_fields") if isinstance(authority.get("required_fields"), list) else []
+    role_contract = PHASE_ROLE_CONTRACTS.get(phase, ())
     lines = [
         f"Run id: {run_id}",
         f"Work only inside `{project_root}`.",
@@ -407,6 +437,9 @@ def render_phase_worker_prompt(
         "Narrative fields may be complete but must stay compact; runtime normalizes over-budget single-line text and records _normalization_warnings.",
         f"Validator policy: {authority.get('validator_policy')}",
     ]
+    if role_contract:
+        lines.append("Phase role contract:")
+        lines.extend(f"  - {item}" for item in role_contract)
     loop_context = phase_packet.get("loop_context")
     if isinstance(loop_context, dict) and loop_context:
         lines.append("Use `loop_context` to avoid repeating the previous failure; follow its next_plan_hint without changing the work goal or validator.")
@@ -420,6 +453,9 @@ def render_phase_worker_prompt(
     if phase == "execute":
         lines.append("Read `required_plan_artifact` or `prior_artifacts.plan` before touching files and set plan_artifact_read=true only after doing so.")
         lines.append("Follow the plan artifact; if deviation is necessary, list it in plan_deviations without changing the goal or validator.")
+        lines.append("Use focused validation during execute as an engineering feedback loop; the later validate phase still decides final acceptance.")
+        lines.append("If you repair dependencies, prefer repo-local or task-local locations such as `.vendor`; do not mutate global environments unless the work item explicitly authorizes it.")
+        lines.append("Optional structured fields for human dashboards: debug_attempts, verification_steps, dependency_actions, resolved_failures, remaining_failures.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:
         lines.append(f"Previous output failed validation: {correction_error}")

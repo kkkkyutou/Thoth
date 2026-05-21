@@ -178,6 +178,8 @@ def _load_compiled_tasks(project_root: Path) -> list[dict[str, Any]]:
         row = _flatten_work_item(payload, path)
         if row is None:
             continue
+        if row.get("hidden") is True:
+            continue
         work_id = row["work_id"]
         if work_id in work_result_map:
             row["work_result"] = work_result_map[work_id]

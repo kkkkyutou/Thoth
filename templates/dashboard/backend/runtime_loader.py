@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 ACTIVE_RUN_STATUSES = {"queued", "running", "paused", "waiting_input", "stopping"}
+RUN_PHASES = ("plan", "execute", "validate", "reflect")
 
 
 def _parse_timestamp(value: Any) -> Optional[datetime]:
@@ -57,6 +58,47 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
             payload.setdefault("_line_no", line_no)
             records.append(payload)
     return records
+
+
+def _short_text(value: Any, *, limit: int = 220) -> str:
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    else:
+        text = str(value or "")
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)] + "..."
+
+
+def _section(title: str, items: list[Any], *, limit: int = 8) -> dict[str, Any] | None:
+    rows = [_short_text(item) for item in items if _short_text(item)]
+    if not rows:
+        return None
+    return {"title": title, "items": rows[:limit], "truncated": len(rows) > limit}
+
+
+def _mixed_items(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_short_text(item) for item in value]
+
+
+def _warning_items(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    rows: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            rows.append(_short_text(item))
+            continue
+        field = item.get("field")
+        reason = item.get("reason")
+        if field or reason:
+            rows.append(_short_text(f"{field or 'field'}: {reason or 'normalized'}"))
+        else:
+            rows.append(_short_text(item))
+    return rows
 
 
 def _event_seq(event: dict[str, Any]) -> int:
@@ -217,8 +259,152 @@ def get_run_detail(project_root: Path, run_id: str) -> Optional[dict[str, Any]]:
         "heartbeat": {"last_heartbeat_at": summary.get("last_heartbeat_at")},
         "artifacts": _read_json(run_dir / "artifacts.json"),
         "result": _read_json(run_dir / "result.json"),
+        "phase_cards": get_run_phase_cards(project_root, run_id),
         "worker_logs": get_run_worker_logs(project_root, run_id, tail=4000),
     }
+
+
+def _read_phase_artifact(project_root: Path, run_dir: Path, phase_state: dict[str, Any], phase: str) -> dict[str, Any]:
+    artifacts = phase_state.get("artifacts") if isinstance(phase_state.get("artifacts"), dict) else {}
+    candidate = artifacts.get(phase)
+    path = Path(candidate) if isinstance(candidate, str) and candidate else run_dir / f"{phase}.json"
+    if not path.is_absolute():
+        path = project_root / path
+    return _read_json(path)
+
+
+def _latest_invalid_phase_error(project_root: Path, run_dir: Path, phase: str) -> dict[str, Any] | None:
+    invalid_dir = run_dir / "worker-invalid"
+    if not invalid_dir.is_dir():
+        return None
+    errors = sorted(invalid_dir.glob(f"{phase}.attempt-*.validation-error.txt"))
+    if not errors:
+        return None
+    path = errors[-1]
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    return {
+        "path": str(path.resolve().relative_to(project_root)),
+        "summary": _short_text(text, limit=320),
+    }
+
+
+def _plan_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    sections = [
+        _section("Authority", [
+            f"authority_complete={payload.get('authority_complete')}",
+            f"open_gaps={len(payload.get('open_gaps') or []) if isinstance(payload.get('open_gaps'), list) else 0}",
+            f"forbidden_assumptions={len(payload.get('forbidden_assumptions_used') or []) if isinstance(payload.get('forbidden_assumptions_used'), list) else 0}",
+        ]),
+        _section("Discovery tasks", _mixed_items(payload.get("discovery_tasks"))),
+        _section("Execution steps", _mixed_items(payload.get("execution_steps"))),
+        _section("Validation plan", [payload.get("validation_plan")]),
+    ]
+    return [section for section in sections if section]
+
+
+def _execute_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    sections = [
+        _section("Plan deviations", _mixed_items(payload.get("plan_deviations"))),
+        _section("Dependency actions", _mixed_items(payload.get("dependency_actions"))),
+        _section("Debug attempts", _mixed_items(payload.get("debug_attempts"))),
+        _section("Verification steps", _mixed_items(payload.get("verification_steps"))),
+        _section("Resolved failures", _mixed_items(payload.get("resolved_failures"))),
+        _section("Remaining failures", _mixed_items(payload.get("remaining_failures"))),
+        _section("Files touched", _mixed_items(payload.get("files_touched"))),
+        _section("Commands", _mixed_items(payload.get("commands_run"))),
+        _section("Artifacts", _mixed_items(payload.get("artifacts"))),
+    ]
+    return [section for section in sections if section]
+
+
+def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    metric = [
+        f"{payload.get('metric_name') or 'metric'}={payload.get('metric_value')} threshold={payload.get('threshold')}",
+        f"passed={payload.get('passed')}",
+    ]
+    check_items: list[str] = []
+    checks = payload.get("checks")
+    if isinstance(checks, list):
+        for check in checks:
+            if not isinstance(check, dict):
+                check_items.append(_short_text(check))
+                continue
+            passed = check.get("ok") if isinstance(check.get("ok"), bool) else check.get("passed")
+            status = "PASS" if passed is True else "FAIL" if passed is False else "INFO"
+            name = check.get("name") or "check"
+            detail = check.get("detail") or check.get("details") or check.get("summary") or ""
+            check_items.append(_short_text(f"{status} {name}: {detail}"))
+    sections = [_section("Metric", metric), _section("Checks", check_items, limit=12)]
+    return [section for section in sections if section]
+
+
+def _reflect_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    sections = [
+        _section("Outcome", [
+            f"outcome={payload.get('outcome')}",
+            f"failure_class={payload.get('failure_class') or ''}",
+            payload.get("root_cause") or "",
+        ]),
+        _section("Residual risks", _mixed_items(payload.get("residual_risks"))),
+        _section("Evidence", _mixed_items(payload.get("evidence"))),
+        _section("Next recommendation", [payload.get("next_recommendation"), payload.get("next_plan_hint")]),
+    ]
+    return [section for section in sections if section]
+
+
+def _phase_sections(phase: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    if phase == "plan":
+        return _plan_sections(payload)
+    if phase == "execute":
+        return _execute_sections(payload)
+    if phase == "validate":
+        return _validate_sections(payload)
+    if phase == "reflect":
+        return _reflect_sections(payload)
+    return []
+
+
+def get_run_phase_cards(project_root: Path, run_id: str) -> list[dict[str, Any]]:
+    project_root = project_root.resolve()
+    run_dir = _runs_dir(project_root) / run_id
+    if not run_dir.is_dir():
+        return []
+    phase_state = _read_json(run_dir / "phase_state.json")
+    state = _read_json(run_dir / "state.json")
+    result = _read_json(run_dir / "result.json")
+    phase_statuses = phase_state.get("phase_statuses") if isinstance(phase_state.get("phase_statuses"), dict) else {}
+    cards: list[dict[str, Any]] = []
+    for phase in RUN_PHASES:
+        payload = _read_phase_artifact(project_root, run_dir, phase_state, phase)
+        status = str(phase_statuses.get(phase) or "pending")
+        if phase == state.get("phase") and state.get("status") in ACTIVE_RUN_STATUSES:
+            status = str(state.get("status") or status)
+        if not payload and phase == "reflect" and result.get("status") == "failed":
+            invalid = _latest_invalid_phase_error(project_root, run_dir, phase)
+            if invalid:
+                payload = {
+                    "summary": "Reflect output was invalid; dashboard is showing the archived validation diagnostic.",
+                    "outcome": "failed",
+                    "failure_class": "reflect_output_invalid",
+                    "root_cause": invalid.get("summary"),
+                    "next_recommendation": "Use validate evidence as the acceptance source, then rerun after fixing the implementation issue.",
+                    "_normalization_warnings": [{"field": "reflect", "reason": "invalid_output_diagnostic"}],
+                    "_invalid_diagnostic_path": invalid.get("path"),
+                }
+                status = "failed"
+        card = {
+            "phase": phase,
+            "label": phase.title(),
+            "status": status,
+            "summary": _short_text(payload.get("summary") if payload else "", limit=420),
+            "warnings": _warning_items(payload.get("_normalization_warnings") if payload else []),
+            "sections": _phase_sections(phase, payload) if payload else [],
+        }
+        cards.append(card)
+    return cards
 
 
 def get_run_events(project_root: Path, run_id: str, *, after_seq: Optional[int] = None, limit: int = 100) -> Optional[dict[str, Any]]:

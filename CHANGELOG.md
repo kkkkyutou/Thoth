@@ -4,6 +4,18 @@
 
 No pending changes.
 
+## [0.2.6.5] - 2026-05-21
+
+### Changed
+- Added host-neutral phase role contracts: `plan` stays strict about user authority while treating path/import/dependency lookup as executable discovery, `execute` acts as a senior implementation engineer, `validate` remains an independent acceptance verifier, and `reflect` focuses on validation evidence, scientific/system risks, and next recommendations.
+- `execute` now explicitly encourages repo-local engineering debugging and dependency repair inside task boundaries, including `.vendor` or task-local installs, focused smoke checks, and structured fields for `debug_attempts`, `dependency_actions`, `verification_steps`, `resolved_failures`, and `remaining_failures`.
+- Dashboard run detail now renders structured phase cards from `plan` / `execute` / `validate` / `reflect` artifacts, with phase summaries, warnings, checks, dependency actions, and validation evidence instead of raw worker-log walls in the normal work-item detail view.
+
+### Fixed
+- Removed the remaining default `execute` timeout inherited from run payload loop budgets; execute has no short fixed Thoth timeout unless an explicit environment/runtime policy sets one.
+- Synthesized missing `reflect` failure fields from validate evidence when validation has already failed, preventing a missing `failure_class` / `root_cause` / `next_plan_hint` from hiding the real acceptance failure.
+- `thoth init --sync` now marks legacy timestamp duplicate work items such as `work-<timestamp>-work` as `abandoned`, hidden, and superseded by their stable work id when there is one unambiguous matching authority item.
+
 ## [0.2.6.4] - 2026-05-20
 
 ### Changed

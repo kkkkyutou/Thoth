@@ -359,14 +359,104 @@ def _require_bool(field: str, value: Any) -> bool:
     return value
 
 
+def _check_passed(check: dict[str, Any]) -> bool | None:
+    for key in ("ok", "passed"):
+        value = check.get(key)
+        if isinstance(value, bool):
+            return value
+    return None
+
+
+def _first_failed_validate_check(validate_payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(validate_payload, dict):
+        return {}
+    checks = validate_payload.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        if _check_passed(check) is False:
+            return check
+    return {}
+
+
+def _validate_text_for_failure(validate_payload: dict[str, Any] | None, failed_check: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for source in (failed_check, validate_payload if isinstance(validate_payload, dict) else {}):
+        if not isinstance(source, dict):
+            continue
+        for key in ("name", "details", "detail", "summary"):
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(value.strip())
+    return " ".join(parts)
+
+
+def _infer_failure_class(validate_payload: dict[str, Any] | None, failed_check: dict[str, Any]) -> str:
+    text = _validate_text_for_failure(validate_payload, failed_check).lower()
+    if any(marker in text for marker in ("module not found", "modulenotfounderror", "no module named", "importerror")):
+        return "dependency_missing"
+    if any(marker in text for marker in ("timed out", "timeout", "exit 124")):
+        return "dependency_timeout"
+    if any(marker in text for marker in ("permission denied", "not permitted")):
+        return "permission_blocked"
+    if isinstance(validate_payload, dict) and validate_payload.get("passed") is False:
+        metric_value = validate_payload.get("metric_value")
+        threshold = validate_payload.get("threshold")
+        if metric_value is not None and threshold is not None:
+            return "metric_not_reached"
+    return "validation_failed"
+
+
+def _synthesize_reflect_failure_fields(
+    payload: dict[str, Any],
+    *,
+    prior_validate_payload: dict[str, Any] | None,
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if str(payload.get("outcome") or "").strip().lower() != "failed":
+        return payload
+    missing = [field for field in ("failure_class", "root_cause", "next_plan_hint") if field not in payload]
+    if not missing:
+        return payload
+    failed_check = _first_failed_validate_check(prior_validate_payload)
+    failure_class = _infer_failure_class(prior_validate_payload, failed_check)
+    root_source = _validate_text_for_failure(prior_validate_payload, failed_check)
+    if not root_source and isinstance(prior_validate_payload, dict):
+        root_source = str(prior_validate_payload.get("summary") or "")
+    root_cause = root_source or "validation failed; no detailed failed check was available"
+    check_name = failed_check.get("name") if isinstance(failed_check.get("name"), str) else ""
+    if check_name:
+        next_hint = f"repair validation failure in {check_name} and rerun the official validator"
+    else:
+        next_hint = "repair the validation failure and rerun the official validator"
+    synthesized = dict(payload)
+    synthesized.setdefault("failure_class", failure_class)
+    synthesized.setdefault("root_cause", root_cause)
+    synthesized.setdefault("next_plan_hint", next_hint)
+    for field in missing:
+        _add_normalization_warning(
+            warnings,
+            field=f"reflect.{field}",
+            reason="synthesized_from_validate_evidence",
+            original_type="missing",
+            limit=ROOT_CAUSE_LIMIT if field != "failure_class" else FAILURE_CLASS_LIMIT,
+            truncated_or_compacted=True,
+        )
+    return synthesized
+
+
 def validate_phase_output(
     phase: str,
     payload: dict[str, Any],
     *,
     validate_schema: dict[str, Any] | None = None,
+    prior_validate_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{phase} output must be an object")
+    payload = dict(payload)
     required = PHASE_REQUIRED_FIELDS[phase]
     missing = [field for field in required if field not in payload]
     if missing:
@@ -475,6 +565,20 @@ def validate_phase_output(
             item_limit=COMMAND_ITEM_LIMIT,
             warnings=normalization_warnings,
         )
+        for field in (
+            "debug_attempts",
+            "verification_steps",
+            "dependency_actions",
+            "resolved_failures",
+            "remaining_failures",
+        ):
+            if field in payload:
+                normalized[field] = _normalize_mixed_list(
+                    f"execute.{field}",
+                    payload.get(field),
+                    item_limit=COMMAND_ITEM_LIMIT,
+                    warnings=normalization_warnings,
+                )
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "validate":
@@ -506,6 +610,11 @@ def validate_phase_output(
         outcome = str(payload.get("outcome") or "").strip().lower()
         if outcome not in {"passed", "failed"}:
             raise ValueError("reflect.outcome must be passed|failed")
+        payload = _synthesize_reflect_failure_fields(
+            payload,
+            prior_validate_payload=prior_validate_payload,
+            warnings=normalization_warnings,
+        )
         normalized["outcome"] = outcome
         normalized["residual_risks"] = _normalize_text_list(
             "reflect.residual_risks",

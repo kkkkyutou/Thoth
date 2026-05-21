@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -382,6 +383,7 @@ def sync_project_layer(project_dir: Path) -> dict[str, Any] | None:
     }
     generate_thoth_runtime(normalized, project_dir)
     authority_repairs = backfill_work_item_authority_contexts(project_dir)
+    duplicate_repairs = abandon_duplicate_timestamp_work_items(project_dir)
     dashboard_result = generate_dashboard(normalized, project_dir, backup_existing=True)
     _write_dashboard_locale_selection(normalized, project_dir)
     generate_host_projections(normalized, project_dir)
@@ -392,9 +394,103 @@ def sync_project_layer(project_dir: Path) -> dict[str, Any] | None:
     compile_task_authority(project_dir)
     return {
         "authority_repairs": authority_repairs,
+        "duplicate_work_repairs": duplicate_repairs,
         "dashboard": dashboard_result,
         "source_map": str(project_dir / ".thoth" / "docs" / "source-map.json"),
     }
+
+
+_TIMESTAMP_WORK_ID_RE = re.compile(r"^work-\d{8}T\d{6}Z-work$")
+
+
+def _work_duplicate_signature(obj: dict[str, Any]) -> tuple[str, str, str, str]:
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+    eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
+    entrypoint = eval_contract.get("entrypoint") if isinstance(eval_contract.get("entrypoint"), dict) else {}
+    return (
+        " ".join(str(payload.get("goal") or obj.get("summary") or "").split()),
+        " ".join(str(entrypoint.get("command") or "").split()),
+        str(payload.get("module") or "").strip(),
+        str(payload.get("direction") or "").strip(),
+    )
+
+
+def abandon_duplicate_timestamp_work_items(project_dir: Path) -> list[dict[str, Any]]:
+    """Mark legacy timestamp work items as superseded by stable work ids.
+
+    Early discuss workers could close an existing work item without preserving
+    its stable work_id, producing `work-<timestamp>-work` duplicates.  Sync keeps
+    those objects as evidence but removes them from runnable/dashboard authority.
+    """
+
+    store = Store(project_dir)
+    rows = store.list("work_item")
+    stable_by_signature: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    timestamp_rows: list[dict[str, Any]] = []
+    for obj in rows:
+        work_id = str(obj.get("object_id") or "")
+        if _TIMESTAMP_WORK_ID_RE.match(work_id):
+            timestamp_rows.append(obj)
+            continue
+        if obj.get("status") == "abandoned":
+            continue
+        signature = _work_duplicate_signature(obj)
+        if not signature[0] or not signature[1]:
+            continue
+        stable_by_signature.setdefault(signature, []).append(obj)
+
+    repairs: list[dict[str, Any]] = []
+    for duplicate in timestamp_rows:
+        duplicate_id = str(duplicate.get("object_id") or "")
+        signature = _work_duplicate_signature(duplicate)
+        candidates = stable_by_signature.get(signature, [])
+        if len(candidates) != 1:
+            repairs.append({"work_id": duplicate_id, "status": "skipped_ambiguous", "candidate_count": len(candidates)})
+            continue
+        stable = candidates[0]
+        stable_id = str(stable.get("object_id") or "")
+        payload = duplicate.get("payload") if isinstance(duplicate.get("payload"), dict) else {}
+        superseded_by = f"work_item:{stable_id}"
+        if duplicate.get("status") == "abandoned" and payload.get("superseded_by") == superseded_by:
+            repairs.append({"work_id": duplicate_id, "status": "already_abandoned", "superseded_by": stable_id})
+            continue
+        next_payload = dict(payload)
+        next_payload["hidden"] = True
+        next_payload["hidden_reason"] = "duplicate timestamp work item superseded by stable work_id"
+        next_payload["superseded_by"] = superseded_by
+        try:
+            updated_duplicate = store.update(
+                "work_item",
+                duplicate_id,
+                expected_revision=int(duplicate.get("revision", 0)),
+                updates={"status": "abandoned", "payload": next_payload},
+                history_summary="sync abandoned duplicate timestamp work item",
+                source="init --sync",
+            )
+            latest_stable = store.read("work_item", stable_id) or stable
+            stable_links = list(latest_stable.get("links") if isinstance(latest_stable.get("links"), list) else [])
+            supersedes_link = {"type": "supersedes", "target": f"work_item:{duplicate_id}"}
+            if supersedes_link not in stable_links:
+                stable_links.append(supersedes_link)
+                store.update(
+                    "work_item",
+                    stable_id,
+                    expected_revision=int(latest_stable.get("revision", 0)),
+                    updates={"links": stable_links},
+                    history_summary=f"sync linked superseded duplicate {duplicate_id}",
+                    source="init --sync",
+                )
+            repairs.append(
+                {
+                    "work_id": duplicate_id,
+                    "status": "abandoned",
+                    "superseded_by": stable_id,
+                    "revision": updated_duplicate.get("revision"),
+                }
+            )
+        except ActiveExecutionLock:
+            repairs.append({"work_id": duplicate_id, "status": "skipped_active", "superseded_by": stable_id})
+    return repairs
 
 
 def backfill_work_item_authority_contexts(project_dir: Path) -> list[dict[str, Any]]:

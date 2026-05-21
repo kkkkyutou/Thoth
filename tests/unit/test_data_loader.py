@@ -127,6 +127,30 @@ def test_load_all_tasks_attaches_work_results(tmp_path):
     assert tasks[0]["work_result"]["source"] == "legacy_import"
 
 
+def test_load_all_tasks_hides_superseded_timestamp_duplicates(tmp_path):
+    invalidate_cache()
+    _write_project_object(tmp_path)
+    _write_work_item(tmp_path, work_id="DEMO00-T0.1")
+    duplicate = Store(tmp_path).read("work_item", "DEMO00-T0.1")
+    payload = dict(duplicate["payload"])
+    payload["hidden"] = True
+    payload["hidden_reason"] = "duplicate timestamp work item superseded by stable work_id"
+    payload["superseded_by"] = "work_item:DEMO00-T0.1"
+    Store(tmp_path).create(
+        kind="work_item",
+        object_id="work-20260520T100057Z-work",
+        status="abandoned",
+        title="work-20260520T100057Z-work",
+        summary="Verify loader",
+        source="init --sync",
+        payload=payload,
+    )
+
+    tasks = load_all_tasks(tmp_path)
+
+    assert [task["id"] for task in tasks] == ["DEMO00-T0.1"]
+
+
 def test_load_modules_from_tasks(tmp_path):
     invalidate_cache()
     _write_work_item(tmp_path)
