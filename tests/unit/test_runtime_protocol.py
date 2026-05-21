@@ -21,6 +21,7 @@ from thoth.run.ledger import (
 from thoth.run.model import CLAUDE_EXTERNAL_WORKER_ALLOWED_TOOLS
 from thoth.run.packets import prepare_execution
 from thoth.run.phases import default_validate_output_schema, next_phase_payload, submit_phase_output
+from thoth.run.guidance import append_run_guidance, pending_interrupt_guidance
 from thoth.run.worker import ExternalWorkerPhaseDriver, build_external_worker_prompt, external_worker_command
 
 
@@ -173,6 +174,56 @@ def test_prepare_execution_synthesizes_authority_from_legacy_discussion_ref(tmp_
     assert packet["strict_task"]["_authority_resolution"]["source"] == "legacy_discussion_ref"
     resolution = json.loads((handle.run_dir / "authority-resolution.json").read_text(encoding="utf-8"))
     assert resolution["source"] == "legacy_discussion_ref"
+
+
+def test_invocation_guidance_flows_into_phase_packets(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Guided run",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Guided run", "eval_entrypoint": {"command": "pytest -q"}},
+        goal="guided run",
+        invocation_guidance="Focus on repo-local flex_gemm repair before giving up.",
+    )
+
+    assert packet["guidance"]["initial"]["message"] == "Focus on repo-local flex_gemm repair before giving up."
+    phase = next_phase_payload(project, handle.run_id)
+    assert phase["guidance"]["inherited"]["initial"]["source"] == "initial_invocation"
+    assert phase["guidance"]["current"]["tail"][0]["message"] == "Focus on repo-local flex_gemm repair before giving up."
+    assert "temporary execution guidance" in phase["guidance"]["current"]["policy"]["semantics"]
+
+
+def test_live_guidance_interrupt_can_be_pending_for_phase(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Interrupt run",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={"work_id": "task-1", "title": "Interrupt run", "eval_entrypoint": {"command": "pytest -q"}},
+        goal="interrupt run",
+    )
+
+    entry = append_run_guidance(
+        project,
+        handle.run_id,
+        message="现在改，不要继续当前实现",
+        source="host_agent",
+        phase="execute",
+        interrupt_requested=True,
+    )
+
+    assert pending_interrupt_guidance(project, handle.run_id, phase="plan") is None
+    pending = pending_interrupt_guidance(project, handle.run_id, phase="execute")
+    assert pending and pending["guidance_id"] == entry["guidance_id"]
 
 
 def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failure():
@@ -644,7 +695,7 @@ def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_
     output_path = handle.run_dir / "plan.worker-output.json"
     prompts: list[str] = []
 
-    def _fake_process(command, handle, stdout_path, stderr_path, env, timeout_seconds):
+    def _fake_process(command, handle, phase, stdout_path, stderr_path, env, timeout_seconds):
         prompts.append(command[-1])
         stdout_path.write_text(f"attempt {len(prompts)} stdout\n", encoding="utf-8")
         stderr_path.write_text(f"attempt {len(prompts)} stderr\n", encoding="utf-8")
@@ -723,7 +774,7 @@ def test_external_worker_timeout_reports_phase_worker_timeout_and_tails(monkeypa
     )
     phase_packet = next_phase_payload(project, handle.run_id)
 
-    def _fake_timeout(command, handle, stdout_path, stderr_path, env, timeout_seconds):
+    def _fake_timeout(command, handle, phase, stdout_path, stderr_path, env, timeout_seconds):
         stdout_path.write_text("worker still thinking\n", encoding="utf-8")
         stderr_path.write_text("no output yet\n", encoding="utf-8")
         raise subprocess.TimeoutExpired(command, timeout_seconds)
@@ -761,7 +812,7 @@ def test_external_worker_final_schema_failure_mentions_invalid_artifacts(monkeyp
     phase_packet = next_phase_payload(project, handle.run_id)
     attempts = 0
 
-    def _fake_invalid(command, handle, stdout_path, stderr_path, env, timeout_seconds):
+    def _fake_invalid(command, handle, phase, stdout_path, stderr_path, env, timeout_seconds):
         nonlocal attempts
         attempts += 1
         (handle.run_dir / "plan.worker-output.json").write_text(
@@ -811,8 +862,7 @@ def test_external_worker_uses_phase_specific_default_timeouts(monkeypatch, tmp_p
     )
     seen: list[tuple[str, float | None]] = []
 
-    def _fake_process(command, handle, stdout_path, stderr_path, env, timeout_seconds):
-        phase = "execute" if any("execute.worker-output.json" in str(item) for item in command) else "plan"
+    def _fake_process(command, handle, phase, stdout_path, stderr_path, env, timeout_seconds):
         seen.append((phase, timeout_seconds))
         output_path = handle.run_dir / f"{phase}.worker-output.json"
         payload = _execute_payload() if phase == "execute" else _plan_payload()
@@ -872,11 +922,12 @@ def test_external_worker_command_uses_executor_specific_cli(tmp_path):
     assert "--dangerously-skip-permissions" in claude_cmd
 
 
-def test_plan_and_validate_worker_commands_use_workspace_sandbox(tmp_path):
+def test_plan_sandbox_but_execute_and_validate_are_gpu_capable(tmp_path):
     project = _prepare_project(tmp_path)
     codex_plan = external_worker_command("codex", project, "prompt", phase="plan")
     codex_validate = external_worker_command("codex", project, "prompt", phase="validate")
     claude_validate = external_worker_command("claude", project, "prompt", phase="validate")
     assert ["--sandbox", "workspace-write"] == codex_plan[codex_plan.index("--sandbox") : codex_plan.index("--sandbox") + 2]
-    assert ["--sandbox", "workspace-write"] == codex_validate[codex_validate.index("--sandbox") : codex_validate.index("--sandbox") + 2]
-    assert "--disallowed-tools" in claude_validate
+    assert "--dangerously-bypass-approvals-and-sandbox" in codex_validate
+    assert "--dangerously-skip-permissions" in claude_validate
+    assert "--disallowed-tools" not in claude_validate

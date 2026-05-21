@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from thoth.objects import utc_now
+from thoth.objects import Store, utc_now
 from thoth.plan.doctor import build_doctor_payload, infer_review_work_id
 from thoth.plan.paths import compiler_state_path, work_items_dir
 from thoth.plan.store import load_work_for_execution, suggest_work_items_for_query
@@ -19,8 +19,11 @@ from thoth.run.auto import (
 )
 from thoth.run.controllers import build_auto_request_fingerprint, create_auto_controller, create_orchestration_controller
 from thoth.run.driver import JsonlStdoutSink, execute_runtime_controller
+from thoth.run.guidance import append_run_guidance, guidance_path
+from thoth.run.model import RunHandle
 from thoth.run.packets import LIVE_DISPATCH_MODE, prepare_execution
-from thoth.run.service import attach_run, resume_run, stop_run
+from thoth.run.phases import load_phase_state
+from thoth.run.service import attach_run, list_active_runs, resume_run, stop_run
 from thoth.run.worker import (
     ExternalWorkerPhaseDriver,
     TestPhaseDriver,
@@ -115,6 +118,111 @@ def _resolve_executor(args) -> str:
     return "codex"
 
 
+def _prompt_query(args) -> str:
+    return str(getattr(args, "prompt_query", "") or "").strip()
+
+
+def _guidance_interrupt_requested(message: str) -> bool:
+    text = message.lower()
+    triggers = (
+        "interrupt",
+        "stop current",
+        "restart phase",
+        "start over",
+        "right now",
+        "don't continue",
+        "do not continue",
+        "停",
+        "别继续",
+        "不要继续",
+        "重来",
+        "立刻",
+        "马上",
+        "现在改",
+    )
+    return any(trigger in text for trigger in triggers)
+
+
+def _append_guidance_to_run(
+    project_root: Path,
+    run_id: str,
+    *,
+    message: str,
+    source: str = "host_agent",
+    phase: str | None = None,
+    interrupt_requested: bool | None = None,
+) -> list[dict]:
+    interrupt = _guidance_interrupt_requested(message) if interrupt_requested is None else bool(interrupt_requested)
+    entries = [
+        append_run_guidance(
+            project_root,
+            run_id,
+            message=message,
+            source=source,
+            phase=phase,
+            interrupt_requested=interrupt,
+        )
+    ]
+    controller = load_phase_state(RunHandle(project_root=project_root.resolve(), run_id=run_id))
+    if controller.get("mode") == "loop_parent":
+        loop = controller.get("loop") if isinstance(controller.get("loop"), dict) else {}
+        child_run_id = loop.get("active_child_run_id")
+        if isinstance(child_run_id, str) and child_run_id.strip():
+            entries.append(
+                append_run_guidance(
+                    project_root,
+                    child_run_id,
+                    message=message,
+                    source=source,
+                    phase=phase,
+                    interrupt_requested=interrupt,
+                    parent_run_id=run_id,
+                )
+            )
+    return entries
+
+
+def _append_guidance_to_single_active_run(project_root: Path, *, command_id: str, message: str) -> int | None:
+    active = [row for row in list_active_runs(project_root) if row.get("kind") == command_id]
+    if len(active) != 1:
+        return None
+    run_id = str(active[0].get("run_id") or "")
+    entries = _append_guidance_to_run(project_root, run_id, message=message, source="host_agent")
+    print_envelope(
+        command=command_id,
+        status="ok",
+        summary=f"Appended live guidance to {run_id}",
+        body={"run_id": run_id, "guidance": entries},
+        refs=output_refs(guidance_path(project_root, run_id)),
+        checks=[{"name": "guidance_appended", "ok": True, "detail": run_id}],
+    )
+    return 0
+
+
+def _append_auto_guidance(project_root: Path, controller: dict, message: str) -> dict:
+    store = Store(project_root)
+    controller_id = str(controller.get("object_id") or "")
+    payload = dict(controller.get("payload") if isinstance(controller.get("payload"), dict) else {})
+    payload["guidance"] = {
+        "message": message,
+        "source": "host_agent",
+        "semantics": "temporary controller-level execution guidance; authority and validators remain unchanged",
+        "created_at": utc_now(),
+    }
+    cursor = payload.get("cursor") if isinstance(payload.get("cursor"), dict) else {}
+    active_run_id = cursor.get("active_run_id")
+    if isinstance(active_run_id, str) and active_run_id:
+        _append_guidance_to_run(project_root, active_run_id, message=message, source="host_agent")
+    return store.update(
+        "controller",
+        controller_id,
+        expected_revision=int(controller.get("revision", 0)),
+        updates={"payload": payload},
+        history_summary="auto guidance appended",
+        source="auto",
+    )
+
+
 def _driver_for_handle(handle):
     test_mode = _test_external_worker_mode()
     if test_mode in {"complete", "fail"}:
@@ -153,7 +261,7 @@ def handle_prepare(args, parser, *, project_root: Path) -> int:
     elif args.command_id == "review" and not (args.target or args.goal):
         parser.exit(2, "thoth: error: Review prepare requires --target or --goal.\n")
     try:
-        handle, packet = prepare_execution(root, command_id=args.command_id, title=title, work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=strict_task, target=args.target, goal=args.goal or title)
+        handle, packet = prepare_execution(root, command_id=args.command_id, title=title, work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=strict_task, target=args.target, goal=args.goal or title, invocation_guidance=_prompt_query(args))
     except ValueError as exc:
         if work_id and "authority" in str(exc):
             return _reject_authority_resolution(command_id=args.command_id, project_root=root, work_id=work_id, reason=str(exc))
@@ -197,10 +305,19 @@ def handle_review(args, parser, *, project_root: Path) -> int:
 
 
 def handle_run_or_loop(args, parser, *, project_root: Path) -> int:
+    guidance_message = _prompt_query(args)
     if getattr(args, "attach", None):
+        if guidance_message:
+            entries = _append_guidance_to_run(project_root, args.attach, message=guidance_message, source="host_agent")
+            print_envelope(command=args.command, status="ok", summary=f"Appended live guidance to {args.attach}", body={"run_id": args.attach, "guidance": entries}, refs=output_refs(guidance_path(project_root, args.attach)))
+            return 0
         print_envelope(command=args.command, status="ok", summary=f"Attached to {args.attach}", body={"attach_output": attach_run(project_root, args.attach, watch=False)}, refs=output_refs(project_root / ".thoth" / "runs" / args.attach))
         return 0
     if getattr(args, "watch", None):
+        if guidance_message:
+            entries = _append_guidance_to_run(project_root, args.watch, message=guidance_message, source="host_agent")
+            print_envelope(command=args.command, status="ok", summary=f"Appended live guidance to {args.watch}", body={"run_id": args.watch, "guidance": entries}, refs=output_refs(guidance_path(project_root, args.watch)))
+            return 0
         print_envelope(command=args.command, status="ok", summary=f"Watching {args.watch}", body={"watch_output": attach_run(project_root, args.watch, watch=True)}, refs=output_refs(project_root / ".thoth" / "runs" / args.watch))
         return 0
     if getattr(args, "stop", None):
@@ -217,10 +334,14 @@ def handle_run_or_loop(args, parser, *, project_root: Path) -> int:
         return 0
     work_id = getattr(args, "work_id", None)
     if not work_id:
+        if guidance_message:
+            appended = _append_guidance_to_single_active_run(project_root, command_id=args.command, message=guidance_message)
+            if appended is not None:
+                return appended
         return _reject_missing_work_id(command_id=args.command, args=args, project_root=project_root)
     task = load_work_for_execution(project_root, work_id, require_ready=True)
     try:
-        handle, packet = prepare_execution(project_root, command_id=args.command, title=str(task.get("title") or work_id), work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=task, goal=getattr(args, "goal", None) or str(task.get("title") or work_id))
+        handle, packet = prepare_execution(project_root, command_id=args.command, title=str(task.get("title") or work_id), work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=task, goal=getattr(args, "goal", None) or str(task.get("title") or work_id), invocation_guidance=guidance_message)
     except ValueError as exc:
         if "authority" in str(exc):
             return _reject_authority_resolution(command_id=args.command, project_root=project_root, work_id=work_id, reason=str(exc))
@@ -251,8 +372,40 @@ def handle_orchestration(args, parser, *, project_root: Path) -> int:
     return 0
 
 
+def handle_append_guidance(args, parser, *, project_root: Path) -> int:
+    root = Path(args.project_root).resolve()
+    run_id = str(args.run_id)
+    entries = _append_guidance_to_run(
+        root,
+        run_id,
+        message=str(args.message),
+        source=str(getattr(args, "source", "") or "host_agent"),
+        phase=getattr(args, "phase", None),
+        interrupt_requested=bool(getattr(args, "interrupt", False)),
+    )
+    print_envelope(
+        command="append-guidance",
+        status="ok",
+        summary=f"Appended live guidance to {run_id}",
+        body={"run_id": run_id, "guidance": entries},
+        refs=output_refs(guidance_path(root, run_id)),
+        checks=[{"name": "guidance_appended", "ok": True, "detail": run_id}],
+    )
+    return 0
+
+
 def handle_auto(args, parser, *, project_root: Path) -> int:
+    guidance_message = _prompt_query(args)
     if getattr(args, "watch", None):
+        if guidance_message:
+            store = Store(project_root)
+            controller = store.read("controller", str(args.watch))
+            if not controller:
+                print_envelope(command="auto", status="failed", summary=f"Auto controller {args.watch} not found")
+                return 1
+            controller = _append_auto_guidance(project_root, controller, guidance_message)
+            print_envelope(command="auto", status="ok", summary=f"Appended controller guidance to {args.watch}", body={"controller": controller}, refs=output_refs(project_root / ".thoth" / "objects" / "controller" / f"{args.watch}.json"))
+            return 0
         return watch_auto_controller(
             project_root,
             str(args.watch),
@@ -260,8 +413,6 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
             follow=bool(getattr(args, "follow", False)),
         )
     if getattr(args, "stop", None):
-        from thoth.objects import Store
-
         store = Store(project_root)
         current = store.read("controller", args.stop)
         if not current:
@@ -323,6 +474,8 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
                 checks=[{"name": "auto_request_fingerprint", "ok": False, "detail": "active controller parameters differ"}],
             )
             return 2
+        if guidance_message:
+            controller = _append_auto_guidance(project_root, controller, guidance_message)
         reused = True
     else:
         doctor = build_doctor_payload(project_root)
@@ -347,6 +500,7 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
             rounds=getattr(args, "rounds", None),
             min_runtime_seconds=min_runtime_seconds,
             sleep_requested=bool(getattr(args, "sleep", False)),
+            invocation_guidance=guidance_message,
         )
     controller_id = str(controller["object_id"])
     spawned, worker_pid = ensure_auto_worker(project_root, controller_id)

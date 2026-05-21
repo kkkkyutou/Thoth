@@ -18,7 +18,7 @@ from thoth.surface.protocol_commands import (
     handle_record_artifact,
     handle_submit_phase,
 )
-from thoth.surface.run_commands import handle_auto, handle_auto_worker, handle_orchestration, handle_prepare, handle_review, handle_run_or_loop, handle_supervise, handle_worker
+from thoth.surface.run_commands import handle_append_guidance, handle_auto, handle_auto_worker, handle_orchestration, handle_prepare, handle_review, handle_run_or_loop, handle_supervise, handle_worker
 
 COMMAND_HANDLERS = {
     "init": handle_init,
@@ -35,6 +35,7 @@ COMMAND_HANDLERS = {
     "orchestration": handle_orchestration,
     "auto": handle_auto,
     "auto-worker": handle_auto_worker,
+    "append-guidance": handle_append_guidance,
     "prepare": handle_prepare,
     "supervise": handle_supervise,
     "worker": handle_worker,

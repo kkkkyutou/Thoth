@@ -17,6 +17,7 @@ from thoth.prompt_specs import render_phase_worker_prompt
 from thoth.prompt_validators import validate_phase_output
 
 from .io import _read_json, _write_json
+from .guidance import mark_interrupt_handled, pending_interrupt_guidance
 from .lease import release_repo_lease
 from .ledger import (
     _append_event,
@@ -150,6 +151,12 @@ def _worker_log_dir(handle: RunHandle) -> Path:
 
 def _worker_invalid_dir(handle: RunHandle) -> Path:
     path = handle.run_dir / "worker-invalid"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _worker_interrupted_dir(handle: RunHandle) -> Path:
+    path = handle.run_dir / "worker-interrupted"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -358,7 +365,7 @@ def external_worker_command(
             "-C",
             str(project_root),
         ]
-        if phase in {"plan", "validate"}:
+        if phase == "plan":
             cmd.extend(["--sandbox", "workspace-write"])
         else:
             cmd.append("--dangerously-bypass-approvals-and-sandbox")
@@ -366,7 +373,7 @@ def external_worker_command(
             cmd.extend(["--output-last-message", str(output_path)])
         cmd.append(prompt)
         return cmd
-    if phase == "execute":
+    if phase in {"execute", "validate"}:
         permission_args = ["--dangerously-skip-permissions"]
         tool_args = ["--tools", "default"]
     elif phase == "plan":
@@ -458,10 +465,68 @@ def _terminate_process_group(proc: subprocess.Popen[Any]) -> None:
         proc.kill()
 
 
+class PhaseWorkerInterrupted(RuntimeError):
+    """Raised when live guidance intentionally restarts the current phase worker."""
+
+    def __init__(self, guidance: dict[str, Any]) -> None:
+        self.guidance = guidance
+        super().__init__(f"phase worker interrupted by guidance {guidance.get('guidance_id')}")
+
+
+def _archive_worker_interrupt(
+    *,
+    handle: RunHandle,
+    phase: str,
+    attempt_index: int,
+    prompt_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    guidance: dict[str, Any],
+) -> dict[str, str]:
+    interrupted_dir = _worker_interrupted_dir(handle)
+    prefix = f"{phase}.attempt-{attempt_index}"
+    refs: dict[str, str] = {}
+    marker_path = interrupted_dir / f"{prefix}.interrupt.json"
+    _write_json(
+        marker_path,
+        {
+            "phase": phase,
+            "attempt": attempt_index,
+            "guidance": guidance,
+            "reason": "phase_worker_interrupted_for_guidance",
+        },
+    )
+    refs["interrupt"] = str(marker_path)
+    record_artifact(
+        handle.project_root,
+        handle.run_id,
+        path=str(marker_path),
+        label=marker_path.name,
+        artifact_kind="worker_interrupt",
+        metadata={"phase": phase, "attempt": attempt_index},
+    )
+    for source_path, suffix in ((prompt_path, "prompt.md"), (stdout_path, "stdout.log"), (stderr_path, "stderr.log")):
+        if not source_path.exists():
+            continue
+        archived = interrupted_dir / f"{prefix}.{suffix}"
+        shutil.copyfile(source_path, archived)
+        refs[suffix.replace(".", "_")] = str(archived)
+        record_artifact(
+            handle.project_root,
+            handle.run_id,
+            path=str(archived),
+            label=archived.name,
+            artifact_kind="log" if suffix.endswith(".log") else "prompt",
+            metadata={"phase": phase, "attempt": attempt_index, "error_kind": "phase_worker_interrupted_for_guidance"},
+        )
+    return refs
+
+
 def _run_phase_worker_process(
     command: list[str],
     *,
     handle: RunHandle,
+    phase: str,
     stdout_path: Path,
     stderr_path: Path,
     env: dict[str, str],
@@ -485,6 +550,13 @@ def _run_phase_worker_process(
             if str(handle.state_json().get("status") or "") in {"stopping", "stopped"}:
                 _terminate_process_group(proc)
                 raise InterruptedError("run stopped during phase worker")
+            guidance = pending_interrupt_guidance(handle.project_root, handle.run_id, phase=phase)
+            if guidance is not None:
+                guidance_id = guidance.get("guidance_id")
+                if isinstance(guidance_id, str):
+                    mark_interrupt_handled(handle.project_root, handle.run_id, guidance_id)
+                _terminate_process_group(proc)
+                raise PhaseWorkerInterrupted(guidance)
             if deadline is not None and time.time() >= deadline:
                 _terminate_process_group(proc)
                 raise subprocess.TimeoutExpired(command, timeout_seconds)
@@ -683,6 +755,8 @@ class ExternalWorkerPhaseDriver:
         repo_root = Path(__file__).resolve().parent.parent
         env["PYTHONPATH"] = str(repo_root) if not existing else f"{repo_root}:{existing}"
         env["THOTH_EXTERNAL_WORKER"] = "1"
+        if self.executor == "claude" and phase in {"execute", "validate"}:
+            env["IS_SANDBOX"] = "1"
         if phase == "execute":
             guard_dir = _destructive_guard_bin(handle)
             env["PATH"] = f"{guard_dir}:{env.get('PATH', '')}"
@@ -727,6 +801,7 @@ class ExternalWorkerPhaseDriver:
                 returncode = _run_phase_worker_process(
                     command,
                     handle=handle,
+                    phase=phase,
                     stdout_path=stdout_path,
                     stderr_path=stderr_path,
                     env=env,
@@ -762,6 +837,20 @@ class ExternalWorkerPhaseDriver:
                 record_artifact(handle.project_root, handle.run_id, path=str(stdout_path), label=stdout_path.name, artifact_kind="log")
                 record_artifact(handle.project_root, handle.run_id, path=str(stderr_path), label=stderr_path.name, artifact_kind="log")
                 raise
+            except PhaseWorkerInterrupted as exc:
+                _archive_worker_interrupt(
+                    handle=handle,
+                    phase=phase,
+                    attempt_index=attempt_index,
+                    prompt_path=prompt_path,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    guidance=exc.guidance,
+                )
+                last_error = "phase_worker_interrupted_for_guidance"
+                if output_path.exists():
+                    output_path.unlink()
+                continue
             record_artifact(handle.project_root, handle.run_id, path=str(stdout_path), label=stdout_path.name, artifact_kind="log")
             record_artifact(handle.project_root, handle.run_id, path=str(stderr_path), label=stderr_path.name, artifact_kind="log")
             if phase == "execute":

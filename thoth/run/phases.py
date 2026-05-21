@@ -12,6 +12,7 @@ from thoth.prompt_validators import PHASE_REQUIRED_FIELDS, validate_phase_output
 from thoth.objects import Store
 
 from .io import _read_json, _write_json
+from .guidance import guidance_context
 from .ledger import (
     _append_event,
     _update_run,
@@ -173,6 +174,7 @@ def initialize_run_phase_state(
     prior_reflect: dict[str, Any] | None = None,
     review_context: dict[str, Any] | None = None,
     loop_context: dict[str, Any] | None = None,
+    guidance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     phase_state = {
         "schema_version": 1,
@@ -189,6 +191,7 @@ def initialize_run_phase_state(
         "prior_reflect": prior_reflect or {},
         "review_context": review_context or {},
         "loop_context": loop_context or {},
+        "guidance": guidance or {},
         "command_authority": command_prompt_authority("run"),
         "created_at": utc_now(),
     }
@@ -203,6 +206,7 @@ def initialize_loop_controller(
     strict_task: dict[str, Any],
     goal: str,
     target: str | None = None,
+    guidance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     runtime_contract = normalize_runtime_contract(strict_task.get("runtime_contract"))
     review_binding = strict_task.get("review_binding") if isinstance(strict_task.get("review_binding"), dict) else {}
@@ -213,6 +217,7 @@ def initialize_loop_controller(
         "goal": goal,
         "target": target,
         "strict_task": minimal_task_authority(strict_task),
+        "guidance": guidance or {},
         "loop": {
             "max_iterations": runtime_contract["loop"]["max_iterations"],
             "max_runtime_seconds": runtime_contract["loop"]["max_runtime_seconds"],
@@ -270,6 +275,7 @@ def build_live_packet(handle: RunHandle) -> dict[str, Any]:
             "current_phase": controller.get("current_phase"),
             "phase_statuses": controller.get("phase_statuses", {}),
         },
+        "guidance": controller.get("guidance", {}),
         "paths": {
             "run_dir": str(handle.run_dir),
             "state": str(handle.run_dir / "state.json"),
@@ -299,6 +305,10 @@ def _phase_input_for_run(handle: RunHandle, controller: dict[str, Any]) -> dict[
         "prior_reflect": controller.get("prior_reflect", {}),
         "review_context": controller.get("review_context", {}),
         "loop_context": controller.get("loop_context", {}),
+        "guidance": {
+            "inherited": controller.get("guidance", {}) if isinstance(controller.get("guidance"), dict) else {},
+            "current": guidance_context(handle.project_root, handle.run_id),
+        },
         "budget": {
             "remaining_exec_attempts": 1,
         },
@@ -337,6 +347,7 @@ def _maybe_activate_next_child(handle: RunHandle, controller: dict[str, Any]) ->
         prior_reflect=loop.get("last_reflect") if isinstance(loop.get("last_reflect"), dict) else {},
         review_context=loop.get("review_context") if isinstance(loop.get("review_context"), dict) else {},
         loop_context=_build_loop_context(loop),
+        guidance=controller.get("guidance") if isinstance(controller.get("guidance"), dict) else {},
     )
     loop["active_child_run_id"] = child_handle.run_id
     child_ids = loop.get("child_run_ids") if isinstance(loop.get("child_run_ids"), list) else []
@@ -686,6 +697,7 @@ def create_child_run(
     prior_reflect: dict[str, Any] | None = None,
     review_context: dict[str, Any] | None = None,
     loop_context: dict[str, Any] | None = None,
+    guidance: dict[str, Any] | None = None,
 ) -> RunHandle:
     from .ledger import create_run
 
@@ -715,6 +727,7 @@ def create_child_run(
         prior_reflect=prior_reflect,
         review_context=review_context,
         loop_context=loop_context,
+        guidance=guidance,
     )
     return child
 

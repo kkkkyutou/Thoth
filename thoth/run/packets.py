@@ -11,6 +11,7 @@ from thoth.plan.authority_resolution import resolve_strict_task_authority
 from thoth.prompt_specs import build_review_result_shape, command_prompt_authority
 
 from .io import _read_json, _write_json
+from .guidance import append_run_guidance, guidance_path
 from .lease import acquire_repo_lease
 from .ledger import _append_event, _update_state, _write_heartbeat, create_run, record_artifact
 from .model import LIVE_DISPATCH_MODE, SLEEP_DISPATCH_MODE, PROTOCOL_VERSION, RunHandle, _parse_iso8601, dispatch_mode_for, utc_now
@@ -44,6 +45,7 @@ def _protocol_command_strings(project_root: Path, run_id: str) -> dict[str, str]
 
     return {
         "append_event": render("append-event", "--message", "message", "--kind", "log"),
+        "append_guidance": render("append-guidance", "--message", "message"),
         "record_artifact": render("record-artifact", "--path", "path/to/artifact", "--label", "artifact"),
         "heartbeat": render("heartbeat", "--phase", "active", "--progress", "50"),
         "complete": render("complete", "--summary", "finished"),
@@ -176,6 +178,7 @@ def prepare_execution(
     goal: str | None = None,
     max_rounds: int | None = None,
     max_runtime_seconds: int | None = None,
+    invocation_guidance: str | None = None,
 ) -> tuple[RunHandle, dict[str, Any]]:
     dispatch_mode = dispatch_mode_for(sleep_requested)
     authority_resolution: dict[str, Any] | None = None
@@ -218,10 +221,33 @@ def prepare_execution(
             label="authority-resolution.json",
             artifact_kind="authority",
         )
+    guidance_payload: dict[str, Any] = {}
+    guidance_text = str(invocation_guidance or "").strip()
+    if guidance_text:
+        entry = append_run_guidance(
+            project_root,
+            handle.run_id,
+            message=guidance_text,
+            source="initial_invocation",
+            interrupt_requested=False,
+        )
+        inbox_path = guidance_path(project_root, handle.run_id)
+        record_artifact(
+            project_root,
+            handle.run_id,
+            path=str(inbox_path),
+            label=inbox_path.name,
+            artifact_kind="guidance",
+        )
+        guidance_payload = {
+            "initial": entry,
+            "inbox_path": str(inbox_path),
+            "semantics": "temporary execution guidance; authority and validator remain unchanged",
+        }
     if command_id == "run" and isinstance(strict_task, dict):
-        initialize_run_phase_state(handle, strict_task=strict_task, goal=goal or title, target=target)
+        initialize_run_phase_state(handle, strict_task=strict_task, goal=goal or title, target=target, guidance=guidance_payload)
     elif command_id == "loop" and isinstance(strict_task, dict):
-        initialize_loop_controller(handle, strict_task=strict_task, goal=goal or title, target=target)
+        initialize_loop_controller(handle, strict_task=strict_task, goal=goal or title, target=target, guidance=guidance_payload)
     packet = _build_execution_packet(
         handle,
         goal=goal or title,

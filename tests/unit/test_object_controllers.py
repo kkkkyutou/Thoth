@@ -91,6 +91,23 @@ def test_auto_controller_records_linear_queue_cursor(tmp_path):
     }
 
 
+def test_auto_controller_records_temporary_guidance_without_fingerprint_drift(tmp_path):
+    _seed_ready_work(tmp_path, "work-a")
+
+    controller = create_auto_controller(
+        tmp_path,
+        work_ids=["work-a"],
+        mode="loop",
+        host="codex",
+        executor="codex",
+        invocation_guidance="repair repo-local imports before failing",
+    )
+
+    assert controller["payload"]["guidance"]["message"] == "repair repo-local imports before failing"
+    assert controller["payload"]["guidance"]["semantics"].startswith("temporary controller-level")
+    assert "guidance" not in controller["payload"]["request_fingerprint"]
+
+
 def test_auto_actionable_work_orders_by_scheduling_priority(tmp_path):
     _seed_ready_work(tmp_path, "work-low", "work-high")
     low = Store(tmp_path).read("work_item", "work-low")

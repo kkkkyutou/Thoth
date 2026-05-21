@@ -209,6 +209,7 @@ def create_auto_controller(
     rounds: int | None = None,
     min_runtime_seconds: int = 8 * 60 * 60,
     sleep_requested: bool = False,
+    invocation_guidance: str | None = None,
 ) -> dict[str, Any]:
     if mode not in {"run", "loop"}:
         raise ValueError("auto mode must be run or loop")
@@ -217,6 +218,7 @@ def create_auto_controller(
     else:
         refs = [_work_ref(work) for work in list_auto_actionable_work(project_root, scope=scope)]
     controller_id = f"controller-auto-{uuid.uuid4().hex[:12]}"
+    guidance_text = str(invocation_guidance or "").strip()
     return Store(project_root).create(
         kind="controller",
         object_id=controller_id,
@@ -234,6 +236,14 @@ def create_auto_controller(
             "min_runtime_seconds": min_runtime_seconds,
             "sleep_requested": sleep_requested,
             "fixed_queue": bool(work_ids),
+            "guidance": {
+                "message": guidance_text,
+                "source": "initial_invocation",
+                "semantics": "temporary controller-level execution guidance; authority and validators remain unchanged",
+                "created_at": utc_now(),
+            }
+            if guidance_text
+            else {},
             "request_fingerprint": auto_request_fingerprint(
                 refs=refs,
                 mode=mode,

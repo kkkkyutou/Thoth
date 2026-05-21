@@ -51,4 +51,5 @@ Supported commands:
 - `discuss`, `run`, `loop`, `auto`, and open-ended `review` are high-intelligence paths.
 - `review` exact-match/probe flows are protocol-fast: if the packet exposes an exact result, do not improvise.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.
+- For `run`, `loop`, and `auto`, preserve trailing natural-language command text as temporary runtime guidance. During a live run, inject user corrections into the active run guidance inbox instead of only narrating advice.
 - Host hooks and subagents may improve throughput but are never correctness requirements.

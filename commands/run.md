@@ -1,7 +1,7 @@
 ---
 name: thoth:run
 description: Start one strict run bound to `work_id@revision`; live runs foreground and `--sleep` detaches the same runtime driver.
-argument-hint: "[--executor claude|codex] [--host claude|codex] [--sleep] [--attach <run_id>] [--watch <run_id>] [--stop <run_id>] --work-id <work_id>"
+argument-hint: "[--executor claude|codex] [--host claude|codex] [--sleep] [--attach <run_id>] [--watch <run_id>] [--stop <run_id>] --work-id <work_id> [guidance...]"
 disable-model-invocation: false
 allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Task
 ---
@@ -34,6 +34,7 @@ executed before Claude sees this prompt.
 - If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.
 - Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.
+- Trailing text/live corrections are temporary guidance only: append to the run guidance inbox; interrupt only for strong stop/restart/halt signals.
 - Use `packet.strict_task.goal_statement`, `packet.strict_task.authority_context`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.
 - If plan reports `authority_complete=false` or `reason=needs_input`, stop and route the user back to `/thoth:discuss` instead of guessing.
 

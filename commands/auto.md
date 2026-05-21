@@ -1,7 +1,7 @@
 ---
 name: thoth:auto
 description: Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.
-argument-hint: "[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>]"
+argument-hint: "[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>] [guidance...]"
 disable-model-invocation: false
 allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Task, Monitor
 ---
@@ -34,6 +34,7 @@ executed before Claude sees this prompt.
 - If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.
 - Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.
+- Trailing text/live corrections are temporary guidance only: append to the run guidance inbox; interrupt only for strong stop/restart/halt signals.
 - If the bridge payload exposes `body.monitor_command`, observe that command instead of executing work directly in the Claude session.
 - Prefer the Claude Monitor tool with `persistent=true` for `body.monitor_command` when available; otherwise use Bash to run the same watch command in the foreground.
 - Treat the monitor/watch JSONL stream as the only live progress authority; summarize progress and risks from those events only.

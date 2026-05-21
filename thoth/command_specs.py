@@ -56,7 +56,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="run",
         summary="Start one strict run bound to `work_id@revision`; live runs foreground and `--sleep` detaches the same runtime driver.",
-        argument_hint="[--executor claude|codex] [--host claude|codex] [--sleep] [--attach <run_id>] [--watch <run_id>] [--stop <run_id>] --work-id <work_id>",
+        argument_hint="[--executor claude|codex] [--host claude|codex] [--sleep] [--attach <run_id>] [--watch <run_id>] [--stop <run_id>] --work-id <work_id> [guidance...]",
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",
@@ -81,7 +81,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="loop",
         summary="Start one bounded controller service whose parent creates four-phase child runs.",
-        argument_hint="[--executor claude|codex] [--host claude|codex] [--sleep] [--attach <run_id>] [--resume <run_id>] [--watch <run_id>] [--stop <run_id>] --work-id <work_id>",
+        argument_hint="[--executor claude|codex] [--host claude|codex] [--sleep] [--attach <run_id>] [--resume <run_id>] [--watch <run_id>] [--stop <run_id>] --work-id <work_id> [guidance...]",
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",
@@ -121,7 +121,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="auto",
         summary="Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.",
-        argument_hint="[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>]",
+        argument_hint="[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>] [guidance...]",
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",

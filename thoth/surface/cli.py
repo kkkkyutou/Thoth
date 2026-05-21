@@ -149,6 +149,14 @@ def build_cli_parser() -> argparse.ArgumentParser:
     append_event.add_argument("--progress", type=int)
     append_event.add_argument("--payload-json")
 
+    append_guidance = add_internal_parser("append-guidance")
+    append_guidance.add_argument("--project-root", required=True)
+    append_guidance.add_argument("--run-id", required=True)
+    append_guidance.add_argument("--message", required=True)
+    append_guidance.add_argument("--source", default="host_agent")
+    append_guidance.add_argument("--phase")
+    append_guidance.add_argument("--interrupt", action="store_true")
+
     record = add_internal_parser("record-artifact")
     record.add_argument("--project-root", required=True)
     record.add_argument("--run-id", required=True)
@@ -194,15 +202,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_cli_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
-        if args.command in {"run", "loop"}:
-            free_text = [token for token in extras if not token.startswith("-")]
-            unknown_flags = [token for token in extras if token.startswith("-")]
+        if args.command in {"run", "loop", "auto"}:
+            prompt_after_separator = bool(extras and extras[0] == "--")
+            prompt_tokens = extras[1:] if prompt_after_separator else extras
+            unknown_flags = [] if prompt_after_separator else [token for token in prompt_tokens if token.startswith("-")]
             if unknown_flags:
                 parser.error(f"unrecognized arguments: {' '.join(extras)}")
-            setattr(args, "prompt_query", " ".join(free_text).strip())
+            setattr(args, "prompt_query", " ".join(prompt_tokens).strip())
             extras = []
         else:
             parser.error(f"unrecognized arguments: {' '.join(extras)}")
-    elif args.command in {"run", "loop"}:
+    elif args.command in {"run", "loop", "auto"}:
         setattr(args, "prompt_query", "")
     return handle_command(args, parser, project_root=Path.cwd())

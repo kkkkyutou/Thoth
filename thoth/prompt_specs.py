@@ -330,10 +330,12 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "When imports, builds, tests, paths, or dependencies fail, diagnose, repair, and rerun focused checks before returning output.",
         "Repo-local dependency repair is allowed: use local source discovery, .vendor/task-local installs, mirrors/proxies, builds, and focused smoke tests when they are necessary for the validator.",
         "Do not stop at the first missing module or short network timeout; record attempts and keep pursuing viable repo-local fixes until the task is solved, the issue is outside authority, or the user stops the run.",
+        "Apply temporary invocation/live guidance when it helps execution, but reject guidance that changes authority, validators, metrics, or thresholds.",
     ),
     "validate": (
         "Role: independent acceptance verifier.",
         "Run the official eval entrypoint exactly when it exists and report the actual result.",
+        "Use the same runtime capability class as execute so GPU/CUDA validators see the environment they require.",
         "Do not repair implementation, install dependencies, rewrite tests, or reinterpret the threshold in this phase.",
     ),
     "reflect": (
@@ -443,6 +445,9 @@ def render_phase_worker_prompt(
     loop_context = phase_packet.get("loop_context")
     if isinstance(loop_context, dict) and loop_context:
         lines.append("Use `loop_context` to avoid repeating the previous failure; follow its next_plan_hint without changing the work goal or validator.")
+    guidance = phase_packet.get("guidance")
+    if isinstance(guidance, dict) and guidance:
+        lines.append("Guidance is temporary: read inbox/tail at phase start/failures; never change authority, validators, metrics, or thresholds.")
     if output_path:
         lines.append(f"Runtime driver capture path: `{output_path}`.")
     if phase == "plan":
@@ -455,6 +460,7 @@ def render_phase_worker_prompt(
         lines.append("Follow the plan artifact; if deviation is necessary, list it in plan_deviations without changing the goal or validator.")
         lines.append("Use focused validation during execute as an engineering feedback loop; the later validate phase still decides final acceptance.")
         lines.append("If you repair dependencies, prefer repo-local or task-local locations such as `.vendor`; do not mutate global environments unless the work item explicitly authorizes it.")
+        lines.append("Do not wait for reflect to solve engineering bugs; debug imports, CUDA visibility, local dependency shims, build issues, and test failures here when they are inside task authority.")
         lines.append("Optional structured fields for human dashboards: debug_attempts, verification_steps, dependency_actions, resolved_failures, remaining_failures.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:
@@ -486,6 +492,7 @@ def build_codex_public_command_prompt(
         "Execute that shell command immediately as your first meaningful action.",
         "Do not explain the command before executing it.",
         "Do not replace execution with prose.",
+        "If the user supplied arguments or trailing natural-language guidance after the public command, preserve those exact arguments in the shell invocation.",
         "If neither PATH nor the installed Codex plugin cache or marketplace root contains the runtime entrypoint, report host install drift instead of inventing another entrypoint.",
         f"route_class={spec.route_class}.",
         f"intelligence_tier={spec.intelligence_tier}.",
@@ -500,6 +507,8 @@ def build_codex_public_command_prompt(
                 "Stay in the same session until the RuntimeDriver reaches terminal state unless --sleep was requested.",
                 "Runtime lifecycle is plan -> execute -> validate -> reflect; auto advances selected work through child loops.",
                 "Do not hand-edit `.thoth`; let the Thoth runtime driver advance phases.",
+                "If the user sends a natural-language correction while a live run/loop/auto is active, inject it into the active run guidance inbox through the packet protocol or installed runtime instead of merely replying with advice.",
+                "Treat such live corrections as temporary guidance: they may steer execution and debugging, but they must not rewrite work authority or validation criteria.",
             )
         )
     if command_id in {"run", "loop"}:

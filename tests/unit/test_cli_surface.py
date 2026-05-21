@@ -659,6 +659,69 @@ def test_cli_runtime_defaults_and_prepare_packet(tmp_path):
     assert events[-1]["status"] == "completed"
 
 
+def test_cli_run_records_trailing_guidance(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path)
+    result = _run_cli(
+        tmp_path,
+        "run",
+        "--work-id",
+        "task-1",
+        "focus on repo-local dependency repair",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    run_dirs = sorted((tmp_path / ".thoth" / "runs").glob("run-*"))
+    assert run_dirs
+    guidance_rows = [
+        json.loads(line)
+        for line in (run_dirs[-1] / "guidance.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert guidance_rows[0]["source"] == "initial_invocation"
+    assert guidance_rows[0]["message"] == "focus on repo-local dependency repair"
+    phase_state = json.loads((run_dirs[-1] / "phase_state.json").read_text(encoding="utf-8"))
+    assert phase_state["guidance"]["initial"]["message"] == "focus on repo-local dependency repair"
+
+
+def test_cli_append_guidance_writes_run_inbox(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path)
+    handle, _packet = prepare_execution(
+        tmp_path,
+        command_id="run",
+        title="Guidance target",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task=load_work_for_execution(tmp_path, "task-1", require_ready=True),
+        goal="Guidance target",
+    )
+
+    result = _run_cli(
+        tmp_path,
+        "append-guidance",
+        "--project-root",
+        str(tmp_path),
+        "--run-id",
+        handle.run_id,
+        "--message",
+        "现在改，不要继续当前实现",
+        "--interrupt",
+    )
+
+    assert result.returncode == 0, result.stderr
+    rows = [
+        json.loads(line)
+        for line in (handle.run_dir / "guidance.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert rows[-1]["interrupt_requested"] is True
+    assert rows[-1]["message"] == "现在改，不要继续当前实现"
+
+
 def test_cli_auto_runs_ready_work_even_when_blocked_work_exists(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
     _write_task(tmp_path, "ready-work", title="Ready Work", work_goal="Complete a ready item.")
@@ -816,7 +879,14 @@ def test_cli_auto_persists_controller_event_log(tmp_path):
 def test_cli_sleep_mode_auto_backgrounds(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
     _write_task(tmp_path)
-    result = _run_cli(tmp_path, "loop", "--work-id", "task-1", "--sleep")
+    result = _run_cli(
+        tmp_path,
+        "loop",
+        "--work-id",
+        "task-1",
+        "--sleep",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"},
+    )
     assert result.returncode == 0, result.stderr
     packet = _extract_json_object(result.stdout)
     assert packet["dispatch_mode"] == "external_worker"

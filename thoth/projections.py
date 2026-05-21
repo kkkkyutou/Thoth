@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.2.6.5"
+PLUGIN_VERSION = "0.2.6.6"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -49,6 +49,7 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
                 "- If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.",
                 "- Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.",
                 "- Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.",
+                "- Trailing text/live corrections are temporary guidance only: append to the run guidance inbox; interrupt only for strong stop/restart/halt signals.",
             )
         )
     if spec.command_id in {"run", "loop"}:
@@ -182,6 +183,7 @@ Supported commands:
 - `discuss`, `run`, `loop`, `auto`, and open-ended `review` are high-intelligence paths.
 - `review` exact-match/probe flows are protocol-fast: if the packet exposes an exact result, do not improvise.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.
+- For `run`, `loop`, and `auto`, preserve trailing natural-language command text as temporary runtime guidance. During a live run, inject user corrections into the active run guidance inbox instead of only narrating advice.
 - Host hooks and subagents may improve throughput but are never correctness requirements.
 """
 

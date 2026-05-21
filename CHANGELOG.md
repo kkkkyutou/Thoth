@@ -4,6 +4,17 @@
 
 No pending changes.
 
+## [0.2.6.6] - 2026-05-21
+
+### Changed
+- `run`, `loop`, and `auto` now preserve trailing natural-language text as temporary runtime guidance, recording it in run/controller ledgers and passing it into phase worker packets without changing work-item authority or validators.
+- Phase worker prompts now tell agents to read guidance at phase start, before key implementation choices, after failures, and before focused validation reruns; `execute` remains responsible for engineering debugging rather than deferring fixable implementation issues to `reflect`.
+- Host surfaces now describe live guidance injection: active-run user corrections should be appended to the run guidance inbox, with strong corrections allowed to interrupt and restart the current phase worker.
+
+### Fixed
+- `validate` now uses GPU-capable worker execution instead of Codex workspace sandboxing: Codex validate uses `--dangerously-bypass-approvals-and-sandbox`, while Claude validate uses `--dangerously-skip-permissions` with `IS_SANDBOX=1`.
+- Added a run-local guidance inbox and interrupt archive path so live corrections preserve stdout/stderr/prompt evidence instead of looking like schema failures or stopped attempts.
+
 ## [0.2.6.5] - 2026-05-21
 
 ### Changed

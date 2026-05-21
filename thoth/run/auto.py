@@ -501,6 +501,9 @@ def execute_auto_controller(
             sleep_requested=False,
             strict_task=strict_task,
             goal=str(strict_task.get("goal_statement") or strict_task.get("title") or work_id),
+            invocation_guidance=str((payload.get("guidance") or {}).get("message") or "")
+            if isinstance(payload.get("guidance"), dict)
+            else None,
         )
         rounds_attempted += 1
         cursor = {
