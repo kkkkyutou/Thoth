@@ -7,6 +7,14 @@
 
 ## Passed Checks
 
+- `EV-041` related to `WS-002`, `WS-003`, `WS-005`: `0.2.6.8` receipt normalization / runtime contract / reconcile 补丁的 `dev` checkout 验证已通过
+  - Evidence: `python -m thoth.cli sync` 通过并重新生成 Claude/Codex repository surfaces 与 plugin manifests。
+  - Evidence: `python -m py_compile thoth/run/phases.py thoth/run/reconcile.py thoth/run/worker.py thoth/prompt_validators.py thoth/prompt_specs.py thoth/surface/cli.py thoth/surface/run_commands.py templates/dashboard/backend/runtime_loader.py tests/unit/test_runtime_protocol.py tests/unit/test_cli_surface.py tests/unit/test_runtime_loader.py` 通过。
+  - Evidence: Targeted pytest `tests/unit/test_command_spec_generation.py tests/unit/test_runtime_protocol.py tests/unit/test_run_state_machine.py tests/unit/test_cli_surface.py tests/unit/test_runtime_loader.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_plugin_surface.py` 为 `112 passed in 135.72s`。
+  - Evidence: `templates/dashboard/frontend` 的 `npm run build` 通过，仅保留既有 Vite chunk-size warning；`git diff --check` 通过；`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json`、`.agents/plugins/marketplace.json` 均通过 `python -m json.tool`。
+  - Evidence: `bin/thoth doctor --version` 输出 `version=0.2.6.8`、`last_updated=2026-05-21T16:20:42Z`。
+  - Conclusion: 当前 checkout 已验证 validate 会归一化 inline stdout/stderr receipt logs、保留 runtime `_normalization_warnings`，`runtime_contract_error` 不再反哺 execute，`run --reconcile <run_id>` 可在 execute 官方 validator 已通过时闭合历史 failed/stopped run，stale worker output 不再进入 `worker-invalid/`。
+
 - `EV-001` related to `WS-003`: 当前公开命令面已稳定为显式 `/thoth:*` 与单一 `$thoth <command>`
   - Evidence: `commands/*.md`、`.agents/plugins/marketplace.json`、`plugins/thoth/.codex-plugin/plugin.json`、`plugins/thoth/skills/thoth/`
   - Conclusion: 当前公开 surface 与仓库定位一致
