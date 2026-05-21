@@ -306,7 +306,19 @@ def _plan_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _execute_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    receipt = payload.get("official_validation_receipt") if isinstance(payload.get("official_validation_receipt"), dict) else {}
+    receipt_items: list[str] = []
+    if receipt:
+        receipt_items = [
+            f"command={receipt.get('command') or ''}",
+            f"python={receipt.get('python_executable') or ''}",
+            f"cwd={receipt.get('cwd') or ''}",
+            f"exit_code={receipt.get('exit_code')!r} passed={receipt.get('passed')!r}",
+            f"stdout={receipt.get('stdout_log') or ''}",
+            f"stderr={receipt.get('stderr_log') or ''}",
+        ]
     sections = [
+        _section("Official validation receipt", receipt_items, limit=8),
         _section("Plan deviations", _mixed_items(payload.get("plan_deviations"))),
         _section("Dependency actions", _mixed_items(payload.get("dependency_actions"))),
         _section("Debug attempts", _mixed_items(payload.get("debug_attempts"))),
@@ -321,10 +333,18 @@ def _execute_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    receipt = payload.get("official_validation_receipt") if isinstance(payload.get("official_validation_receipt"), dict) else {}
     metric = [
         f"{payload.get('metric_name') or 'metric'}={payload.get('metric_value')} threshold={payload.get('threshold')}",
         f"passed={payload.get('passed')}",
     ]
+    receipt_items: list[str] = []
+    if receipt:
+        receipt_items = [
+            f"command={receipt.get('command') or ''}",
+            f"python={receipt.get('python_executable') or ''}",
+            f"exit_code={receipt.get('exit_code')!r} passed={receipt.get('passed')!r}",
+        ]
     check_items: list[str] = []
     checks = payload.get("checks")
     if isinstance(checks, list):
@@ -337,7 +357,7 @@ def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
             name = check.get("name") or "check"
             detail = check.get("detail") or check.get("details") or check.get("summary") or ""
             check_items.append(_short_text(f"{status} {name}: {detail}"))
-    sections = [_section("Metric", metric), _section("Checks", check_items, limit=12)]
+    sections = [_section("Metric", metric), _section("Receipt", receipt_items), _section("Checks", check_items, limit=12)]
     return [section for section in sections if section]
 
 
@@ -347,6 +367,11 @@ def _reflect_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
             f"outcome={payload.get('outcome')}",
             f"failure_class={payload.get('failure_class') or ''}",
             payload.get("root_cause") or "",
+        ]),
+        _section("Corrective feedback", [
+            f"retry_authorized={payload.get('retry_authorized')}" if "retry_authorized" in payload else "",
+            f"retry_target={payload.get('retry_target')}" if payload.get("retry_target") else "",
+            payload.get("corrective_prompt") or "",
         ]),
         _section("Residual risks", _mixed_items(payload.get("residual_risks"))),
         _section("Evidence", _mixed_items(payload.get("evidence"))),
@@ -403,6 +428,21 @@ def get_run_phase_cards(project_root: Path, run_id: str) -> list[dict[str, Any]]
             "warnings": _warning_items(payload.get("_normalization_warnings") if payload else []),
             "sections": _phase_sections(phase, payload) if payload else [],
         }
+        if phase == "reflect":
+            feedback = phase_state.get("reflect_feedback") if isinstance(phase_state.get("reflect_feedback"), dict) else {}
+            attempts = feedback.get("attempts") if isinstance(feedback.get("attempts"), list) else []
+            if attempts:
+                card["retry_attempts"] = attempts
+                retry_section = _section(
+                    "Reflect feedback retries",
+                    [
+                        f"retry-{item.get('retry_index')}: guidance={item.get('guidance_id')} failure_class={item.get('failure_class')}"
+                        for item in attempts
+                        if isinstance(item, dict)
+                    ],
+                )
+                if retry_section:
+                    card["sections"].append(retry_section)
         cards.append(card)
     return cards
 

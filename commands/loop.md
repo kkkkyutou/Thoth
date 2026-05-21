@@ -25,16 +25,15 @@ executed before Claude sees this prompt.
 
 - Treat the structured bridge payload above as the only authority for this command invocation.
 - If `bridge_success` is `false`, report the exact bridge failure and stop.
-- If `run` or `loop` is missing `--work-id`, show the returned candidate work items exactly as provided and stop.
-- If `run` or `loop` is missing `--work-id`, do not invent, create, compile, or guess a work item.
+- If `run` or `loop` is missing `--work-id`, show returned candidates and stop; do not invent, create, compile, or guess a work item.
 - If `bridge_success` is `true` and runtime events are present, summarize progress, terminal status, and risk from those events only.
 - Do not hand-edit `.thoth` or manually call runtime protocol commands; the Thoth RuntimeDriver advances phases.
 - If `packet.dispatch_mode` is `external_worker`, do not duplicate the work locally; report the run id, worker mode, and the correct follow-up only.
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
 - If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.
-- Runtime lifecycle is `plan -> execute -> validate -> reflect`; auto runs selected work through child loops.
-- Prefer running `packet.strict_task.eval_entrypoint.command` exactly as provided rather than inventing a parallel validator lifecycle.
-- Trailing text/live corrections are temporary guidance only: append to the run guidance inbox; interrupt only for strong stop/restart/halt signals.
+- Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.
+- Live monitor should poll quietly around every 90s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.
+- Trailing text/live corrections are temporary guidance only; never rewrite authority or validators.
 - Use `packet.strict_task.goal_statement`, `packet.strict_task.authority_context`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.
 - If plan reports `authority_complete=false` or `reason=needs_input`, stop and route the user back to `/thoth:discuss` instead of guessing.
 
@@ -60,4 +59,4 @@ Advance the current bounded loop through foreground or sleeping RuntimeDriver mo
 
 - reply_budget_utf8: `40`
 - result_style: terminal receipt only
-- validator_policy: parent loop budget controls retries; each child runs plan -> execute -> validate -> reflect
+- validator_policy: loop budget controls retries; child validate confirms execute's validator receipt

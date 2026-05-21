@@ -58,6 +58,26 @@ def _execute_payload(summary: str = "exec ok") -> dict:
     }
 
 
+def _receipt_payload(handle, *, passed: bool = True, command: str = "pytest -q") -> dict:
+    log_dir = handle.run_dir / "worker-logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_log = log_dir / f"validator-{len(list(log_dir.glob('validator-*.stdout.log')))+1}.stdout.log"
+    stderr_log = log_dir / f"validator-{len(list(log_dir.glob('validator-*.stderr.log')))+1}.stderr.log"
+    stdout_log.write_text("passed\n" if passed else "failed\n", encoding="utf-8")
+    stderr_log.write_text("", encoding="utf-8")
+    return {
+        "command": command,
+        "cwd": str(handle.project_root),
+        "python_executable": "/opt/conda/envs/thoth-demo/bin/python",
+        "env_summary": {"CONDA_PREFIX": "/opt/conda/envs/thoth-demo", "CUDA_VISIBLE_DEVICES": "0"},
+        "exit_code": 0 if passed else 1,
+        "passed": passed,
+        "checks_summary": ["official validator passed" if passed else "official validator failed"],
+        "stdout_log": str(stdout_log),
+        "stderr_log": str(stderr_log),
+    }
+
+
 def test_plan_gap_schema_drift_normalizes_jsonish_items():
     payload = {
         **_plan_payload("authority incomplete"),
@@ -237,6 +257,7 @@ def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failu
             "files_touched": [long_text],
             "commands_run": [long_text],
             "artifacts": [{"path": long_text}],
+            "official_validation_receipt": {"command": long_text, "passed": True},
         },
     )
     assert utf8_len(execute["summary"]) <= 800
@@ -274,6 +295,8 @@ def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failu
     assert utf8_len(reflect["summary"]) <= 1200
     assert utf8_len(reflect["root_cause"]) <= 1200
     assert utf8_len(reflect["next_plan_hint"]) <= 1200
+    assert utf8_len(reflect["corrective_prompt"]) <= 2000
+    assert reflect["retry_authorized"] is True
     assert reflect["_normalization_warnings"]
 
 
@@ -532,7 +555,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     )
     plan_packet = next_phase_payload(project, handle.run_id)
     assert plan_packet["phase"] == "plan"
-    assert plan_packet["phase_authority"]["objective"].startswith("Act as the top-level planner")
+    assert plan_packet["phase_authority"]["objective"].startswith("Act as top-level planner")
     assert plan_packet["phase_authority"]["summary_budget_utf8"] == 1200
 
     submit_phase_output(
@@ -655,7 +678,132 @@ def test_reflect_failure_fields_are_synthesized_from_validate_evidence():
     assert payload["failure_class"] == "dependency_missing"
     assert "flex_gemm" in payload["root_cause"]
     assert "test_flex_gemm" in payload["next_plan_hint"]
+    assert payload["retry_authorized"] is True
+    assert payload["retry_target"] == "execute"
+    assert "official validator" in payload["corrective_prompt"]
     assert any(item["field"] == "reflect.failure_class" for item in payload["_normalization_warnings"])
+
+
+def test_runtime_validate_mechanically_confirms_execute_receipt_without_worker(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Mechanical validate demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Mechanical validate demo",
+            "eval_entrypoint": {"command": "pytest -q"},
+            "primary_metric": {"name": "checks", "threshold": 1},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="mechanically validate receipt",
+    )
+    calls: list[str] = []
+
+    class ReceiptDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            calls.append(phase)
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                return {**_execute_payload(), "official_validation_receipt": _receipt_payload(handle, passed=True)}
+            if phase == "reflect":
+                return {
+                    "summary": "reflect passed",
+                    "outcome": "passed",
+                    "residual_risks": [],
+                    "evidence": ["receipt passed"],
+                    "next_recommendation": "close run",
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=ReceiptDriver())
+
+    assert status == 0
+    assert calls == ["plan", "execute", "reflect"]
+    validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
+    assert validate_payload["passed"] is True
+    assert validate_payload["official_validation_receipt"]["python_executable"] == "/opt/conda/envs/thoth-demo/bin/python"
+    assert "official_command_matches" in {check["name"] for check in validate_payload["checks"]}
+
+
+def test_reflect_feedback_retries_execute_once_inside_single_run(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Reflect retry demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Reflect retry demo",
+            "eval_entrypoint": {"command": "pytest -q"},
+            "primary_metric": {"name": "checks", "threshold": 1},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="retry after reflect feedback",
+    )
+    execute_count = 0
+    calls: list[str] = []
+
+    class RetryDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            nonlocal execute_count
+            phase = phase_packet["phase"]
+            calls.append(phase)
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                execute_count += 1
+                passed = execute_count == 2
+                return {
+                    **_execute_payload(f"exec attempt {execute_count}"),
+                    "commands_run": ["pytest -q"],
+                    "official_validation_receipt": _receipt_payload(handle, passed=passed),
+                }
+            if phase == "reflect":
+                validate_path = phase_packet["prior_artifacts"]["validate"]
+                validate_payload = json.loads(Path(validate_path).read_text(encoding="utf-8"))
+                if validate_payload["passed"]:
+                    return {
+                        "summary": "reflect passed",
+                        "outcome": "passed",
+                        "residual_risks": [],
+                        "evidence": ["retry validator passed"],
+                        "next_recommendation": "close run",
+                    }
+                return {
+                    "summary": "reflect failed",
+                    "outcome": "failed",
+                    "residual_risks": ["validator failed"],
+                    "evidence": ["official receipt failed"],
+                    "next_recommendation": "continue implementation",
+                    "failure_class": "checks",
+                    "root_cause": "first official validator receipt failed",
+                    "next_plan_hint": "repair implementation and rerun official validator",
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=RetryDriver())
+
+    assert status == 0
+    assert calls == ["plan", "execute", "reflect", "execute", "reflect"]
+    phase_state = json.loads((handle.run_dir / "phase_state.json").read_text(encoding="utf-8"))
+    attempts = phase_state["reflect_feedback"]["attempts"]
+    assert len(attempts) == 1
+    assert attempts[0]["guidance_id"].startswith("guide-")
+    assert (handle.run_dir / "phase-retries" / "retry-1" / "validate.json").exists()
+    guidance = (handle.run_dir / "guidance.jsonl").read_text(encoding="utf-8")
+    assert "reflect_feedback" in guidance
 
 
 def test_execute_worker_has_no_default_timeout_from_run_payload(tmp_path):
@@ -922,12 +1070,12 @@ def test_external_worker_command_uses_executor_specific_cli(tmp_path):
     assert "--dangerously-skip-permissions" in claude_cmd
 
 
-def test_plan_sandbox_but_execute_and_validate_are_gpu_capable(tmp_path):
+def test_plan_sandbox_but_execute_is_gpu_capable(tmp_path):
     project = _prepare_project(tmp_path)
     codex_plan = external_worker_command("codex", project, "prompt", phase="plan")
-    codex_validate = external_worker_command("codex", project, "prompt", phase="validate")
-    claude_validate = external_worker_command("claude", project, "prompt", phase="validate")
+    codex_execute = external_worker_command("codex", project, "prompt", phase="execute")
+    claude_execute = external_worker_command("claude", project, "prompt", phase="execute")
     assert ["--sandbox", "workspace-write"] == codex_plan[codex_plan.index("--sandbox") : codex_plan.index("--sandbox") + 2]
-    assert "--dangerously-bypass-approvals-and-sandbox" in codex_validate
-    assert "--dangerously-skip-permissions" in claude_validate
-    assert "--disallowed-tools" not in claude_validate
+    assert "--dangerously-bypass-approvals-and-sandbox" in codex_execute
+    assert "--dangerously-skip-permissions" in claude_execute
+    assert "--disallowed-tools" not in claude_execute

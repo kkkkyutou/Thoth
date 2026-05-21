@@ -153,6 +153,15 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
             "files_touched": ["src/demo.py"],
             "commands_run": ["python -m pytest -q"],
             "artifacts": [],
+            "official_validation_receipt": {
+                "command": "python -m pytest -q",
+                "python_executable": "/opt/conda/envs/thoth-demo/bin/python",
+                "cwd": str(project_root),
+                "exit_code": 1,
+                "passed": False,
+                "stdout_log": ".thoth/runs/run-cards/worker-logs/execute.stdout.log",
+                "stderr_log": ".thoth/runs/run-cards/worker-logs/execute.stderr.log",
+            },
         },
     )
     _write_json(
@@ -164,6 +173,12 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
             "metric_value": 0,
             "threshold": 1,
             "checks": [{"name": "flex_gemm", "passed": False, "details": "No module named flex_gemm"}],
+            "official_validation_receipt": {
+                "command": "python -m pytest -q",
+                "python_executable": "/opt/conda/envs/thoth-demo/bin/python",
+                "exit_code": 1,
+                "passed": False,
+            },
         },
     )
     invalid_dir = run_dir / "worker-invalid"
@@ -179,6 +194,8 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
     cards = {card["phase"]: card for card in detail["phase_cards"]}
     assert cards["plan"]["sections"][1]["items"] == ["locate dependency"]
     assert any("flex_gemm" in item for section in cards["execute"]["sections"] for item in section["items"])
-    assert any("FAIL flex_gemm" in item for item in cards["validate"]["sections"][1]["items"])
+    assert any("/opt/conda/envs/thoth-demo/bin/python" in item for section in cards["execute"]["sections"] for item in section["items"])
+    assert any("/opt/conda/envs/thoth-demo/bin/python" in item for section in cards["validate"]["sections"] for item in section["items"])
+    assert any("FAIL flex_gemm" in item for section in cards["validate"]["sections"] for item in section["items"])
     assert cards["reflect"]["status"] == "failed"
     assert cards["reflect"]["warnings"] == ["reflect: invalid_output_diagnostic"]

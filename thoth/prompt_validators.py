@@ -34,6 +34,7 @@ COMMAND_ITEM_LIMIT = 1024
 PLAN_ITEM_LIMIT = 1024
 NEXT_HINT_LIMIT = 1200
 ROOT_CAUSE_LIMIT = 1200
+CORRECTIVE_PROMPT_LIMIT = 2000
 FAILURE_CLASS_LIMIT = 32
 METRIC_NAME_LIMIT = 80
 RISK_LIMIT = 1200
@@ -417,7 +418,11 @@ def _synthesize_reflect_failure_fields(
 ) -> dict[str, Any]:
     if str(payload.get("outcome") or "").strip().lower() != "failed":
         return payload
-    missing = [field for field in ("failure_class", "root_cause", "next_plan_hint") if field not in payload]
+    missing = [
+        field
+        for field in ("failure_class", "root_cause", "next_plan_hint", "corrective_prompt", "retry_authorized", "retry_target", "retry_budget")
+        if field not in payload
+    ]
     if not missing:
         return payload
     failed_check = _first_failed_validate_check(prior_validate_payload)
@@ -435,13 +440,25 @@ def _synthesize_reflect_failure_fields(
     synthesized.setdefault("failure_class", failure_class)
     synthesized.setdefault("root_cause", root_cause)
     synthesized.setdefault("next_plan_hint", next_hint)
+    synthesized.setdefault(
+        "corrective_prompt",
+        (
+            "Do not weaken the validator, metric, threshold, or work goal. "
+            f"Repair the implementation issue shown by validate evidence: {root_cause}. "
+            "Continue as a senior engineer, debug the concrete failure, rerun focused checks, "
+            "then rerun the official validator in the same runtime environment and return a fresh official_validation_receipt."
+        ),
+    )
+    synthesized.setdefault("retry_authorized", True)
+    synthesized.setdefault("retry_target", "execute")
+    synthesized.setdefault("retry_budget", 1)
     for field in missing:
         _add_normalization_warning(
             warnings,
             field=f"reflect.{field}",
             reason="synthesized_from_validate_evidence",
             original_type="missing",
-            limit=ROOT_CAUSE_LIMIT if field != "failure_class" else FAILURE_CLASS_LIMIT,
+            limit=FAILURE_CLASS_LIMIT if field == "failure_class" else CORRECTIVE_PROMPT_LIMIT if field == "corrective_prompt" else ROOT_CAUSE_LIMIT,
             truncated_or_compacted=True,
         )
     return synthesized
@@ -579,6 +596,14 @@ def validate_phase_output(
                     item_limit=COMMAND_ITEM_LIMIT,
                     warnings=normalization_warnings,
                 )
+        if "official_validation_receipt" in payload:
+            normalized["official_validation_receipt"] = _normalize_flexible_field(
+                "execute.official_validation_receipt",
+                payload.get("official_validation_receipt"),
+                scalar_limit=COMMAND_ITEM_LIMIT,
+                item_limit=COMMAND_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "validate":
@@ -651,6 +676,24 @@ def validate_phase_output(
                         limit,
                         warnings=normalization_warnings,
                     )
+            normalized["corrective_prompt"] = _normalize_text_field(
+                "reflect.corrective_prompt",
+                payload.get("corrective_prompt"),
+                CORRECTIVE_PROMPT_LIMIT,
+                warnings=normalization_warnings,
+            )
+            retry_authorized = payload.get("retry_authorized")
+            if not isinstance(retry_authorized, bool):
+                raise ValueError("reflect.retry_authorized must be a boolean")
+            normalized["retry_authorized"] = retry_authorized
+            retry_target = str(payload.get("retry_target") or "").strip().lower()
+            if retry_target not in {"execute"}:
+                raise ValueError("reflect.retry_target must be execute")
+            normalized["retry_target"] = retry_target
+            retry_budget = payload.get("retry_budget")
+            if not isinstance(retry_budget, int) or retry_budget < 0:
+                raise ValueError("reflect.retry_budget must be a non-negative integer")
+            normalized["retry_budget"] = retry_budget
         elif any(field in payload for field in ("failure_class", "root_cause", "next_plan_hint")):
             for field, limit in (
                 ("failure_class", FAILURE_CLASS_LIMIT),
@@ -667,6 +710,9 @@ def validate_phase_output(
                             limit,
                             warnings=normalization_warnings,
                         )
+            for field in ("corrective_prompt", "retry_authorized", "retry_target", "retry_budget"):
+                if field in payload:
+                    normalized[field] = payload[field]
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     raise ValueError(f"unsupported phase: {phase}")
