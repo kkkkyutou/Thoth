@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.6.6" src="https://img.shields.io/badge/version-0.2.6.6-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.6.7" src="https://img.shields.io/badge/version-0.2.6.7-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.6.6 live guidance + GPU validate</strong> · natural run guidance reaches phase workers, and validate uses GPU-capable worker execution</p>
+  <p><strong>v0.2.6.7 execute/validate cycle</strong> · execute now runs the official validator and validate mechanically confirms the receipt</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 

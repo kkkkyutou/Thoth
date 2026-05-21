@@ -4,6 +4,18 @@
 
 No pending changes.
 
+## [0.2.6.7] - 2026-05-21
+
+### Changed
+- `execute` now owns the implementation/debug/official-validator cycle in one Codex or Claude worker session and returns a compact `official_validation_receipt` with command, interpreter, cwd, environment summary, exit code, logs, and checks.
+- `validate` is now a mechanical receipt-confirmation phase instead of a separate intelligent worker, preventing execute/validate interpreter or CUDA environment drift.
+- `reflect` now acts as a human-style corrective reviewer: successful runs record compact lessons, while failed validation can feed one direct corrective prompt back into `execute` without changing authority, metrics, thresholds, or validators.
+- Live host prompt surfaces now prefer low-frequency monitoring around 90 seconds during quiet progress, but proactively append or interrupt guidance when clear runtime/environment mistakes appear.
+
+### Fixed
+- Prevented runs from failing solely because validate used a different Python environment than execute after execute had already passed the official validator.
+- Dashboard phase cards now surface execute validation receipts, mechanical validate checks, and reflect feedback retries as structured evidence instead of relying on raw runtime logs.
+
 ## [0.2.6.6] - 2026-05-21
 
 ### Changed

@@ -13,7 +13,7 @@ from .io import _read_json
 from .lease import release_repo_lease
 from .ledger import _append_event, _update_run, _update_state, _write_stopped_result, fail_run, heartbeat_run
 from .model import ACTIVE_STATUSES, RunHandle, utc_now
-from .phases import PhaseDriver, next_phase_payload, submit_phase_output
+from .phases import PhaseDriver, mechanical_validate_phase_output, next_phase_payload, submit_phase_output
 from .supervisor import write_run_supervisor
 
 
@@ -163,7 +163,11 @@ def execute_runtime_controller(
             iteration_index=iteration_index,
         )
         try:
-            phase_output = driver.execute_phase(handle=handle, phase_packet=phase_packet)
+            phase_output = (
+                mechanical_validate_phase_output(project_root, phase_packet)
+                if phase == "validate"
+                else driver.execute_phase(handle=handle, phase_packet=phase_packet)
+            )
             state_after_worker = handle.state_json()
             if state_after_worker.get("status") in {"stopping", "stopped"}:
                 _terminalize_stopped_attempt(handle)

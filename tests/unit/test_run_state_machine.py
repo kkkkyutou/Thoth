@@ -62,6 +62,23 @@ def _execute_payload(summary: str = "exec ok") -> dict:
     }
 
 
+def _reflect_failed_no_retry(*, summary: str = "reflect ok", next_hint: str = "change implementation before retrying") -> dict:
+    return {
+        "summary": summary,
+        "outcome": "failed",
+        "residual_risks": ["checks failed"],
+        "evidence": ["checks failed"],
+        "next_recommendation": "retry later",
+        "failure_class": "checks",
+        "root_cause": "validator failed",
+        "next_plan_hint": next_hint,
+        "corrective_prompt": next_hint,
+        "retry_authorized": False,
+        "retry_target": "execute",
+        "retry_budget": 0,
+    }
+
+
 def test_run_state_machine_completes_after_validate_pass(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
@@ -172,16 +189,7 @@ def test_run_state_machine_forces_reflect_after_validate_failure(tmp_path):
         project,
         handle.run_id,
         phase="reflect",
-        payload={
-            "summary": "reflect ok",
-            "outcome": "failed",
-            "residual_risks": ["checks failed"],
-            "evidence": ["checks failed"],
-            "next_recommendation": "retry",
-            "failure_class": "checks",
-            "root_cause": "validator failed",
-            "next_plan_hint": "change implementation before retrying",
-        },
+        payload=_reflect_failed_no_retry(next_hint="change implementation before retrying"),
     )
     assert final["terminal"] is True
     run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
@@ -305,16 +313,7 @@ def test_loop_parent_stops_on_iteration_budget(tmp_path):
             project,
             handle.run_id,
             phase="reflect",
-            payload={
-                "summary": "reflect ok",
-                "outcome": "failed",
-                "residual_risks": ["checks failed"],
-                "evidence": ["checks failed"],
-                "next_recommendation": "retry",
-                "failure_class": "checks",
-                "root_cause": "validator failed",
-                "next_plan_hint": "retry with a better plan",
-            },
+            payload=_reflect_failed_no_retry(next_hint="retry with a better plan"),
         )
 
     assert result["terminal"] is True
@@ -359,16 +358,7 @@ def test_loop_retry_context_is_passed_to_next_child(tmp_path):
         project,
         handle.run_id,
         phase="reflect",
-        payload={
-            "summary": "reflect ok",
-            "outcome": "failed",
-            "residual_risks": ["checks failed"],
-            "evidence": ["checks failed"],
-            "next_recommendation": "retry",
-            "failure_class": "checks",
-            "root_cause": "validator failed",
-            "next_plan_hint": "change implementation before retrying",
-        },
+        payload=_reflect_failed_no_retry(next_hint="change implementation before retrying"),
     )
 
     assert first_result["terminal"] is False

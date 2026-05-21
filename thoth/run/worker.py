@@ -689,6 +689,15 @@ class TestPhaseDriver:
                 "risk_assessment": "low deterministic test risk",
             }
         if phase == "execute":
+            log_dir = _worker_log_dir(handle)
+            stdout_log = log_dir / "execute-official-validator.stdout.log"
+            stderr_log = log_dir / "execute-official-validator.stderr.log"
+            passed = self.mode != "fail"
+            stdout_log.write_text("deterministic validator passed\n" if passed else "deterministic validator failed\n", encoding="utf-8")
+            stderr_log.write_text("", encoding="utf-8")
+            strict_task = phase_packet.get("strict_task") if isinstance(phase_packet.get("strict_task"), dict) else {}
+            entrypoint = strict_task.get("eval_entrypoint") if isinstance(strict_task.get("eval_entrypoint"), dict) else {}
+            command = str(entrypoint.get("command") or "pytest -q")
             return {
                 "summary": "exec done",
                 "plan_artifact_read": True,
@@ -696,6 +705,17 @@ class TestPhaseDriver:
                 "files_touched": [],
                 "commands_run": [],
                 "artifacts": [],
+                "official_validation_receipt": {
+                    "command": command,
+                    "cwd": str(handle.project_root),
+                    "python_executable": sys.executable,
+                    "env_summary": {"THOTH_TEST_EXTERNAL_WORKER_MODE": self.mode},
+                    "exit_code": 0 if passed else 1,
+                    "passed": passed,
+                    "checks_summary": ["deterministic acceptance passed" if passed else "deterministic acceptance failed"],
+                    "stdout_log": str(stdout_log),
+                    "stderr_log": str(stderr_log),
+                },
             }
         if phase == "validate":
             passed = self.mode != "fail"

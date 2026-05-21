@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from time import time
@@ -12,7 +13,7 @@ from thoth.prompt_validators import PHASE_REQUIRED_FIELDS, validate_phase_output
 from thoth.objects import Store
 
 from .io import _read_json, _write_json
-from .guidance import guidance_context
+from .guidance import append_run_guidance, guidance_context
 from .ledger import (
     _append_event,
     _update_run,
@@ -35,6 +36,7 @@ RUN_PHASE_PROGRESS = {
     "validate": 80,
     "reflect": 95,
 }
+RUN_REFLECT_FEEDBACK_LIMIT = 1
 
 
 class PhaseDriver(Protocol):
@@ -321,6 +323,9 @@ def _phase_input_for_run(handle: RunHandle, controller: dict[str, Any]) -> dict[
             "plan_artifact_required": phase == "execute",
         },
     }
+    reflect_feedback = controller.get("reflect_feedback")
+    if isinstance(reflect_feedback, dict) and reflect_feedback:
+        packet["reflect_feedback"] = reflect_feedback
     if phase == "execute":
         packet["required_plan_artifact"] = controller.get("artifacts", {}).get("plan") if isinstance(controller.get("artifacts"), dict) else None
         plan_artifact = packet.get("required_plan_artifact")
@@ -451,6 +456,96 @@ def _write_phase_artifact(handle: RunHandle, phase: str, payload: dict[str, Any]
     return str(path)
 
 
+def _compact_whitespace(value: Any) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _primary_metric_name(strict_task: dict[str, Any]) -> str:
+    metric = strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {}
+    name = metric.get("name")
+    return str(name or "official_validation").strip() or "official_validation"
+
+
+def _primary_metric_threshold(strict_task: dict[str, Any]) -> Any:
+    metric = strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {}
+    return metric.get("threshold", 1)
+
+
+def _path_exists_from_receipt(project_root: Path, value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    path = Path(value)
+    if not path.is_absolute():
+        path = project_root / path
+    return path.exists()
+
+
+def _execute_receipt_payload(phase_packet: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    artifacts = phase_packet.get("prior_artifacts") if isinstance(phase_packet.get("prior_artifacts"), dict) else {}
+    execute_artifact = artifacts.get("execute")
+    execute_payload = _read_json(Path(execute_artifact)) if isinstance(execute_artifact, str) and execute_artifact else {}
+    receipt = execute_payload.get("official_validation_receipt") if isinstance(execute_payload, dict) else None
+    return execute_payload if isinstance(execute_payload, dict) else {}, receipt if isinstance(receipt, dict) else {}
+
+
+def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str, Any]) -> dict[str, Any]:
+    """Confirm execute's official validator receipt without launching another worker."""
+
+    strict_task = phase_packet.get("strict_task") if isinstance(phase_packet.get("strict_task"), dict) else {}
+    execute_payload, receipt = _execute_receipt_payload(phase_packet)
+    expected_command = _compact_whitespace(
+        strict_task.get("eval_entrypoint", {}).get("command")
+        if isinstance(strict_task.get("eval_entrypoint"), dict)
+        else ""
+    )
+    actual_command = _compact_whitespace(receipt.get("command")) if receipt else ""
+    checks: list[dict[str, Any]] = []
+
+    receipt_present = bool(receipt)
+    checks.append({"name": "receipt_present", "ok": receipt_present, "detail": "execute returned official_validation_receipt" if receipt_present else "execute output did not include official_validation_receipt"})
+
+    if expected_command:
+        command_matches = actual_command == expected_command
+        checks.append(
+            {
+                "name": "official_command_matches",
+                "ok": command_matches,
+                "detail": f"expected={expected_command} actual={actual_command or '<missing>'}",
+            }
+        )
+
+    exit_code = receipt.get("exit_code") if receipt else None
+    exit_ok = isinstance(exit_code, int) and exit_code == 0
+    checks.append({"name": "exit_code_zero", "ok": exit_ok, "detail": f"exit_code={exit_code!r}"})
+
+    receipt_passed = receipt.get("passed") if receipt else None
+    checks.append({"name": "receipt_passed", "ok": receipt_passed is True, "detail": f"passed={receipt_passed!r}"})
+
+    stdout_log = receipt.get("stdout_log") if receipt else None
+    stderr_log = receipt.get("stderr_log") if receipt else None
+    logs_ok = _path_exists_from_receipt(project_root, stdout_log) and _path_exists_from_receipt(project_root, stderr_log)
+    checks.append({"name": "validation_logs_exist", "ok": logs_ok, "detail": f"stdout_log={stdout_log or '<missing>'} stderr_log={stderr_log or '<missing>'}"})
+
+    checks_summary = receipt.get("checks_summary") if receipt else None
+    if isinstance(checks_summary, list):
+        for index, item in enumerate(checks_summary[:8], start=1):
+            checks.append({"name": f"receipt_check_{index}", "ok": True, "detail": _short_plain(item, limit=240)})
+
+    passed = bool(receipt_present and all(check.get("ok") is not False for check in checks) and receipt_passed is True)
+    failed = [str(check.get("name") or "check") for check in checks if check.get("ok") is False]
+    summary = "Official validator receipt passed." if passed else "Official validator receipt failed: " + ", ".join(failed[:5])
+    return {
+        "summary": summary,
+        "passed": passed,
+        "metric_name": _primary_metric_name(strict_task),
+        "metric_value": 1 if passed else 0,
+        "threshold": _primary_metric_threshold(strict_task),
+        "checks": checks,
+        "official_validation_receipt": receipt,
+        "execute_summary": execute_payload.get("summary"),
+    }
+
+
 def _build_run_result_payload(controller: dict[str, Any]) -> dict[str, Any]:
     strict_task = controller.get("strict_task") if isinstance(controller.get("strict_task"), dict) else {}
     validate_payload = {}
@@ -483,6 +578,57 @@ def _plan_has_authority_gaps(payload: dict[str, Any]) -> bool:
     if isinstance(forbidden, list) and any(isinstance(item, str) and item.strip() for item in forbidden):
         return True
     return False
+
+
+def _reflect_feedback_state(controller: dict[str, Any]) -> dict[str, Any]:
+    value = controller.get("reflect_feedback")
+    if not isinstance(value, dict):
+        value = {"max_retries": RUN_REFLECT_FEEDBACK_LIMIT, "attempts": []}
+    attempts = value.get("attempts")
+    if not isinstance(attempts, list):
+        value["attempts"] = []
+    max_retries = value.get("max_retries")
+    if not isinstance(max_retries, int) or max_retries < 0:
+        value["max_retries"] = RUN_REFLECT_FEEDBACK_LIMIT
+    return value
+
+
+def _archive_phase_artifacts_for_reflect_retry(handle: RunHandle, controller: dict[str, Any], retry_index: int) -> dict[str, str]:
+    retry_dir = handle.run_dir / "phase-retries" / f"retry-{retry_index}"
+    retry_dir.mkdir(parents=True, exist_ok=True)
+    archived: dict[str, str] = {}
+    artifacts = controller.get("artifacts") if isinstance(controller.get("artifacts"), dict) else {}
+    for phase in ("execute", "validate", "reflect"):
+        source = artifacts.get(phase)
+        if not isinstance(source, str) or not source:
+            continue
+        source_path = Path(source)
+        if not source_path.exists():
+            continue
+        target = retry_dir / f"{phase}.json"
+        shutil.copyfile(source_path, target)
+        archived[phase] = str(target)
+        record_artifact(
+            handle.project_root,
+            handle.run_id,
+            path=str(target),
+            label=f"reflect-retry-{retry_index}-{phase}.json",
+            artifact_kind="phase_retry",
+            metadata={"phase": phase, "retry_index": retry_index},
+        )
+    return archived
+
+
+def _reflect_authorizes_execute_retry(controller: dict[str, Any], payload: dict[str, Any]) -> bool:
+    if bool(controller.get("validate_passed")):
+        return False
+    if payload.get("retry_authorized") is not True:
+        return False
+    if str(payload.get("retry_target") or "").strip().lower() != "execute":
+        return False
+    feedback = _reflect_feedback_state(controller)
+    attempts = feedback.get("attempts") if isinstance(feedback.get("attempts"), list) else []
+    return len(attempts) < int(feedback.get("max_retries") or RUN_REFLECT_FEEDBACK_LIMIT)
 
 
 def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase: str, payload: dict[str, Any]) -> PhaseOutcome:
@@ -529,6 +675,46 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
             controller["next_hint"] = payload.get("next_plan_hint")
         elif payload.get("next_recommendation"):
             controller["next_hint"] = payload.get("next_recommendation")
+        if _reflect_authorizes_execute_retry(controller, payload):
+            feedback = _reflect_feedback_state(controller)
+            attempts = feedback.get("attempts") if isinstance(feedback.get("attempts"), list) else []
+            retry_index = len(attempts) + 1
+            corrective_prompt = str(payload.get("corrective_prompt") or payload.get("next_plan_hint") or "").strip()
+            archived = _archive_phase_artifacts_for_reflect_retry(handle, controller, retry_index)
+            guidance_entry = append_run_guidance(
+                handle.project_root,
+                handle.run_id,
+                message=corrective_prompt,
+                source="reflect_feedback",
+                phase="execute",
+                interrupt_requested=False,
+            )
+            attempts.append(
+                {
+                    "retry_index": retry_index,
+                    "created_at": utc_now(),
+                    "guidance_id": guidance_entry.get("guidance_id"),
+                    "corrective_prompt": corrective_prompt,
+                    "archived_artifacts": archived,
+                    "failure_class": payload.get("failure_class"),
+                    "root_cause": payload.get("root_cause"),
+                }
+            )
+            feedback["attempts"] = attempts
+            controller["reflect_feedback"] = feedback
+            controller["phase_statuses"]["execute"] = "retry_pending"
+            controller["phase_statuses"]["validate"] = "retry_pending"
+            controller["next_hint"] = corrective_prompt
+            _write_phase_state(handle, controller)
+            _append_event(
+                handle,
+                "reflect corrective feedback scheduled execute retry",
+                kind="reflect",
+                level="warning",
+                payload={"retry_index": retry_index, "guidance_id": guidance_entry.get("guidance_id")},
+            )
+            _update_state(handle, phase="execute", progress_pct=RUN_PHASE_PROGRESS["execute"])
+            return PhaseOutcome(False, "running", str(payload.get("summary") or "reflect scheduled execute retry"), "execute")
         _write_phase_state(handle, controller)
         result_payload = _build_run_result_payload(controller)
         if bool(controller.get("validate_passed")):
@@ -891,7 +1077,11 @@ def execute_background_controller(
         if phase_packet.get("terminal") is True:
             return 0
         phase = str(phase_packet.get("phase") or "")
-        phase_output = driver.execute_phase(handle=handle, phase_packet=phase_packet)
+        phase_output = (
+            mechanical_validate_phase_output(project_root, phase_packet)
+            if phase == "validate"
+            else driver.execute_phase(handle=handle, phase_packet=phase_packet)
+        )
         response = submit_phase_output(project_root, run_id, phase=phase, payload=phase_output)
         if response.get("terminal") is True:
             return 0 if response.get("status") == "completed" else 1
