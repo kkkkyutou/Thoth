@@ -2,6 +2,15 @@
 
 ## Entries
 
+- 2026-05-21 08:05 UTC [0.2.6.6 live guidance and GPU validate release]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
+  - State changes: 实现 `run` / `loop` / `auto` 的临时 execution guidance 通道。CLI 现在接受 trailing 自然语言 guidance；`prepare_execution()` 写入 `.thoth/runs/<run_id>/guidance.jsonl` / `guidance-state.json` 并在 phase packet 中暴露 inherited/current guidance context；`auto` controller 保存 controller-level guidance 并传递给 child run。新增内部 `append-guidance` 入口，用于宿主 live 会话把用户纠偏注入 active run；普通 guidance 追加到 inbox，强纠偏可中断当前 phase worker 并把 prompt/stdout/stderr/marker 归档到 `worker-interrupted/`。
+  - State changes: 调整 phase worker host 策略与 prompt 合同：Codex `plan` 继续 workspace sandbox，`execute` / `validate` 使用 `--dangerously-bypass-approvals-and-sandbox`；Claude `execute` / `validate` 使用 `--dangerously-skip-permissions`、`--tools default` 与 `IS_SANDBOX=1`，避免 CUDA/GPU validator 在 validate 阶段不可见。`execute` prompt 明确把 import、dependency、CUDA、local shim、focused validation failure 等工程问题留在 execute 中调试，不推给 reflect；guidance 明确只是临时引导，不改变 authority/validator/metric/threshold。
+  - Evidence produced: `dev` 发布面提交 `928ea45 feat: add live guidance and gpu validate for 0.2.6.6`；验证通过 `py_compile`、targeted pytest `133 passed, 41 deselected in 224.07s`、`tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py` `26 passed`、`templates/dashboard/frontend npm run build`、manifest JSON 校验、`git diff --check`、`bin/thoth doctor --version` 输出 `version=0.2.6.6`。
+  - Evidence produced: 发布面已 cherry-pick 到 `main` 为 `806f365 feat: add live guidance and gpu validate for 0.2.6.6`；`main` 上同组验证通过：`py_compile`、targeted pytest `133 passed, 41 deselected in 224.31s`、dashboard frontend build、manifest JSON 校验、`git diff --check`、`bin/thoth doctor --version` 输出 `version=0.2.6.6`。首次 `git push` 遇到 GitHub TLS/443 transient failure，最终 `git push -4 origin dev main` 成功，将 `dev` 推到 `928ea45`、`main` 推到 `806f365`。
+  - Evidence produced: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功，`claude plugin update thoth@thoth --scope user` 从 `0.2.6.5` 更新到 `0.2.6.6`；`codex plugin marketplace upgrade thoth` 成功。Codex marketplace root `/root/.codex/.tmp/marketplaces/thoth/bin/thoth doctor --version` 与 Claude cache `/root/.claude/plugins/cache/thoth/thoth/0.2.6.6/bin/thoth doctor --version` 均输出 `version=0.2.6.6`。
+  - Next likely action: 回到 `TD-001`；若用户继续在 demo_project 下运行 DEMO00-T0.1，可使用安装态 `thoth run --work-id DEMO00-T0.1`，需要临时纠偏时直接在命令尾部或 live 会话中追加自然语言 guidance，但不要自动启动新的 demo_project run/auto，除非用户明确要求。
+
 - 2026-05-20 10:10 UTC [0.2.6.3 repo-local state layout release]
   - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
   - State changes: 修复 Thoth 使用后污染宿主项目 `git status` 的问题。新增 `thoth/state_layout.py`，把项目状态分为 Git-portable authority、默认本机 runtime evidence、dashboard deps/cache 三层；`generate_thoth_runtime()` 现在通过 `ensure_project_gitignore_rules()` 幂等追加 `.gitignore`、`.thoth/.gitignore` 与 dashboard 局部 ignore，不覆盖用户规则。生成的 `AGENTS.md` / `CLAUDE.md` 明确 portable authority allowlist，README / README.zh-CN / CHANGELOG 同步说明 fresh clone 只能从 committed authority 启动新 run，不能接管旧机器 PID、lease、worker、supervisor 或 dashboard 进程。
