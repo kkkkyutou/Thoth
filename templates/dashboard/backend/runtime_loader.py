@@ -78,6 +78,12 @@ def _section(title: str, items: list[Any], *, limit: int = 8) -> dict[str, Any] 
     return {"title": title, "items": rows[:limit], "truncated": len(rows) > limit}
 
 
+def _body_section(title: str, value: Any, *, limit: int = 1200) -> dict[str, Any] | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return {"title": title, "items": [_short_text(value, limit=limit)], "truncated": len(value) > limit}
+
+
 def _mixed_items(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -293,6 +299,7 @@ def _latest_invalid_phase_error(project_root: Path, run_dir: Path, phase: str) -
 
 def _plan_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
     sections = [
+        _body_section("Plan", payload.get("plan")),
         _section("Authority", [
             f"authority_complete={payload.get('authority_complete')}",
             f"open_gaps={len(payload.get('open_gaps') or []) if isinstance(payload.get('open_gaps'), list) else 0}",
@@ -318,6 +325,7 @@ def _execute_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
             f"stderr={receipt.get('stderr_log') or ''}",
         ]
     sections = [
+        _body_section("Report", payload.get("report")),
         _section("Official validation receipt", receipt_items, limit=8),
         _section("Plan deviations", _mixed_items(payload.get("plan_deviations"))),
         _section("Dependency actions", _mixed_items(payload.get("dependency_actions"))),
@@ -386,6 +394,7 @@ def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _reflect_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
     sections = [
+        _body_section("Review", payload.get("review")),
         _section("Outcome", [
             f"outcome={payload.get('outcome')}",
             f"failure_class={payload.get('failure_class') or ''}",
@@ -436,9 +445,10 @@ def get_run_phase_cards(project_root: Path, run_id: str) -> list[dict[str, Any]]
                 payload = {
                     "summary": "Reflect output was invalid; dashboard is showing the archived validation diagnostic.",
                     "outcome": "failed",
+                    "review": "Reflect output was invalid; dashboard is showing the archived validation diagnostic.",
                     "failure_class": "reflect_output_invalid",
                     "root_cause": invalid.get("summary"),
-                    "next_recommendation": "Use validate evidence as the acceptance source, then rerun after fixing the implementation issue.",
+                    "corrective_prompt": "Use validate evidence as the acceptance source, then rerun after fixing the implementation issue.",
                     "_normalization_warnings": [{"field": "reflect", "reason": "invalid_output_diagnostic"}],
                     "_invalid_diagnostic_path": invalid.get("path"),
                 }

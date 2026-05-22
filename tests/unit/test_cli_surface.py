@@ -527,14 +527,8 @@ def test_cli_run_reconcile_closes_failed_run_with_passing_execute_receipt(tmp_pa
         payload={
             "summary": "plan ok",
             "authority_complete": True,
-            "authority_coverage": {"goal": True},
             "open_gaps": [],
-            "forbidden_assumptions_used": [],
-            "execution_steps": ["run validator"],
-            "files_expected": [],
-            "commands_expected": ["pytest -q"],
-            "validation_plan": "run pytest",
-            "risk_assessment": "low risk",
+            "plan": "# Plan\n\nRun the official pytest validator against the final implementation.",
         },
     )
     submit_phase_output(
@@ -543,11 +537,7 @@ def test_cli_run_reconcile_closes_failed_run_with_passing_execute_receipt(tmp_pa
         phase="execute",
         payload={
             "summary": "execute passed official pytest",
-            "plan_artifact_read": True,
-            "plan_deviations": [],
-            "files_touched": [],
-            "commands_run": ["pytest -q"],
-            "artifacts": [],
+            "report": "# Execute Report\n\nRan the official pytest validator against the final implementation.",
             "official_validation_receipt": {
                 "command": "pytest -q",
                 "cwd": str(tmp_path),

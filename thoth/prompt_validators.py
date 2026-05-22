@@ -13,18 +13,12 @@ PHASE_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "plan": (
         "summary",
         "authority_complete",
-        "authority_coverage",
         "open_gaps",
-        "forbidden_assumptions_used",
-        "execution_steps",
-        "files_expected",
-        "commands_expected",
-        "validation_plan",
-        "risk_assessment",
+        "plan",
     ),
-    "execute": ("summary", "plan_artifact_read", "plan_deviations", "files_touched", "commands_run", "artifacts"),
+    "execute": ("summary", "report", "official_validation_receipt"),
     "validate": ("summary", "passed", "metric_name", "metric_value", "threshold", "checks"),
-    "reflect": ("summary", "outcome", "residual_risks", "evidence", "next_recommendation"),
+    "reflect": ("summary", "outcome", "review"),
 }
 
 REVIEW_SUMMARY_LIMIT = 48
@@ -39,6 +33,7 @@ FAILURE_CLASS_LIMIT = 32
 METRIC_NAME_LIMIT = 80
 RISK_LIMIT = 1200
 STRUCTURED_FIELD_TOTAL_LIMIT = 4096
+PHASE_BODY_LIMIT = 12000
 
 
 def utf8_len(text: str) -> int:
@@ -84,6 +79,21 @@ def _truncate_utf8_single_line(text: str, limit: int) -> tuple[str, bool]:
         try:
             truncated = raw.decode("utf-8")
             return truncated + suffix, True
+        except UnicodeDecodeError:
+            raw = raw[:-1]
+    return suffix[:limit], True
+
+
+def _truncate_utf8_preserve_text(text: str, limit: int) -> tuple[str, bool]:
+    raw_text = text.strip()
+    if utf8_len(raw_text) <= limit:
+        return raw_text, raw_text != text
+    suffix = "\n...[truncated]"
+    budget = max(0, limit - utf8_len(suffix))
+    raw = raw_text.encode("utf-8")[:budget]
+    while raw:
+        try:
+            return raw.decode("utf-8").rstrip() + suffix, True
         except UnicodeDecodeError:
             raw = raw[:-1]
     return suffix[:limit], True
@@ -161,6 +171,32 @@ def _normalize_text_field(
             limit=limit,
             original_utf8_bytes=utf8_len(str(raw)),
             truncated_or_compacted=changed and coerced,
+        )
+    return normalized
+
+
+def _normalize_body_field(
+    field: str,
+    value: Any,
+    limit: int,
+    *,
+    warnings: list[dict[str, Any]],
+    required: bool = True,
+) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    normalized, changed = _truncate_utf8_preserve_text(value, limit)
+    if required and not normalized:
+        raise ValueError(f"{field} must not be empty")
+    if changed:
+        _add_normalization_warning(
+            warnings,
+            field=field,
+            reason="body_truncated",
+            original_type=type(value).__name__,
+            limit=limit,
+            original_utf8_bytes=utf8_len(value),
+            truncated_or_compacted=True,
         )
     return normalized
 
@@ -429,7 +465,7 @@ def _synthesize_reflect_failure_fields(
         return payload
     missing = [
         field
-        for field in ("failure_class", "root_cause", "next_plan_hint", "corrective_prompt", "retry_authorized", "retry_target", "retry_budget")
+        for field in ("failure_class", "root_cause", "corrective_prompt", "retry_authorized")
         if field not in payload
     ]
     if not missing:
@@ -451,7 +487,8 @@ def _synthesize_reflect_failure_fields(
     synthesized = dict(payload)
     synthesized.setdefault("failure_class", failure_class)
     synthesized.setdefault("root_cause", root_cause)
-    synthesized.setdefault("next_plan_hint", next_hint)
+    if "next_plan_hint" in payload:
+        synthesized.setdefault("next_plan_hint", next_hint)
     if runtime_contract_error:
         synthesized.setdefault(
             "corrective_prompt",
@@ -472,8 +509,6 @@ def _synthesize_reflect_failure_fields(
             ),
         )
     synthesized.setdefault("retry_authorized", not runtime_contract_error)
-    synthesized.setdefault("retry_target", "execute")
-    synthesized.setdefault("retry_budget", 0 if runtime_contract_error else 1)
     for field in missing:
         _add_normalization_warning(
             warnings,
@@ -486,6 +521,77 @@ def _synthesize_reflect_failure_fields(
     return synthesized
 
 
+def _markdown_items(title: str, value: Any) -> list[str]:
+    if value in (None, "", [], {}):
+        return []
+    if isinstance(value, list):
+        rows = [f"- {str(item).strip()}" for item in value if str(item).strip()]
+        return [f"## {title}", *rows] if rows else []
+    if isinstance(value, dict):
+        compact = _compact_json_string(value)
+        return [f"## {title}", compact] if compact else []
+    text = str(value).strip()
+    return [f"## {title}", text] if text else []
+
+
+def _compat_phase_payload(phase: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Accept older phase artifacts while the new prompt contract stays compact."""
+    normalized = dict(payload)
+    if phase == "plan" and "plan" not in normalized:
+        legacy_fields = (
+            "authority_coverage",
+            "forbidden_assumptions_used",
+            "execution_steps",
+            "files_expected",
+            "commands_expected",
+            "validation_plan",
+            "risk_assessment",
+            "discovery_tasks",
+        )
+        if any(field in normalized for field in legacy_fields):
+            lines = ["# Legacy Plan Handoff", str(normalized.get("summary") or "").strip()]
+            lines.extend(_markdown_items("Authority coverage", normalized.get("authority_coverage")))
+            lines.extend(_markdown_items("Execution steps", normalized.get("execution_steps")))
+            lines.extend(_markdown_items("Files expected", normalized.get("files_expected")))
+            lines.extend(_markdown_items("Commands expected", normalized.get("commands_expected")))
+            lines.extend(_markdown_items("Discovery tasks", normalized.get("discovery_tasks")))
+            lines.extend(_markdown_items("Validation plan", normalized.get("validation_plan")))
+            lines.extend(_markdown_items("Risk assessment", normalized.get("risk_assessment")))
+            normalized["plan"] = "\n\n".join(line for line in lines if line)
+    if phase == "execute" and "report" not in normalized:
+        legacy_fields = (
+            "plan_deviations",
+            "files_touched",
+            "commands_run",
+            "artifacts",
+            "debug_attempts",
+            "verification_steps",
+            "dependency_actions",
+            "resolved_failures",
+            "remaining_failures",
+        )
+        if any(field in normalized for field in legacy_fields):
+            lines = ["# Legacy Execute Report", str(normalized.get("summary") or "").strip()]
+            for field in legacy_fields:
+                lines.extend(_markdown_items(field.replace("_", " ").title(), normalized.get(field)))
+            normalized["report"] = "\n\n".join(line for line in lines if line)
+    if phase == "reflect" and "review" not in normalized:
+        legacy_fields = (
+            "residual_risks",
+            "evidence",
+            "next_recommendation",
+            "next_plan_hint",
+            "root_cause",
+            "corrective_prompt",
+        )
+        if any(field in normalized for field in legacy_fields):
+            lines = ["# Legacy Technical Lead Review", str(normalized.get("summary") or "").strip()]
+            for field in legacy_fields:
+                lines.extend(_markdown_items(field.replace("_", " ").title(), normalized.get(field)))
+            normalized["review"] = "\n\n".join(line for line in lines if line)
+    return normalized
+
+
 def validate_phase_output(
     phase: str,
     payload: dict[str, Any],
@@ -495,7 +601,7 @@ def validate_phase_output(
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{phase} output must be an object")
-    payload = dict(payload)
+    payload = _compat_phase_payload(phase, payload)
     required = PHASE_REQUIRED_FIELDS[phase]
     missing = [field for field in required if field not in payload]
     if missing:
@@ -511,56 +617,44 @@ def validate_phase_output(
     )
     if phase == "plan":
         normalized["authority_complete"] = _require_bool("plan.authority_complete", payload.get("authority_complete"))
-        coverage = payload.get("authority_coverage")
-        if not isinstance(coverage, (list, dict)):
-            raise ValueError("plan.authority_coverage must be a list or object")
-        normalized["authority_coverage"] = coverage
         normalized["open_gaps"] = _normalize_jsonish_string_list(
             "plan.open_gaps",
             payload.get("open_gaps"),
             PLAN_ITEM_LIMIT,
             warnings=normalization_warnings,
         )
-        normalized["forbidden_assumptions_used"] = _normalize_jsonish_string_list(
-            "plan.forbidden_assumptions_used",
-            payload.get("forbidden_assumptions_used"),
-            PLAN_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["execution_steps"] = _normalize_text_list(
-            "plan.execution_steps",
-            payload.get("execution_steps"),
-            PLAN_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["files_expected"] = _normalize_flexible_field(
-            "plan.files_expected",
-            payload.get("files_expected"),
-            scalar_limit=COMMAND_ITEM_LIMIT,
-            item_limit=COMMAND_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["commands_expected"] = _normalize_flexible_field(
-            "plan.commands_expected",
-            payload.get("commands_expected"),
-            scalar_limit=COMMAND_ITEM_LIMIT,
-            item_limit=COMMAND_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["validation_plan"] = _normalize_flexible_field(
-            "plan.validation_plan",
-            payload.get("validation_plan"),
-            scalar_limit=ROOT_CAUSE_LIMIT,
-            item_limit=PLAN_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["risk_assessment"] = _normalize_flexible_field(
-            "plan.risk_assessment",
-            payload.get("risk_assessment"),
-            scalar_limit=RISK_LIMIT,
-            item_limit=RISK_LIMIT,
-            warnings=normalization_warnings,
-        )
+        normalized["plan"] = _normalize_body_field("plan.plan", payload.get("plan"), PHASE_BODY_LIMIT, warnings=normalization_warnings)
+        if "authority_coverage" in payload:
+            coverage = payload.get("authority_coverage")
+            normalized["authority_coverage"] = coverage if isinstance(coverage, (list, dict)) else _compact_json_string(coverage)
+        if "forbidden_assumptions_used" in payload:
+            normalized["forbidden_assumptions_used"] = _normalize_jsonish_string_list(
+                "plan.forbidden_assumptions_used",
+                payload.get("forbidden_assumptions_used"),
+                PLAN_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
+        if "execution_steps" in payload:
+            normalized["execution_steps"] = _normalize_text_list(
+                "plan.execution_steps",
+                payload.get("execution_steps"),
+                PLAN_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
+        for field, scalar_limit, item_limit in (
+            ("files_expected", COMMAND_ITEM_LIMIT, COMMAND_ITEM_LIMIT),
+            ("commands_expected", COMMAND_ITEM_LIMIT, COMMAND_ITEM_LIMIT),
+            ("validation_plan", ROOT_CAUSE_LIMIT, PLAN_ITEM_LIMIT),
+            ("risk_assessment", RISK_LIMIT, RISK_LIMIT),
+        ):
+            if field in payload:
+                normalized[field] = _normalize_flexible_field(
+                    f"plan.{field}",
+                    payload.get(field),
+                    scalar_limit=scalar_limit,
+                    item_limit=item_limit,
+                    warnings=normalization_warnings,
+                )
         if "discovery_tasks" in payload:
             normalized["discovery_tasks"] = _normalize_text_list(
                 "plan.discovery_tasks",
@@ -573,37 +667,33 @@ def validate_phase_output(
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "execute":
-        normalized["plan_artifact_read"] = _require_bool("execute.plan_artifact_read", payload.get("plan_artifact_read"))
-        if not normalized["plan_artifact_read"]:
-            raise ValueError("execute.plan_artifact_read must be true")
-        normalized["plan_deviations"] = _normalize_text_list(
-            "execute.plan_deviations",
-            payload.get("plan_deviations"),
-            PLAN_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        if not isinstance(payload.get("files_touched"), list):
-            raise ValueError("execute.files_touched must be a list")
-        if not isinstance(payload.get("artifacts"), list):
-            raise ValueError("execute.artifacts must be a list")
-        normalized["commands_run"] = _normalize_text_list(
-            "execute.commands_run",
-            payload.get("commands_run"),
-            COMMAND_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["files_touched"] = _normalize_mixed_list(
-            "execute.files_touched",
-            payload.get("files_touched"),
-            item_limit=COMMAND_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["artifacts"] = _normalize_mixed_list(
-            "execute.artifacts",
-            payload.get("artifacts"),
-            item_limit=COMMAND_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
+        normalized["report"] = _normalize_body_field("execute.report", payload.get("report"), PHASE_BODY_LIMIT, warnings=normalization_warnings)
+        if "plan_artifact_read" in payload:
+            normalized["plan_artifact_read"] = _require_bool("execute.plan_artifact_read", payload.get("plan_artifact_read"))
+        if "plan_deviations" in payload:
+            normalized["plan_deviations"] = _normalize_text_list(
+                "execute.plan_deviations",
+                payload.get("plan_deviations"),
+                PLAN_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
+        if "commands_run" in payload:
+            normalized["commands_run"] = _normalize_text_list(
+                "execute.commands_run",
+                payload.get("commands_run"),
+                COMMAND_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
+        for field in ("files_touched", "artifacts"):
+            if field in payload:
+                if not isinstance(payload.get(field), list):
+                    raise ValueError(f"execute.{field} must be a list")
+                normalized[field] = _normalize_mixed_list(
+                    f"execute.{field}",
+                    payload.get(field),
+                    item_limit=COMMAND_ITEM_LIMIT,
+                    warnings=normalization_warnings,
+                )
         for field in (
             "debug_attempts",
             "verification_steps",
@@ -618,14 +708,13 @@ def validate_phase_output(
                     item_limit=COMMAND_ITEM_LIMIT,
                     warnings=normalization_warnings,
                 )
-        if "official_validation_receipt" in payload:
-            normalized["official_validation_receipt"] = _normalize_flexible_field(
-                "execute.official_validation_receipt",
-                payload.get("official_validation_receipt"),
-                scalar_limit=COMMAND_ITEM_LIMIT,
-                item_limit=COMMAND_ITEM_LIMIT,
-                warnings=normalization_warnings,
-            )
+        normalized["official_validation_receipt"] = _normalize_flexible_field(
+            "execute.official_validation_receipt",
+            payload.get("official_validation_receipt"),
+            scalar_limit=COMMAND_ITEM_LIMIT,
+            item_limit=COMMAND_ITEM_LIMIT,
+            warnings=normalization_warnings,
+        )
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "validate":
@@ -664,29 +753,39 @@ def validate_phase_output(
             warnings=normalization_warnings,
         )
         normalized["outcome"] = outcome
-        normalized["residual_risks"] = _normalize_text_list(
-            "reflect.residual_risks",
-            payload.get("residual_risks"),
-            LIST_SHORT_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["evidence"] = _normalize_text_list(
-            "reflect.evidence",
-            payload.get("evidence"),
-            LIST_SHORT_ITEM_LIMIT,
-            warnings=normalization_warnings,
-        )
-        normalized["next_recommendation"] = _normalize_text_field(
-            "reflect.next_recommendation",
-            payload.get("next_recommendation"),
-            ROOT_CAUSE_LIMIT,
-            warnings=normalization_warnings,
-        )
+        normalized["review"] = _normalize_body_field("reflect.review", payload.get("review"), PHASE_BODY_LIMIT, warnings=normalization_warnings)
+        if "residual_risks" in payload:
+            normalized["residual_risks"] = _normalize_text_list(
+                "reflect.residual_risks",
+                payload.get("residual_risks"),
+                LIST_SHORT_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
+        if "evidence" in payload:
+            normalized["evidence"] = _normalize_text_list(
+                "reflect.evidence",
+                payload.get("evidence"),
+                LIST_SHORT_ITEM_LIMIT,
+                warnings=normalization_warnings,
+            )
+        if "next_recommendation" in payload:
+            normalized["next_recommendation"] = _normalize_text_field(
+                "reflect.next_recommendation",
+                payload.get("next_recommendation"),
+                ROOT_CAUSE_LIMIT,
+                warnings=normalization_warnings,
+            )
+        if "next_plan_hint" in payload:
+            normalized["next_plan_hint"] = _normalize_text_field(
+                "reflect.next_plan_hint",
+                payload.get("next_plan_hint"),
+                NEXT_HINT_LIMIT,
+                warnings=normalization_warnings,
+            )
         if outcome == "failed":
             for field, limit in (
                 ("failure_class", FAILURE_CLASS_LIMIT),
                 ("root_cause", ROOT_CAUSE_LIMIT),
-                ("next_plan_hint", NEXT_HINT_LIMIT),
             ):
                 if field not in payload:
                     raise ValueError(f"reflect output missing required failure field: {field}")
@@ -709,14 +808,20 @@ def validate_phase_output(
             if not isinstance(retry_authorized, bool):
                 raise ValueError("reflect.retry_authorized must be a boolean")
             normalized["retry_authorized"] = retry_authorized
-            retry_target = str(payload.get("retry_target") or "").strip().lower()
-            if retry_target not in {"execute"}:
-                raise ValueError("reflect.retry_target must be execute")
-            normalized["retry_target"] = retry_target
-            retry_budget = payload.get("retry_budget")
-            if not isinstance(retry_budget, int) or retry_budget < 0:
-                raise ValueError("reflect.retry_budget must be a non-negative integer")
-            normalized["retry_budget"] = retry_budget
+            if "retry_target" in payload:
+                retry_target = str(payload.get("retry_target") or "").strip().lower()
+                if retry_target not in {"execute"}:
+                    raise ValueError("reflect.retry_target must be execute")
+                normalized["retry_target"] = retry_target
+            else:
+                normalized["retry_target"] = "execute"
+            if "retry_budget" in payload:
+                retry_budget = payload.get("retry_budget")
+                if not isinstance(retry_budget, int) or retry_budget < 0:
+                    raise ValueError("reflect.retry_budget must be a non-negative integer")
+                normalized["retry_budget"] = retry_budget
+            else:
+                normalized["retry_budget"] = 1 if retry_authorized else 0
         elif any(field in payload for field in ("failure_class", "root_cause", "next_plan_hint")):
             for field, limit in (
                 ("failure_class", FAILURE_CLASS_LIMIT),

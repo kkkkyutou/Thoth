@@ -49,13 +49,14 @@ executed before Claude sees this prompt.
 
 ### Objective
 
-Run actionable work items by scheduling priority through child loops until none remain, budget pauses, or stop is requested.
+Run actionable work items through child loops while preserving architecture-first execution posture and human-quality phase handoffs.
 
 ### Hard Stops
 
 - Do not execute blocked or draft work.
 - Do not auto-abandon work items.
 - Do not bypass execution-safety doctor preflight.
+- Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.
 
 ### Reply Contract
 

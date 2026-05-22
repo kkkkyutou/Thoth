@@ -815,6 +815,14 @@ def _reflect_feedback_state(controller: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
+def _reflect_next_hint(payload: dict[str, Any]) -> str:
+    for field in ("corrective_prompt", "next_plan_hint", "next_recommendation"):
+        value = payload.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def _archive_phase_artifacts_for_reflect_retry(handle: RunHandle, controller: dict[str, Any], retry_index: int) -> dict[str, str]:
     retry_dir = handle.run_dir / "phase-retries" / f"retry-{retry_index}"
     retry_dir.mkdir(parents=True, exist_ok=True)
@@ -867,7 +875,7 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
     controller.setdefault("artifacts", {})
     controller["artifacts"][phase] = _write_phase_artifact(handle, phase, payload)
     controller["final_summary"] = str(payload.get("summary") or controller.get("final_summary") or "").strip() or None
-    controller["next_hint"] = payload.get("next_plan_hint") if phase == "reflect" else controller.get("next_hint")
+    controller["next_hint"] = _reflect_next_hint(payload) if phase == "reflect" else controller.get("next_hint")
     _write_phase_state(handle, controller)
     if phase == "plan":
         if _plan_has_authority_gaps(payload):
@@ -900,15 +908,14 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
     if phase == "reflect":
         phase_statuses["reflect"] = "completed"
         controller["phase_statuses"] = phase_statuses
-        if payload.get("next_plan_hint"):
-            controller["next_hint"] = payload.get("next_plan_hint")
-        elif payload.get("next_recommendation"):
-            controller["next_hint"] = payload.get("next_recommendation")
+        next_hint = _reflect_next_hint(payload)
+        if next_hint:
+            controller["next_hint"] = next_hint
         if _reflect_authorizes_execute_retry(controller, payload):
             feedback = _reflect_feedback_state(controller)
             attempts = feedback.get("attempts") if isinstance(feedback.get("attempts"), list) else []
             retry_index = len(attempts) + 1
-            corrective_prompt = str(payload.get("corrective_prompt") or payload.get("next_plan_hint") or "").strip()
+            corrective_prompt = _reflect_next_hint(payload)
             archived = _archive_phase_artifacts_for_reflect_retry(handle, controller, retry_index)
             guidance_entry = append_run_guidance(
                 handle.project_root,
@@ -1011,7 +1018,7 @@ def _compact_reflect(reflect: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(reflect, dict):
         return {}
     compact: dict[str, Any] = {}
-    for key in ("outcome", "failure_class", "root_cause", "next_plan_hint", "next_recommendation"):
+    for key in ("outcome", "failure_class", "root_cause", "corrective_prompt", "next_plan_hint", "next_recommendation"):
         value = reflect.get(key)
         if isinstance(value, str) and value.strip():
             compact[key] = _short_plain(value)
@@ -1047,7 +1054,7 @@ def _loop_retry_decision(loop: dict[str, Any], child_result: dict[str, Any], ref
     if not isinstance(retry_limit, int) or retry_limit < 0:
         retry_limit = DEFAULT_LOOP_RETRY_LIMIT
     reason = str(child_result.get("reason") or reflect.get("failure_class") or "validation_failed").strip()
-    next_plan_hint = str(reflect.get("next_plan_hint") or "").strip()
+    next_plan_hint = _reflect_next_hint(reflect)
     non_retryable_reasons = {
         "needs_input",
         "runtime_contract_error",
@@ -1218,7 +1225,7 @@ def _submit_phase_to_loop_parent(handle: RunHandle, *, phase: str, payload: dict
             "validate_passed": False,
             "final_summary": child_result.get("summary"),
             "artifacts": {"child_run_ids": loop.get("child_run_ids", [])},
-            "next_hint": loop.get("last_reflect", {}).get("next_plan_hint"),
+            "next_hint": _reflect_next_hint(loop.get("last_reflect", {}) if isinstance(loop.get("last_reflect"), dict) else {}),
             "iterations_attempted": loop.get("iterations_attempted"),
             "child_run_ids": loop.get("child_run_ids", []),
             "last_failure_summary": loop.get("last_failure_summary"),
@@ -1252,7 +1259,7 @@ def _submit_phase_to_loop_parent(handle: RunHandle, *, phase: str, payload: dict
             "validate_passed": False,
             "final_summary": child_result.get("summary"),
             "artifacts": {"child_run_ids": loop.get("child_run_ids", [])},
-            "next_hint": retry_decision.get("next_plan_hint") or loop.get("last_reflect", {}).get("next_plan_hint"),
+            "next_hint": retry_decision.get("next_plan_hint") or _reflect_next_hint(loop.get("last_reflect", {}) if isinstance(loop.get("last_reflect"), dict) else {}),
             "iterations_attempted": loop.get("iterations_attempted"),
             "child_run_ids": loop.get("child_run_ids", []),
             "last_failure_summary": loop.get("last_failure_summary"),

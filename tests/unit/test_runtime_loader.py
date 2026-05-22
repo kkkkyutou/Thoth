@@ -137,6 +137,7 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
             "summary": "plan summary",
             "authority_complete": True,
             "open_gaps": [],
+            "plan": "# Plan\n\nRepair the dependency in the final implementation path.",
             "forbidden_assumptions_used": [],
             "discovery_tasks": ["locate dependency"],
             "execution_steps": ["repair dependency"],
@@ -147,6 +148,7 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
         run_dir / "execute.json",
         {
             "summary": "execute summary",
+            "report": "# Execute Report\n\nRepaired the dependency path and ran the official validator.",
             "dependency_actions": [{"package": "flex_gemm", "scope": ".vendor"}],
             "debug_attempts": ["retried import"],
             "verification_steps": ["pytest -k flex_gemm"],
@@ -206,7 +208,9 @@ def test_get_run_detail_returns_structured_phase_cards(tmp_path, monkeypatch):
 
     assert detail is not None
     cards = {card["phase"]: card for card in detail["phase_cards"]}
-    assert cards["plan"]["sections"][1]["items"] == ["locate dependency"]
+    assert any(section["title"] == "Plan" and "final implementation path" in section["items"][0] for section in cards["plan"]["sections"])
+    assert any(section["title"] == "Discovery tasks" and section["items"] == ["locate dependency"] for section in cards["plan"]["sections"])
+    assert any(section["title"] == "Report" and "official validator" in section["items"][0] for section in cards["execute"]["sections"])
     assert any("flex_gemm" in item for section in cards["execute"]["sections"] for item in section["items"])
     assert any("/opt/conda/envs/thoth-demo/bin/python" in item for section in cards["execute"]["sections"] for item in section["items"])
     assert any("/opt/conda/envs/thoth-demo/bin/python" in item for section in cards["validate"]["sections"] for item in section["items"])

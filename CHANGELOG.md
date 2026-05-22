@@ -4,6 +4,18 @@
 
 No pending changes.
 
+## [0.2.6.9] - 2026-05-22
+
+### Changed
+- Compacted phase worker output contracts so `plan` now requires only `summary`, `authority_complete`, `open_gaps`, and a rich markdown `plan`; `execute` requires `summary`, rich markdown `report`, and `official_validation_receipt`; `reflect` requires `summary`, `outcome`, and rich markdown `review`.
+- Updated `auto`, `run`, and `loop` phase prompts to push final-architecture-first implementation, reject MVP/fallback/mock/stub/simplified shortcut paths unless explicitly authorized, and use task-appropriate verification.
+- Scoped GPU-first guidance to AI research, model training, CUDA, and inference tasks instead of applying it globally.
+- Dashboard phase cards now prefer the new `plan`, `report`, and `review` bodies while still displaying legacy structured fields when present.
+
+### Fixed
+- Kept legacy phase fields accepted as optional compatibility input without making them required by the new prompt contract.
+- Reflect failure handling now treats `corrective_prompt` as the primary retry instruction while retaining runtime-managed `retry_target=execute` and one internal execute retry.
+
 ## [0.2.6.8] - 2026-05-21
 
 ### Changed

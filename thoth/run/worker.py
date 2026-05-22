@@ -738,14 +738,12 @@ class TestPhaseDriver:
             return {
                 "summary": "plan done",
                 "authority_complete": True,
-                "authority_coverage": {"deterministic": True},
                 "open_gaps": [],
-                "forbidden_assumptions_used": [],
-                "execution_steps": ["make change", "run validator"],
-                "files_expected": [],
-                "commands_expected": [],
-                "validation_plan": "run deterministic validator",
-                "risk_assessment": "low deterministic test risk",
+                "plan": (
+                    "# Deterministic Plan\n\n"
+                    "Implement the final test architecture directly, then run the deterministic validator. "
+                    "No MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim path is required."
+                ),
             }
         if phase == "execute":
             log_dir = _worker_log_dir(handle)
@@ -759,11 +757,10 @@ class TestPhaseDriver:
             command = str(entrypoint.get("command") or "pytest -q")
             return {
                 "summary": "exec done",
-                "plan_artifact_read": True,
-                "plan_deviations": [],
-                "files_touched": [],
-                "commands_run": [],
-                "artifacts": [],
+                "report": (
+                    "# Deterministic Execute Report\n\n"
+                    "The deterministic driver followed the plan handoff and produced the official validation receipt."
+                ),
                 "official_validation_receipt": {
                     "command": command,
                     "cwd": str(handle.project_root),
@@ -792,19 +789,19 @@ class TestPhaseDriver:
                 return {
                     "summary": "reflect done",
                     "outcome": "passed",
-                    "residual_risks": [],
-                    "evidence": ["validator passed"],
-                    "next_recommendation": "close run",
+                    "review": "# Deterministic Review\n\nThe official validator passed; close the run.",
                 }
             return {
                 "summary": "reflect done",
                 "outcome": "failed",
-                "residual_risks": ["validator still failing"],
-                "evidence": ["validator failed"],
-                "next_recommendation": "retry implementation",
+                "review": (
+                    "# Deterministic Review\n\n"
+                    "The official validator still fails. Retry execute against the same validator without weakening acceptance."
+                ),
                 "failure_class": "deterministic_validation_failed",
                 "root_cause": "test phase driver forced validation failure",
-                "next_plan_hint": "adjust implementation before retrying",
+                "corrective_prompt": "Adjust the implementation, rerun the deterministic validator, and return a fresh official_validation_receipt.",
+                "retry_authorized": True,
             }
         raise ValueError(f"unsupported phase for test driver: {phase}")
 

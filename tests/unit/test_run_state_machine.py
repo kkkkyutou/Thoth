@@ -40,25 +40,27 @@ def _plan_payload(summary: str = "plan ok") -> dict:
     return {
         "summary": summary,
         "authority_complete": True,
-        "authority_coverage": {"goal": True, "acceptance": True},
         "open_gaps": [],
-        "forbidden_assumptions_used": [],
-        "execution_steps": ["edit", "test"],
-        "files_expected": [],
-        "commands_expected": ["pytest -q"],
-        "validation_plan": "run pytest",
-        "risk_assessment": "low risk",
+        "plan": (
+            "# Plan\n\n"
+            f"{summary}\n\n"
+            "Implement the final architecture directly and run the official validator."
+        ),
     }
 
 
 def _execute_payload(summary: str = "exec ok") -> dict:
     return {
         "summary": summary,
-        "plan_artifact_read": True,
-        "plan_deviations": [],
-        "files_touched": [],
-        "commands_run": [],
-        "artifacts": [],
+        "report": f"# Execute Report\n\n{summary}\n\nFollowed the final-architecture plan.",
+        "official_validation_receipt": {
+            "command": "pytest -q",
+            "exit_code": 0,
+            "passed": True,
+            "checks_summary": ["passed"],
+            "stdout_log": "passed\n",
+            "stderr_log": "",
+        },
     }
 
 
@@ -66,16 +68,11 @@ def _reflect_failed_no_retry(*, summary: str = "reflect ok", next_hint: str = "c
     return {
         "summary": summary,
         "outcome": "failed",
-        "residual_risks": ["checks failed"],
-        "evidence": ["checks failed"],
-        "next_recommendation": "retry later",
+        "review": "# Review\n\nThe validator failed; do not weaken acceptance.",
         "failure_class": "checks",
         "root_cause": "validator failed",
-        "next_plan_hint": next_hint,
         "corrective_prompt": next_hint,
         "retry_authorized": False,
-        "retry_target": "execute",
-        "retry_budget": 0,
     }
 
 
@@ -129,9 +126,7 @@ def test_run_state_machine_completes_after_validate_pass(tmp_path):
         payload={
             "summary": "reflect ok",
             "outcome": "passed",
-            "residual_risks": [],
-            "evidence": ["checks passed"],
-            "next_recommendation": "close run",
+            "review": "# Review\n\nThe validator passed; close the run.",
         },
     )
 
@@ -237,7 +232,7 @@ def test_plan_authority_gap_terminalizes_before_execute(tmp_path):
     assert "execute" not in phase_state["phase_statuses"]
 
 
-def test_execute_requires_plan_artifact_read(tmp_path):
+def test_execute_legacy_plan_artifact_read_is_optional(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
         project,
@@ -252,17 +247,16 @@ def test_execute_requires_plan_artifact_read(tmp_path):
     )
     submit_phase_output(project, handle.run_id, phase="plan", payload=_plan_payload())
 
-    try:
-        submit_phase_output(
-            project,
-            handle.run_id,
-            phase="execute",
-            payload={**_execute_payload(), "plan_artifact_read": False},
-        )
-    except ValueError as exc:
-        assert "execute.plan_artifact_read must be true" in str(exc)
-    else:
-        raise AssertionError("execute without reading plan artifact should be rejected")
+    result = submit_phase_output(
+        project,
+        handle.run_id,
+        phase="execute",
+        payload={**_execute_payload(), "plan_artifact_read": False},
+    )
+
+    assert result["next_phase"] == "validate"
+    execute_artifact = json.loads((handle.run_dir / "execute.json").read_text(encoding="utf-8"))
+    assert execute_artifact["plan_artifact_read"] is False
 
 
 def test_loop_parent_stops_on_iteration_budget(tmp_path):

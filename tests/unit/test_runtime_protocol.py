@@ -36,25 +36,27 @@ def _plan_payload(summary: str = "plan ok") -> dict:
     return {
         "summary": summary,
         "authority_complete": True,
-        "authority_coverage": {"goal": True, "acceptance": True},
         "open_gaps": [],
-        "forbidden_assumptions_used": [],
-        "execution_steps": ["edit", "test"],
-        "files_expected": [],
-        "commands_expected": ["pytest -q"],
-        "validation_plan": "run pytest",
-        "risk_assessment": "low risk",
+        "plan": (
+            "# Plan\n\n"
+            f"{summary}\n\n"
+            "Implement the final architecture directly, reject MVP/fallback/mock shortcuts, and run pytest."
+        ),
     }
 
 
 def _execute_payload(summary: str = "exec ok") -> dict:
     return {
         "summary": summary,
-        "plan_artifact_read": True,
-        "plan_deviations": [],
-        "files_touched": [],
-        "commands_run": [],
-        "artifacts": [],
+        "report": f"# Execute Report\n\n{summary}\n\nFollowed the final-architecture plan and ran validation.",
+        "official_validation_receipt": {
+            "command": "pytest -q",
+            "exit_code": 0,
+            "passed": True,
+            "checks_summary": ["passed"],
+            "stdout_log": "passed\n",
+            "stderr_log": "",
+        },
     }
 
 
@@ -132,6 +134,7 @@ def test_plan_long_fields_normalize_without_schema_failure():
     long_text = "x" * 1500
     payload = {
         **_plan_payload(long_text),
+        "plan": long_text * 10,
         "open_gaps": [long_text],
         "forbidden_assumptions_used": [{"reason": long_text}],
         "execution_steps": [long_text],
@@ -144,12 +147,14 @@ def test_plan_long_fields_normalize_without_schema_failure():
     normalized = validate_phase_output("plan", payload)
 
     assert utf8_len(normalized["summary"]) <= 1200
+    assert utf8_len(normalized["plan"]) <= 12000
     assert utf8_len(normalized["open_gaps"][0]) <= 1024
     assert utf8_len(normalized["execution_steps"][0]) <= 1024
     assert utf8_len(normalized["commands_expected"][0]) <= 1024
     assert utf8_len(normalized["validation_plan"]) <= 1200
     assert utf8_len(normalized["risk_assessment"]["summary"]) <= 1200
     warning_fields = {row["field"] for row in normalized["_normalization_warnings"]}
+    assert "plan.plan" in warning_fields
     assert "plan.validation_plan" in warning_fields
     assert "plan.open_gaps" in warning_fields
 
@@ -298,6 +303,7 @@ def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failu
         "reflect",
         {
             "summary": long_text,
+            "review": long_text * 10,
             "outcome": "failed",
             "residual_risks": [long_text],
             "evidence": [long_text],
@@ -308,6 +314,7 @@ def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failu
         },
     )
     assert utf8_len(reflect["summary"]) <= 1200
+    assert utf8_len(reflect["review"]) <= 12000
     assert utf8_len(reflect["root_cause"]) <= 1200
     assert utf8_len(reflect["next_plan_hint"]) <= 1200
     assert utf8_len(reflect["corrective_prompt"]) <= 2000
@@ -546,7 +553,7 @@ def test_external_worker_prompt_mentions_protocol_and_limits(tmp_path):
     assert "Runtime driver capture path" in prompt
     assert "Summary budget UTF-8 bytes" in prompt
     assert len(json.dumps(packet, ensure_ascii=False)) < 4200
-    assert len(prompt) < 7000
+    assert len(prompt) < 8500
 
 
 def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
@@ -570,7 +577,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     )
     plan_packet = next_phase_payload(project, handle.run_id)
     assert plan_packet["phase"] == "plan"
-    assert plan_packet["phase_authority"]["objective"].startswith("Act as top-level planner")
+    assert plan_packet["phase_authority"]["objective"].startswith("Act as top-level technical planner")
     assert plan_packet["phase_authority"]["summary_budget_utf8"] == 1200
 
     submit_phase_output(
@@ -606,14 +613,8 @@ def test_phase_output_normalizes_overlong_summary(tmp_path):
         payload={
             "summary": too_long,
             "authority_complete": True,
-            "authority_coverage": {"goal": True},
             "open_gaps": [],
-            "forbidden_assumptions_used": [],
-            "execution_steps": ["edit"],
-            "files_expected": [],
-            "commands_expected": [],
-            "validation_plan": "run pytest",
-            "risk_assessment": "low risk",
+            "plan": "# Plan\n\nRun pytest.",
         },
     )
 
@@ -643,7 +644,9 @@ def test_phase_prompt_includes_execute_role_contract(tmp_path):
     assert "Phase role contract:" in prompt
     assert "Role: senior implementation engineer." in prompt
     assert "Repo-local dependency repair is allowed" in prompt
-    assert "Optional structured fields for human dashboards" in prompt
+    assert "final architecture" in prompt
+    assert "MVP, fallback, mock, stub, simplified" in prompt
+    assert "GPU-first verification posture" in prompt
 
 
 def test_execute_output_accepts_structured_debug_fields():
@@ -651,11 +654,8 @@ def test_execute_output_accepts_structured_debug_fields():
         "execute",
         {
             "summary": "execute done",
-            "plan_artifact_read": True,
-            "plan_deviations": [],
-            "files_touched": [],
-            "commands_run": [],
-            "artifacts": [],
+            "report": "# Execute Report\n\nImplemented the final architecture and ran validation.",
+            "official_validation_receipt": {"command": "pytest -q", "passed": True},
             "debug_attempts": [{"name": "flex_gemm import", "status": "fixed"}],
             "dependency_actions": [{"package": "flex_gemm", "scope": ".vendor"}],
             "verification_steps": [{"command": "pytest -k flex_gemm", "passed": True}],
@@ -674,6 +674,7 @@ def test_reflect_failure_fields_are_synthesized_from_validate_evidence():
         {
             "summary": "reflect failed validation",
             "outcome": "failed",
+            "review": "# Review\n\nValidation failed on a missing dependency; retry execute without weakening acceptance.",
             "residual_risks": [],
             "evidence": ["validate failed"],
             "next_recommendation": "repair dependency",
@@ -692,7 +693,8 @@ def test_reflect_failure_fields_are_synthesized_from_validate_evidence():
 
     assert payload["failure_class"] == "dependency_missing"
     assert "flex_gemm" in payload["root_cause"]
-    assert "test_flex_gemm" in payload["next_plan_hint"]
+    assert "test_flex_gemm" in payload["corrective_prompt"]
+    assert "next_plan_hint" not in payload
     assert payload["retry_authorized"] is True
     assert payload["retry_target"] == "execute"
     assert "official validator" in payload["corrective_prompt"]
@@ -925,7 +927,7 @@ def test_runtime_contract_error_does_not_retry_execute_from_reflect(tmp_path):
     reflect_payload = json.loads((handle.run_dir / "reflect.json").read_text(encoding="utf-8"))
     assert reflect_payload["failure_class"] == "runtime_contract_error"
     assert reflect_payload["retry_authorized"] is False
-    assert "do not edit the project implementation" in reflect_payload["next_plan_hint"]
+    assert "do not edit project code" in reflect_payload["corrective_prompt"]
 
 
 def test_reflect_feedback_retries_execute_once_inside_single_run(tmp_path):
