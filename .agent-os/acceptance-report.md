@@ -7,6 +7,17 @@
 
 ## Passed Checks
 
+- `EV-042` related to `WS-002`, `WS-003`, `WS-005`: `0.2.6.9` human phase prompts / compact phase fields 补丁的 `dev` 与 `main` 验证已通过
+  - Evidence: `python -m thoth.cli sync` 通过并重新生成 Claude/Codex repository surfaces 与 plugin manifests，manifest/marketplace 版本同步为 `0.2.6.9`。
+  - Evidence: `python -m py_compile thoth/prompt_specs.py thoth/prompt_validators.py thoth/run/worker.py thoth/run/phases.py templates/dashboard/backend/runtime_loader.py thoth/projections.py` 在 `dev` 与 `main` 均通过。
+  - Evidence: Targeted pytest `tests/unit/test_runtime_protocol.py tests/unit/test_run_state_machine.py tests/unit/test_cli_surface.py tests/unit/test_runtime_loader.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py` 在 `dev` 与 `main` 均为 `112 passed in 137.00s`。
+  - Evidence: `git diff --check` 通过；`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json`、`.agents/plugins/marketplace.json` 均通过 `python -m json.tool`。
+  - Evidence: `bin/thoth doctor --version` 在 `dev` 输出 `version=0.2.6.9`、`last_updated=2026-05-22T09:56:12Z`；在 `main` 输出 `version=0.2.6.9`、`last_updated=2026-05-22T10:00:50Z`。
+  - Evidence: 发布面提交 `568b75a fix: humanize phase prompts for 0.2.6.9` 已 cherry-pick 到 `main` 为 `4a22222 fix: humanize phase prompts for 0.2.6.9`；代理推送成功，输出 `7c365db..568b75a dev -> dev` 与 `54d23e3..4a22222 main -> main`。直连 push 曾因 GitHub 443 timeout 失败，未改用本地覆盖。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 从 `0.2.6.8` 更新到 `0.2.6.9`；`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.6.9`、`lastUpdated=2026-05-22T10:07:46.526Z`。
+  - Evidence: Claude cache runtime `/root/.claude/plugins/cache/thoth/thoth/0.2.6.9/bin/thoth doctor --version` 输出 `version=0.2.6.9`、`last_updated=2026-05-22T10:07:46Z`；Codex marketplace root `/root/.codex/.tmp/marketplaces/thoth/bin/thoth doctor --version` 输出 `version=0.2.6.9`、`last_updated=2026-05-22T10:07:18Z`。
+  - Conclusion: 当前 checkout 与安装态均已使用 compact 机械字段 + rich `plan` / `report` / `review` 正文的新 phase contract；旧字段保持兼容，auto 队列/串行 child loop 语义未改变，GPU-first 只针对 AI research / model training / CUDA / inference 任务。
+
 - `EV-041` related to `WS-002`, `WS-003`, `WS-005`: `0.2.6.8` receipt normalization / runtime contract / reconcile 补丁的 `dev` checkout 验证已通过
   - Evidence: `python -m thoth.cli sync` 通过并重新生成 Claude/Codex repository surfaces 与 plugin manifests。
   - Evidence: `python -m py_compile thoth/run/phases.py thoth/run/reconcile.py thoth/run/worker.py thoth/prompt_validators.py thoth/prompt_specs.py thoth/surface/cli.py thoth/surface/run_commands.py templates/dashboard/backend/runtime_loader.py tests/unit/test_runtime_protocol.py tests/unit/test_cli_surface.py tests/unit/test_runtime_loader.py` 通过。
