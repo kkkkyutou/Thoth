@@ -357,8 +357,12 @@ def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
         observed_items = [
             f"command={observed.get('command') or ''}",
             f"expected={observed.get('expected_command') or ''}",
+            f"command_relation={observed.get('command_relation') or ''}",
+            f"equivalence={observed.get('equivalence_rationale') or ''}",
             f"exit_code={observed.get('exit_code')!r} passed={observed.get('passed')!r}",
             f"command_matches={observed.get('command_matches')!r} metric_threshold_met={observed.get('metric_threshold_met')!r}",
+            f"authority_preserved={observed.get('authority_preserved')!r} validator_intent_preserved={observed.get('validator_intent_preserved')!r}",
+            f"metric_preserved={observed.get('metric_preserved')!r} threshold_preserved={observed.get('threshold_preserved')!r} evidence_sufficient={observed.get('evidence_sufficient')!r}",
             f"metric_value={observed.get('metric_value')!r}",
         ]
     receipt_items: list[str] = []
@@ -378,7 +382,8 @@ def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 check_items.append(_short_text(check))
                 continue
             passed = check.get("ok") if isinstance(check.get("ok"), bool) else check.get("passed")
-            status = "PASS" if passed is True else "FAIL" if passed is False else "INFO"
+            blocking = check.get("blocking")
+            status = "PASS" if passed is True else "INFO" if passed is False and blocking is False else "FAIL" if passed is False else "INFO"
             name = check.get("name") or "check"
             detail = check.get("detail") or check.get("details") or check.get("summary") or ""
             check_items.append(_short_text(f"{status} {name}: {detail}"))

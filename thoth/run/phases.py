@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from time import time
@@ -460,6 +461,182 @@ def _compact_whitespace(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
 
 
+def _command_tokens(value: str) -> list[str]:
+    try:
+        return shlex.split(value)
+    except ValueError:
+        return value.split()
+
+
+def _is_env_assignment(token: str) -> bool:
+    if "=" not in token:
+        return False
+    name, _value = token.split("=", 1)
+    if not name:
+        return False
+    if not (name[0].isalpha() or name[0] == "_"):
+        return False
+    return all(char.isalnum() or char == "_" for char in name)
+
+
+def _strip_leading_env_tokens(tokens: list[str]) -> list[str]:
+    rows = list(tokens)
+    if rows and rows[0] == "env":
+        rows = rows[1:]
+    index = 0
+    while index < len(rows) and _is_env_assignment(rows[index]):
+        index += 1
+    return rows[index:]
+
+
+def _is_python_token(token: str) -> bool:
+    name = Path(token).name
+    return name == "python" or name.startswith("python3")
+
+
+def _normalize_command_tokens(tokens: list[str]) -> list[str]:
+    rows = _strip_leading_env_tokens(tokens)
+    if rows and _is_python_token(rows[0]):
+        rows = ["python", *rows[1:]]
+    return rows
+
+
+def _pytest_index(tokens: list[str]) -> int | None:
+    for index, token in enumerate(tokens):
+        name = Path(token).name
+        if name == "pytest" or name.startswith("pytest-"):
+            return index
+        if token == "pytest" and index >= 2 and _is_python_token(tokens[index - 2]) and tokens[index - 1] == "-m":
+            return index
+    return None
+
+
+def _pytest_args(tokens: list[str]) -> list[str]:
+    index = _pytest_index(tokens)
+    return tokens[index + 1 :] if index is not None else []
+
+
+def _pytest_targets(tokens: list[str]) -> list[str]:
+    args = _pytest_args(tokens)
+    targets: list[str] = []
+    skip_next = False
+    value_flags = {"-k", "-m", "--keyword", "--maxfail", "--tb", "--ignore", "--ignore-glob", "--rootdir"}
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in value_flags:
+            skip_next = True
+            continue
+        if arg.startswith("--") and "=" in arg:
+            continue
+        if arg.startswith("-"):
+            continue
+        targets.append(arg)
+    return targets
+
+
+def _pytest_selection_flags(tokens: list[str]) -> set[str]:
+    args = _pytest_args(tokens)
+    flags: set[str] = set()
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in {"-k", "--keyword"}:
+            value = args[index + 1] if index + 1 < len(args) else ""
+            flags.add(f"-k={value}")
+            index += 2
+            continue
+        if arg.startswith("-k") and arg != "-k":
+            flags.add(arg)
+        if arg == "-m":
+            value = args[index + 1] if index + 1 < len(args) else ""
+            flags.add(f"-m={value}")
+            index += 2
+            continue
+        index += 1
+    return flags
+
+
+def _pytest_target_covers(expected: str, actual: str) -> bool:
+    if actual == expected:
+        return True
+    return expected.startswith(actual + "::")
+
+
+def _obvious_validator_drift(expected_command: str, actual_command: str) -> str:
+    if not expected_command:
+        return ""
+    if not actual_command:
+        return "actual command missing"
+    expected_tokens = _normalize_command_tokens(_command_tokens(expected_command))
+    actual_tokens = _normalize_command_tokens(_command_tokens(actual_command))
+    expected_pytest = _pytest_index(expected_tokens)
+    actual_pytest = _pytest_index(actual_tokens)
+    if expected_pytest is None or actual_pytest is None:
+        return ""
+    expected_targets = _pytest_targets(expected_tokens)
+    actual_targets = _pytest_targets(actual_tokens)
+    for target in expected_targets:
+        if not any(_pytest_target_covers(target, actual) for actual in actual_targets):
+            return f"expected pytest target not covered: {target}"
+    expected_filters = _pytest_selection_flags(expected_tokens)
+    actual_filters = _pytest_selection_flags(actual_tokens)
+    added_filters = sorted(actual_filters - expected_filters)
+    if added_filters:
+        return f"actual pytest command adds selection filter: {', '.join(added_filters)}"
+    return ""
+
+
+def _receipt_equivalence_value(receipt: dict[str, Any], key: str) -> Any:
+    value = receipt.get(key)
+    if value is not None:
+        return value
+    nested = receipt.get("validation_equivalence")
+    if isinstance(nested, dict):
+        return nested.get(key)
+    return None
+
+
+def _receipt_equivalence_bool(receipt: dict[str, Any], key: str, default: bool) -> bool:
+    value = _receipt_equivalence_value(receipt, key)
+    return value if isinstance(value, bool) else default
+
+
+def _receipt_equivalence_text(receipt: dict[str, Any], key: str) -> str:
+    value = _receipt_equivalence_value(receipt, key)
+    return str(value or "").strip() if isinstance(value, str) else ""
+
+
+def _command_relation(expected_command: str, actual_command: str, receipt: dict[str, Any]) -> tuple[str, str]:
+    declared = _receipt_equivalence_text(receipt, "command_relation") or _receipt_equivalence_text(receipt, "command_equivalence")
+    rationale = _receipt_equivalence_text(receipt, "equivalence_rationale") or _receipt_equivalence_text(receipt, "evidence_rationale")
+    if not expected_command:
+        return declared or "not_declared", rationale or "no reference command declared"
+    if not actual_command:
+        return declared or "missing", rationale or "actual command missing from receipt"
+    if actual_command == expected_command:
+        return declared or "exact", rationale or "actual command exactly matches reference command"
+    expected_tokens = _command_tokens(expected_command)
+    actual_tokens = _command_tokens(actual_command)
+    if _strip_leading_env_tokens(actual_tokens) == expected_tokens:
+        return declared or "environment_adjusted", rationale or "actual command adds leading environment assignments"
+    if _normalize_command_tokens(actual_tokens) == _normalize_command_tokens(expected_tokens):
+        return declared or "interpreter_or_environment_adjusted", rationale or "actual command preserves reference argv after environment/interpreter normalization"
+    if expected_command in actual_command:
+        return declared or "wrapper_equivalent", rationale or "actual command wraps the reference command"
+    if declared and declared not in {"not_equivalent", "changed"}:
+        return declared, rationale or "execute receipt declared validator equivalence"
+    return declared or "changed", rationale
+
+
+def _blocking_checks_passed(checks: list[dict[str, Any]]) -> bool:
+    for check in checks:
+        if check.get("ok") is False and check.get("blocking") is not False:
+            return False
+    return True
+
+
 def _primary_metric_name(strict_task: dict[str, Any]) -> str:
     metric = strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {}
     name = metric.get("name")
@@ -678,13 +855,25 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
     command_matches = True
     if expected_command:
         command_matches = actual_command == expected_command
+        relation, relation_rationale = _command_relation(expected_command, actual_command, receipt)
         checks.append(
             {
                 "name": "official_command_matches",
                 "ok": command_matches,
-                "detail": f"expected={expected_command} actual={actual_command or '<missing>'}",
+                "blocking": False,
+                "detail": f"diagnostic only; expected={expected_command} actual={actual_command or '<missing>'}",
             }
         )
+        checks.append(
+            {
+                "name": "official_command_relation",
+                "ok": relation not in {"missing", "not_equivalent"},
+                "blocking": False,
+                "detail": f"relation={relation} rationale={relation_rationale or '<none>'}",
+            }
+        )
+    else:
+        relation, relation_rationale = _command_relation(expected_command, actual_command, receipt)
 
     exit_code = receipt.get("exit_code") if receipt else None
     exit_ok = isinstance(exit_code, int) and exit_code == 0
@@ -715,18 +904,72 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
         receipt=receipt if receipt else {},
         observed_success=command_success,
     )
+    if expected_command:
+        normalized_receipt.setdefault("reference_command", expected_command)
+    if relation:
+        normalized_receipt.setdefault("command_relation", relation)
+    if relation_rationale:
+        normalized_receipt.setdefault("equivalence_rationale", relation_rationale)
     checks.extend(log_checks)
+
+    drift_reason = _obvious_validator_drift(expected_command, actual_command)
+    authority_preserved = _receipt_equivalence_bool(receipt, "authority_preserved", not bool(drift_reason)) and not bool(drift_reason)
+    validator_intent_preserved = _receipt_equivalence_bool(
+        receipt,
+        "validator_intent_preserved",
+        bool(actual_command or not expected_command) and not bool(drift_reason),
+    ) and not bool(drift_reason)
+    metric_preserved = _receipt_equivalence_bool(receipt, "metric_preserved", True)
+    receipt_threshold = receipt.get("threshold") if receipt else None
+    threshold_default = True if receipt_threshold is None else receipt_threshold == threshold
+    threshold_preserved = _receipt_equivalence_bool(receipt, "threshold_preserved", threshold_default)
+    evidence_default = bool(command_success and logs_ok)
+    evidence_sufficient = _receipt_equivalence_bool(receipt, "evidence_sufficient", evidence_default) and evidence_default
+    checks.extend(
+        [
+            {
+                "name": "authority_preserved",
+                "ok": authority_preserved,
+                "detail": "authority preserved" if authority_preserved else (drift_reason or "execute receipt declared authority drift"),
+            },
+            {
+                "name": "validator_intent_preserved",
+                "ok": validator_intent_preserved,
+                "detail": (
+                    f"relation={relation}"
+                    if validator_intent_preserved
+                    else (drift_reason or "execute receipt did not preserve validator intent")
+                ),
+            },
+            {
+                "name": "metric_preserved",
+                "ok": metric_preserved,
+                "detail": "metric preserved" if metric_preserved else "execute receipt declared metric drift",
+            },
+            {
+                "name": "threshold_preserved",
+                "ok": threshold_preserved,
+                "detail": f"threshold={threshold!r} receipt_threshold={receipt_threshold!r}",
+            },
+            {
+                "name": "official_validation_evidence_sufficient",
+                "ok": evidence_sufficient,
+                "detail": "exit code, receipt status, metric, and logs are sufficient" if evidence_sufficient else "official validation evidence is incomplete",
+            },
+        ]
+    )
 
     checks_summary = receipt.get("checks_summary") if receipt else None
     if isinstance(checks_summary, list):
         for index, item in enumerate(checks_summary[:8], start=1):
             checks.append({"name": f"receipt_check_{index}", "ok": True, "detail": _short_plain(item, limit=240)})
 
-    passed = bool(receipt_present and all(check.get("ok") is not False for check in checks) and receipt_passed is True)
-    observed_success = bool(command_success and command_matches and metric_ok)
+    passed = bool(receipt_present and _blocking_checks_passed(checks) and receipt_passed is True)
+    observed_success = bool(command_success and metric_ok and evidence_sufficient and authority_preserved and validator_intent_preserved and metric_preserved and threshold_preserved)
     failed = [str(check.get("name") or "check") for check in checks if check.get("ok") is False]
-    summary = "Official validator receipt passed." if passed else "Official validator receipt failed: " + ", ".join(failed[:5])
-    runtime_contract_problem = bool(command_success and (not command_matches or not logs_ok))
+    summary = "Official validation evidence passed." if passed else "Official validation evidence failed: " + ", ".join(failed[:5])
+    runtime_contract_problem = bool(command_success and not logs_ok)
+    semantic_evidence_problem = bool(command_success and not (authority_preserved and validator_intent_preserved and metric_preserved and threshold_preserved and evidence_sufficient))
     if passed:
         failure_class = None
         runtime_contract_health = "ok"
@@ -735,6 +978,9 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
         runtime_contract_health = "runtime_contract_error"
     elif not metric_ok:
         failure_class = "metric_not_reached"
+        runtime_contract_health = "failed"
+    elif semantic_evidence_problem:
+        failure_class = "evidence_insufficient"
         runtime_contract_health = "failed"
     else:
         failure_class = "execution_error"
@@ -756,10 +1002,18 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
             "metric_threshold_met": metric_ok,
             "expected_command": expected_command,
             "command_matches": command_matches,
+            "command_relation": relation,
+            "equivalence_rationale": relation_rationale,
+            "authority_preserved": authority_preserved,
+            "validator_intent_preserved": validator_intent_preserved,
+            "metric_preserved": metric_preserved,
+            "threshold_preserved": threshold_preserved,
+            "evidence_sufficient": evidence_sufficient,
+            "validator_drift_reason": drift_reason,
         },
         "runtime_contract_health": runtime_contract_health,
         "failure_class": failure_class,
-        "acceptance_state": "validated" if passed else "not_closed",
+        "acceptance_state": "validated" if passed else ("needs_human_review" if failure_class == "evidence_insufficient" else "not_closed"),
         "_normalization_warnings": log_warnings,
     }
 

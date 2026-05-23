@@ -322,6 +322,38 @@ def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failu
     assert reflect["_normalization_warnings"]
 
 
+def test_reflect_object_outcome_normalizes_when_status_is_clear():
+    payload = validate_phase_output(
+        "reflect",
+        {
+            "summary": "reflect failed validation",
+            "outcome": {"status": "failed", "reason": "runtime contract"},
+            "review": "# Review\n\nValidation evidence was not sufficient.",
+            "failure_class": "evidence_insufficient",
+            "root_cause": "command drift was not justified",
+            "corrective_prompt": "Return stronger official validation evidence.",
+            "retry_authorized": False,
+        },
+    )
+
+    assert payload["outcome"] == "failed"
+    assert any(item["field"] == "reflect.outcome" and item["reason"] == "object_outcome_normalized" for item in payload["_normalization_warnings"])
+
+
+def test_reflect_object_outcome_normalizes_passed_status():
+    payload = validate_phase_output(
+        "reflect",
+        {
+            "summary": "reflect passed validation",
+            "outcome": {"status": "passed"},
+            "review": "# Review\n\nEvidence is sufficient.",
+        },
+    )
+
+    assert payload["outcome"] == "passed"
+    assert any(item["field"] == "reflect.outcome" for item in payload["_normalization_warnings"])
+
+
 def test_mechanical_phase_fields_remain_strict():
     try:
         validate_phase_output(
@@ -806,6 +838,118 @@ def test_runtime_validate_normalizes_inline_receipt_logs_and_preserves_metric(tm
     run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
     assert run_result["result"]["metrics"]["bitwise_identical"] == 1.0
     assert run_result["result"]["observed_validation"]["metric_threshold_met"] is True
+
+
+def test_runtime_validate_accepts_environment_adjusted_reference_command(tmp_path):
+    project = _prepare_project(tmp_path)
+    reference_command = "python -m pytest src/demo_project/tests/test_t0_2_vit.py -v"
+    actual_command = "CUDA_VISIBLE_DEVICES=3 python -m pytest src/demo_project/tests/test_t0_2_vit.py -v"
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Environment adjusted validator demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Environment adjusted validator demo",
+            "eval_entrypoint": {"command": reference_command},
+            "primary_metric": {"name": "bitwise_identical", "direction": "gte", "threshold": 1.0},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="accept environment adjusted official validation",
+    )
+
+    class EnvAdjustedReceiptDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                return {
+                    **_execute_payload(),
+                    "official_validation_receipt": _inline_receipt_payload(command=actual_command, metric_value=1.0),
+                }
+            if phase == "reflect":
+                return {
+                    "summary": "reflect passed",
+                    "outcome": "passed",
+                    "review": "# Review\n\nThe GPU-selected validator evidence is sufficient.",
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=EnvAdjustedReceiptDriver())
+
+    assert status == 0
+    validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
+    assert validate_payload["passed"] is True
+    assert validate_payload["runtime_contract_health"] == "ok"
+    assert validate_payload["acceptance_state"] == "validated"
+    observed = validate_payload["observed_validation"]
+    assert observed["command_matches"] is False
+    assert observed["command_relation"] == "environment_adjusted"
+    assert observed["validator_intent_preserved"] is True
+    command_check = next(check for check in validate_payload["checks"] if check["name"] == "official_command_matches")
+    assert command_check["ok"] is False
+    assert command_check["blocking"] is False
+
+
+def test_runtime_validate_rejects_obvious_pytest_target_drift(tmp_path):
+    project = _prepare_project(tmp_path)
+    reference_command = "python -m pytest src/demo_project/tests/test_t0_2_vit.py -v"
+    actual_command = "CUDA_VISIBLE_DEVICES=3 python -m pytest src/demo_project/tests/test_other.py -v"
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Target drift validator demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Target drift validator demo",
+            "eval_entrypoint": {"command": reference_command},
+            "primary_metric": {"name": "bitwise_identical", "direction": "gte", "threshold": 1.0},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="reject target drift",
+    )
+
+    class TargetDriftReceiptDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                return {
+                    **_execute_payload(),
+                    "official_validation_receipt": _inline_receipt_payload(command=actual_command, metric_value=1.0),
+                }
+            if phase == "reflect":
+                return {
+                    "summary": "reflect failed",
+                    "outcome": "failed",
+                    "review": "# Review\n\nThe receipt did not preserve the official pytest target.",
+                    "failure_class": "evidence_insufficient",
+                    "root_cause": "actual command changed the pytest target",
+                    "corrective_prompt": "Run validation for the official pytest target and return evidence.",
+                    "retry_authorized": False,
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=TargetDriftReceiptDriver())
+
+    assert status == 1
+    validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
+    assert validate_payload["passed"] is False
+    assert validate_payload["failure_class"] == "evidence_insufficient"
+    assert validate_payload["acceptance_state"] == "needs_human_review"
+    observed = validate_payload["observed_validation"]
+    assert observed["validator_intent_preserved"] is False
+    assert "expected pytest target not covered" in observed["validator_drift_reason"]
 
 
 def test_runtime_validate_does_not_treat_missing_stdout_path_as_inline_log(tmp_path):

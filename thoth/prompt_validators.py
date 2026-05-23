@@ -521,6 +521,39 @@ def _synthesize_reflect_failure_fields(
     return synthesized
 
 
+def _normalize_reflect_outcome(value: Any, warnings: list[dict[str, Any]]) -> str:
+    aliases = {
+        "pass": "passed",
+        "passes": "passed",
+        "success": "passed",
+        "succeeded": "passed",
+        "ok": "passed",
+        "fail": "failed",
+        "fails": "failed",
+        "failure": "failed",
+        "error": "failed",
+    }
+    if isinstance(value, str):
+        outcome = value.strip().lower()
+        return aliases.get(outcome, outcome)
+    if isinstance(value, dict):
+        for key in ("outcome", "status", "result", "verdict", "state"):
+            nested = value.get(key)
+            if isinstance(nested, str):
+                outcome = aliases.get(nested.strip().lower(), nested.strip().lower())
+                if outcome in {"passed", "failed"}:
+                    _add_normalization_warning(
+                        warnings,
+                        field="reflect.outcome",
+                        reason="object_outcome_normalized",
+                        original_type="dict",
+                        limit=FAILURE_CLASS_LIMIT,
+                        truncated_or_compacted=True,
+                    )
+                    return outcome
+    return str(value or "").strip().lower()
+
+
 def _markdown_items(title: str, value: Any) -> list[str]:
     if value in (None, "", [], {}):
         return []
@@ -744,9 +777,11 @@ def validate_phase_output(
         normalized["_normalization_warnings"] = [*preexisting_warnings, *normalization_warnings]
         return normalized
     if phase == "reflect":
-        outcome = str(payload.get("outcome") or "").strip().lower()
+        outcome = _normalize_reflect_outcome(payload.get("outcome"), normalization_warnings)
         if outcome not in {"passed", "failed"}:
             raise ValueError("reflect.outcome must be passed|failed")
+        payload = dict(payload)
+        payload["outcome"] = outcome
         payload = _synthesize_reflect_failure_fields(
             payload,
             prior_validate_payload=prior_validate_payload,

@@ -8,7 +8,7 @@
     {
       "name": "thoth",
       "description": "Dashboard-centric Agent Project OS with project bootstrap, execution loops, audit visibility, validation, reporting, and executor-mode Codex delegation.",
-      "version": "0.2.6.10",
+      "version": "0.2.6.11",
       "author": {
         "name": "SeeleAI",
         "url": "https://github.com/SeeleAI"

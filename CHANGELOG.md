@@ -4,6 +4,17 @@
 
 No pending changes.
 
+## [0.2.6.11] - 2026-05-23
+
+### Changed
+- `validate` now treats `eval_entrypoint.command` as the reference official validator instead of a hard string cage: command mismatch is retained as a diagnostic while authority, validator intent, metric, threshold, and evidence sufficiency decide acceptance.
+- Execute prompts now explicitly allow reasonable GPU, interpreter, environment, or thin-wrapper adjustments when they preserve the same official validation intent and leave auditable evidence.
+- Dashboard validate cards now surface command relation, equivalence rationale, and validation-evidence preservation signals.
+
+### Fixed
+- Prevented runs from failing solely because the passed official validator was invoked with a leading environment selector such as `CUDA_VISIBLE_DEVICES=3`.
+- Reflect output validation now normalizes clear object-shaped outcomes such as `{"status":"failed"}` to `failed`, reducing schema-only worker retries without loosening ambiguous outcomes.
+
 ## [0.2.6.10] - 2026-05-23
 
 ### Changed

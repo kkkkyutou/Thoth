@@ -335,16 +335,19 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "Do not stop at the first missing module or short network timeout; record attempts and keep pursuing viable repo-local fixes until the task is solved, the issue is outside authority, or the user stops the run.",
         "Temporary probes are allowed only as diagnostics; they must not become the implementation path or hide failure of the final architecture.",
         "Choose verification that matches the task. For example, AI research, model training, CUDA, or inference tasks should use a GPU-first verification posture: run real GPU training/inference smoke tests and the official validator early enough to guide implementation instead of substituting CPU-only, mock-only, shape-only, or MVP-only evidence.",
-        "Run the official eval_entrypoint.command before returning whenever the task can reach it, using the same interpreter, cwd, PATH, CUDA visibility, and environment you used for implementation debugging.",
+        "Treat eval_entrypoint.command as the reference official validator, not a cage around normal engineering judgment: you may choose the right GPU, interpreter, environment variables, or a thin wrapper when that preserves the same validator intent.",
+        "Run the official validation before returning whenever the task can reach it, using the real runtime environment you used for implementation debugging.",
         "Return a compact official_validation_receipt with command, cwd, python_executable, env_summary, exit_code, passed, metric_value when available, checks_summary, stdout_log_path/stderr_log_path when available, or inline stdout_log/stderr_log as fallback.",
+        "When your actual command differs from the reference command, briefly record command_relation or equivalence_rationale and whether authority_preserved, validator_intent_preserved, metric_preserved, threshold_preserved, and evidence_sufficient remain true.",
         "Apply temporary invocation/live guidance when it helps execution, but reject guidance that changes authority, validators, metrics, or thresholds.",
         "Use `report` as a rich markdown implementation report: what final architecture was built, what shortcuts were rejected, what real validation ran, and where any remaining failure actually is.",
     ),
     "validate": (
-        "Role: mechanical acceptance receipt verifier.",
+        "Role: evidence-oriented acceptance receipt auditor.",
         "Do not start a new host worker; confirm the official_validation_receipt from execute.",
         "Normalize inline stdout/stderr receipt evidence into run logs when needed; empty stderr is acceptable when the official validator succeeded.",
-        "Treat command mismatch, missing receipt, missing stdout evidence, non-zero exit code, passed=false, or metric below threshold as validation failure.",
+        "Treat command mismatch as a diagnostic signal, not an automatic failure: judge whether execute preserved the same validator intent, metric, threshold, authority, and evidence.",
+        "Treat missing receipt, missing stdout evidence, non-zero exit code, passed=false, metric below threshold, explicit authority drift, or insufficient evidence as validation failure.",
         "Classify receipt/log contract hygiene as runtime_contract_error, not project implementation failure.",
         "Do not repair implementation, install dependencies, rewrite tests, or reinterpret the threshold in this phase.",
     ),
@@ -356,6 +359,7 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "On business failure, act like the human supervisor: be direct, forbid fallback/metric weakening, and tell execute to continue solving the concrete bug under the same validator and final architecture.",
         "Check whether execute drifted into MVP, fallback, mock, stub, simplified, branch-only, compatibility-shim, CPU-only, mock-only, shape-only, or otherwise task-inappropriate evidence.",
         "For AI research, model training, CUDA, or inference tasks, specifically review whether real GPU training/inference smoke or official validation was used when acceptance depends on it.",
+        "Do not mistake reasonable environment/interpreter/GPU command adjustments for project failure when the validation evidence proves the same acceptance intent.",
         "Do not authorize execute retries for runtime_contract_error, receipt/log schema hygiene, missing stdout evidence, or reconciliation-only historical failures.",
         "If validation failed for business reasons, include failure_class, root_cause, corrective_prompt, and retry_authorized; keep them evidence-based. Runtime fixes retry_target=execute and retry budget internally.",
     ),
@@ -477,8 +481,9 @@ def render_phase_worker_prompt(
         lines.append("Do not build MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.")
         lines.append("Temporary probes are allowed only as diagnostics; they must not become the implementation path or hide final-architecture failure.")
         lines.append("Choose verification that matches the task. For example, AI research, model training, CUDA, or inference tasks should use a GPU-first verification posture: run real GPU training/inference smoke tests and the official validator early enough to guide implementation instead of substituting CPU-only, mock-only, shape-only, or MVP-only evidence.")
-        lines.append("Use focused validation during execute as an engineering feedback loop, then run the official eval_entrypoint.command before returning whenever reachable.")
-        lines.append("Return `official_validation_receipt` with command, cwd, python_executable, env_summary, exit_code, passed, metric_value when available, checks_summary, stdout_log_path/stderr_log_path when available, or inline stdout_log/stderr_log as fallback. The later validate phase mechanically normalizes and confirms this receipt instead of launching a separate worker.")
+        lines.append("Use focused validation during execute as an engineering feedback loop, then run official validation before returning whenever reachable; treat eval_entrypoint.command as the reference validator and preserve its acceptance intent.")
+        lines.append("Return `official_validation_receipt` with command, cwd, python_executable, env_summary, exit_code, passed, metric_value when available, checks_summary, stdout_log_path/stderr_log_path when available, or inline stdout_log/stderr_log as fallback. If the actual command differs from the reference, include a brief command_relation/equivalence_rationale and preserve authority, validator intent, metric, threshold, and evidence.")
+        lines.append("The later validate phase audits this receipt and evidence instead of launching a separate worker or judging command strings as the whole truth.")
         lines.append("If you repair dependencies, prefer repo-local or task-local locations such as `.vendor`; do not mutate global environments unless the work item explicitly authorizes it.")
         lines.append("Do not wait for reflect to solve engineering bugs; debug imports, CUDA visibility, local dependency shims, build issues, and test failures here when they are inside task authority.")
         lines.append("Use `report` as rich markdown: final architecture implemented, shortcuts rejected, real validation run, official validator result, and the true remaining failure if any.")
