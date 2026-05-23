@@ -7,6 +7,22 @@
 
 ## Passed Checks
 
+- `EV-044` related to `WS-002`, `WS-003`, `WS-005`, `CD-044`: `0.2.6.11` evidence-first validation 补丁的 `dev` 与 `main` 验证已通过
+  - Evidence: `validate` 现在把 `eval_entrypoint.command` 作为 reference official validator command；`official_command_matches` 仍记录真实字面匹配情况，但 `blocking=false`，不再因安全的环境/GPU/解释器调整直接 fail。
+  - Evidence: `mechanical_validate_phase_output()` 新增 `command_relation`、`equivalence_rationale`、`authority_preserved`、`validator_intent_preserved`、`metric_preserved`、`threshold_preserved`、`evidence_sufficient` 与 `validator_drift_reason`；`passed` 由阻断 checks、exit code、receipt passed、metric、logs 与 evidence preservation 共同决定。
+  - Evidence: 已覆盖 `CUDA_VISIBLE_DEVICES=3 python -m pytest src/demo_project/tests/test_t0_2_vit.py -v` 对 reference command `python -m pytest src/demo_project/tests/test_t0_2_vit.py -v` 的通过回归；`official_command_matches=false` 但 `command_relation=environment_adjusted`、`validator_intent_preserved=true`、`acceptance_state=validated`。
+  - Evidence: 已覆盖明显 pytest target drift 的拒绝回归：actual command 改到 `src/demo_project/tests/test_other.py` 时 `validator_intent_preserved=false`、`failure_class=evidence_insufficient`、`acceptance_state=needs_human_review`。
+  - Evidence: `reflect.outcome` 会把明确对象形态如 `{"status":"failed"}` / `{"status":"passed"}` 窄归一化为 `failed` / `passed` 并写 `_normalization_warnings`；含糊 outcome 仍保持 schema failure。
+  - Evidence: `python -m thoth.cli sync` 通过并重新生成 Claude/Codex repository surfaces 与 plugin manifests，manifest/marketplace 版本同步为 `0.2.6.11`。
+  - Evidence: `python -m py_compile thoth/run/phases.py thoth/prompt_validators.py thoth/prompt_specs.py thoth/projections.py templates/dashboard/backend/runtime_loader.py tests/unit/test_runtime_protocol.py tests/unit/test_runtime_loader.py tests/unit/test_command_spec_generation.py` 在 `dev` 与 `main` 均通过。
+  - Evidence: Targeted pytest `tests/unit/test_runtime_protocol.py tests/unit/test_run_state_machine.py tests/unit/test_task_contracts.py tests/unit/test_cli_surface.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_runtime_loader.py tests/unit/test_progress_calculator.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py tests/unit/test_data_loader.py` 在 `dev` 为 `163 passed in 177.45s`，在 `main` 为 `163 passed in 168.36s`。
+  - Evidence: `templates/dashboard/frontend` 的 `npm run build` 在 `dev` 与 `main` 均通过，仅保留既有 Vite chunk-size warning；`git diff --check` 通过；`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json`、`.agents/plugins/marketplace.json` 均通过 `python -m json.tool`。
+  - Evidence: `bin/thoth doctor --version` 在 `dev` 输出 `version=0.2.6.11`、`last_updated=2026-05-23T08:01:58Z`；在 `main` 输出 `version=0.2.6.11`、`last_updated=2026-05-23T08:09:46Z`。
+  - Evidence: 发布面提交 `f7d45b7 fix: audit official validation evidence for 0.2.6.11` 已 cherry-pick 到 `main` 为 `5a25028 fix: audit official validation evidence for 0.2.6.11`；直连 push 因 GitHub 443 timeout 失败，代理重试成功，输出 `6388691..f7d45b7 dev -> dev` 与 `a2b6111..5a25028 main -> main`。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 从 `0.2.6.10` 更新到 `0.2.6.11`；`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.6.11`、`lastUpdated=2026-05-23T08:17:29.277Z`。
+  - Evidence: Claude cache runtime `/root/.claude/plugins/cache/thoth/thoth/0.2.6.11/bin/thoth doctor --version` 输出 `version=0.2.6.11`、`last_updated=2026-05-23T08:17:29Z`；Codex marketplace root `/root/.codex/.tmp/marketplaces/thoth/bin/thoth doctor --version` 输出 `version=0.2.6.11`、`last_updated=2026-05-23T08:16:54Z`。
+  - Conclusion: Thoth 现在保护 authority、metric、threshold 与 validator intent，而不再限制 agent 为真实 GPU/CUDA/解释器环境做合理命令调整；demo_project 中已通过的 `CUDA_VISIBLE_DEVICES=3` official validator receipt 可通过新 validate contract 或 reconcile 闭合。
+
 - `EV-043` related to `WS-002`, `WS-003`, `WS-005`, `CD-043`: `0.2.6.10` auto child attempt isolation 补丁的 `dev` 与 `main` 验证已通过
   - Evidence: `auto` controller payload 新增 per-child `attempts` ledger，记录 `work_id`、`run_id`、attempt status、child exit status 与 `finished_at`；controller `failed_count` / dashboard runtime summary 现在从真实 failed attempts 派生。
   - Evidence: auto worker 在 child completion、non-runnable skip 与 rounds pause 后都会重算剩余 `queue` snapshot，避免 terminal/paused controller 保留启动时全量 queue 而看起来所有 work item 都被刷新。

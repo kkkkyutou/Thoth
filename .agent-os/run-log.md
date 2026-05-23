@@ -2,6 +2,16 @@
 
 ## Entries
 
+- 2026-05-23 08:18 UTC [0.2.6.11 evidence-first validation release]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
+  - State changes: 按用户关于 demo_project `DEMO00-T0.2` 官方 pytest 已过但 Thoth 因 `CUDA_VISIBLE_DEVICES=3` 与 official command 字面不一致而判 `runtime_contract_error` 的反馈发布 `0.2.6.11`。`validate` 现在把 `eval_entrypoint.command` 视为 reference official validator command，不再作为逐字命令笼子；`official_command_matches=false` 被保留为 `blocking=false` diagnostic，真正闭合看 receipt/exit/log/metric 证据，以及 `authority_preserved`、`validator_intent_preserved`、`metric_preserved`、`threshold_preserved`、`evidence_sufficient`。
+  - State changes: `mechanical_validate_phase_output()` 新增 command relation / evidence preservation 读面，能自动识别 leading env assignment、解释器/env 等价与 wrapper-equivalent 关系，并对明显 pytest target drift 或新增 selection filter 继续拒绝。`runtime_contract_error` 继续保留给 receipt/log/schema/runtime hygiene；无法证明 validator intent 的成功命令归类为 `evidence_insufficient`，`acceptance_state=needs_human_review`。
+  - State changes: `execute` / `validate` / `reflect` phase prompts 改为 evidence-auditor 语义：agent 可以选择正确 GPU、interpreter、env 或薄 wrapper，但必须保留 authority、validator intent、metric、threshold 与可审计证据。Dashboard validate cards 展示 `command_relation`、`equivalence_rationale` 与 preservation flags。`reflect.outcome` 现在窄归一化明确对象形态，如 `{"status":"failed"}` -> `failed`，并记录 `_normalization_warnings`。
+  - Evidence produced: `dev` 发布面提交 `f7d45b7 fix: audit official validation evidence for 0.2.6.11`；验证通过 `python -m thoth.cli sync`、`py_compile`、`git diff --check`、manifest JSON 校验、`templates/dashboard/frontend npm run build`、`bin/thoth doctor --version` 输出 `version=0.2.6.11`，以及 targeted pytest `163 passed in 177.45s`。
+  - Evidence produced: 发布面已 cherry-pick 到 `main` 为 `5a25028 fix: audit official validation evidence for 0.2.6.11`；`main` 上同组验证通过：py_compile、diff check、manifest JSON、frontend build、`bin/thoth doctor --version` 输出 `version=0.2.6.11`、targeted pytest `163 passed in 168.36s`。
+  - Evidence produced: 直连 `git push origin dev main` 因 GitHub 443 timeout 失败，随后用 `https_proxy=http://10.0.3.5:7899 http_proxy=http://10.0.3.5:7899` 成功推送，输出 `6388691..f7d45b7 dev -> dev` 与 `a2b6111..5a25028 main -> main`。远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功，`claude plugin update thoth@thoth --scope user` 从 `0.2.6.10` 更新到 `0.2.6.11`，`codex plugin marketplace upgrade thoth` 成功。Claude cache runtime 与 Codex marketplace root runtime 均输出 `version=0.2.6.11`。
+  - Next likely action: 回到 `TD-001`；若要闭合 demo_project 的历史 `run-be645a092a7f`，先确认目标项目安装态已是 `0.2.6.11`，然后可用 `thoth run --reconcile run-be645a092a7f` 基于既有 execute official validator receipt 重新闭合，不需要重跑 demo_project 官方 pytest。
+
 - 2026-05-21 16:43 UTC [0.2.6.8 receipt normalization and reconcile release]
   - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
   - State changes: 按用户关于 demo_project `DEMO00-T0.2` 官方 pytest 已过但 Thoth validate 卡在 `validation_logs_exist` / receipt 字段契约的反馈发布 `0.2.6.8`。`validate` 继续保持机械确认 execute 的 `official_validation_receipt`，但 runtime 现在会把 inline `stdout_log` / `stderr_log` 归一化为 run-local `worker-logs/official-validator.stdout.log` / `.stderr.log`，成功 validator 的空 stderr 被视为可接受；显式缺失的 `stdout_log_path` 不会被当作内联证据伪装通过。
