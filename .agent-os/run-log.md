@@ -2,6 +2,15 @@
 
 ## Entries
 
+- 2026-05-23 09:05 UTC [0.2.6.12 auto preflight summary refresh release]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
+  - State changes: 按用户关于 demo_project `$thoth auto` 在未启动任何 work 前因 `object-graph-summary-current=false`、`stale_fields=work_item_counts,ready_work_count` 被 preflight 挡住的反馈发布 `0.2.6.12`。`auto` 的 execution-safety doctor 现在在发现 stale object graph summary 时，会调用一次 canonical object graph compile 刷新 `.thoth/docs/object-graph-summary.json`，然后重新运行 doctor；若刷新后仍有真实 preflight failure，则仍然阻断执行。
+  - State changes: 新增 `_auto_execution_safety_doctor()` 与 `preflight_refresh` 回执。`preflight_refresh` 会记录是否尝试刷新、原因、结果和错误；失败 envelope 会把该回执与 doctor payload 一起返回，便于区分“派生读模型可修复漂移”和“真实 authority/safety failure”。`no-proposed-decisions` / `no-blocked-work-items` 的 auto 豁免语义不变，`auto` 串行 child loop 与 per-child attempt isolation 语义不变。
+  - Evidence produced: `dev` 发布面提交 `e737666 fix: refresh stale auto preflight summary for 0.2.6.12`；验证通过 focused pytest `30 passed in 35.23s`、wider targeted pytest `116 passed in 179.77s`、`python -m py_compile thoth/surface/run_commands.py thoth/plan/compiler.py thoth/plan/doctor.py thoth/projections.py tests/unit/test_cli_surface.py`、`git diff --check`、四个 plugin/marketplace JSON 校验、`templates/dashboard/frontend npm run build` 与 `bin/thoth doctor --version` 输出 `version=0.2.6.12`。
+  - Evidence produced: 发布面已 cherry-pick 到 `main` 为 `411a8e2 fix: refresh stale auto preflight summary for 0.2.6.12`；`main` 上验证通过 py_compile、`git diff --check HEAD~1..HEAD`、manifest JSON、dashboard frontend build、`bin/thoth doctor --version` 输出 `version=0.2.6.12`，以及 focused pytest `30 passed in 36.32s`。
+  - Evidence produced: `git push origin dev main` 成功，输出 `23fcd41..e737666 dev -> dev` 与 `5a25028..411a8e2 main -> main`。远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功，`claude plugin update thoth@thoth --scope user` 从 `0.2.6.11` 更新到 `0.2.6.12`，`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.6.12`；Claude cache runtime 与 Codex marketplace root runtime 均输出 `version=0.2.6.12`。
+  - Next likely action: 回到 `TD-001`。demo_project 可在安装态 `0.2.6.12` 下重新执行 `$thoth auto`；若只有 `work_item_counts` / `ready_work_count` 这类派生 summary stale，auto 应先自修复并继续；若还有真实 authority 或安全失败，则仍会 preflight failed 并返回 doctor 证据。
+
 - 2026-05-23 08:18 UTC [0.2.6.11 evidence-first validation release]
   - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
   - State changes: 按用户关于 demo_project `DEMO00-T0.2` 官方 pytest 已过但 Thoth 因 `CUDA_VISIBLE_DEVICES=3` 与 official command 字面不一致而判 `runtime_contract_error` 的反馈发布 `0.2.6.11`。`validate` 现在把 `eval_entrypoint.command` 视为 reference official validator command，不再作为逐字命令笼子；`official_command_matches=false` 被保留为 `blocking=false` diagnostic，真正闭合看 receipt/exit/log/metric 证据，以及 `authority_preserved`、`validator_intent_preserved`、`metric_preserved`、`threshold_preserved`、`evidence_sufficient`。
