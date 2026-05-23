@@ -4,6 +4,23 @@
 
 No pending changes.
 
+## [0.2.7.0] - 2026-05-23
+
+### Changed
+- Work item authority now writes the compact payload shape only: `goal`, `context`, `constraints`, `acceptance_spec`, `approach_notes`, `scheduling`, `run_limits`, and `missing_questions`.
+- Ready and active work items require a concrete `acceptance_spec`; legacy payload fields such as `work_kind`, `runnable`, `execution_plan`, `eval_contract`, `runtime_policy`, `depends_on`, and `scheduling.priority` are rejected on new public writes.
+- `depends_on` and `decisions` remain public input conveniences but are stored as canonical object links instead of payload fields.
+- `auto` now builds a DAG-first actionable queue: dependency links are satisfied only by `validated` work items, optional `scheduling.order` controls tie-breaking, and legacy priority semantics are removed.
+- Phase prompts are rewritten around numbered, high-intelligence role contracts while keeping acceptance and authority strict; reconcile/history continuation is now part of the plan phase instead of a public run flag.
+
+### Fixed
+- Dashboard and status read models no longer require compact authority payloads to carry dashboard-only `module` / `direction` fields.
+- Public work-json diagnostics report a missing `acceptance_spec` at the right level instead of exploding it into empty normalized subfields.
+- Legacy closed discussion authority is backfilled as a `primary_parent` link without reintroducing stored `authority_context` payload fields.
+
+### Removed
+- Removed the public `thoth run --reconcile` flag. Historical run continuation is now handled by the plan worker through `history_action`.
+
 ## [0.2.6.12] - 2026-05-23
 
 ### Fixed

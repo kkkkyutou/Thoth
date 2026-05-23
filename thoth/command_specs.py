@@ -76,7 +76,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
             "Use detached live execution without --sleep",
         ),
         lifecycle=("prepare", "plan", "execute", "validate", "reflect", "attach/watch/stop", "acceptance"),
-        interaction_gaps=("Ready runnable work id",),
+        interaction_gaps=("Ready work id with acceptance_spec",),
     ),
     CommandSpec(
         command_id="loop",
@@ -100,7 +100,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
             "Depend on subagents or hooks for correctness",
         ),
         lifecycle=("prepare", "loop-parent", "child-plan", "child-execute", "child-validate", "child-reflect", "attach/resume/watch/stop", "acceptance"),
-        interaction_gaps=("Ready runnable work id",),
+        interaction_gaps=("Ready work id with acceptance_spec",),
     ),
     CommandSpec(
         command_id="review",
@@ -120,8 +120,8 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     ),
     CommandSpec(
         command_id="auto",
-        summary="Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.",
-        argument_hint="[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>] [guidance...]",
+        summary="Run the DAG-first actionable work queue until ready/active/failed work is closed, paused, or stopped.",
+        argument_hint="[--sleep] [--rounds <n>] [--scope all-open|ready] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>] [guidance...]",
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",
@@ -132,7 +132,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         allowed_tools=("Read", "Glob", "Grep", "Edit", "Write", "Bash", "Task", "Monitor"),
         scope_can=("Execute ready work items through child loops", "Monitor active work", "Let a later new controller revisit failed work"),
         scope_cannot=("Auto-abandon work items", "Execute blocked or draft work", "Bypass execution-safety doctor preflight"),
-        lifecycle=("execution-safety-preflight", "select-priority-work", "child-loop", "monitor", "pause/stop/terminal"),
+        lifecycle=("execution-safety-preflight", "select-dag-work", "child-loop", "monitor", "pause/stop/terminal"),
     ),
     CommandSpec(
         command_id="status",
@@ -155,7 +155,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         packet_authority_mode="command_packet",
         acceptance="Closed planning output is recorded into discussion, decision, and work_item objects and may produce at most one work subtree without mutating code.",
         scope_can=("Update discussions, decisions, and work items", "Generate a complete work subtree"),
-        scope_cannot=("Modify source code", "Create ready runnable work while questions remain", "Modify work locked by active execution"),
+        scope_cannot=("Modify source code", "Create ready executable work while questions remain", "Modify work locked by active execution"),
         lifecycle=("inquire", "close", "write-object-subtree", "generate-doc-view"),
     ),
     CommandSpec(

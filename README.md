@@ -129,7 +129,7 @@ Thoth is a dashboard-first orchestration runtime for autoresearch. It assumes ch
 | Hooks + watchdog + runtime | Keep execution attached to durable ledgers and observable lifecycle events. | Work is not persistent |
 | Dashboard-first visibility | Show live, stale, attachable, and host-specific runtime truth in one read surface. | Parallel work is invisible |
 | Mechanical yes/no acceptance | Force validators, ledgers, and result payloads to decide whether work really passed. | Agents can claim completion too early |
-| Object graph + execution system + locked work items | Freeze what is allowed, compile it into runnable work items, and keep authority layers from drifting. | Docs and state rot over time |
+| Object graph + execution system + locked work items | Freeze what is allowed, compile it into compact accepted work items, and keep authority layers from drifting. | Docs and state rot over time |
 
 ## System At A Glance
 
@@ -141,7 +141,7 @@ Humans should not spend their attention tracking every grain of sand in the funn
 | --- | --- | --- | --- |
 | Intent | Capture the user request and operating boundary. | Human goals, constraints, repo context | Direction for planning |
 | Decision | Lock key choices before execution drifts. | Intent, open questions, policy constraints | Recorded decisions |
-| Work Item | Freeze goal, constraints, execution plan, eval, runtime policy, and decisions. | Discussion, decisions, requirements, acceptance rules | Ready or blocked work item |
+| Work Item | Freeze goal, context, constraints, acceptance spec, approach notes, scheduling, run limits, and missing questions. | Discussion, decisions, requirements, acceptance rules | Ready or blocked work item |
 | Run | Execute one frozen `work_id@revision` through phase results. | Work item, controller policy, host surface | `.thoth/objects/run` plus `.thoth/runs/<run_id>` ledger |
 | Result | Produce a mechanical verdict instead of narration alone. | Validator outputs, artifacts, runtime checks | Structured result and acceptance evidence |
 | Dashboard | Let humans read the final state without replaying the chat. | Portable authority plus local ledgers and read models | Inspectable project truth |
@@ -150,7 +150,7 @@ Humans should not spend their attention tracking every grain of sand in the funn
 
 Thoth project state is intentionally split into three layers.
 
-Portable authority is the Git state needed to continue work after a fresh clone. Commit `AGENTS.md`, `CLAUDE.md` when the Claude surface is enabled, `.thoth/objects/project/`, `.thoth/objects/work_item/`, `.thoth/objects/discussion/`, `.thoth/objects/decision/`, `.thoth/docs/agent-entry.md`, `.thoth/docs/project.json`, and `.thoth/docs/source-map.json`. These files define the project, discussion history, decisions, and runnable work item graph.
+Portable authority is the Git state needed to continue work after a fresh clone. Commit `AGENTS.md`, `CLAUDE.md` when the Claude surface is enabled, `.thoth/objects/project/`, `.thoth/objects/work_item/`, `.thoth/objects/discussion/`, `.thoth/objects/decision/`, `.thoth/docs/agent-entry.md`, `.thoth/docs/project.json`, and `.thoth/docs/source-map.json`. These files define the project, discussion history, decisions, and accepted work item graph.
 
 Runtime evidence is local by default. New projects get `.thoth/.gitignore` rules for `.thoth/runs/`, `.thoth/derived/`, `.thoth/docs/work-results/`, `.thoth/objects/run/`, `.thoth/objects/artifact/`, `.thoth/objects/controller/`, and `.thoth/objects/phase_result/`. These ledgers remain on disk for local audit, but a fresh machine should start a new run rather than attach to old PIDs, leases, workers, supervisors, or dashboard processes.
 

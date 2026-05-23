@@ -329,7 +329,7 @@ def _queue_snapshot(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "revision": row.get("revision"),
             "title": row.get("title"),
             "status": row.get("ready_state") or row.get("status"),
-            "priority": row.get("priority"),
+            "order": (row.get("scheduling") or {}).get("order") if isinstance(row.get("scheduling"), dict) else None,
         }
         for row in rows
     ]
@@ -537,8 +537,8 @@ def execute_auto_controller(
             continue
 
         strict_task = load_work_for_execution(project_root, work_id, require_ready=False)
-        if strict_task.get("runnable") is not True:
-            _emit(event_sink, controller_id, "thoth.auto.skipped", work_id=work_id, reason="non_runnable")
+        if str(strict_task.get("ready_state") or strict_task.get("status") or "") not in {"ready", "failed"}:
+            _emit(event_sink, controller_id, "thoth.auto.skipped", work_id=work_id, reason="not_actionable")
             payload["attempted_work_ids"] = _append_unique(payload.get("attempted_work_ids"), work_id)
             payload["skipped_work_ids"] = _append_unique(payload.get("skipped_work_ids"), work_id)
             payload["queue"] = _remaining_queue_snapshot(project_root, payload, scope=scope)

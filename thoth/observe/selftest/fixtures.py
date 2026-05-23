@@ -27,7 +27,6 @@ from thoth.objects import Store
 from thoth.plan.compiler import compile_task_authority
 from thoth.plan.store import load_project_manifest, upsert_work_item, upsert_decision
 from thoth.run.ledger import complete_run, heartbeat_run
-from thoth.run.phases import default_validate_output_schema
 from thoth.selftest_seed import seed_host_real_app
 
 from .model import *
@@ -79,68 +78,56 @@ def _host_real_contract_payloads() -> list[dict[str, Any]]:
     now = utc_now()
     return [
         {
-            "schema_version": 1,
-            "kind": "work_item",
             "work_id": "task-runtime-probe",
-            "direction": "backend",
-            "module": "selftest",
             "title": "Exercise durable sleep handoff without source edits",
             "status": "ready",
-            "work_kind": "execution",
-            "runnable": True,
             "goal": "Public `run --sleep` and `loop --sleep` must create durable ledgers, remain attachable, and stop cleanly without touching source files.",
             "context": "command-probe-repo",
             "constraints": ["selftest-command-probe-repo"],
-            "execution_plan": [
+            "approach_notes": [
                 "Treat this task as a runtime protocol probe rather than a product-development task.",
                 "Do not modify repo source files.",
                 "Do not invent feature work, fallback validators, or review closure work.",
                 "If an external worker is handed off successfully, stop there.",
             ],
-            "eval_contract": {
-                "entrypoint": {"command": "python scripts/runtime_probe.py"},
-                "primary_metric": {"name": "runtime_contract_ok", "direction": "gte", "threshold": 1},
-                "failure_classes": ["runtime_handoff_gap"],
-                "validate_output_schema": default_validate_output_schema(),
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run the runtime probe script.",
+                "metric": {"name": "runtime_contract_ok", "direction": "gte", "threshold": 1},
+                "reference_command": "python scripts/runtime_probe.py",
             },
-            "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+            "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
+            "scheduling": {"order": None},
             "decisions": ["DEC-host-real-selftest"],
             "missing_questions": [],
-            "created_at": now,
-            "updated_at": now,
         },
         {
-            "schema_version": 1,
-            "kind": "work_item",
             "work_id": "task-review-probe",
-            "direction": "backend",
-            "module": "selftest",
             "title": "Return the fixed single finding for the known review defect",
             "status": "ready",
-            "work_kind": "execution",
-            "runnable": True,
             "goal": "Review `tracker/review_probe.py`, emit exactly one structured finding, and do not modify source files.",
             "context": "command-probe-repo",
             "constraints": ["selftest-command-probe-repo"],
-            "execution_plan": [
+            "approach_notes": [
                 "Inspect only the review target and any imports needed to understand it.",
                 "Return exactly the expected structured finding.",
                 "Do not emit prose outside the structured review result.",
                 "Do not modify code.",
             ],
-            "eval_contract": {
-                "entrypoint": {"command": "python scripts/runtime_probe.py"},
-                "primary_metric": {"name": "review_exact_match", "direction": "gte", "threshold": 1},
-                "failure_classes": ["review_output_drift"],
-                "validate_output_schema": default_validate_output_schema(),
-                "review_binding": {"target": "tracker/review_probe.py"},
-                "review_expectation": _expected_host_review_result(),
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run the runtime probe script and match the expected review output.",
+                "metric": {"name": "review_exact_match", "direction": "gte", "threshold": 1},
+                "reference_command": "python scripts/runtime_probe.py",
+                "io_examples": {
+                    "review_binding": {"target": "tracker/review_probe.py"},
+                    "review_expectation": _expected_host_review_result(),
+                },
             },
-            "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+            "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
+            "scheduling": {"order": None},
             "decisions": ["DEC-host-real-selftest"],
             "missing_questions": [],
-            "created_at": now,
-            "updated_at": now,
         },
     ]
 
@@ -284,34 +271,27 @@ def _seed_task(project_dir: Path, *, work_id: str = "task-1") -> None:
     upsert_work_item(
         project_dir,
         {
-            "schema_version": 1,
-            "kind": "work_item",
             "work_id": work_id,
-            "direction": "frontend",
-            "module": "f1",
             "title": "Dashboard lifecycle validation",
             "status": "ready",
-            "work_kind": "execution",
-            "runnable": True,
             "goal": "Verify that runtime state remains inspectable under real process execution.",
             "context": "frontend-runtime",
             "constraints": ["selftest-temp-project"],
-            "execution_plan": [
+            "approach_notes": [
                 "Initialize a temp Thoth project.",
                 "Start detached run and loop lifecycles.",
                 "Observe dashboard runtime freshness and hook behavior.",
             ],
-            "eval_contract": {
-                "entrypoint": {"command": "python -m thoth.selftest --case run.phase_contract"},
-                "primary_metric": {"name": "selftest_checks_passed", "direction": "gte", "threshold": 1},
-                "failure_classes": ["runtime_unstable", "dashboard_drift", "hook_failure"],
-                "validate_output_schema": default_validate_output_schema(),
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run the phase contract selftest.",
+                "metric": {"name": "selftest_checks_passed", "direction": "gte", "threshold": 1},
+                "reference_command": "python -m thoth.selftest --case run.phase_contract",
             },
-            "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+            "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
+            "scheduling": {"order": None},
             "decisions": ["DEC-selftest-runtime"],
             "missing_questions": [],
-            "created_at": utc_now(),
-            "updated_at": utc_now(),
         },
     )
     compile_task_authority(project_dir)

@@ -14,7 +14,6 @@ from thoth.plan.authority_resolution import resolve_strict_task_authority
 from thoth.plan.results import rebuild_work_results_from_runs
 from thoth.plan.store import load_project_manifest, upsert_work_result
 from thoth.objects import ActiveExecutionLock, Store, flatten_work_item, normalize_scheduling
-from thoth.run.phases import default_validate_output_schema
 
 from .audit import (
     LEGACY_CONFIG_FILE,
@@ -273,24 +272,22 @@ def _legacy_work_payload(raw: dict[str, Any], *, source_path: str) -> tuple[str,
     evidence_paths = results.get("evidence_paths") if isinstance(results.get("evidence_paths"), list) else []
     metrics = results.get("metrics") if isinstance(results.get("metrics"), dict) else {}
     work_payload = {
-        "work_kind": "execution",
-        "runnable": True,
         "goal": goal,
         "context": f"Imported from {source_path}",
         "constraints": ["Imported from legacy Thoth authority; preserve original intent."],
-        "execution_plan": ["Review imported legacy task context.", "Run the migrated eval entrypoint or update this work item before execution."],
-        "eval_contract": {
-            "entrypoint": {"command": "python -m thoth.cli status --json"},
-            "primary_metric": {"name": "legacy_import_review", "direction": "gte", "threshold": 1},
-            "failure_classes": ["legacy_import_needs_review"],
-            "validate_output_schema": default_validate_output_schema(),
+        "acceptance_spec": {
+            "kind": "script",
+            "description": "Review the migrated legacy task and run a focused Thoth status check before treating it as current execution authority.",
+            "metric": {"name": "legacy_import_review", "direction": "gte", "threshold": 1},
+            "reference_command": "python -m thoth.cli status --json",
         },
-        "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+        "approach_notes": [
+            "Review imported legacy task context.",
+            "Run the migrated reference command or replace it with a task-specific validator before execution.",
+        ],
+        "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
         "scheduling": normalize_scheduling(raw.get("scheduling")),
-        "decisions": [],
         "missing_questions": [],
-        "legacy_source_id": f"legacy-import-{work_id}",
-        "legacy_source_path": source_path,
     }
     if not completed and not raw.get("hypothesis") and not raw.get("goal"):
         work_payload["missing_questions"] = ["Confirm migrated task goal before execution."]
@@ -405,13 +402,17 @@ _TIMESTAMP_WORK_ID_RE = re.compile(r"^work-\d{8}T\d{6}Z-work$")
 
 def _work_duplicate_signature(obj: dict[str, Any]) -> tuple[str, str, str, str]:
     payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
-    eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
-    entrypoint = eval_contract.get("entrypoint") if isinstance(eval_contract.get("entrypoint"), dict) else {}
+    acceptance_spec = payload.get("acceptance_spec") if isinstance(payload.get("acceptance_spec"), dict) else {}
+    command = acceptance_spec.get("reference_command")
+    if not isinstance(command, str):
+        eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
+        entrypoint = eval_contract.get("entrypoint") if isinstance(eval_contract.get("entrypoint"), dict) else {}
+        command = entrypoint.get("command")
     return (
         " ".join(str(payload.get("goal") or obj.get("summary") or "").split()),
-        " ".join(str(entrypoint.get("command") or "").split()),
-        str(payload.get("module") or "").strip(),
-        str(payload.get("direction") or "").strip(),
+        " ".join(str(command or "").split()),
+        str(payload.get("context") or payload.get("module") or "").strip(),
+        str((acceptance_spec.get("kind") if isinstance(acceptance_spec, dict) else "") or payload.get("direction") or "").strip(),
     )
 
 
@@ -420,7 +421,7 @@ def abandon_duplicate_timestamp_work_items(project_dir: Path) -> list[dict[str, 
 
     Early discuss workers could close an existing work item without preserving
     its stable work_id, producing `work-<timestamp>-work` duplicates.  Sync keeps
-    those objects as evidence but removes them from runnable/dashboard authority.
+    those objects as evidence but removes them from ready/dashboard authority.
     """
 
     store = Store(project_dir)
@@ -449,27 +450,22 @@ def abandon_duplicate_timestamp_work_items(project_dir: Path) -> list[dict[str, 
             continue
         stable = candidates[0]
         stable_id = str(stable.get("object_id") or "")
-        payload = duplicate.get("payload") if isinstance(duplicate.get("payload"), dict) else {}
         superseded_by = f"work_item:{stable_id}"
-        if duplicate.get("status") == "abandoned" and payload.get("superseded_by") == superseded_by:
+        latest_stable = store.read("work_item", stable_id) or stable
+        stable_links = list(latest_stable.get("links") if isinstance(latest_stable.get("links"), list) else [])
+        supersedes_link = {"type": "supersedes", "target": f"work_item:{duplicate_id}"}
+        if duplicate.get("status") == "abandoned" and supersedes_link in stable_links:
             repairs.append({"work_id": duplicate_id, "status": "already_abandoned", "superseded_by": stable_id})
             continue
-        next_payload = dict(payload)
-        next_payload["hidden"] = True
-        next_payload["hidden_reason"] = "duplicate timestamp work item superseded by stable work_id"
-        next_payload["superseded_by"] = superseded_by
         try:
             updated_duplicate = store.update(
                 "work_item",
                 duplicate_id,
                 expected_revision=int(duplicate.get("revision", 0)),
-                updates={"status": "abandoned", "payload": next_payload},
+                updates={"status": "abandoned", "summary": f"Duplicate timestamp work item superseded by {superseded_by}."},
                 history_summary="sync abandoned duplicate timestamp work item",
                 source="init --sync",
             )
-            latest_stable = store.read("work_item", stable_id) or stable
-            stable_links = list(latest_stable.get("links") if isinstance(latest_stable.get("links"), list) else [])
-            supersedes_link = {"type": "supersedes", "target": f"work_item:{duplicate_id}"}
             if supersedes_link not in stable_links:
                 stable_links.append(supersedes_link)
                 store.update(
@@ -494,7 +490,7 @@ def abandon_duplicate_timestamp_work_items(project_dir: Path) -> list[dict[str, 
 
 
 def backfill_work_item_authority_contexts(project_dir: Path) -> list[dict[str, Any]]:
-    """Persist closed discussion authority into legacy ready work items during sync."""
+    """Persist closed discussion authority links into legacy ready work items during sync."""
 
     store = Store(project_dir)
     repairs: list[dict[str, Any]] = []
@@ -502,32 +498,52 @@ def backfill_work_item_authority_contexts(project_dir: Path) -> list[dict[str, A
         work_id = str(obj.get("object_id") or "")
         if not work_id:
             continue
+        existing_links = obj.get("links") if isinstance(obj.get("links"), list) else []
+        if any(
+            isinstance(link, dict)
+            and link.get("type") == "primary_parent"
+            and str(link.get("target") or "").startswith("discussion:")
+            for link in existing_links
+        ):
+            continue
         payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
-        existing = payload.get("authority_context")
-        completeness = existing.get("completeness") if isinstance(existing, dict) else {}
-        if isinstance(completeness, dict) and completeness.get("is_closed") is True:
+        legacy_context = payload.get("authority_context") if isinstance(payload.get("authority_context"), dict) else {}
+        legacy_source_discussion_id = legacy_context.get("source_discussion_id")
+        resolution: dict[str, Any] = {}
+        if isinstance(legacy_source_discussion_id, str) and legacy_source_discussion_id.strip() and store.read("discussion", legacy_source_discussion_id):
+            source_discussion_id = legacy_source_discussion_id
+            resolution = {"source": "legacy_payload_authority_context", "source_ids": [legacy_source_discussion_id]}
+        else:
+            try:
+                strict_task = flatten_work_item(obj)
+                strict_task.pop("authority_context", None)
+                enriched, resolution = resolve_strict_task_authority(
+                    project_dir,
+                    strict_task,
+                    allow_work_item_fallback=False,
+                )
+            except (ValueError, ActiveExecutionLock):
+                continue
+            authority_context = enriched.get("authority_context")
+            if not isinstance(authority_context, dict):
+                continue
+            source_discussion_id = authority_context.get("source_discussion_id")
+        if not isinstance(source_discussion_id, str) or not source_discussion_id.strip():
             continue
-        try:
-            strict_task = flatten_work_item(obj)
-            enriched, resolution = resolve_strict_task_authority(
-                project_dir,
-                strict_task,
-                allow_work_item_fallback=False,
-            )
-        except (ValueError, ActiveExecutionLock):
-            continue
-        authority_context = enriched.get("authority_context")
-        if not isinstance(authority_context, dict):
-            continue
-        updated_payload = dict(payload)
-        updated_payload["authority_context"] = authority_context
+        next_links = [
+            link
+            for link in existing_links
+            if isinstance(link, dict)
+            and not (link.get("type") == "primary_parent" and str(link.get("target") or "").startswith("discussion:"))
+        ]
+        next_links.append({"type": "primary_parent", "target": f"discussion:{source_discussion_id}"})
         try:
             store.update(
                 "work_item",
                 work_id,
                 expected_revision=int(obj.get("revision", 0)),
-                updates={"payload": updated_payload},
-                history_summary="sync backfilled closed authority_context",
+                updates={"links": next_links},
+                history_summary="sync backfilled closed authority link",
                 source="init --sync",
             )
         except ActiveExecutionLock:

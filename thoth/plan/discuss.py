@@ -9,7 +9,6 @@ from typing import Any
 
 from thoth.objects import (
     ActiveExecutionLock,
-    REQUIRED_WORK_PAYLOAD_FIELDS,
     Store,
     active_work_ids,
     slugify,
@@ -38,14 +37,13 @@ COMPACT_AUTHORITY_CATEGORIES = (
     "constraints",
     "decisions",
     "risks",
-    "run_instructions",
+    "approach_notes",
     "open_questions",
 )
 
 PUBLIC_WORK_JSON_REQUIRED_FIELDS = (
-    "work_kind",
-    "runnable",
-    *REQUIRED_WORK_PAYLOAD_FIELDS,
+    "goal",
+    "acceptance_spec",
 )
 
 _CONTINUATION_HINTS = (
@@ -83,21 +81,18 @@ def example_minimal_ready_work_item() -> dict[str, Any]:
         "work_id": "replace-with-stable-work-id",
         "title": "Replace With Work Title",
         "status": "ready",
-        "work_kind": "execution",
-        "runnable": True,
         "goal": "One concrete, user-authorized outcome.",
         "context": "module-or-scope",
-        "module": "module-id",
-        "direction": "direction-id",
         "constraints": ["Known hard constraint."],
-        "execution_plan": ["Do the smallest implementation slice.", "Run the validator."],
-        "eval_contract": {
-            "entrypoint": {"command": "pytest -q tests/path_or_nodeid.py"},
-            "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
-            "failure_classes": ["regression"],
-            "validate_output_schema": {"type": "object"},
+        "acceptance_spec": {
+            "kind": "script",
+            "description": "Run the focused validator and satisfy its acceptance checks.",
+            "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+            "reference_command": "pytest -q tests/path_or_nodeid.py",
         },
-        "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 28800}},
+        "approach_notes": ["Use the smallest final implementation slice that satisfies the acceptance spec."],
+        "run_limits": {"max_iterations": 1, "max_runtime_seconds": 28800},
+        "scheduling": {"order": None},
         "decisions": ["DEC-replace-with-frozen-decision"],
         "missing_questions": [],
     }
@@ -109,8 +104,6 @@ def example_blocked_work_item() -> dict[str, Any]:
         {
             "work_id": "replace-with-blocked-work-id",
             "status": "blocked",
-            "runnable": False,
-            "eval_contract": {},
             "missing_questions": ["Name the validator command or acceptance evidence."],
         }
     )

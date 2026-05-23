@@ -56,21 +56,18 @@ def _write_work_item(tmp_path: Path, work_id: str = "task-1", *, status: str = "
         title="Strict task",
         summary="Verify loader",
         payload={
-            "work_kind": "execution",
-            "runnable": True,
             "goal": "Verify loader",
             "context": "f1",
-            "direction": "frontend",
-            "module": "f1",
             "constraints": ["test"],
-            "execution_plan": ["Inspect loader output."],
-            "eval_contract": {
-                "entrypoint": {"command": "true"},
-                "primary_metric": {"name": "ok", "direction": "gte", "threshold": 1},
-                "validate_output_schema": {"type": "object"},
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run true.",
+                "metric": {"name": "ok", "direction": "gte", "threshold": 1},
+                "reference_command": "true",
             },
-            "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
-            "decisions": ["DEC-test"],
+            "approach_notes": ["Inspect loader output."],
+            "run_limits": {"max_iterations": 1, "max_runtime_seconds": 60},
+            "scheduling": {"order": None},
             "missing_questions": [],
         },
     )
@@ -100,7 +97,7 @@ def test_directions_from_manifest(tmp_path):
 def test_directions_fall_back_to_work_item_payload(tmp_path):
     _write_work_item(tmp_path)
     directions = _read_directions_from_config(tmp_path)
-    assert directions == ("frontend",)
+    assert directions == ("general",)
 
 
 def test_load_all_tasks_attaches_work_results(tmp_path):
@@ -131,11 +128,8 @@ def test_load_all_tasks_hides_superseded_timestamp_duplicates(tmp_path):
     invalidate_cache()
     _write_project_object(tmp_path)
     _write_work_item(tmp_path, work_id="DEMO00-T0.1")
-    duplicate = Store(tmp_path).read("work_item", "DEMO00-T0.1")
-    payload = dict(duplicate["payload"])
-    payload["hidden"] = True
-    payload["hidden_reason"] = "duplicate timestamp work item superseded by stable work_id"
-    payload["superseded_by"] = "work_item:DEMO00-T0.1"
+    stable = Store(tmp_path).read("work_item", "DEMO00-T0.1")
+    payload = dict(stable["payload"])
     Store(tmp_path).create(
         kind="work_item",
         object_id="work-20260520T100057Z-work",
@@ -144,6 +138,14 @@ def test_load_all_tasks_hides_superseded_timestamp_duplicates(tmp_path):
         summary="Verify loader",
         source="init --sync",
         payload=payload,
+    )
+    Store(tmp_path).update(
+        "work_item",
+        "DEMO00-T0.1",
+        expected_revision=int(stable["revision"]),
+        updates={"links": [{"type": "supersedes", "target": "work_item:work-20260520T100057Z-work"}]},
+        history_summary="mark timestamp duplicate superseded",
+        source="init --sync",
     )
 
     tasks = load_all_tasks(tmp_path)
@@ -156,7 +158,7 @@ def test_load_modules_from_tasks(tmp_path):
     _write_work_item(tmp_path)
     modules = load_modules(tmp_path)
     assert modules[0]["id"] == "f1"
-    assert modules[0]["direction"] == "frontend"
+    assert modules[0]["direction"] == "general"
 
 
 def test_load_project_config_uses_manifest(tmp_path):

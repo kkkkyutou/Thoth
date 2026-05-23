@@ -47,24 +47,6 @@ def dashboard_ready_warnings(project_root: Path) -> list[dict[str, Any]]:
     if not directions:
         warnings.append(_warning("dashboard-project-directions", "project.directions is empty; dashboard filters will be weak"))
 
-    degraded_work: list[str] = []
-    for work in Store(project_root).list("work_item"):
-        work_id = str(work.get("object_id") or "")
-        payload = work.get("payload") if isinstance(work.get("payload"), dict) else {}
-        module = payload.get("module")
-        direction = payload.get("direction")
-        if not isinstance(module, str) or not module.strip() or module == "strict":
-            degraded_work.append(f"{work_id}:module={module or 'missing'}")
-        if not isinstance(direction, str) or not direction.strip() or direction == "general":
-            degraded_work.append(f"{work_id}:direction={direction or 'missing'}")
-    if degraded_work:
-        warnings.append(
-            _warning(
-                "dashboard-work-item-module-direction",
-                "work items missing dashboard module/direction: " + "; ".join(degraded_work[:10]),
-            )
-        )
-
     fields_missing: list[str] = []
     for work in Store(project_root).list("work_item"):
         row = flatten_work_item(work)

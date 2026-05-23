@@ -204,9 +204,9 @@ def test_host_real_payloads_define_frozen_decision_and_two_probe_contracts():
         "task-runtime-probe",
         "task-review-probe",
     ]
-    assert contracts[0]["eval_contract"]["entrypoint"]["command"] == "python scripts/runtime_probe.py"
-    assert contracts[1]["eval_contract"]["review_expectation"] == _expected_host_review_result()
-    assert contracts[1]["eval_contract"]["review_binding"]["target"] == "tracker/review_probe.py"
+    assert contracts[0]["acceptance_spec"]["reference_command"] == "python scripts/runtime_probe.py"
+    assert contracts[1]["acceptance_spec"]["io_examples"]["review_expectation"] == _expected_host_review_result()
+    assert contracts[1]["acceptance_spec"]["io_examples"]["review_binding"]["target"] == "tracker/review_probe.py"
 
 
 def test_codex_prompt_uses_literal_shell_command_for_public_surface():

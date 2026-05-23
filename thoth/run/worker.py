@@ -739,6 +739,7 @@ class TestPhaseDriver:
                 "summary": "plan done",
                 "authority_complete": True,
                 "open_gaps": [],
+                "history_action": "continue",
                 "plan": (
                     "# Deterministic Plan\n\n"
                     "Implement the final test architecture directly, then run the deterministic validator. "
@@ -798,8 +799,6 @@ class TestPhaseDriver:
                     "# Deterministic Review\n\n"
                     "The official validator still fails. Retry execute against the same validator without weakening acceptance."
                 ),
-                "failure_class": "deterministic_validation_failed",
-                "root_cause": "test phase driver forced validation failure",
                 "corrective_prompt": "Adjust the implementation, rerun the deterministic validator, and return a fresh official_validation_receipt.",
                 "retry_authorized": True,
             }

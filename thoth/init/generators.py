@@ -181,9 +181,9 @@ This document is the canonical human-readable project instruction source for `{c
 - A fresh clone resumes from committed authority by running `thoth status --json` and starting a new `thoth run --work-id ...`; it cannot attach to old machine-local processes, PIDs, leases, workers, or dashboard state.
 - Canonical planning storage lives in `.thoth/objects/<kind>/<object_id>.json`.
 - Planning authority is object-graph driven: `discussion -> decision -> work_item`.
-- `work_item` replaces old contract/task authority; runnable work must be `ready`.
-- `run` and `loop` only execute ready runnable work by `--work-id`.
-- Current work-item payloads use `work_id`, `work_kind`, and `runnable`; old `task_id` and `work_type` fields are legacy migration inputs only.
+- `work_item` replaces old contract/task authority; executable work must be `ready` with compact `payload.goal` and `payload.acceptance_spec`.
+- `run` and `loop` only execute ready work by `--work-id`.
+- Current work-item payloads use compact fields only: `goal`, `context`, `constraints`, `acceptance_spec`, `approach_notes`, `scheduling.order`, `run_limits`, and `missing_questions`.
 - Free-form execution is forbidden; ambiguous work must go back through `discuss`.
 - `init` must audit the current repository before it standardizes any Thoth-managed surface.
 - `run` and `loop` are durable by default and support attach/watch/stop lifecycle.
@@ -345,11 +345,11 @@ This file is a generated project operation contract for `{config["name"]}`.
 {portable_paths}
 - Runtime evidence and local process state live under ignored paths such as `.thoth/runs/`, `.thoth/derived/`, `.thoth/docs/work-results/`, `.thoth/objects/run/`, `.thoth/objects/artifact/`, `.thoth/objects/controller/`, and `.thoth/objects/phase_result/`.
 - A fresh clone can continue from committed authority with `thoth status --json` and a new `thoth run --work-id ...`; it must not try to attach to old PIDs, leases, workers, or dashboard processes.
-- There is no standalone Contract kind; goal, constraints, execution plan, eval, runtime policy, and decisions live inside `work_item.payload`.
-- Current executable authority uses `work_item`, `work_id`, `work_kind`, and `runnable`.
+- There is no standalone Contract kind; goal, context, constraints, acceptance intent, approach notes, scheduling order, and run limits live inside compact `work_item.payload`.
+- Current executable authority uses `work_item`, `work_id`, ready status, compact `acceptance_spec`, and canonical object links.
 - Legacy `task_id` and `work_type` inputs may be read only by managed migration; current authority objects must not write them.
 - `run` and `loop` execute by `--work-id` only; free-form goals belong in `discuss`.
-- `discuss` owns unresolved intent. If goals, constraints, acceptance, or authority are unclear, keep the work in discussion instead of creating runnable work.
+- `discuss` owns unresolved intent. If goals, constraints, acceptance, or authority are unclear, keep the work in discussion instead of creating ready executable work.
 - Active run/controller references lock the target work item until terminal state.
 - `run` and `loop` are durable by default and support attach/watch/stop lifecycle.
 - Hooks and subagents may enhance throughput but are never correctness dependencies.

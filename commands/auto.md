@@ -1,7 +1,7 @@
 ---
 name: thoth:auto
-description: Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.
-argument-hint: "[--sleep] [--rounds <n>] [--scope all-open|ready|priority-top] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>] [guidance...]"
+description: Run the DAG-first actionable work queue until ready/active/failed work is closed, paused, or stopped.
+argument-hint: "[--sleep] [--rounds <n>] [--scope all-open|ready] [--work-id <work_id> ...] [--watch <controller_id>] [--stop <controller_id>] [guidance...]"
 disable-model-invocation: false
 allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Task, Monitor
 ---

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import shutil
 import shlex
+import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from time import time
@@ -76,6 +78,8 @@ def default_validate_output_schema() -> dict[str, Any]:
 def normalize_runtime_contract(value: Any) -> dict[str, Any]:
     runtime = value if isinstance(value, dict) else {}
     loop = runtime.get("loop") if isinstance(runtime.get("loop"), dict) else {}
+    if not loop and any(key in runtime for key in ("max_iterations", "max_runtime_seconds")):
+        loop = runtime
     max_iterations = loop.get("max_iterations")
     max_runtime_seconds = loop.get("max_runtime_seconds")
     if not isinstance(max_iterations, int) or max_iterations <= 0:
@@ -150,13 +154,14 @@ def minimal_task_authority(strict_task: dict[str, Any]) -> dict[str, Any]:
         "work_revision": strict_task.get("revision"),
         "title": strict_task.get("title"),
         "goal_statement": strict_task.get("goal_statement"),
+        "context": strict_task.get("context"),
         "constraints": strict_task.get("constraints", []),
-        "implementation_recipe": strict_task.get("implementation_recipe", []),
+        "approach_notes": strict_task.get("approach_notes", []),
+        "acceptance_spec": strict_task.get("acceptance_spec", {}),
         "eval_entrypoint": strict_task.get("eval_entrypoint", {}),
         "primary_metric": strict_task.get("primary_metric", {}),
         "failure_classes": strict_task.get("failure_classes", []),
         "runtime_contract": normalize_runtime_contract(strict_task.get("runtime_contract")),
-        "validate_output_schema": normalize_validate_output_schema(strict_task.get("validate_output_schema")),
         "review_binding": strict_task.get("review_binding", {}),
         "authority_context": strict_task.get("authority_context", {}),
     }
@@ -292,6 +297,141 @@ def build_live_packet(handle: RunHandle) -> dict[str, Any]:
     return packet
 
 
+def _compact_history_run(handle: RunHandle, run_dir: Path) -> dict[str, Any]:
+    state = _read_json(run_dir / "state.json")
+    run = _read_json(run_dir / "run.json")
+    result = _read_json(run_dir / "result.json")
+    artifacts = result.get("result", {}).get("artifacts") if isinstance(result.get("result"), dict) else {}
+    row: dict[str, Any] = {
+        "run_id": run_dir.name,
+        "status": result.get("status") or state.get("status"),
+        "summary": result.get("summary"),
+        "reason": result.get("reason"),
+        "work_revision": run.get("work_revision"),
+        "updated_at": state.get("updated_at") or result.get("updated_at") or run.get("updated_at"),
+        "artifacts": artifacts if isinstance(artifacts, dict) else {},
+    }
+    for phase in ("plan", "execute", "validate", "reflect"):
+        payload = _read_json(run_dir / f"{phase}.json")
+        if payload:
+            row[f"{phase}_summary"] = payload.get("summary")
+            if phase == "validate":
+                row["validate_passed"] = payload.get("passed")
+                row["failure_class"] = payload.get("failure_class")
+            if phase == "reflect":
+                row["corrective_prompt"] = payload.get("corrective_prompt")
+    return row
+
+
+def _history_context_for_work(project_root: Path, work_id: Any, *, limit: int = 5) -> dict[str, Any]:
+    if not isinstance(work_id, str) or not work_id.strip():
+        return {"runs": []}
+    runs_root = project_root / ".thoth" / "runs"
+    if not runs_root.is_dir():
+        return {"runs": []}
+    rows: list[tuple[str, Path]] = []
+    for run_dir in runs_root.iterdir():
+        if not run_dir.is_dir():
+            continue
+        run = _read_json(run_dir / "run.json")
+        if run.get("work_id") == work_id:
+            state = _read_json(run_dir / "state.json")
+            rows.append((str(state.get("updated_at") or run.get("updated_at") or ""), run_dir))
+    rows.sort(key=lambda item: item[0], reverse=True)
+    return {"runs": [_compact_history_run(RunHandle(project_root=project_root, run_id=path.name), path) for _updated, path in rows[:limit]]}
+
+
+def _history_execute_artifact(project_root: Path, run_id: str) -> Path | None:
+    run_dir = project_root / ".thoth" / "runs" / run_id
+    phase_state = _read_json(run_dir / "phase_state.json")
+    artifacts = phase_state.get("artifacts") if isinstance(phase_state.get("artifacts"), dict) else {}
+    candidate = artifacts.get("execute")
+    if isinstance(candidate, str) and candidate.strip():
+        path = Path(candidate)
+        if not path.is_absolute():
+            path = project_root / path
+        if path.exists():
+            return path
+    fallback = run_dir / "execute.json"
+    return fallback if fallback.exists() else None
+
+
+def _acceptance_fingerprint(strict_task: dict[str, Any]) -> str:
+    payload = {
+        "goal": strict_task.get("goal_statement"),
+        "constraints": strict_task.get("constraints", []),
+        "acceptance_spec": strict_task.get("acceptance_spec", {}),
+        "primary_metric": strict_task.get("primary_metric", {}),
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _history_reconcile_current_run(handle: RunHandle, controller: dict[str, Any]) -> PhaseOutcome | None:
+    run = handle.run_json()
+    work_id = run.get("work_id")
+    history = _history_context_for_work(handle.project_root, work_id).get("runs", [])
+    strict_task = controller.get("strict_task") if isinstance(controller.get("strict_task"), dict) else {}
+    for row in history:
+        source_run_id = row.get("run_id")
+        if not isinstance(source_run_id, str) or source_run_id == handle.run_id:
+            continue
+        execute_artifact = _history_execute_artifact(handle.project_root, source_run_id)
+        if execute_artifact is None:
+            continue
+        phase_packet = {
+            "schema_version": 1,
+            "run_id": handle.run_id,
+            "work_id": work_id,
+            "work_revision": run.get("work_revision"),
+            "phase": "validate",
+            "strict_task": strict_task,
+            "prior_artifacts": {"execute": str(execute_artifact)},
+        }
+        validate_payload = mechanical_validate_phase_output(handle.project_root, phase_packet)
+        if validate_payload.get("passed") is not True:
+            continue
+        validate_artifact = _write_phase_artifact(handle, "validate", validate_payload)
+        payload = {
+            "schema_version": 1,
+            "source_run_id": source_run_id,
+            "source_receipt_ref": str(execute_artifact),
+            "acceptance_fingerprint": _acceptance_fingerprint(strict_task),
+            "passed": True,
+            "check_summary": [
+                {"name": check.get("name"), "ok": check.get("ok")}
+                for check in validate_payload.get("checks", [])[:8]
+                if isinstance(check, dict)
+            ],
+            "reason": "historical execute receipt satisfies current acceptance contract",
+            "created_at": utc_now(),
+        }
+        path = handle.run_dir / "history-reconcile.json"
+        _write_json(path, payload)
+        record_artifact(handle.project_root, handle.run_id, path=str(path), label=path.name, artifact_kind="history_reconcile")
+        controller.setdefault("artifacts", {})
+        controller.setdefault("phase_statuses", {})
+        controller["artifacts"]["validate"] = validate_artifact
+        controller["artifacts"]["history_reconcile"] = str(path)
+        controller["phase_statuses"]["plan"] = "completed"
+        controller["phase_statuses"]["execute"] = "skipped_history"
+        controller["phase_statuses"]["validate"] = "completed"
+        controller["phase_statuses"]["reflect"] = "completed"
+        controller["validate_passed"] = True
+        controller["final_summary"] = "Closed from historical validation evidence."
+        _write_phase_state(handle, controller)
+        result_payload = _build_run_result_payload(controller)
+        result_payload["history_reconcile"] = payload
+        return PhaseOutcome(True, "completed", "Closed from historical validation evidence.", None, result_payload=result_payload)
+    _append_event(
+        handle,
+        "history close requested but no historical receipt passed current validation; continuing execute",
+        kind="history",
+        level="warning",
+    )
+    return None
+
+
 def _phase_input_for_run(handle: RunHandle, controller: dict[str, Any]) -> dict[str, Any]:
     phase = str(controller.get("current_phase") or "plan")
     strict_task = controller.get("strict_task") if isinstance(controller.get("strict_task"), dict) else {}
@@ -304,6 +444,7 @@ def _phase_input_for_run(handle: RunHandle, controller: dict[str, Any]) -> dict[
         "goal": controller.get("goal"),
         "target": controller.get("target"),
         "strict_task": strict_task,
+        "history_context": _history_context_for_work(handle.project_root, handle.run_json().get("work_id")) if phase == "plan" else {},
         "prior_artifacts": controller.get("artifacts", {}),
         "prior_reflect": controller.get("prior_reflect", {}),
         "review_context": controller.get("review_context", {}),
@@ -639,17 +780,26 @@ def _blocking_checks_passed(checks: list[dict[str, Any]]) -> bool:
 
 def _primary_metric_name(strict_task: dict[str, Any]) -> str:
     metric = strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {}
+    if not metric:
+        acceptance = strict_task.get("acceptance_spec") if isinstance(strict_task.get("acceptance_spec"), dict) else {}
+        metric = acceptance.get("metric") if isinstance(acceptance.get("metric"), dict) else {}
     name = metric.get("name")
     return str(name or "official_validation").strip() or "official_validation"
 
 
 def _primary_metric_threshold(strict_task: dict[str, Any]) -> Any:
     metric = strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {}
+    if not metric:
+        acceptance = strict_task.get("acceptance_spec") if isinstance(strict_task.get("acceptance_spec"), dict) else {}
+        metric = acceptance.get("metric") if isinstance(acceptance.get("metric"), dict) else {}
     return metric.get("threshold", 1)
 
 
 def _primary_metric_direction(strict_task: dict[str, Any]) -> str:
     metric = strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {}
+    if not metric:
+        acceptance = strict_task.get("acceptance_spec") if isinstance(strict_task.get("acceptance_spec"), dict) else {}
+        metric = acceptance.get("metric") if isinstance(acceptance.get("metric"), dict) else {}
     direction = str(metric.get("direction") or "gte").strip().lower()
     aliases = {
         "min": "gte",
@@ -1111,11 +1261,7 @@ def _reflect_authorizes_execute_retry(controller: dict[str, Any], payload: dict[
         return False
     if prior_validate.get("failure_class") == "runtime_contract_error":
         return False
-    if payload.get("failure_class") == "runtime_contract_error":
-        return False
     if payload.get("retry_authorized") is not True:
-        return False
-    if str(payload.get("retry_target") or "").strip().lower() != "execute":
         return False
     feedback = _reflect_feedback_state(controller)
     attempts = feedback.get("attempts") if isinstance(feedback.get("attempts"), list) else []
@@ -1145,6 +1291,23 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
                 result_payload=_build_run_result_payload(controller),
                 reason="needs_input",
             )
+        if payload.get("history_action") == "needs_input":
+            phase_statuses["plan"] = "failed"
+            controller["phase_statuses"] = phase_statuses
+            controller["next_hint"] = "return to discuss and resolve history or authority gaps"
+            _write_phase_state(handle, controller)
+            return PhaseOutcome(
+                True,
+                "failed",
+                str(payload.get("summary") or "plan needs input"),
+                None,
+                result_payload=_build_run_result_payload(controller),
+                reason="needs_input",
+            )
+        if payload.get("history_action") == "close_from_history":
+            reconciled = _history_reconcile_current_run(handle, controller)
+            if reconciled is not None:
+                return reconciled
         _update_state(handle, phase="execute", progress_pct=RUN_PHASE_PROGRESS["plan"])
         return PhaseOutcome(False, "running", str(payload.get("summary") or "plan complete"), "execute")
     if phase == "execute":
@@ -1186,8 +1349,7 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
                     "guidance_id": guidance_entry.get("guidance_id"),
                     "corrective_prompt": corrective_prompt,
                     "archived_artifacts": archived,
-                    "failure_class": payload.get("failure_class"),
-                    "root_cause": payload.get("root_cause"),
+                    "failure_class": (_prior_validate_payload(controller) or {}).get("failure_class"),
                 }
             )
             feedback["attempts"] = attempts
@@ -1209,7 +1371,7 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
         result_payload = _build_run_result_payload(controller)
         if bool(controller.get("validate_passed")):
             return PhaseOutcome(True, "completed", str(payload.get("summary") or "reflection complete"), None, result_payload=result_payload)
-        reason = str(payload.get("failure_class") or "validation_failed")
+        reason = str((_prior_validate_payload(controller) or {}).get("failure_class") or "validation_failed")
         return PhaseOutcome(True, "failed", str(payload.get("summary") or "reflection complete"), None, result_payload=result_payload, reason=reason)
     raise ValueError(f"unsupported phase: {phase}")
 
@@ -1312,7 +1474,7 @@ def _loop_retry_decision(loop: dict[str, Any], child_result: dict[str, Any], ref
     non_retryable_reasons = {
         "needs_input",
         "runtime_contract_error",
-        "missing eval_entrypoint.command",
+        "missing acceptance_spec",
         "lease_conflict",
         "stopped",
         "cancelled",

@@ -8,7 +8,6 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from thoth.plan.store import upsert_work_item, upsert_decision, upsert_work_result
-from thoth.run.phases import default_validate_output_schema
 
 ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT / "templates" / "dashboard" / "backend"))
@@ -85,26 +84,21 @@ def _setup_project(tmp_path: Path, monkeypatch) -> None:
     upsert_work_item(
         tmp_path,
         {
-            "schema_version": 1,
-            "kind": "work_item",
             "work_id": "task-1",
             "title": "Long running task",
-            "module": "f1",
-            "direction": "frontend",
             "status": "ready",
-            "work_kind": "execution",
-            "runnable": True,
             "goal": "Test runtime binding",
             "context": "frontend-runtime",
             "constraints": ["dashboard"],
-            "execution_plan": ["Run lifecycle integration"],
-            "eval_contract": {
-                "entrypoint": {"command": "pytest"},
-                "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
-                "failure_classes": ["runtime_drift"],
-                "validate_output_schema": default_validate_output_schema(),
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run pytest.",
+                "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                "reference_command": "pytest",
             },
-            "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+            "approach_notes": ["Run lifecycle integration"],
+            "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
+            "scheduling": {"order": None},
             "decisions": ["DEC-runtime"],
             "missing_questions": [],
         },
@@ -274,7 +268,7 @@ def test_overview_summary_and_gantt_endpoints(monkeypatch, tmp_path):
     assert summary_payload["headline"]["total_work_items"] == 1
     assert summary_payload["runtime"]["active_run_count"] == 1
     assert summary_payload["runtime"]["active_auto_count"] == 1
-    assert summary_payload["recent_conclusions"][0]["module"] == "f1"
+    assert summary_payload["recent_conclusions"][0]["module"] == "frontend-runtime"
     assert summary_payload["recent_conclusions"][0]["direction"] == "frontend"
 
     gantt = client.get("/api/gantt")
