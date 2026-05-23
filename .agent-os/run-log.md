@@ -2,6 +2,18 @@
 
 ## Entries
 
+- 2026-05-23 17:25 UTC [0.2.7.0 compact work authority / DAG auto release]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
+  - State changes: 按用户关于“字段大幅 compact、不要机械字段限制 agent 智能、auto DAG-first、run --reconcile 内收到 plan prompt”的决策发布 `0.2.7.0`。新 `work_item.payload` 写入面只保留 `goal`、`context`、`constraints`、`acceptance_spec`、`approach_notes`、`scheduling`、`run_limits`、`missing_questions`；`decisions` / `depends_on` 只作为 public input convenience，入库时转为 canonical links。
+  - State changes: `acceptance_spec` 成为 ready/active work 的验收核心，支持 `script|prose|io|metric|mixed` 与 metric direction / threshold；缺失 `acceptance_spec` 的 public ready input 会以 blocked / needs-input 诊断返回，不再归一化成空子字段。Dashboard/status 继续派生 `module` / `direction` 等读模型字段，但 compact authority payload 不再存这些 dashboard-only 字段。
+  - State changes: `auto` queue 改为 DAG-first：依赖只有在 dependency status 为 `validated` 时满足，`abandoned` 不满足；删除 public `priority-top` 与 priority sorting，只保留可选 `scheduling.order`。`all-open` scope 排序为 active、ready、failed；`ready` scope 只消费 ready。Controller child failure 语义继续保持 per-child attempt isolation。
+  - State changes: `thoth run --reconcile` 已从 public CLI 删除。Runtime 会在 plan packet 注入 `history_context`，plan worker 通过 `history_action=continue|close_from_history|needs_input` 决定是否接续；`close_from_history` 由 runtime 机械校验历史 execute receipt 后写 `history-reconcile.json`，而不是让用户额外传 public flag。
+  - State changes: 预设 prompt 与 generated command surfaces 已同步改为编号化、高智能角色合同：限制集中在 authority/acceptance/验收防漂移；GPU-first 只作为 AI research / model training / CUDA / inference 任务示例；不再把 MVP/fallback/mock/stub 禁令写成限制 agent 工程判断的机械笼子。
+  - Evidence produced: `dev` 发布面提交 `bace0d8 feat: compact work authority for 0.2.7.0`；验证通过 `py_compile`、targeted pytest `64 passed`、integration `2 passed`、generated surface pytest `26 passed`、dashboard/read-model wider pytest `129 passed`、`python -m thoth.selftest --case run.phase_contract` `overall_status=passed`、dashboard frontend build、`git diff --check`、manifest JSON 校验与 `bin/thoth doctor --version` 输出 `version=0.2.7.0`。
+  - Evidence produced: 发布面已 cherry-pick 到 `main` 为 `b902384 feat: compact work authority for 0.2.7.0`；`main` 验证通过同组 `py_compile`、`git diff --check HEAD~1..HEAD`、manifest JSON、`bin/thoth doctor --version` 输出 `version=0.2.7.0`、targeted pytest `163 passed in 234.16s`、dashboard frontend build。
+  - Evidence produced: `git push origin dev main` 成功，输出 `0401b2e..bace0d8 dev -> dev` 与 `411a8e2..b902384 main -> main`。远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功，`claude plugin update thoth@thoth --scope user` 从 `0.2.6.12` 更新到 `0.2.7.0`，`codex plugin marketplace upgrade thoth` 成功。Claude cache runtime 与 Codex marketplace root runtime 均输出 `version=0.2.7.0`。
+  - Next likely action: 回到 `TD-001`。demo_project 等目标项目重新使用 `$thoth auto` 时，应按 DAG-first / validated dependency / `scheduling.order` 语义选择 work；若某个 work 有历史 run，新的 plan phase 应先读 `history_context`，判断继续、从历史关闭或需要用户补 authority，而不是要求用户手动 `run --reconcile`。
+
 - 2026-05-23 09:05 UTC [0.2.6.12 auto preflight summary refresh release]
   - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
   - State changes: 按用户关于 demo_project `$thoth auto` 在未启动任何 work 前因 `object-graph-summary-current=false`、`stale_fields=work_item_counts,ready_work_count` 被 preflight 挡住的反馈发布 `0.2.6.12`。`auto` 的 execution-safety doctor 现在在发现 stale object graph summary 时，会调用一次 canonical object graph compile 刷新 `.thoth/docs/object-graph-summary.json`，然后重新运行 doctor；若刷新后仍有真实 preflight failure，则仍然阻断执行。

@@ -7,6 +7,19 @@
 
 ## Passed Checks
 
+- `EV-046` related to `WS-002`, `WS-003`, `WS-005`, `CD-046`: `0.2.7.0` compact work authority / DAG auto / plan-history reconcile release 的 `dev` 与 `main` 验证已通过
+  - Evidence: `work_item.payload` 新写入路径只接受 compact fields；`work_item_from_payload()` 会把缺 `acceptance_spec` 的 ready public input 转为 blocked，并返回 coarse ready diagnostic；legacy fields 在 public write / canonical object validation 中被拒绝。
+  - Evidence: `depends_on` / `decisions` 由 `upsert_work_item()` 转换为 `depends_on` / `decided_by` links；legacy `authority_context` backfill 写 `primary_parent` link；timestamp duplicate 修复改为 stable work item `supersedes` link，不再向 duplicate payload 写 `hidden` / `superseded_by`。
+  - Evidence: `auto` queue 由 `list_auto_actionable_work()` 按 DAG-first semantics 生成：dependency 只有 `validated` 才满足，`abandoned` 不满足；`priority-top` scope 与 priority sorting 被移除；`all-open` 排序为 active、ready、failed，并用 `scheduling.order` / `work_id` 做 tie-break。
+  - Evidence: `run --reconcile` public flag 已从 CLI 与 run command handler 删除；plan phase packet 注入 `history_context`，plan worker 必须返回 `history_action=continue|close_from_history|needs_input`；`close_from_history` 经 runtime 验证历史 execute receipt 后写 `history-reconcile.json`。
+  - Evidence: `python -m thoth.cli sync` 重新生成 Claude/Codex surfaces；`pyproject.toml`、`thoth/projections.py`、`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json` 与 `.agents/plugins/marketplace.json` 均为 `0.2.7.0`。
+  - Evidence: `dev` 验证通过：`python -m py_compile` 覆盖 compact schema、plan/store、runtime phases、prompt validators/specs、surface commands、init/service、observe/read_model 与 dashboard data loader；targeted pytest `64 passed`、integration `2 passed`、generated surface pytest `26 passed`、dashboard/read-model wider pytest `129 passed`；`python -m thoth.selftest --case run.phase_contract` 为 `overall_status=passed`。
+  - Evidence: `dev` 还通过 `templates/dashboard/frontend npm run build`、`git diff --check`、manifest JSON 校验与 `bin/thoth doctor --version`，输出 `version=0.2.7.0`、`last_updated=2026-05-23T17:07:41Z`。
+  - Evidence: 发布面提交 `bace0d8 feat: compact work authority for 0.2.7.0` 已推送到 `dev`；同一发布面已 cherry-pick 到 `main` 为 `b902384 feat: compact work authority for 0.2.7.0`，并推送 `origin/main`。
+  - Evidence: `main` 验证通过：同组 `py_compile`、`git diff --check HEAD~1..HEAD`、manifest JSON、`bin/thoth doctor --version` 输出 `version=0.2.7.0`、targeted pytest `163 passed in 234.16s`、dashboard frontend `npm run build`。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 从 `0.2.6.12` 更新到 `0.2.7.0`；`codex plugin marketplace upgrade thoth` 成功。Claude cache runtime 与 Codex marketplace root runtime 的 `doctor --version` 均输出 `version=0.2.7.0`。
+  - Conclusion: 当前 checkout、`main` 发布面、Claude 安装态与 Codex 安装态均已对齐到 `0.2.7.0`；新 authority 写面 compact，dashboard/status 仅派生旧显示字段，auto 不再按 legacy priority 或批量失败语义执行，历史 run 续做进入 plan 阶段而非 public reconcile flag。
+
 - `EV-045` related to `WS-002`, `WS-003`, `WS-005`, `CD-045`: `0.2.6.12` auto preflight summary refresh 补丁的 `dev` 与 `main` 验证已通过
   - Evidence: `auto` 预检现在通过 `_auto_execution_safety_doctor()` 包装 execution-safety doctor；当失败项包含 `object-graph-summary-current` 时，先调用 `compile_task_authority(project_root)` 刷新 canonical object graph summary，再重跑 `build_doctor_payload()` 与 `_auto_preflight_failures()`。
   - Evidence: 失败 envelope 新增 `body.preflight_refresh`，记录 `attempted`、`reason=object_graph_summary_stale`、`ok` 与可选 `error`；刷新后仍失败时，真实 doctor checks 仍作为 preflight failure 返回。

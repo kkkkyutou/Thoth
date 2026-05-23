@@ -31,12 +31,13 @@
 - `REQ-028`: 旧的内部主路径 `thoth/runtime.py`、`thoth/task_contracts.py`、`thoth/project_init.py`、`thoth/claude_bridge.py`、`thoth/host_hooks.py` 不得继续保留为实现主入口；主实现必须集中到 `thoth/surface`、`thoth/plan`、`thoth/run`、`thoth/init`、`thoth/observe`。
 - `REQ-029`: 仓库必须提供固定 target manifest 与 changed-path 推荐入口，用于把改动路径翻译成精确 pytest targets 和 selftest cases。
 - `REQ-030`: `.thoth` authority 必须收敛为统一对象图：canonical storage 固定为 `.thoth/objects/<kind>/<object_id>.json`，所有 authority 写入必须经过 `Store` API；`.agent-os`、`.thoth/project/contracts`、`.thoth/project/tasks` 与 dashboard SQLite 不得再作为平行 authority。
-- `REQ-031`: `Contract` 不再是长期对象 kind；goal、context、constraints、execution plan、eval contract、runtime policy 与 decisions 必须嵌入 `work_item.payload`。`work_item` 统一 milestone/task，其中只有 `work_type=task` 且 `runnable=true` 的 `ready` work item 可以被执行。
+- `REQ-031`: `Contract` 不再是长期对象 kind；`work_item.payload` 必须采用 compact shape，只允许 `goal`、`context`、`constraints`、`acceptance_spec`、`approach_notes`、`scheduling`、`run_limits` 与 `missing_questions`。`decisions` / `depends_on` 只允许作为 public input convenience，并必须存为 canonical links；新写入路径不得再存 `work_kind`、`runnable`、`module`、`direction`、`summary`、`execution_plan`、`eval_contract`、`runtime_policy`、`validate_output_schema`、`hidden`、`superseded_by` 或 `scheduling.priority`。
 - `REQ-032`: `run` 是最小执行单元，必须固定绑定 `work_id@revision`；`loop`、`orchestration`、`auto` 属于 controller service，不得把多轮、DAG 或 queue 语义塞回 `run`。
 - `REQ-033`: 被 active run/controller 引用的 work item 必须完全锁定；任何 update/tombstone/link mutation 都必须失败，直到 active execution terminal。
 - `REQ-034`: 本机 Claude Code / Codex 的 Thoth 安装刷新必须只走远端 marketplace upgrade/update；不得用本机 checkout、cache、临时目录、`rsync` 或其他本地覆盖方式兜底。远端刷新失败时只能记录 blocker 与真实输出。
 - `REQ-035`: `auto` 的长时执行必须由 Thoth-owned durable background worker 持有，live / sleep / Claude Monitor / Codex foreground watch 只能作为观察器；正确性与恢复点必须落在 `.thoth/objects/controller`、`.thoth/local/controllers/*/supervisor.json`、child run ledger 与 watch JSONL 中。
 - `REQ-036`: Codex 安装态插件必须包含 Thoth runtime entrypoint 与生成 skill，不能是 skill-only package；Codex host-real selftest 必须从已安装 marketplace cache 或 PATH 解析 runtime，不得回退到当前本地 checkout。
+- `REQ-037`: `auto` 必须按 DAG-first semantics 选择 work：依赖只在 dependency work item status 为 `validated` 时满足，`abandoned` 不满足；不再使用 priority / priority-top 语义，只允许可选 `scheduling.order` 做同层排序；`all-open` scope 顺序为 active、ready、failed，`ready` scope 只消费 ready。`run --reconcile` 不再是 public flag；历史 run 进度恢复必须由 `plan` phase 的 `history_context` / `history_action` 驱动。
 
 ## Acceptance Criteria
 
@@ -71,6 +72,7 @@
 - `AC-025`: 本轮关闭门只包含核心五项 selftest：`discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`observe.object_graph`；`auto` / `orchestration` 保留 public surface 与现有测试覆盖，但不作为本轮 runtime kernel 关闭门。
 - `AC-026`: `auto` live 默认启动或复用 durable background worker 后只观察 controller；`auto --sleep` 与 Claude bridge 默认返回 `monitor_command`；session 中断不得直接中断 worker，worker stale/missing 时可由同一 controller 恢复；`--min-runtime-seconds` 的默认 `28800` 必须按真实 wall-clock 执行。
 - `AC-027`: 安装态 host-real selftest 覆盖 9 个公开命令与关键模式：Codex `$thoth` 命令从安装态 runtime 执行；Claude `/thoth:* --executor codex` 对 `run`、`loop`、`review`、`auto` 进行真实 Codex worker 委派；Codex hooks 只允许写入一次性测试仓库 `.codex/`，不得修改全局 `~/.codex`。
+- `AC-028`: 新 public work-json 若缺 `acceptance_spec` 必须以 blocked / needs-input 形态保存或拒绝，不得写空 schema 伪装 ready；dashboard/status 只能把 `module` / `direction` 作为派生读模型字段，不得要求 compact authority payload 存储这些 dashboard-only 字段。
 
 ## Non-Goals
 

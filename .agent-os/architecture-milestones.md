@@ -20,8 +20,9 @@
 - `/thoth:init` 采用 audit-first adopt/init，并生成最小 `.thoth/objects/` authority tree 与 `.thoth/docs/` 只读视图
 - `/thoth:init --sync` 是当前公开的生成面刷新入口；`/thoth:init --migrate --preview|--apply` 是旧项目迁移入口
 - strict planning authority 已收敛为统一对象图：`.thoth/objects/discussion/`、`.thoth/objects/decision/`、`.thoth/objects/work_item/`、`.thoth/objects/controller/`、`.thoth/objects/run/`、`.thoth/objects/phase_result/`、`.thoth/objects/artifact/` 与 `.thoth/objects/doc_view/`
-- 独立 `Contract` kind 已删除；原 contract 的 goal、context、constraints、execution plan、eval contract、runtime policy 与 decisions 均进入 `work_item.payload`
-- `run` / `loop` 已收敛为 strict work execution：默认只接受 ready runnable `--work-id`，缺少 `--work-id` 时只能召回候选并停止
+- 独立 `Contract` kind 已删除；`work_item.payload` 已收敛为 compact shape：`goal`、`context`、`constraints`、`acceptance_spec`、`approach_notes`、`scheduling`、`run_limits`、`missing_questions`
+- `decisions` / `depends_on` 只作为 public input convenience，入库后表达为 `decided_by` / `depends_on` typed links；legacy `work_kind`、`runnable`、`execution_plan`、`eval_contract`、`runtime_policy` 等字段只允许迁移读取，不允许新写入
+- `run` / `loop` 已收敛为 strict work execution：默认只接受 ready 且具备 `acceptance_spec` 的 `--work-id`，缺少 `--work-id` 时只能召回候选并停止
 - `review` 已收敛为 live-only；CLI 允许显式 `--work-id`，也可按 review target 反推绑定 work item
 - 当前 work 级当前结论写入 `.thoth/docs/work-results/*.result.json` 只读视图；原始执行真相来自 `.thoth/objects/run`、`.thoth/objects/phase_result`、`.thoth/objects/artifact` 与 `.thoth/runs/*` ledger
 - 当前单次运行结果同时写入 object graph 与 `.thoth/runs/<run_id>/result.json`，不再把 `acceptance.json` 当主结果文件
@@ -110,8 +111,8 @@
 
 - `Surface -> Store-backed Domain Services -> Observe`
 - `Plan / DiscussService` 只产出 `discussion`、`decision`、`work_item` 与 `.thoth/docs` read view，不读写执行结果
-- `RunService` 可以消费 ready runnable `work_item`，并写 `run`、`phase_result`、`artifact` 与运行时 ledger
-- `ControllerService` 可以消费 ready runnable `work_item` 与 `depends_on` links，并写 `controller` lineage
+- `RunService` 可以消费 ready 且具备 `acceptance_spec` 的 `work_item`，并写 `run`、`phase_result`、`artifact` 与运行时 ledger
+- `ControllerService` 可以消费 ready/active/failed work item 与 `depends_on` links，并写 `controller` lineage；依赖满足只认 dependency status `validated`
 - `Observe` 只读 object graph、runtime ledger 与 docs read view
 - hooks / scripts / validators 只是辅助执行或读面工具，不是 authority
 
@@ -125,12 +126,12 @@
 - `Observe`、hooks、validators 和任何 read model 都不得偷偷修 authority
 - `review` 的 public contract 冻结为 live-only，不保留 `--sleep` 口子
 - `loop` 只通过 `controller` 对同一个 `work_id@revision` 反复创建 child run，直到 validated、budget exhausted、failed 或 stopped
-- `eval_contract` 与 `runtime_policy` 已成为 runnable `work_item` 的 runtime-hard 合同；CLI 不提供高优先级覆盖入口
+- `acceptance_spec` 与 `run_limits` 是 compact `work_item` 的 runtime-hard 合同；CLI 不提供高优先级覆盖入口
 
 2026-04-29 至 2026-05-09 对上述模型作出替换性收敛与补强：
 
 - `Plan` 不再是 `Decision -> Contract -> Task` compiler；它现在只通过 `Store` 写 `discussion`、`decision`、`work_item` 对象，并生成 `.thoth/docs` 只读视图。
-- `Contract` 不再是对象 kind；原 contract 的 goal、context、constraints、execution plan、eval contract、runtime policy 与 decisions 已并入 `work_item.payload`。
+- `Contract` 不再是对象 kind；原 contract 的 goal、context、constraints、execution plan、eval contract、runtime policy 与 decisions 曾并入 `work_item.payload`，并在 `0.2.7.0` 进一步 compact 为 `acceptance_spec`、`approach_notes`、`run_limits` 与 typed links。
 - `work_result` 不再是 `.thoth/project/tasks` authority；work-level 当前结论只作为 `.thoth/docs/work-results/*.result.json` read view，原始执行真相仍来自 `run`、`phase_result` 与 `artifact` 对象及 `.thoth/runs/*` ledger。
 - `run` 固定绑定 `work_id@revision`，只做一次 `plan -> execute -> validate -> reflect` 最小执行尝试。
 - `discuss` 的长对话 authority 采用语义无损结构化保存：未闭环时可在 `discussion.payload` 写 draft checkpoint，闭环时将目标、非目标、约束、accepted decisions、rejected options、acceptance、context evidence、risks、run instructions 与 open questions 写入 `work_item.payload.authority_context`，并保留短证据锚点。
@@ -138,6 +139,12 @@
 - `execute` phase 必须读取本次 `plan.json` 并报告 `plan_artifact_read` 与 `plan_deviations`；`plan.json` 是本次 run 的执行证据和 execute 输入，不反写 planning authority。
 - `loop` 与 `auto` 是公开 controller service：loop 产生 child runs，auto 记录线性 queue cursor 并通过 child loops 推进；`orchestration` 仅保留为内部 controller capability。
 - active run/controller 引用的 `work_item` 完全锁定；`Store.update/tombstone/link/unlink` 对该 work item 必须拒绝。
+
+2026-05-23 的 `0.2.7.0` 对执行与讨论协议作出进一步收敛：
+
+- `auto` 不再使用 priority / `priority-top` 语义；DAG 依赖只有在上游 work item `validated` 时才满足，`abandoned` 不满足；同层只按 `scheduling.order` 与 `work_id` 排序。
+- `run --reconcile` 从 public surface 删除；历史 run 续做进入 `plan` phase，`history_context` 带入最近 runs，`history_action` 决定继续、从历史关闭或回到用户补 authority。
+- `discuss` 对外 compact authority categories 使用 `goal`、`constraints`、`decisions`、`risks`、`approach_notes`、`open_questions`；旧 `run_instructions` 仅作为历史 authority_context 兼容输入保留。
 
 ## Workstreams
 
