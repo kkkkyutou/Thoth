@@ -224,6 +224,33 @@ def test_runtime_progress_and_event_endpoints(monkeypatch, tmp_path):
     assert logs_payload["logs"]["plan"]["stderr"]["tail"] == "worker stderr latest line"
 
 
+def test_runtime_progress_reports_auto_failed_attempt_counts(monkeypatch, tmp_path):
+    _setup_project(tmp_path, monkeypatch)
+    controller_path = tmp_path / ".thoth" / "objects" / "controller" / "controller-auto-1.json"
+    controller = json.loads(controller_path.read_text(encoding="utf-8"))
+    controller["payload"]["attempts"] = [
+        {
+            "work_id": "task-1",
+            "run_id": "run-1",
+            "status": "failed",
+            "child_status": 1,
+            "finished_at": "2026-04-23T01:12:00Z",
+        }
+    ]
+    controller["payload"]["failed_work_ids"] = ["task-1"]
+    controller_path.write_text(json.dumps(controller, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    dashboard_app.invalidate_cache()
+    client = TestClient(dashboard_app.app)
+
+    progress = client.get("/api/progress")
+
+    assert progress.status_code == 200
+    auto = progress.json()["runtime"]["active_auto_controllers"][0]
+    assert auto["attempt_count"] == 1
+    assert auto["failed_attempt_count"] == 1
+    assert auto["failed_count"] == 1
+
+
 def test_overview_summary_and_gantt_endpoints(monkeypatch, tmp_path):
     _setup_project(tmp_path, monkeypatch)
     upsert_work_result(

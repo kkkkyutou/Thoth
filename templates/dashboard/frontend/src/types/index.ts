@@ -255,7 +255,9 @@ export interface AutoControllerSummary {
   rounds_attempted?: number | null
   active_run_id?: string | null
   queue_count?: number
+  attempt_count?: number
   completed_count?: number
+  failed_attempt_count?: number
   failed_count?: number
   updated_at?: string | null
 }
