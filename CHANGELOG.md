@@ -4,6 +4,16 @@
 
 No pending changes.
 
+## [0.2.6.10] - 2026-05-23
+
+### Changed
+- Auto controllers now record a per-child `attempts` ledger with `work_id`, `run_id`, status, child exit status, and finish time, so controller failure summaries are backed by real child runs instead of queue inference.
+- Dashboard/runtime auto summaries now expose `attempt_count` and `failed_attempt_count`; the existing `failed_count` is aligned with failed attempts rather than raw queued work.
+
+### Fixed
+- Recomputed the remaining auto queue after every child completion, skipped work item, and rounds pause so terminal controllers do not keep a stale startup snapshot that looks like every work item was touched.
+- Added regression coverage proving that a failed `auto --rounds 1` child marks only the attempted work item as `attempt_failed`, leaves other ready work untouched, and keeps work item authority status `ready`.
+
 ## [0.2.6.9] - 2026-05-22
 
 ### Changed

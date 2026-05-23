@@ -562,6 +562,7 @@ def _list_auto_controllers(project_root: Path) -> list[dict[str, Any]]:
         if body.get("controller_type") != "auto":
             continue
         cursor = body.get("cursor") if isinstance(body.get("cursor"), dict) else {}
+        attempts = _auto_attempt_rows(body)
         rows.append(
             {
                 "controller_id": payload.get("object_id") or path.stem,
@@ -573,12 +574,34 @@ def _list_auto_controllers(project_root: Path) -> list[dict[str, Any]]:
                 "active_run_id": cursor.get("active_run_id"),
                 "queue_count": len(body.get("queue")) if isinstance(body.get("queue"), list) else 0,
                 "completed_count": len(body.get("completed_work_ids")) if isinstance(body.get("completed_work_ids"), list) else 0,
-                "failed_count": len(body.get("failed_work_ids")) if isinstance(body.get("failed_work_ids"), list) else 0,
+                "attempt_count": len(attempts),
+                "failed_attempt_count": _auto_attempt_status_count(body, "failed"),
+                "failed_count": _auto_attempt_status_count(body, "failed"),
                 "updated_at": payload.get("updated_at"),
             }
         )
     rows.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
     return rows
+
+
+def _auto_attempt_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    attempts = payload.get("attempts")
+    if not isinstance(attempts, list):
+        return []
+    return [dict(item) for item in attempts if isinstance(item, dict)]
+
+
+def _auto_attempt_status_count(payload: dict[str, Any], status: str) -> int:
+    attempts = _auto_attempt_rows(payload)
+    if attempts:
+        return sum(1 for item in attempts if item.get("status") == status)
+    if status == "failed":
+        failed = payload.get("failed_work_ids")
+        return len([item for item in failed if isinstance(item, str)]) if isinstance(failed, list) else 0
+    if status == "completed":
+        completed = payload.get("completed_work_ids")
+        return len([item for item in completed if isinstance(item, str)]) if isinstance(completed, list) else 0
+    return 0
 
 
 def _tail_text(path: Path, *, limit: int) -> str:

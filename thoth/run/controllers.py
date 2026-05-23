@@ -257,6 +257,7 @@ def create_auto_controller(
             ),
             "work_refs": refs,
             "queue": refs,
+            "attempts": [],
             "attempted_work_ids": [],
             "completed_work_ids": [],
             "failed_work_ids": [],

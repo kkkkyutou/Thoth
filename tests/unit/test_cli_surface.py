@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from thoth.objects import Store
-from thoth.plan.store import load_work_for_execution, upsert_work_item, upsert_decision
+from thoth.plan.store import load_work_for_execution, load_work_result, upsert_work_item, upsert_decision
 from thoth.run.controllers import create_auto_controller
 from thoth.run.packets import prepare_execution
 from thoth.run.ledger import fail_run
@@ -818,6 +818,70 @@ def test_cli_auto_runs_ready_work_even_when_blocked_work_exists(tmp_path):
     assert "ready-work" in controller["payload"]["completed_work_ids"]
     assert events[-1]["type"] == "thoth.auto.terminal"
     assert events[-1]["status"] == "paused"
+
+
+def test_cli_auto_failed_child_updates_only_attempted_work_item(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    for index in range(1, 4):
+        _write_task(tmp_path, f"task-{index}", title=f"Task {index}", work_goal=f"Fail task {index}.")
+    assert _run_cli(tmp_path, "init", "--sync").returncode == 0
+
+    result = _run_cli(
+        tmp_path,
+        "auto",
+        "--rounds",
+        "1",
+        "--min-runtime-seconds",
+        "0",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "fail", "THOTH_AUTO_HEARTBEAT_SECONDS": "1"},
+    )
+
+    assert result.returncode == 2, result.stderr
+    events = _jsonl_events(result.stdout)
+    controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
+    controller = json.loads((tmp_path / ".thoth" / "objects" / "controller" / f"{controller_id}.json").read_text(encoding="utf-8"))
+    payload = controller["payload"]
+    assert payload["attempted_work_ids"] == ["task-1"]
+    assert payload["failed_work_ids"] == ["task-1"]
+    assert payload["attempts"][0]["work_id"] == "task-1"
+    assert payload["attempts"][0]["run_id"].startswith("loop-")
+    assert payload["attempts"][0]["status"] == "failed"
+    assert [item["work_id"] for item in payload["queue"]] == ["task-2", "task-3"]
+    assert load_work_result(tmp_path, "task-1")["status"] == "attempt_failed"
+    assert load_work_result(tmp_path, "task-2") == {}
+    assert load_work_result(tmp_path, "task-3") == {}
+    for index in range(1, 4):
+        assert Store(tmp_path).read("work_item", f"task-{index}")["status"] == "ready"
+
+
+def test_cli_auto_failed_children_are_backed_by_child_attempts(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    for index in range(1, 3):
+        _write_task(tmp_path, f"task-{index}", title=f"Task {index}", work_goal=f"Fail task {index}.")
+    assert _run_cli(tmp_path, "init", "--sync").returncode == 0
+
+    result = _run_cli(
+        tmp_path,
+        "auto",
+        "--rounds",
+        "2",
+        "--min-runtime-seconds",
+        "0",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "fail", "THOTH_AUTO_HEARTBEAT_SECONDS": "1"},
+    )
+
+    assert result.returncode == 2, result.stderr
+    events = _jsonl_events(result.stdout)
+    controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
+    controller = json.loads((tmp_path / ".thoth" / "objects" / "controller" / f"{controller_id}.json").read_text(encoding="utf-8"))
+    payload = controller["payload"]
+    attempts = payload["attempts"]
+    assert [attempt["work_id"] for attempt in attempts] == ["task-1", "task-2"]
+    assert [attempt["status"] for attempt in attempts] == ["failed", "failed"]
+    assert len({attempt["run_id"] for attempt in attempts}) == 2
+    assert payload["attempted_work_ids"] == ["task-1", "task-2"]
+    assert payload["failed_work_ids"] == ["task-1", "task-2"]
+    assert payload["queue"] == []
 
 
 def test_cli_auto_sleep_starts_background_controller(tmp_path):
