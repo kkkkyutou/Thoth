@@ -7,6 +7,19 @@
 
 ## Passed Checks
 
+- `EV-043` related to `WS-002`, `WS-003`, `WS-005`, `CD-043`: `0.2.6.10` auto child attempt isolation 补丁的 `dev` 与 `main` 验证已通过
+  - Evidence: `auto` controller payload 新增 per-child `attempts` ledger，记录 `work_id`、`run_id`、attempt status、child exit status 与 `finished_at`；controller `failed_count` / dashboard runtime summary 现在从真实 failed attempts 派生。
+  - Evidence: auto worker 在 child completion、non-runnable skip 与 rounds pause 后都会重算剩余 `queue` snapshot，避免 terminal/paused controller 保留启动时全量 queue 而看起来所有 work item 都被刷新。
+  - Evidence: `python -m thoth.cli sync` 通过并重新生成 Claude/Codex repository surfaces 与 plugin manifests，manifest/marketplace 版本同步为 `0.2.6.10`。
+  - Evidence: `python -m py_compile thoth/run/auto.py thoth/run/controllers.py thoth/projections.py templates/dashboard/backend/runtime_loader.py tests/unit/test_cli_surface.py tests/unit/test_dashboard_runtime_api.py` 在 `dev` 与 `main` 均通过。
+  - Evidence: Targeted pytest `tests/unit/test_cli_surface.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_object_controllers.py tests/unit/test_progress_calculator.py tests/unit/test_task_contracts.py tests/unit/test_runtime_loader.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py` 在 `dev` 为 `115 passed in 175.76s`，在 `main` 为 `115 passed in 165.72s`。
+  - Evidence: `templates/dashboard/frontend` 的 `npm run build` 在 `dev` 与 `main` 均通过，仅保留既有 Vite chunk-size warning；`git diff --check` 通过；`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json`、`.agents/plugins/marketplace.json` 均通过 `python -m json.tool`。
+  - Evidence: `bin/thoth doctor --version` 在 `dev` 输出 `version=0.2.6.10`、`last_updated=2026-05-23T04:52:10Z`；在 `main` 输出 `version=0.2.6.10`、`last_updated=2026-05-23T04:58:25Z`。
+  - Evidence: 发布面提交 `2f6e8c3 fix: isolate auto child attempts for 0.2.6.10` 已 cherry-pick 到 `main` 为 `a2b6111 fix: isolate auto child attempts for 0.2.6.10`；直连 push 因 GitHub 443 timeout 失败，代理重试成功，输出 `601e264..2f6e8c3 dev -> dev` 与 `4a22222..a2b6111 main -> main`。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 从 `0.2.6.9` 更新到 `0.2.6.10`；`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.6.10`、`lastUpdated=2026-05-23T05:05:42.863Z`。
+  - Evidence: Claude cache runtime `/root/.claude/plugins/cache/thoth/thoth/0.2.6.10/bin/thoth doctor --version` 输出 `version=0.2.6.10`、`last_updated=2026-05-23T05:05:42Z`；Codex marketplace root `/root/.codex/.tmp/marketplaces/thoth/bin/thoth doctor --version` 输出 `version=0.2.6.10`、`last_updated=2026-05-23T05:05:15Z`。
+  - Conclusion: `auto --rounds 1` 失败回归已证明只有真实尝试过的 work item 写入 `attempt_failed`，其他 ready work item 不产生 work_result 且 authority status 保持 `ready`；dashboard 看到的 auto failed count 现在表示 failed child attempts，不再由 queue snapshot 推断。
+
 - `EV-042` related to `WS-002`, `WS-003`, `WS-005`: `0.2.6.9` human phase prompts / compact phase fields 补丁的 `dev` 与 `main` 验证已通过
   - Evidence: `python -m thoth.cli sync` 通过并重新生成 Claude/Codex repository surfaces 与 plugin manifests，manifest/marketplace 版本同步为 `0.2.6.9`。
   - Evidence: `python -m py_compile thoth/prompt_specs.py thoth/prompt_validators.py thoth/run/worker.py thoth/run/phases.py templates/dashboard/backend/runtime_loader.py thoth/projections.py` 在 `dev` 与 `main` 均通过。
