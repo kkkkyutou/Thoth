@@ -30,12 +30,35 @@ def load_config(project_root: Path) -> dict[str, Any]:
     }
 
 
+def _single_project_direction(project_root: Path) -> str:
+    manifest = load_project_manifest(project_root)
+    project = manifest.get("project") if isinstance(manifest.get("project"), dict) else {}
+    directions = project.get("directions") if isinstance(project, dict) else []
+    rows = [
+        item.get("id")
+        for item in directions
+        if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
+    ] if isinstance(directions, list) else []
+    return rows[0] if len(rows) == 1 else ""
+
+
 def load_tasks(project_root: Path) -> list[dict[str, Any]]:
     tasks = []
-    for work in load_work_items(project_root):
+    fallback_direction = _single_project_direction(project_root)
+    work_items = load_work_items(project_root)
+    superseded_work_ids = {
+        str(item.get("superseded_by"))
+        for item in work_items
+        if isinstance(item.get("superseded_by"), str) and item.get("superseded_by")
+    }
+    for work in work_items:
         if work.get("hidden") is True:
             continue
         item = dict(work)
+        if item.get("authority_status") == "abandoned" and item.get("work_id") in superseded_work_ids:
+            continue
+        if item.get("direction") == "general" and fallback_direction:
+            item["direction"] = fallback_direction
         work_id = item.get("work_id")
         if isinstance(work_id, str) and work_id:
             work_result = load_work_result(project_root, work_id)

@@ -16,7 +16,6 @@ import pytest
 from thoth.init.render import render_codex_hooks_payload
 from thoth.plan.store import upsert_work_item, upsert_decision
 from thoth.run.lease import local_registry_root
-from thoth.run.phases import default_validate_output_schema
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -102,29 +101,24 @@ def _write_task(project_dir: Path, work_id: str = "task-1") -> None:
     upsert_work_item(
         project_dir,
         {
-            "schema_version": 1,
-            "kind": "work_item",
             "work_id": work_id,
-            "direction": "frontend",
-            "module": "f1",
             "title": "Lifecycle Validation",
             "status": "ready",
-            "work_kind": "execution",
-            "runnable": True,
             "goal": "State stays inspectable under real execution.",
             "context": "frontend-runtime",
             "constraints": ["temp-project"],
-            "execution_plan": [
+            "approach_notes": [
                 "Create detached runtime.",
                 "Observe attach/watch/stop/resume.",
             ],
-            "eval_contract": {
-                "entrypoint": {"command": "pytest -q tests/integration/test_runtime_lifecycle_e2e.py"},
-                "primary_metric": {"name": "lifecycle_checks", "direction": "gte", "threshold": 1},
-                "failure_classes": ["runtime_drift", "lease_conflict_failure"],
-                "validate_output_schema": default_validate_output_schema(),
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run the runtime lifecycle integration test.",
+                "metric": {"name": "lifecycle_checks", "direction": "gte", "threshold": 1},
+                "reference_command": "pytest -q tests/integration/test_runtime_lifecycle_e2e.py",
             },
-            "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+            "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
+            "scheduling": {"order": None},
             "decisions": ["DEC-test-runtime"],
             "missing_questions": [],
         },
@@ -344,8 +338,7 @@ def test_dashboard_process_and_hooks_are_observable(thoth_project: Path):
                 "source": "test",
                 "links": [],
                 "payload": {
-                    "work_kind": "execution",
-                    "runnable": True,
+                    "goal": "Broken work item",
                     "missing_questions": [],
                 },
                 "history": [],

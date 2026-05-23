@@ -1,4 +1,4 @@
-"""Authority-context resolution for runnable work items.
+"""Authority-context resolution for ready executable work items.
 
 The portable authority source of truth remains the work_item object graph, but
 older projects may have ready work items that only reference a closed
@@ -128,20 +128,14 @@ def _fallback_payload(strict_task: dict[str, Any]) -> dict[str, Any]:
     return {
         "goal": strict_task.get("goal_statement") or strict_task.get("title") or "",
         "constraints": strict_task.get("constraints") if isinstance(strict_task.get("constraints"), list) else [],
-        "execution_plan": strict_task.get("implementation_recipe")
-        if isinstance(strict_task.get("implementation_recipe"), list)
-        else [],
-        "eval_contract": {
-            "entrypoint": strict_task.get("eval_entrypoint") if isinstance(strict_task.get("eval_entrypoint"), dict) else {},
-            "primary_metric": strict_task.get("primary_metric") if isinstance(strict_task.get("primary_metric"), dict) else {},
-        },
+        "approach_notes": strict_task.get("approach_notes") if isinstance(strict_task.get("approach_notes"), list) else [],
+        "acceptance_spec": strict_task.get("acceptance_spec") if isinstance(strict_task.get("acceptance_spec"), dict) else {},
         "decisions": strict_task.get("decision_ids") if isinstance(strict_task.get("decision_ids"), list) else [],
     }
 
 
 def _fallback_context(strict_task: dict[str, Any]) -> dict[str, Any]:
     payload = _fallback_payload(strict_task)
-    eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
     context = {
         "schema_version": 1,
         "source_discussion_id": "",
@@ -153,18 +147,10 @@ def _fallback_context(strict_task: dict[str, Any]) -> dict[str, Any]:
         context["source_decision_ids"] = payload.get("decisions", [])
     if payload.get("constraints"):
         context["constraints"] = payload.get("constraints", [])
-    acceptance = {
-        key: value
-        for key, value in {
-            "entrypoint": eval_contract.get("entrypoint", {}),
-            "primary_metric": eval_contract.get("primary_metric", {}),
-        }.items()
-        if value
-    }
-    if acceptance:
-        context["acceptance"] = acceptance
-    if payload.get("execution_plan"):
-        context["run_instructions"] = payload.get("execution_plan", [])
+    if payload.get("acceptance_spec"):
+        context["acceptance"] = payload.get("acceptance_spec")
+    if payload.get("approach_notes"):
+        context["run_instructions"] = payload.get("approach_notes", [])
     return context
 
 

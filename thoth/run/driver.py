@@ -68,13 +68,21 @@ def _eval_command(strict_task: dict[str, Any]) -> str:
     return ""
 
 
+def _has_acceptance_spec(strict_task: dict[str, Any]) -> bool:
+    spec = strict_task.get("acceptance_spec")
+    if not isinstance(spec, dict):
+        return False
+    metric = spec.get("metric") if isinstance(spec.get("metric"), dict) else {}
+    return bool(spec.get("description") and metric.get("name") and metric.get("direction") and metric.get("threshold") is not None)
+
+
 def _fail_missing_eval(handle: RunHandle, sink: RuntimeEventSink, phase_packet: dict[str, Any]) -> int:
     strict_task = _strict_task_from_packet(phase_packet)
     command = _eval_command(strict_task)
-    if command:
+    if command or _has_acceptance_spec(strict_task):
         return -1
-    summary = "Plan failed: eval entrypoint missing."
-    reason = "missing eval_entrypoint.command"
+    summary = "Plan failed: acceptance spec missing."
+    reason = "missing acceptance_spec"
     _emit(handle, sink, "thoth.phase.failed", phase="plan", summary=summary, reason=reason)
     fail_run(
         handle.project_root,
@@ -86,7 +94,7 @@ def _fail_missing_eval(handle: RunHandle, sink: RuntimeEventSink, phase_packet: 
             "validate_passed": False,
             "final_summary": summary,
             "artifacts": {},
-            "next_hint": "add eval_entrypoint.command to the work item and rerun",
+            "next_hint": "add acceptance_spec with metric and evidence expectations to the work item and rerun",
             "blocker": reason,
         },
     )

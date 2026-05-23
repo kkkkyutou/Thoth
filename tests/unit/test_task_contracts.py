@@ -17,7 +17,6 @@ from thoth.plan.store import (
     upsert_work_result,
 )
 from thoth.run.ledger import create_run, fail_run
-from thoth.run.phases import default_validate_output_schema
 from thoth.run.service import stop_run
 
 
@@ -26,19 +25,18 @@ def _ready_work_payload(decision_id: str = "DEC-001") -> dict:
         "work_id": "work-1",
         "title": "Runtime validation",
         "status": "ready",
-        "work_kind": "execution",
-        "runnable": True,
         "goal": "Validate runtime lifecycle.",
         "context": "runtime",
         "constraints": ["tmp-project"],
-        "execution_plan": ["Run detached lifecycle."],
-        "eval_contract": {
-            "entrypoint": {"command": "pytest -q"},
-            "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
-            "failure_classes": ["runtime_drift"],
-            "validate_output_schema": default_validate_output_schema(),
+        "acceptance_spec": {
+            "kind": "script",
+            "description": "Run the deterministic runtime validator.",
+            "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+            "reference_command": "pytest -q",
         },
-        "runtime_policy": {"loop": {"max_iterations": 3, "max_runtime_seconds": 60}},
+        "approach_notes": ["Run detached lifecycle."],
+        "run_limits": {"max_iterations": 3, "max_runtime_seconds": 60},
+        "scheduling": {"order": None},
         "decisions": [decision_id],
         "missing_questions": [],
     }
@@ -108,13 +106,13 @@ def test_discuss_work_json_creates_ready_work_item_object(tmp_path):
     assert loaded["runtime_contract"]["loop"]["max_iterations"] == 3
 
 
-def test_ready_gate_rejects_missing_eval_contract(tmp_path):
+def test_ready_gate_rejects_missing_acceptance_metric(tmp_path):
     ensure_work_authority_tree(tmp_path)
     payload = _ready_work_payload()
-    payload["eval_contract"].pop("validate_output_schema")
+    payload["acceptance_spec"]["metric"].pop("threshold")
     work = upsert_work_item(tmp_path, payload)
     assert work["ready_state"] == "blocked"
-    assert "validate_output_schema" in work["blocking_reason"]
+    assert "acceptance_spec.metric.threshold is required" in work["blocking_reason"]
     compiler = compile_task_authority(tmp_path)
     assert compiler["summary"]["work_item_counts"]["blocked"] == 1
 
@@ -172,7 +170,8 @@ def test_discussion_authority_close_creates_ready_work_with_context(tmp_path):
     assert compiler["summary"]["work_item_counts"]["ready"] == 1
     assert loaded["authority_context"]["completeness"]["is_closed"] is True
     assert loaded["authority_context"]["source_discussion_id"] == discussion["discussion_id"]
-    assert loaded["authority_context"]["semantic_events"][0]["event_type"] == "goal"
+    stored = Store(tmp_path).read("work_item", "work-1")
+    assert {"type": "primary_parent", "target": f"discussion:{discussion['discussion_id']}"} in stored["links"]
 
 
 def test_discussion_authority_close_with_open_questions_needs_input(tmp_path):

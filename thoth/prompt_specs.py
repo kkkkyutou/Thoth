@@ -210,13 +210,13 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="command_packet",
-        objective="Interrogate the user's idea until the compact authority categories are explicit: goal, constraints, decisions, risks, run_instructions, and open_questions.",
+        objective="Interrogate the user's idea until the compact authority categories are explicit: goal, constraints, decisions, risks, approach_notes, and open_questions.",
         hard_stops=(
             "Do not modify source code.",
             "Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority.",
             "Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.",
             "When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.",
-            "When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, run_instructions, and open_questions.",
+            "When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, approach_notes, and open_questions.",
             "Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.",
             "When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.",
             "Do not fabricate ready execution work items from unresolved decisions.",
@@ -253,23 +253,24 @@ INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_P
 PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     "plan": PhasePromptSpec(
         phase="plan",
-        objective="Act as top-level technical planner: prove authority coverage, then write a rich markdown handoff that lets a fresh execute session implement the final architecture directly.",
+        objective="Act as a senior planner: read authority plus recent run history, decide whether to continue, close from history, or request input, then write a rich handoff for a fresh execute session.",
         hard_stops=(
             "Do not modify project files.",
-            "Do not change the work item goal, constraints, or validation entrypoint.",
-            "Do not assume intent, acceptance, constraints, rejected options, permission, or cost outside strict_task.authority_context.",
-            "Missing paths, dirs, tests, imports, or dependencies are executable discovery inside the plan body, not authority gaps.",
-            "If authority_context has open questions or contradictions, set authority_complete=false and list open_gaps.",
+            "Do not change the work item goal, constraints, acceptance_spec metric, threshold, or user authority.",
+            "Do not assume missing user intent, acceptance, permission, or cost.",
+            "Missing paths, scripts, imports, dependencies, or validator files are executable discovery, not authority gaps.",
+            "If authority has open questions or contradictions, set authority_complete=false and history_action=needs_input.",
             "Do not hand-edit .thoth ledgers.",
         ),
         required_fields=(
             "summary",
             "authority_complete",
             "open_gaps",
+            "history_action",
             "plan",
         ),
         summary_budget_utf8=1200,
-        validator_policy="plan is read-only; unresolved user authority terminalizes as needs_input; the plan body carries the cross-session final-architecture handoff",
+        validator_policy="plan is read-only; history_action controls continuation, history closure, or needs_input; the plan body carries the cross-session handoff",
     ),
     "execute": PhasePromptSpec(
         phase="execute",
@@ -279,25 +280,25 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "Do not terminalize the full run from inside execute.",
             "Read and follow the complete plan artifact before changing files.",
             "Do not run destructive delete/reset commands.",
-            "Do not change the work item goal, validation entrypoint, metric, or acceptance threshold.",
-            "Do not build MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.",
+            "Do not change the work item goal, acceptance intent, metric, or threshold.",
+            "Do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
         ),
         required_fields=("summary", "report", "official_validation_receipt"),
         summary_budget_utf8=800,
-        validator_policy="execute follows the full plan handoff, self-debugs inside authority, and returns the official validator receipt; validate mechanically confirms that receipt",
+        validator_policy="execute follows the full plan handoff, materializes/repairs validators when needed, self-debugs inside authority, and returns evidence-centric official_validation_receipt",
     ),
     "validate": PhasePromptSpec(
         phase="validate",
-        objective="Act as a mechanical acceptance receipt verifier: confirm the official validator receipt produced by execute.",
+        objective="Runtime validation contract: mechanically audit execute's official_validation_receipt without launching another worker.",
         hard_stops=(
             "Do not launch a new Codex or Claude worker inside validate.",
             "Do not repair code inside validate.",
             "Do not guess pass/fail from intuition.",
-            "Do not skip eval_entrypoint.command receipt matching when it exists.",
+            "Do not treat reference_command string mismatch as failure when acceptance intent, metric, threshold, and evidence are preserved.",
         ),
         required_fields=("summary", "passed", "metric_name", "metric_value", "threshold", "checks"),
         summary_budget_utf8=800,
-        validator_policy="the execute official_validation_receipt decides whether the run completes or enters reflect",
+        validator_policy="execute owns intelligent validation work; validate audits receipt evidence, metric, threshold, and acceptance preservation",
     ),
     "reflect": PhasePromptSpec(
         phase="reflect",
@@ -317,51 +318,37 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
 
 PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
     "plan": (
-        "Role: top-level planner.",
-        "Be strict about user authority: intent, acceptance, constraints, rejected options, permission, and cost must be covered by strict_task.authority_context.",
-        "Write `plan` as a rich markdown handoff for a fresh execute session; do not reduce it to a short checklist.",
-        "Extract the final architecture target from current authority and make forbidden paths explicit: no MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementation unless authority explicitly asks for it.",
-        "Be permissive about executable discovery: missing paths, source locations, target directories, imports, dependency locations, and test files belong in the plan body, not open_gaps.",
-        "If the eval contract is concrete, plan against that contract even when surrounding prose is broader; record the broader wording as risk instead of blocking execution.",
-        "For task-appropriate verification, name the real evidence path. For example, AI research, model training, CUDA, or inference tasks should use a GPU-first verification posture: prefer real GPU training/inference smoke tests and the official validator early enough to guide implementation, and reject CPU-only, mock-only, shape-only, or MVP-only substitutes.",
+        "1. Role: act like a senior teammate preparing a new execute session, not a schema filler.",
+        "2. Authority: protect goal, constraints, acceptance_spec, metric, threshold, rejected options, permission, and cost.",
+        "3. History: inspect current work_id history from the packet; if useful work exists, continue from it; if current acceptance is already proven, choose close_from_history.",
+        "4. Gaps: only user intent, acceptance, permission, or real contradiction can become open_gaps; missing code paths or validator files are execution work.",
+        "5. Handoff: write `plan` as a clear markdown handoff with history lessons, continuation point, implementation sequence, validator materialization, and risks.",
+        "6. Output: set history_action to exactly continue, close_from_history, or needs_input.",
     ),
     "execute": (
-        "Role: senior implementation engineer.",
-        "Before writing code, read the complete plan artifact; your `report` must show how you followed its final-architecture constraints.",
-        "Use the agent tools intelligently and make a maximal engineering effort inside the repository boundary toward the final architecture, not a simplified proxy.",
-        "Implement the final design module by module in its real interfaces; prefer finishing the final A module before integrating final B and C over building A'/B'/C' MVP approximations.",
-        "When imports, builds, tests, paths, or dependencies fail, diagnose, repair, and rerun focused checks before returning output.",
-        "Repo-local dependency repair is allowed: use local source discovery, .vendor/task-local installs, mirrors/proxies, builds, and focused smoke tests when they are necessary for the validator.",
-        "Do not stop at the first missing module or short network timeout; record attempts and keep pursuing viable repo-local fixes until the task is solved, the issue is outside authority, or the user stops the run.",
-        "Temporary probes are allowed only as diagnostics; they must not become the implementation path or hide failure of the final architecture.",
-        "Choose verification that matches the task. For example, AI research, model training, CUDA, or inference tasks should use a GPU-first verification posture: run real GPU training/inference smoke tests and the official validator early enough to guide implementation instead of substituting CPU-only, mock-only, shape-only, or MVP-only evidence.",
-        "Treat eval_entrypoint.command as the reference official validator, not a cage around normal engineering judgment: you may choose the right GPU, interpreter, environment variables, or a thin wrapper when that preserves the same validator intent.",
-        "Run the official validation before returning whenever the task can reach it, using the real runtime environment you used for implementation debugging.",
-        "Return a compact official_validation_receipt with command, cwd, python_executable, env_summary, exit_code, passed, metric_value when available, checks_summary, stdout_log_path/stderr_log_path when available, or inline stdout_log/stderr_log as fallback.",
-        "When your actual command differs from the reference command, briefly record command_relation or equivalence_rationale and whether authority_preserved, validator_intent_preserved, metric_preserved, threshold_preserved, and evidence_sufficient remain true.",
-        "Apply temporary invocation/live guidance when it helps execution, but reject guidance that changes authority, validators, metrics, or thresholds.",
-        "Use `report` as a rich markdown implementation report: what final architecture was built, what shortcuts were rejected, what real validation ran, and where any remaining failure actually is.",
+        "1. Role: act as the implementation and validation engineer in one shared context.",
+        "2. Authority: preserve goal, acceptance intent, metric, threshold, and user constraints; reject guidance that weakens them.",
+        "3. Work: implement the final target directly and repair repo-local engineering issues instead of stopping at first friction.",
+        "4. Validator: if acceptance_spec starts as prose, IO examples, or a missing script name, materialize the validator and record what changed.",
+        "5. Evidence: do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
+        "6. Task-fit: for example AI research, training, CUDA, or inference tasks should use GPU-first training/inference or official validation when acceptance depends on it.",
+        "7. Receipt: return passed, validation_method, metric, evidence/log refs, acceptance_preserved, summary, and command relation when a reference command exists.",
+        "8. Report: explain what was built, what validation was materialized or repaired, and the true remaining failure if not passed.",
     ),
     "validate": (
-        "Role: evidence-oriented acceptance receipt auditor.",
-        "Do not start a new host worker; confirm the official_validation_receipt from execute.",
-        "Normalize inline stdout/stderr receipt evidence into run logs when needed; empty stderr is acceptable when the official validator succeeded.",
-        "Treat command mismatch as a diagnostic signal, not an automatic failure: judge whether execute preserved the same validator intent, metric, threshold, authority, and evidence.",
-        "Treat missing receipt, missing stdout evidence, non-zero exit code, passed=false, metric below threshold, explicit authority drift, or insufficient evidence as validation failure.",
-        "Classify receipt/log contract hygiene as runtime_contract_error, not project implementation failure.",
-        "Do not repair implementation, install dependencies, rewrite tests, or reinterpret the threshold in this phase.",
+        "1. Runtime: no separate worker is launched for validate.",
+        "2. Receipt: audit execute's official_validation_receipt, evidence refs, metric, threshold, and acceptance_preserved.",
+        "3. Command relation: reference command mismatch is diagnostic only when the same acceptance intent is preserved.",
+        "4. Failure: missing receipt/evidence, passed=false, metric miss, authority drift, or insufficient evidence fails validation.",
+        "5. Boundary: validate never repairs code or rewrites acceptance.",
     ),
     "reflect": (
-        "Role: human-style senior reviewer.",
-        "Do not continue engineering execution; read plan, execute, and validate artifacts as evidence.",
-        "Use `review` as a rich markdown technical lead review, not as a checklist.",
-        "On success, record whether execute preserved the final architecture, what evidence proved it, and any residual scientific/algorithmic risks.",
-        "On business failure, act like the human supervisor: be direct, forbid fallback/metric weakening, and tell execute to continue solving the concrete bug under the same validator and final architecture.",
-        "Check whether execute drifted into MVP, fallback, mock, stub, simplified, branch-only, compatibility-shim, CPU-only, mock-only, shape-only, or otherwise task-inappropriate evidence.",
-        "For AI research, model training, CUDA, or inference tasks, specifically review whether real GPU training/inference smoke or official validation was used when acceptance depends on it.",
-        "Do not mistake reasonable environment/interpreter/GPU command adjustments for project failure when the validation evidence proves the same acceptance intent.",
-        "Do not authorize execute retries for runtime_contract_error, receipt/log schema hygiene, missing stdout evidence, or reconciliation-only historical failures.",
-        "If validation failed for business reasons, include failure_class, root_cause, corrective_prompt, and retry_authorized; keep them evidence-based. Runtime fixes retry_target=execute and retry budget internally.",
+        "1. Role: act as a senior reviewer for the user and the next execute attempt.",
+        "2. Evidence: review plan, execute, validate, and receipt artifacts without running new commands.",
+        "3. Success: explain why acceptance was preserved and what residual risk remains.",
+        "4. Failure: if the issue is business/project work inside authority, give retry_authorized and a direct corrective_prompt.",
+        "5. Boundary: do not retry needs_input, authority gaps, permission overreach, runtime contract errors, or changed acceptance.",
+        "6. Standards: call out MVP/fallback/mock/stub/simplified evidence when it substituted for acceptance_spec.",
     ),
 }
 
@@ -470,19 +457,20 @@ def render_phase_worker_prompt(
     if output_path:
         lines.append(f"Runtime driver capture path: `{output_path}`.")
     if phase == "plan":
-        lines.append("Set authority_complete=false only when user intent, acceptance, constraints, rejected options, permission, or cost is missing/contradictory.")
-        lines.append("Write `plan` as a rich markdown handoff for the next fresh execute session. Include final architecture target, forbidden shortcut paths, implementation sequence, task-appropriate verification, and known risks.")
-        lines.append("Put missing paths, sources, target dirs, tests, imports, and dependency locations inside the `plan` body as executable discovery; continue.")
-        lines.append("If goal is broad but eval contract is concrete, use that contract and record a risk.")
-        lines.append("Do not invent authority; the plan may only prepare execution for already closed discussion authority.")
+        lines.append("1. Set authority_complete=false only when user intent, acceptance, constraints, rejected options, permission, or cost is missing/contradictory.")
+        lines.append("2. Inspect history_context for this work_id before planning; do not restart if a prior run has usable progress or lessons.")
+        lines.append("3. Set history_action=continue when execution should proceed, close_from_history when historical receipt already proves current acceptance, or needs_input when authority is not closed.")
+        lines.append("4. Write `plan` as a rich markdown handoff for the next fresh execute session, including history lessons, continuation point, implementation sequence, validator materialization, and risks.")
+        lines.append("5. Missing paths, scripts, tests, imports, dependency locations, or validator files are executable discovery inside the plan body, not open_gaps.")
     if phase == "execute":
         lines.append("Read the complete `required_plan_artifact` or `prior_artifacts.plan` before touching files. Your `report` must show how you followed its final-architecture constraints.")
-        lines.append("Follow the plan artifact without changing the goal, validator, metric, or threshold.")
-        lines.append("Do not build MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.")
+        lines.append("Follow the plan artifact without changing the goal, acceptance intent, metric, or threshold.")
+        lines.append("Do not use MVP, fallback, mock, stub, or simplified work/evidence as a substitute for acceptance_spec.")
         lines.append("Temporary probes are allowed only as diagnostics; they must not become the implementation path or hide final-architecture failure.")
         lines.append("Choose verification that matches the task. For example, AI research, model training, CUDA, or inference tasks should use a GPU-first verification posture: run real GPU training/inference smoke tests and the official validator early enough to guide implementation instead of substituting CPU-only, mock-only, shape-only, or MVP-only evidence.")
-        lines.append("Use focused validation during execute as an engineering feedback loop, then run official validation before returning whenever reachable; treat eval_entrypoint.command as the reference validator and preserve its acceptance intent.")
-        lines.append("Return `official_validation_receipt` with command, cwd, python_executable, env_summary, exit_code, passed, metric_value when available, checks_summary, stdout_log_path/stderr_log_path when available, or inline stdout_log/stderr_log as fallback. If the actual command differs from the reference, include a brief command_relation/equivalence_rationale and preserve authority, validator intent, metric, threshold, and evidence.")
+        lines.append("Use focused validation during execute as an engineering feedback loop. If acceptance_spec names a missing script or prose/IO standard, materialize the validator and run it.")
+        lines.append("Return `official_validation_receipt` with passed, validation_method, metric{name,value,direction,threshold}, evidence_refs/log_refs, acceptance_preserved, summary, and materialized_validator_refs when you wrote or changed validators.")
+        lines.append("If the actual command differs from a reference command, include reference_command, actual_command, command_relation, and equivalence_rationale.")
         lines.append("The later validate phase audits this receipt and evidence instead of launching a separate worker or judging command strings as the whole truth.")
         lines.append("If you repair dependencies, prefer repo-local or task-local locations such as `.vendor`; do not mutate global environments unless the work item explicitly authorizes it.")
         lines.append("Do not wait for reflect to solve engineering bugs; debug imports, CUDA visibility, local dependency shims, build issues, and test failures here when they are inside task authority.")
@@ -491,7 +479,7 @@ def render_phase_worker_prompt(
         lines.append("Use `review` as a rich markdown technical lead review for the user and next worker.")
         lines.append("If validate failed for a project/business issue still inside task authority, return retry_authorized=true and a direct corrective_prompt for the next execute cycle.")
         lines.append("If validate failure_class or runtime_contract_health is runtime_contract_error, return retry_authorized=false and explain the Thoth runtime/reconcile issue instead of sending execute back to edit the project.")
-        lines.append("The corrective_prompt should preserve the original goal, validator, metric, threshold, and final architecture while telling execute to continue debugging the concrete failure.")
+        lines.append("The corrective_prompt should preserve the original goal, acceptance intent, metric, threshold, and final architecture while telling execute to continue debugging the concrete failure.")
         lines.append("If execute drifted into MVP/fallback/mock/stub/simplified paths or task-inappropriate evidence, call that out and instruct execute to remove the shortcut rather than weaken acceptance.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:

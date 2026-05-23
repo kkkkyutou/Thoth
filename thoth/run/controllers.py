@@ -25,7 +25,7 @@ def _work_ref(work: dict[str, Any]) -> dict[str, Any]:
         "revision": work["revision"],
         "title": work.get("title"),
         "status": work.get("ready_state") or work.get("status"),
-        "priority": int(work.get("priority") or 0),
+        "order": (work.get("scheduling") or {}).get("order") if isinstance(work.get("scheduling"), dict) else None,
     }
 
 
@@ -102,37 +102,30 @@ def list_auto_actionable_work(project_root: Path, *, scope: str = "all-open", li
     locked = active_work_ids(project_root)
     rows: list[dict[str, Any]] = []
     closed = {"validated", "abandoned"}
-    actionable = {"ready", "active", "failed"}
+    actionable = {"ready", "active", "failed"} if scope == "all-open" else {"ready"}
     for obj in store.list("work_item"):
         work = flatten_work_item(obj)
         status = str(work.get("ready_state") or work.get("status") or "")
         if status in closed:
             continue
-        if scope == "ready" and status != "ready":
-            continue
         if status not in actionable:
             continue
         deps = _dependency_ids(store, work["work_id"])
-        if any((store.read("work_item", dep_id).get("status") not in closed) for dep_id in deps):
+        if any((store.read("work_item", dep_id).get("status") != "validated") for dep_id in deps):
             continue
         scheduling = work.get("scheduling") if isinstance(work.get("scheduling"), dict) else {}
         order = scheduling.get("order")
         if not isinstance(order, int):
             order = 1_000_000
-        status_rank = {"active": 0, "failed": 1, "ready": 2}.get(status, 9)
+        status_rank = {"active": 0, "ready": 1, "failed": 2}.get(status, 9) if scope == "all-open" else {"ready": 0}.get(status, 9)
         work["_auto_sort_key"] = (
             status_rank,
-            -int(scheduling.get("priority") or 0),
             order,
-            str(work.get("updated_at") or ""),
             str(work.get("work_id") or ""),
         )
         work["_auto_locked"] = work["work_id"] in locked
         rows.append(work)
     rows.sort(key=lambda item: item["_auto_sort_key"])
-    if scope == "priority-top" and rows:
-        top_priority = int((rows[0].get("scheduling") or {}).get("priority") or 0)
-        rows = [row for row in rows if int((row.get("scheduling") or {}).get("priority") or 0) == top_priority]
     if isinstance(limit, int) and limit > 0:
         rows = rows[:limit]
     return rows

@@ -150,7 +150,7 @@ def _load_work_result_map(project_root: Path) -> dict[str, dict[str, Any]]:
     return rows
 
 
-def _flatten_work_item(payload: dict[str, Any], path: Path) -> dict[str, Any] | None:
+def _flatten_work_item(payload: dict[str, Any], path: Path, project_root: Path | None = None) -> dict[str, Any] | None:
     work_id = payload.get("object_id")
     if not isinstance(work_id, str) or not work_id:
         return None
@@ -158,6 +158,10 @@ def _flatten_work_item(payload: dict[str, Any], path: Path) -> dict[str, Any] | 
     row = _flatten_authority_work_item({**payload, "_path": str(path)})
     row["module"] = row.get("module") or work_payload.get("module") or work_payload.get("context") or "strict"
     row["direction"] = row.get("direction") or work_payload.get("direction") or "general"
+    if row["direction"] == "general" and project_root is not None:
+        directions = _direction_entries(project_root)
+        if len(directions) == 1:
+            row["direction"] = directions[0]["id"]
     row["_path"] = str(path)
     return row
 
@@ -171,14 +175,26 @@ def _load_compiled_tasks(project_root: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if not task_dir.is_dir():
         return rows
-    for path in sorted(task_dir.glob("*.json")):
-        payload = _read_json(path)
+    raw_items = [(path, _read_json(path)) for path in sorted(task_dir.glob("*.json"))]
+    superseded_work_ids = {
+        str(link.get("target", "")).split(":", 1)[1]
+        for _path, payload in raw_items
+        if isinstance(payload, dict)
+        for link in (payload.get("links") if isinstance(payload.get("links"), list) else [])
+        if isinstance(link, dict)
+        and link.get("type") == "supersedes"
+        and isinstance(link.get("target"), str)
+        and str(link.get("target")).startswith("work_item:")
+    }
+    for path, payload in raw_items:
         if not payload:
             continue
-        row = _flatten_work_item(payload, path)
+        row = _flatten_work_item(payload, path, project_root)
         if row is None:
             continue
         if row.get("hidden") is True:
+            continue
+        if row.get("authority_status") == "abandoned" and row.get("work_id") in superseded_work_ids:
             continue
         work_id = row["work_id"]
         if work_id in work_result_map:

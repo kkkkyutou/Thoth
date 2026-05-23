@@ -288,8 +288,6 @@ def load_work_for_execution(project_root: Path, work_id: str, *, require_ready: 
     if require_ready and ready_state != "ready":
         reason = payload.get("blocking_reason") or f"task is {ready_state}"
         raise ValueError(f"Work item {work_id} is not executable: {reason}")
-    if require_ready and payload.get("runnable") is not True:
-        raise ValueError(f"Work item {work_id} is not executable: work item is non-runnable")
     return payload
 
 
@@ -303,8 +301,7 @@ def _work_search_text(work: dict[str, Any]) -> str:
         "work_id",
         "title",
         "goal_statement",
-        "module",
-        "direction",
+        "context",
         "candidate_method_id",
         "blocking_reason",
     ):
@@ -330,14 +327,13 @@ def suggest_work_items_for_query(project_root: Path, query: str, *, limit: int =
         if work.get("hidden") is True:
             continue
         ready_state = str(work.get("ready_state") or "")
-        runnable = work.get("runnable") is True
         text = _work_search_text(work)
         haystack = text.lower()
         text_tokens = set(_tokenize_work_query(text))
         score = 0.0
         if ready_state == "ready":
             score += 3.0
-        elif runnable:
+        elif ready_state in {"active", "failed"}:
             score += 1.5
         if normalized_query:
             if normalized_query in haystack:
@@ -352,7 +348,7 @@ def suggest_work_items_for_query(project_root: Path, query: str, *, limit: int =
         key=lambda item: (
             item[0],
             1 if str(item[1].get("ready_state") or "") == "ready" else 0,
-            1 if item[1].get("runnable") is True else 0,
+            1 if str(item[1].get("ready_state") or "") in {"active", "failed"} else 0,
             str(item[1].get("title") or ""),
             str(item[1].get("work_id") or ""),
         ),
@@ -432,6 +428,10 @@ def upsert_work_item(project_root: Path, payload: dict[str, Any]) -> dict[str, A
         for decision_id in _normalize_string_list(payload.get("decisions"))
         if store.read("decision", decision_id)
     ]
+    for dep_id in _normalize_string_list(payload.get("depends_on")):
+        if not store.read("work_item", dep_id):
+            raise FileNotFoundError(f"depends_on target work_item:{dep_id} not found")
+        links.append({"type": "depends_on", "target": f"work_item:{dep_id}"})
     authority_context = payload.get("authority_context") if isinstance(payload.get("authority_context"), dict) else {}
     source_discussion_id = authority_context.get("source_discussion_id")
     if isinstance(source_discussion_id, str) and source_discussion_id.strip() and store.read("discussion", source_discussion_id):
@@ -471,8 +471,8 @@ def create_discussion_placeholder(project_root: Path, content: str, *, host: str
             "decisions": [],
             "open_questions": [
                 "candidate method universe not frozen",
-                "execution plan not closed",
-                "eval contract not closed",
+                "approach and acceptance are not closed",
+                "acceptance_spec is not closed",
             ],
             "closure_summary": None,
         },

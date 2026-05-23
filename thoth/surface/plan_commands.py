@@ -76,7 +76,7 @@ def _discussion_packet(project_root: Path, discussion_id: str) -> dict[str, Any]
             "constraints": "hard constraints, resources, timing, and forbidden assumptions",
             "decisions": "settled choices, rejected alternatives, and evidence anchors",
             "risks": "known risks and failure classes",
-            "run_instructions": "execution plan and validator intent",
+            "approach_notes": "execution approach and validator intent",
             "open_questions": "material unanswered questions; must be empty for ready work",
         },
         "open_discussion_candidates": open_discussion_candidates(project_root),

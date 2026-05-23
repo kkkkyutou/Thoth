@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 from thoth.plan.store import upsert_work_item, upsert_decision
-from thoth.run.phases import default_validate_output_schema
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -64,34 +63,31 @@ def _write_task(
             "unresolved_gaps": [],
         },
     )
+    io_examples: dict[str, object] = {}
+    if review_binding is not None:
+        io_examples["review_binding"] = review_binding
+    if review_expectation is not None:
+        io_examples["review_expectation"] = review_expectation
     contract_payload = {
-        "schema_version": 1,
-        "kind": "work_item",
         "work_id": work_id,
-        "direction": "frontend",
-        "module": "f1",
         "title": title,
         "status": "ready",
-        "work_kind": "execution",
-        "runnable": True,
         "goal": work_goal,
         "context": f"scope-{work_id}",
         "constraints": ["repo"],
-        "execution_plan": ["Make the requested repo change."],
-        "eval_contract": {
-            "entrypoint": {"command": "pytest -q"},
-            "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
-            "failure_classes": ["runtime_drift"],
-            "validate_output_schema": default_validate_output_schema(),
+        "acceptance_spec": {
+            "kind": "script",
+            "description": "Run the focused validation command.",
+            "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+            "reference_command": "pytest -q",
+            **({"io_examples": io_examples} if io_examples else {}),
         },
-        "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+        "approach_notes": ["Make the requested repo change."],
+        "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
+        "scheduling": {"order": None},
         "decisions": [decision_id],
         "missing_questions": [],
     }
-    if review_binding is not None:
-        contract_payload["eval_contract"]["review_binding"] = review_binding
-    if review_expectation is not None:
-        contract_payload["eval_contract"]["review_expectation"] = review_expectation
     upsert_work_item(project_dir, contract_payload)
 
 

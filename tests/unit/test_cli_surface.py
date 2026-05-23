@@ -13,8 +13,6 @@ from thoth.objects import Store
 from thoth.plan.store import load_work_for_execution, load_work_result, upsert_work_item, upsert_decision
 from thoth.run.controllers import create_auto_controller
 from thoth.run.packets import prepare_execution
-from thoth.run.ledger import fail_run
-from thoth.run.phases import default_validate_output_schema, submit_phase_output
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -83,26 +81,21 @@ def _write_task(
     upsert_work_item(
         project_dir,
         {
-            "schema_version": 1,
-            "kind": "work_item",
             "work_id": work_id,
-            "direction": direction,
-            "module": module,
             "title": title,
             "status": status,
-            "work_kind": "execution",
-            "runnable": True,
             "goal": work_goal,
             "context": f"{module}-{work_id}",
             "constraints": ["temp-project"],
-            "execution_plan": ["Create runtime packet.", "Observe protocol updates."],
-            "eval_contract": {
-                "entrypoint": {"command": eval_command},
-                "primary_metric": {"name": "lifecycle_checks", "direction": "gte", "threshold": 1},
-                "failure_classes": ["runtime_drift"],
-                "validate_output_schema": default_validate_output_schema(),
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run the lifecycle validation command.",
+                "metric": {"name": "lifecycle_checks", "direction": "gte", "threshold": 1},
+                "reference_command": eval_command,
             },
-            "runtime_policy": {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+            "approach_notes": ["Create runtime packet.", "Observe protocol updates."],
+            "run_limits": {"max_iterations": 10, "max_runtime_seconds": 28800},
+            "scheduling": {"order": None},
             "decisions": [decision_id],
             "missing_questions": list(missing_questions or []),
         },
@@ -183,7 +176,7 @@ def test_cli_discuss_records_note(tmp_path):
         "constraints",
         "decisions",
         "risks",
-        "run_instructions",
+        "approach_notes",
         "open_questions",
     ]
     assert "non_goals" not in packet["required_authority_categories"]
@@ -220,13 +213,13 @@ def test_cli_discuss_work_json_missing_fields_creates_blocked_with_diagnostics(t
         tmp_path,
         "discuss",
         "--work-json",
-        json.dumps({"work_id": "blocked-work", "title": "Blocked Work", "work_kind": "execution", "runnable": True}),
+        json.dumps({"work_id": "blocked-work", "title": "Blocked Work", "goal": "Blocked work.", "status": "ready"}),
     )
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["body"]["work_item"]["status"] == "blocked"
-    assert "eval_contract.entrypoint.command is required" in payload["body"]["work_item_ready_errors"]
+    assert "ready work_item requires acceptance_spec" in payload["body"]["work_item_ready_errors"]
     assert "required_work_json_fields" in payload["body"]
     stored = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "blocked-work.json").read_text(encoding="utf-8"))
     assert stored["status"] == "blocked"
@@ -267,19 +260,18 @@ def test_cli_record_discussion_authority_closes_work(tmp_path):
                     "work_id": "close-work",
                     "title": "Close Work",
                     "status": "ready",
-                    "work_kind": "execution",
-                    "runnable": True,
                     "goal": "Close this work.",
                     "context": "test",
                     "constraints": ["temp-project"],
-                    "execution_plan": ["Run validator."],
-                    "eval_contract": {
-                        "entrypoint": {"command": "pytest -q"},
-                        "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
-                        "failure_classes": ["runtime_drift"],
-                        "validate_output_schema": default_validate_output_schema(),
+                    "acceptance_spec": {
+                        "kind": "script",
+                        "description": "Run pytest.",
+                        "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                        "reference_command": "pytest -q",
                     },
-                    "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+                    "approach_notes": ["Run validator."],
+                    "run_limits": {"max_iterations": 1, "max_runtime_seconds": 60},
+                    "scheduling": {"order": None},
                     "missing_questions": [],
                 },
             },
@@ -303,7 +295,7 @@ def test_cli_record_discussion_authority_closes_work(tmp_path):
 
     assert close.returncode == 0, close.stderr
     work_item = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "close-work.json").read_text(encoding="utf-8"))
-    assert work_item["payload"]["authority_context"]["source_discussion_id"] == discussion_id
+    assert {"type": "primary_parent", "target": f"discussion:{discussion_id}"} in work_item["links"]
     assert work_item["status"] == "ready"
 
 
@@ -332,13 +324,12 @@ def test_cli_record_discussion_authority_needs_input_lists_missing_fields(tmp_pa
                     "work_id": "close-missing",
                     "title": "Close Missing",
                     "status": "ready",
-                    "work_kind": "execution",
-                    "runnable": True,
                     "goal": "Close this work.",
                     "context": "test",
                     "constraints": ["temp-project"],
-                    "execution_plan": ["Run validator."],
-                    "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
+                    "approach_notes": ["Run validator."],
+                    "run_limits": {"max_iterations": 1, "max_runtime_seconds": 60},
+                    "scheduling": {"order": None},
                     "missing_questions": [],
                 },
             },
@@ -363,8 +354,8 @@ def test_cli_record_discussion_authority_needs_input_lists_missing_fields(tmp_pa
     assert close.returncode == 2
     payload = json.loads(close.stdout)
     diagnostics = payload["body"]["diagnostics"]
-    assert "eval_contract" in diagnostics["missing_work_json_fields"]
-    assert "eval_contract.entrypoint.command is required" in diagnostics["work_item_ready_errors"]
+    assert "acceptance_spec" in diagnostics["missing_work_json_fields"]
+    assert "ready work_item requires acceptance_spec" in diagnostics["work_item_ready_errors"]
     assert "next_minimal_json" in diagnostics
     assert not (tmp_path / ".thoth" / "objects" / "work_item" / "close-missing.json").exists()
 
@@ -505,66 +496,13 @@ def test_cli_run_runtime_ledgers_do_not_dirty_git_status(tmp_path):
     assert "research.db" not in status
 
 
-def test_cli_run_reconcile_closes_failed_run_with_passing_execute_receipt(tmp_path):
+def test_cli_run_reconcile_flag_is_removed(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
-    _write_task(tmp_path, "reconcile-work", eval_command="pytest -q")
-    strict_task = load_work_for_execution(tmp_path, "reconcile-work")
-    handle, _packet = prepare_execution(
-        tmp_path,
-        command_id="run",
-        title="Reconcile Work",
-        work_id="reconcile-work",
-        host="codex",
-        executor="codex",
-        sleep_requested=False,
-        strict_task=strict_task,
-        goal="reconcile old run",
-    )
-    submit_phase_output(
-        tmp_path,
-        handle.run_id,
-        phase="plan",
-        payload={
-            "summary": "plan ok",
-            "authority_complete": True,
-            "open_gaps": [],
-            "plan": "# Plan\n\nRun the official pytest validator against the final implementation.",
-        },
-    )
-    submit_phase_output(
-        tmp_path,
-        handle.run_id,
-        phase="execute",
-        payload={
-            "summary": "execute passed official pytest",
-            "report": "# Execute Report\n\nRan the official pytest validator against the final implementation.",
-            "official_validation_receipt": {
-                "command": "pytest -q",
-                "cwd": str(tmp_path),
-                "python_executable": sys.executable,
-                "exit_code": 0,
-                "passed": True,
-                "metric_value": 1,
-                "checks_summary": ["3 passed"],
-                "stdout_log": "3 passed\n",
-                "stderr_log": "[empty stderr captured]",
-            },
-        },
-    )
-    fail_run(tmp_path, handle.run_id, summary="Historical runtime contract failure.", reason="execution_error")
 
-    result = _run_cli(tmp_path, "run", "--reconcile", handle.run_id)
+    result = _run_cli(tmp_path, "run", "--reconcile", "run-old")
 
-    assert result.returncode == 0, result.stderr
-    envelope = _extract_envelope(result.stdout)
-    assert envelope["status"] == "ok"
-    run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
-    assert run_result["status"] == "completed"
-    assert run_result["result"]["reconciled"] is True
-    assert run_result["result"]["validate_passed"] is True
-    assert (handle.run_dir / "reconcile.json").exists()
-    work_item = Store(tmp_path).read("work_item", "reconcile-work")
-    assert work_item["status"] == "validated"
+    assert result.returncode == 2
+    assert "--reconcile" in result.stderr
 
 
 def test_cli_status_json(tmp_path):

@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from thoth.objects import summarize_object_graph, utc_now
+from thoth.objects import Store, compact_existing_work_item, summarize_object_graph, utc_now
 
 from .paths import SCHEMA_VERSION, compiler_state_path, legacy_audit_path
 from .store import _read_json, _read_yaml, _write_json, ensure_work_authority_tree
@@ -88,13 +88,52 @@ def audit_legacy_tasks(project_root: Path) -> dict[str, Any]:
     return _write_json_if_semantic_changed(legacy_audit_path(project_root), audit)
 
 
+def migrate_compact_work_items(project_root: Path) -> list[dict[str, Any]]:
+    store = Store(project_root)
+    store.ensure_tree()
+    rows: list[dict[str, Any]] = []
+    for obj in store.list("work_item"):
+        updates = compact_existing_work_item(project_root, obj)
+        if not updates:
+            continue
+        changed_fields = updates.pop("_migration_changed_fields", [])
+        updated = store.update(
+            "work_item",
+            str(obj.get("object_id") or ""),
+            expected_revision=int(obj.get("revision", 0)),
+            updates=updates,
+            history_summary="migrated work_item to compact 0.2.7 schema",
+            source="schema-migration",
+        )
+        rows.append(
+            {
+                "work_id": updated.get("object_id"),
+                "revision": updated.get("revision"),
+                "changed_fields": changed_fields,
+            }
+        )
+    if rows:
+        ledger = {
+            "schema_version": SCHEMA_VERSION,
+            "generated_at": utc_now(),
+            "migration": "work_item_compact_0_2_7",
+            "changed_count": len(rows),
+            "items": rows,
+        }
+        path = project_root / ".thoth" / "docs" / "work-item-migration-0.2.7.json"
+        _write_json(path, ledger)
+    return rows
+
+
 def compile_task_authority(project_root: Path) -> dict[str, Any]:
     ensure_work_authority_tree(project_root)
+    migration_rows = migrate_compact_work_items(project_root)
     legacy_audit = audit_legacy_tasks(project_root)
     graph = summarize_object_graph(project_root)
     problems = list(graph.get("problems", []))
     for item in legacy_audit.get("legacy_authority", []):
         problems.append(f"legacy authority {item.get('legacy_id')}: {item.get('reason')}")
     graph["summary"]["legacy_authority_count"] = legacy_audit["summary"]["total"]
+    graph["summary"]["work_item_migration_count"] = len(migration_rows)
     graph["problems"] = problems
     return _write_json_if_semantic_changed(compiler_state_path(project_root), graph)

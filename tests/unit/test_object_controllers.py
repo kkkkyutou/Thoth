@@ -5,7 +5,6 @@ from __future__ import annotations
 from thoth.objects import Store
 from thoth.plan.store import ensure_work_authority_tree, upsert_work_item, upsert_decision
 from thoth.run.controllers import create_auto_controller, create_orchestration_controller, list_auto_actionable_work
-from thoth.run.phases import default_validate_output_schema
 
 
 def _work_payload(work_id: str) -> dict:
@@ -13,19 +12,18 @@ def _work_payload(work_id: str) -> dict:
         "work_id": work_id,
         "title": work_id,
         "status": "ready",
-        "work_kind": "execution",
-        "runnable": True,
         "goal": f"Complete {work_id}",
         "context": "test",
         "constraints": ["small"],
-        "execution_plan": ["execute one step"],
-        "eval_contract": {
-            "entrypoint": {"command": "true"},
-            "primary_metric": {"name": "ok", "direction": "gte", "threshold": 1},
-            "failure_classes": ["failed"],
-            "validate_output_schema": default_validate_output_schema(),
+        "acceptance_spec": {
+            "kind": "script",
+            "description": "Run the true command.",
+            "metric": {"name": "ok", "direction": "gte", "threshold": 1},
+            "reference_command": "true",
         },
-        "runtime_policy": {"loop": {"max_iterations": 3, "max_runtime_seconds": 60}},
+        "approach_notes": ["execute one step"],
+        "run_limits": {"max_iterations": 3, "max_runtime_seconds": 60},
+        "scheduling": {"order": None},
         "decisions": ["DEC-001"],
         "missing_questions": [],
     }
@@ -108,25 +106,25 @@ def test_auto_controller_records_temporary_guidance_without_fingerprint_drift(tm
     assert "guidance" not in controller["payload"]["request_fingerprint"]
 
 
-def test_auto_actionable_work_orders_by_scheduling_priority(tmp_path):
-    _seed_ready_work(tmp_path, "work-low", "work-high")
-    low = Store(tmp_path).read("work_item", "work-low")
-    high = Store(tmp_path).read("work_item", "work-high")
+def test_auto_actionable_work_orders_by_scheduling_order(tmp_path):
+    _seed_ready_work(tmp_path, "work-later", "work-earlier")
+    later = Store(tmp_path).read("work_item", "work-later")
+    earlier = Store(tmp_path).read("work_item", "work-earlier")
     Store(tmp_path).update(
         "work_item",
-        "work-low",
-        expected_revision=low["revision"],
-        updates={"payload": {**low["payload"], "scheduling": {"priority": 1}}},
-        history_summary="set low priority",
+        "work-later",
+        expected_revision=later["revision"],
+        updates={"payload": {**later["payload"], "scheduling": {"order": 20}}},
+        history_summary="set later order",
     )
     Store(tmp_path).update(
         "work_item",
-        "work-high",
-        expected_revision=high["revision"],
-        updates={"payload": {**high["payload"], "scheduling": {"priority": 10}}},
-        history_summary="set high priority",
+        "work-earlier",
+        expected_revision=earlier["revision"],
+        updates={"payload": {**earlier["payload"], "scheduling": {"order": 5}}},
+        history_summary="set earlier order",
     )
 
     rows = list_auto_actionable_work(tmp_path)
 
-    assert [item["work_id"] for item in rows[:2]] == ["work-high", "work-low"]
+    assert [item["work_id"] for item in rows[:2]] == ["work-earlier", "work-later"]

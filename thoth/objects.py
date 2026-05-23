@@ -64,15 +64,50 @@ STATUS_BY_KIND = {
     "doc_view": DOC_VIEW_STATUSES,
 }
 
-REQUIRED_WORK_PAYLOAD_FIELDS = (
+ACCEPTANCE_KINDS = {"mixed", "script", "prose", "io", "metric"}
+METRIC_DIRECTIONS = {"gte", "lte", "gt", "lt", "eq"}
+
+REQUIRED_WORK_PAYLOAD_FIELDS = ("goal", "acceptance_spec")
+
+WORK_PAYLOAD_FIELDS = {
     "goal",
     "context",
     "constraints",
+    "acceptance_spec",
+    "approach_notes",
+    "scheduling",
+    "run_limits",
+    "missing_questions",
+}
+
+PUBLIC_WORK_INPUT_FIELDS = WORK_PAYLOAD_FIELDS | {
+    "work_id",
+    "object_id",
+    "title",
+    "status",
+    "decisions",
+    "depends_on",
+    "source_kind",
+    "authority_context",
+}
+
+LEGACY_WORK_PAYLOAD_FIELDS = {
+    "work_kind",
+    "runnable",
+    "module",
+    "direction",
+    "summary",
     "execution_plan",
     "eval_contract",
     "runtime_policy",
-    "decisions",
-)
+    "validate_output_schema",
+    "failure_classes",
+    "review_binding",
+    "review_expectation",
+    "hidden",
+    "hidden_reason",
+    "superseded_by",
+}
 
 
 def default_authority_context(payload: dict[str, Any], *, decision_ids: list[str] | None = None) -> dict[str, Any]:
@@ -81,8 +116,8 @@ def default_authority_context(payload: dict[str, Any], *, decision_ids: list[str
     decisions = decision_ids if decision_ids is not None else _normalize_string_list(payload.get("decisions"))
     goal = payload.get("goal") or ""
     constraints = payload.get("constraints") if isinstance(payload.get("constraints"), list) else []
-    execution_plan = payload.get("execution_plan") if isinstance(payload.get("execution_plan"), list) else []
-    eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
+    acceptance = payload.get("acceptance_spec") if isinstance(payload.get("acceptance_spec"), dict) else {}
+    approach_notes = payload.get("approach_notes") if isinstance(payload.get("approach_notes"), list) else []
     return {
         "schema_version": 1,
         "source_discussion_id": "",
@@ -94,13 +129,10 @@ def default_authority_context(payload: dict[str, Any], *, decision_ids: list[str
         "accepted_decisions": decisions,
         "rejected_options": [],
         "assumptions": [],
-        "acceptance": {
-            "source_summary": eval_contract.get("entrypoint", {}).get("command", "") if isinstance(eval_contract.get("entrypoint"), dict) else "",
-            "normalized_summary": eval_contract.get("primary_metric", {}),
-        },
+        "acceptance": acceptance,
         "context_evidence": [],
         "risks": [],
-        "run_instructions": execution_plan,
+        "run_instructions": approach_notes,
         "open_questions": [],
         "language": {"source": "unspecified", "runtime": "normalized"},
         "completeness": {"is_closed": True, "unresolved_count": 0, "blocking_reasons": []},
@@ -109,22 +141,28 @@ def default_authority_context(payload: dict[str, Any], *, decision_ids: list[str
 
 def normalize_scheduling(value: Any) -> dict[str, Any]:
     scheduling = value if isinstance(value, dict) else {}
-    priority = scheduling.get("priority")
-    if not isinstance(priority, int):
-        priority = 0
     order = scheduling.get("order")
     if order is not None and not isinstance(order, int):
         order = None
-    estimated_minutes = scheduling.get("estimated_minutes")
-    if estimated_minutes is not None and (
-        not isinstance(estimated_minutes, int) or estimated_minutes <= 0
-    ):
-        estimated_minutes = None
-    return {
-        "priority": priority,
-        "order": order,
-        "estimated_minutes": estimated_minutes,
-    }
+    return {"order": order}
+
+
+def normalize_run_limits(value: Any) -> dict[str, Any]:
+    limits = value if isinstance(value, dict) else {}
+    normalized: dict[str, Any] = {}
+    for key in ("max_iterations", "max_runtime_seconds"):
+        raw = limits.get(key)
+        if isinstance(raw, int) and raw > 0:
+            normalized[key] = raw
+    phase_timeout = limits.get("phase_timeout_seconds")
+    if isinstance(phase_timeout, dict):
+        rows: dict[str, int] = {}
+        for phase, raw in phase_timeout.items():
+            if isinstance(phase, str) and isinstance(raw, int) and raw > 0:
+                rows[phase] = raw
+        if rows:
+            normalized["phase_timeout_seconds"] = rows
+    return normalized
 
 
 class StoreError(RuntimeError):
@@ -242,64 +280,116 @@ def active_work_ids(project_root: Path) -> set[str]:
     return locked
 
 
+def _normalize_metric(value: Any) -> dict[str, Any]:
+    metric = value if isinstance(value, dict) else {}
+    name = metric.get("name")
+    direction = str(metric.get("direction") or "gte").strip().lower()
+    threshold = metric.get("threshold")
+    return {
+        "name": name.strip() if isinstance(name, str) else "",
+        "direction": direction if direction in METRIC_DIRECTIONS else direction,
+        "threshold": threshold,
+    }
+
+
+def normalize_acceptance_spec(value: Any) -> dict[str, Any]:
+    spec = value if isinstance(value, dict) else {}
+    kind = str(spec.get("kind") or "mixed").strip().lower()
+    if kind not in ACCEPTANCE_KINDS:
+        kind = "mixed"
+    description = spec.get("description")
+    if not isinstance(description, str) or not description.strip():
+        description = spec.get("summary") if isinstance(spec.get("summary"), str) else ""
+    normalized: dict[str, Any] = {
+        "kind": kind,
+        "description": description.strip() if isinstance(description, str) else "",
+        "metric": _normalize_metric(spec.get("metric")),
+    }
+    for field in ("reference_command", "reference_artifacts", "io_examples"):
+        value = spec.get(field)
+        if value not in (None, "", [], {}):
+            normalized[field] = value
+    return normalized
+
+
+def acceptance_spec_errors(value: Any) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(value, dict):
+        return ["acceptance_spec must be an object"]
+    unknown = sorted(set(value) - {"kind", "description", "metric", "reference_command", "reference_artifacts", "io_examples"})
+    if unknown:
+        errors.append("acceptance_spec has unknown fields: " + ", ".join(unknown))
+    kind = value.get("kind")
+    if kind not in ACCEPTANCE_KINDS:
+        errors.append("acceptance_spec.kind must be one of mixed, script, prose, io, metric")
+    description = value.get("description")
+    if not isinstance(description, str) or not description.strip():
+        errors.append("acceptance_spec.description is required")
+    metric = value.get("metric")
+    if not isinstance(metric, dict):
+        errors.append("acceptance_spec.metric must be an object")
+    else:
+        name = metric.get("name")
+        direction = metric.get("direction")
+        if not isinstance(name, str) or not name.strip():
+            errors.append("acceptance_spec.metric.name is required")
+        if direction not in METRIC_DIRECTIONS:
+            errors.append("acceptance_spec.metric.direction must be one of gte, lte, gt, lt, eq")
+        if metric.get("threshold") in (None, "", []):
+            errors.append("acceptance_spec.metric.threshold is required")
+    return errors
+
+
+def _acceptance_spec_from_legacy(payload: dict[str, Any], *, title: str = "") -> dict[str, Any]:
+    eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
+    entrypoint = eval_contract.get("entrypoint") if isinstance(eval_contract.get("entrypoint"), dict) else {}
+    command = entrypoint.get("command") if isinstance(entrypoint.get("command"), str) else ""
+    metric = eval_contract.get("primary_metric") if isinstance(eval_contract.get("primary_metric"), dict) else {}
+    description = command or str(payload.get("goal") or title or "Acceptance must be materialized by execute.")
+    spec: dict[str, Any] = {
+        "kind": "script" if command else "mixed",
+        "description": description,
+        "metric": _normalize_metric(metric),
+    }
+    if command:
+        spec["reference_command"] = command
+    return normalize_acceptance_spec(spec)
+
+
 def work_item_ready_errors(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    if "task_id" in payload:
-        errors.append("task_id is legacy current-authority shape; run thoth init --migrate apply")
-    if "work_type" in payload:
-        errors.append("work_type is legacy current-authority shape; use work_kind")
-    work_kind = payload.get("work_kind")
-    runnable = payload.get("runnable")
-    if work_kind not in {"execution", "milestone"}:
-        errors.append("work_kind must be execution or milestone")
-    if not isinstance(runnable, bool):
-        errors.append("runnable must be boolean")
-    if runnable is True and work_kind != "execution":
-        errors.append("only execution work_items may be runnable")
+    unknown = sorted(set(payload) - WORK_PAYLOAD_FIELDS)
+    if unknown:
+        errors.append("work_item payload has unknown fields: " + ", ".join(unknown))
     missing_questions = payload.get("missing_questions")
     if missing_questions is None:
         missing_questions = []
     if not isinstance(missing_questions, list):
         errors.append("missing_questions must be a list")
     elif any(isinstance(item, str) and item.strip() for item in missing_questions):
-        errors.append("ready runnable work_item requires missing_questions=[]")
-    if runnable is True:
-        for field in REQUIRED_WORK_PAYLOAD_FIELDS:
-            value = payload.get(field)
-            if value in (None, "", [], {}):
-                errors.append(f"runnable work_item requires {field}")
-        execution_plan = payload.get("execution_plan")
-        if not isinstance(execution_plan, list) or not execution_plan:
-            errors.append("execution_plan must be a non-empty list")
-        eval_contract = payload.get("eval_contract")
-        if not isinstance(eval_contract, dict):
-            errors.append("eval_contract must be an object")
-        else:
-            entrypoint = eval_contract.get("entrypoint")
-            metric = eval_contract.get("primary_metric")
-            validate_schema = eval_contract.get("validate_output_schema")
-            if not isinstance(entrypoint, dict) or not isinstance(entrypoint.get("command"), str) or not entrypoint.get("command", "").strip():
-                errors.append("eval_contract.entrypoint.command is required")
-            if not isinstance(metric, dict) or not all(metric.get(key) not in (None, "", []) for key in ("name", "direction", "threshold")):
-                errors.append("eval_contract.primary_metric requires name/direction/threshold")
-            if not isinstance(validate_schema, dict) or validate_schema.get("type") != "object":
-                errors.append("eval_contract.validate_output_schema.type must be object")
-        runtime_policy = payload.get("runtime_policy")
-        if not isinstance(runtime_policy, dict):
-            errors.append("runtime_policy must be an object")
-        authority_context = payload.get("authority_context")
-        if authority_context is not None:
-            if not isinstance(authority_context, dict):
-                errors.append("authority_context must be an object")
-            else:
-                completeness = authority_context.get("completeness") if isinstance(authority_context.get("completeness"), dict) else {}
-                if completeness.get("is_closed") is not True:
-                    errors.append("authority_context.completeness.is_closed must be true")
-                open_questions = authority_context.get("open_questions")
-                if not isinstance(open_questions, list):
-                    errors.append("authority_context.open_questions must be a list")
-                elif any(isinstance(item, str) and item.strip() for item in open_questions):
-                    errors.append("ready runnable work_item requires authority_context.open_questions=[]")
+        errors.append("ready work_item requires missing_questions=[]")
+    for field in REQUIRED_WORK_PAYLOAD_FIELDS:
+        value = payload.get(field)
+        if value in (None, "", [], {}):
+            errors.append(f"ready work_item requires {field}")
+    constraints = payload.get("constraints")
+    if constraints is not None and not isinstance(constraints, list):
+        errors.append("constraints must be a list")
+    approach_notes = payload.get("approach_notes")
+    if approach_notes is not None and not isinstance(approach_notes, list):
+        errors.append("approach_notes must be a list")
+    scheduling = payload.get("scheduling")
+    if scheduling is not None:
+        normalized = normalize_scheduling(scheduling)
+        unknown_scheduling = sorted(set(scheduling) - {"order"}) if isinstance(scheduling, dict) else ["<non-object>"]
+        if unknown_scheduling:
+            errors.append("scheduling has unknown fields: " + ", ".join(unknown_scheduling))
+        if normalized.get("order") != (scheduling.get("order") if isinstance(scheduling, dict) else None):
+            errors.append("scheduling.order must be an integer or null")
+    run_limits = payload.get("run_limits")
+    if run_limits is not None and not isinstance(run_limits, dict):
+        errors.append("run_limits must be an object")
+    errors.extend(acceptance_spec_errors(payload.get("acceptance_spec")))
     return errors
 
 
@@ -339,14 +429,16 @@ def validate_object_envelope(project_root: Path, obj: dict[str, Any], *, check_l
                 raise SchemaError(f"unknown link target: {link['target']}")
     if kind == "work_item":
         payload = obj["payload"]
+        unknown = sorted(set(payload) - WORK_PAYLOAD_FIELDS)
+        if unknown:
+            raise SchemaError("work_item payload has unknown fields: " + ", ".join(unknown))
         ready_errors = work_item_ready_errors(payload)
         if obj.get("status") == "ready":
             for error in ready_errors:
                 raise SchemaError(error)
-            if payload.get("runnable") is not True:
-                raise SchemaError("ready work_item must be runnable")
-        if obj.get("status") == "active" and payload.get("runnable") is not True:
-            raise SchemaError("active work_item must be runnable")
+        if obj.get("status") == "active":
+            for error in ready_errors:
+                raise SchemaError(error)
 
 
 @dataclass
@@ -608,21 +700,47 @@ class Store:
 
 def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
     payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
-    eval_contract = payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {}
-    runtime_policy = payload.get("runtime_policy") if isinstance(payload.get("runtime_policy"), dict) else {}
+    acceptance_spec = normalize_acceptance_spec(payload.get("acceptance_spec"))
+    metric = acceptance_spec.get("metric") if isinstance(acceptance_spec.get("metric"), dict) else {}
+    reference_command = acceptance_spec.get("reference_command")
+    io_examples = acceptance_spec.get("io_examples") if isinstance(acceptance_spec.get("io_examples"), dict) else {}
+    review_binding = io_examples.get("review_binding") if isinstance(io_examples.get("review_binding"), dict) else {}
+    review_expectation = io_examples.get("review_expectation") if isinstance(io_examples.get("review_expectation"), dict) else None
+    run_limits = normalize_run_limits(payload.get("run_limits"))
     scheduling = normalize_scheduling(payload.get("scheduling"))
     links = _normalize_links(obj.get("links"))
     depends_on: list[dict[str, str]] = []
+    decision_ids: list[str] = []
+    source_discussion_id = ""
+    superseded_by: str | None = None
     for link in links:
-        if link.get("type") != "depends_on":
-            continue
         target = link.get("target", "")
         parsed = parse_object_ref(target)
-        if parsed and parsed[0] == "work_item":
-            depends_on.append({"work_id": parsed[1], "type": "hard"})
-        elif target:
-            depends_on.append({"work_id": target.split(":", 1)[-1], "type": "hard"})
+        if link.get("type") == "depends_on":
+            if parsed and parsed[0] == "work_item":
+                depends_on.append({"work_id": parsed[1], "type": "hard"})
+            elif target:
+                depends_on.append({"work_id": target.split(":", 1)[-1], "type": "hard"})
+        elif link.get("type") == "decided_by" and parsed and parsed[0] == "decision":
+            decision_ids.append(parsed[1])
+        elif link.get("type") == "primary_parent" and parsed and parsed[0] == "discussion":
+            source_discussion_id = parsed[1]
+        elif link.get("type") == "supersedes" and parsed and parsed[0] == "work_item":
+            # Source object supersedes target. Historical dashboard consumers also
+            # understand the old superseded_by field, so expose a read-only hint.
+            superseded_by = parsed[1]
     work_id = str(obj.get("object_id") or "")
+    authority_context = default_authority_context(
+        {
+            "goal": payload.get("goal"),
+            "constraints": payload.get("constraints", []),
+            "acceptance_spec": acceptance_spec,
+            "approach_notes": payload.get("approach_notes", []),
+        },
+        decision_ids=decision_ids,
+    )
+    if source_discussion_id:
+        authority_context["source_discussion_id"] = source_discussion_id
     flattened = {
         "schema_version": obj.get("schema_version"),
         "kind": "work_item",
@@ -634,28 +752,32 @@ def flatten_work_item(obj: dict[str, Any]) -> dict[str, Any]:
         "authority_status": obj.get("status"),
         "revision": obj.get("revision"),
         "ready_state": obj.get("status"),
-        "runnable": payload.get("runnable") is True,
-        "work_kind": payload.get("work_kind"),
+        "runnable": obj.get("status") in {"ready", "active", "failed"},
+        "work_kind": "execution",
         "goal_statement": payload.get("goal"),
         "context": payload.get("context"),
-        "module": payload.get("module") or payload.get("context") or "strict",
-        "direction": payload.get("direction") or "general",
+        "module": payload.get("context") or "strict",
+        "direction": "general",
         "constraints": payload.get("constraints", []),
-        "implementation_recipe": payload.get("execution_plan", []),
-        "eval_entrypoint": eval_contract.get("entrypoint", {}),
-        "primary_metric": eval_contract.get("primary_metric", {}),
-        "failure_classes": eval_contract.get("failure_classes", []),
-        "validate_output_schema": eval_contract.get("validate_output_schema", {}),
-        "runtime_contract": runtime_policy,
+        "approach_notes": payload.get("approach_notes", []),
+        "implementation_recipe": payload.get("approach_notes", []),
+        "acceptance_spec": acceptance_spec,
+        "eval_entrypoint": {"command": reference_command} if isinstance(reference_command, str) and reference_command.strip() else {},
+        "primary_metric": metric,
+        "failure_classes": [],
+        "validate_output_schema": {},
+        "runtime_contract": {"loop": run_limits} if run_limits else {},
+        "run_limits": run_limits,
         "scheduling": scheduling,
-        "priority": scheduling["priority"],
-        "review_binding": eval_contract.get("review_binding", {}),
-        "review_expectation": eval_contract.get("review_expectation"),
-        "decision_ids": payload.get("decisions", []),
-        "authority_context": payload.get("authority_context", {}),
-        "hidden": payload.get("hidden") is True,
-        "hidden_reason": payload.get("hidden_reason"),
-        "superseded_by": payload.get("superseded_by"),
+        "order": scheduling.get("order"),
+        "priority": 0,
+        "review_binding": review_binding,
+        "review_expectation": review_expectation,
+        "decision_ids": decision_ids,
+        "authority_context": authority_context,
+        "hidden": False,
+        "hidden_reason": None,
+        "superseded_by": superseded_by,
         "depends_on": depends_on,
         "links": links,
         "created_at": obj.get("created_at"),
@@ -690,38 +812,158 @@ def work_item_from_payload(payload: dict[str, Any]) -> tuple[str, str, dict[str,
             "work-json must use work_item semantics; legacy contract/task fields are not accepted: "
             + ", ".join(legacy_fields or ["status=frozen"])
         )
+    unknown = sorted(set(payload) - PUBLIC_WORK_INPUT_FIELDS)
+    if unknown:
+        raise SchemaError("work-json has unknown fields: " + ", ".join(unknown))
     work_id = str(payload.get("work_id") or payload.get("object_id") or "").strip()
     if not work_id:
         work_id = f"work-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{slugify(str(payload.get('title') or 'work'))[:24]}"
     title = str(payload.get("title") or work_id)
     status = str(payload.get("status") or "").strip()
     missing_questions = _normalize_string_list(payload.get("missing_questions"))
-    decisions = _normalize_string_list(payload.get("decisions"))
-    authority_context = payload.get("authority_context") if isinstance(payload.get("authority_context"), dict) else None
     work_payload = {
-        "work_kind": str(payload.get("work_kind") or "execution"),
-        "runnable": bool(payload.get("runnable", True)),
         "goal": payload.get("goal") or title,
-        "context": payload.get("context") or "",
-        "module": payload.get("module") or payload.get("context") or "strict",
-        "direction": payload.get("direction") or "general",
-        "constraints": payload.get("constraints") or [],
-        "execution_plan": payload.get("execution_plan") or [],
-        "eval_contract": payload.get("eval_contract") if isinstance(payload.get("eval_contract"), dict) else {},
-        "runtime_policy": payload.get("runtime_policy")
-        if isinstance(payload.get("runtime_policy"), dict)
-        else {"loop": {"max_iterations": 10, "max_runtime_seconds": 28800}},
+        "context": payload.get("context") if isinstance(payload.get("context"), str) else "",
+        "constraints": payload.get("constraints") if isinstance(payload.get("constraints"), list) else [],
+        "approach_notes": payload.get("approach_notes") if isinstance(payload.get("approach_notes"), list) else [],
         "scheduling": normalize_scheduling(payload.get("scheduling")),
-        "decisions": decisions,
         "missing_questions": missing_questions,
-        "authority_context": authority_context or default_authority_context(payload, decision_ids=decisions),
     }
+    if "acceptance_spec" in payload:
+        work_payload["acceptance_spec"] = normalize_acceptance_spec(payload.get("acceptance_spec"))
+    run_limits = normalize_run_limits(payload.get("run_limits"))
+    if run_limits:
+        work_payload["run_limits"] = run_limits
     ready_errors = work_item_ready_errors(work_payload)
     if status not in WORK_ITEM_STATUSES:
         status = "ready" if not ready_errors else "blocked"
     elif status == "ready" and ready_errors:
         status = "blocked"
     return work_id, status, work_payload
+
+
+def _dedupe_links(links: Iterable[dict[str, str]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for link in links:
+        link_type = link.get("type")
+        target = link.get("target")
+        if not isinstance(link_type, str) or not isinstance(target, str):
+            continue
+        key = (link_type, target)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"type": link_type, "target": target})
+    return rows
+
+
+def compact_existing_work_item(project_root: Path, obj: dict[str, Any]) -> dict[str, Any] | None:
+    """Return updates that migrate one existing work_item to the compact schema.
+
+    This is intentionally strict for ambiguous data: dependencies with missing
+    targets, missing acceptance metrics on ready work, or unknown non-legacy
+    payload fields raise SchemaError instead of guessing.
+    """
+
+    if obj.get("kind") != "work_item":
+        return None
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+    links = _normalize_links(obj.get("links"))
+    changed_fields: list[str] = []
+    compact_payload: dict[str, Any] = {}
+
+    unknown = sorted(set(payload) - (WORK_PAYLOAD_FIELDS | LEGACY_WORK_PAYLOAD_FIELDS | {"decisions", "depends_on", "authority_context"}))
+    if unknown:
+        raise SchemaError(f"work_item {obj.get('object_id')} has unknown legacy payload fields: {', '.join(unknown)}")
+
+    goal = payload.get("goal") or obj.get("summary") or obj.get("title") or obj.get("object_id") or ""
+    compact_payload["goal"] = str(goal)
+    context = payload.get("context")
+    if not isinstance(context, str) or not context.strip():
+        context = payload.get("module") if isinstance(payload.get("module"), str) else ""
+    compact_payload["context"] = context
+    compact_payload["constraints"] = payload.get("constraints") if isinstance(payload.get("constraints"), list) else []
+
+    if isinstance(payload.get("acceptance_spec"), dict):
+        compact_payload["acceptance_spec"] = normalize_acceptance_spec(payload.get("acceptance_spec"))
+    elif isinstance(payload.get("eval_contract"), dict):
+        compact_payload["acceptance_spec"] = _acceptance_spec_from_legacy(payload, title=str(obj.get("title") or ""))
+        changed_fields.append("eval_contract->acceptance_spec")
+    else:
+        compact_payload["acceptance_spec"] = normalize_acceptance_spec({})
+
+    approach_notes = payload.get("approach_notes") if isinstance(payload.get("approach_notes"), list) else []
+    execution_plan = payload.get("execution_plan") if isinstance(payload.get("execution_plan"), list) else []
+    compact_payload["approach_notes"] = approach_notes or execution_plan
+    if execution_plan and not approach_notes:
+        changed_fields.append("execution_plan->approach_notes")
+
+    scheduling = normalize_scheduling(payload.get("scheduling"))
+    if scheduling.get("order") is not None:
+        compact_payload["scheduling"] = scheduling
+    else:
+        compact_payload["scheduling"] = {"order": None}
+    if isinstance(payload.get("scheduling"), dict) and "priority" in payload["scheduling"]:
+        changed_fields.append("dropped scheduling.priority")
+
+    run_limits = normalize_run_limits(payload.get("run_limits"))
+    runtime_policy = payload.get("runtime_policy") if isinstance(payload.get("runtime_policy"), dict) else {}
+    loop_policy = runtime_policy.get("loop") if isinstance(runtime_policy.get("loop"), dict) else {}
+    for old_key, new_key in (("max_iterations", "max_iterations"), ("max_runtime_seconds", "max_runtime_seconds")):
+        raw = loop_policy.get(old_key)
+        if isinstance(raw, int) and raw > 0:
+            run_limits.setdefault(new_key, raw)
+    if run_limits:
+        compact_payload["run_limits"] = run_limits
+        if runtime_policy:
+            changed_fields.append("runtime_policy->run_limits")
+
+    missing_questions = _normalize_string_list(payload.get("missing_questions"))
+    if missing_questions:
+        compact_payload["missing_questions"] = missing_questions
+    else:
+        compact_payload["missing_questions"] = []
+
+    work_id = str(obj.get("object_id") or "")
+    next_links = list(links)
+    for dep_id in _normalize_string_list(payload.get("depends_on")):
+        if not object_path(project_root, "work_item", dep_id).exists():
+            raise SchemaError(f"work_item {work_id} depends_on missing work_item:{dep_id}")
+        next_links.append({"type": "depends_on", "target": f"work_item:{dep_id}"})
+        changed_fields.append("depends_on->links")
+    for decision_id in _normalize_string_list(payload.get("decisions")):
+        if object_path(project_root, "decision", decision_id).exists():
+            next_links.append({"type": "decided_by", "target": f"decision:{decision_id}"})
+            changed_fields.append("decisions->links")
+    authority_context = payload.get("authority_context") if isinstance(payload.get("authority_context"), dict) else {}
+    source_discussion_id = authority_context.get("source_discussion_id")
+    if isinstance(source_discussion_id, str) and source_discussion_id.strip() and object_path(project_root, "discussion", source_discussion_id).exists():
+        next_links.append({"type": "primary_parent", "target": f"discussion:{source_discussion_id}"})
+        changed_fields.append("authority_context.source_discussion_id->links")
+    superseded_by = payload.get("superseded_by")
+    if isinstance(superseded_by, str) and superseded_by.strip() and object_path(project_root, "work_item", superseded_by).exists():
+        next_links.append({"type": "supersedes", "target": f"work_item:{superseded_by}"})
+        changed_fields.append("superseded_by->links")
+
+    next_links = _dedupe_links(next_links)
+    legacy_present = sorted(set(payload) & (LEGACY_WORK_PAYLOAD_FIELDS | {"decisions", "depends_on", "authority_context"}))
+    if legacy_present:
+        changed_fields.extend(f"dropped {field}" for field in legacy_present if field not in {"depends_on", "decisions"})
+    if compact_payload == payload and next_links == links:
+        return None
+
+    status = str(obj.get("status") or "blocked")
+    if status in {"ready", "active"}:
+        errors = work_item_ready_errors(compact_payload)
+        if errors:
+            raise SchemaError(f"work_item {work_id} cannot migrate as {status}: {'; '.join(errors)}")
+    return {
+        "payload": compact_payload,
+        "links": next_links,
+        "summary": str(compact_payload.get("goal") or obj.get("summary") or obj.get("title") or work_id),
+        "_migration_changed_fields": sorted(set(changed_fields or ["compact payload"])),
+    }
 
 
 def work_item_input_ready_errors(payload: dict[str, Any]) -> list[str]:

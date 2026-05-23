@@ -41,6 +41,7 @@ def _plan_payload(summary: str = "plan ok") -> dict:
         "summary": summary,
         "authority_complete": True,
         "open_gaps": [],
+        "history_action": "continue",
         "plan": (
             "# Plan\n\n"
             f"{summary}\n\n"
@@ -69,8 +70,6 @@ def _reflect_failed_no_retry(*, summary: str = "reflect ok", next_hint: str = "c
         "summary": summary,
         "outcome": "failed",
         "review": "# Review\n\nThe validator failed; do not weaken acceptance.",
-        "failure_class": "checks",
-        "root_cause": "validator failed",
         "corrective_prompt": next_hint,
         "retry_authorized": False,
     }
@@ -232,7 +231,7 @@ def test_plan_authority_gap_terminalizes_before_execute(tmp_path):
     assert "execute" not in phase_state["phase_statuses"]
 
 
-def test_execute_legacy_plan_artifact_read_is_optional(tmp_path):
+def test_execute_legacy_plan_artifact_read_field_is_rejected(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
         project,
@@ -247,16 +246,17 @@ def test_execute_legacy_plan_artifact_read_is_optional(tmp_path):
     )
     submit_phase_output(project, handle.run_id, phase="plan", payload=_plan_payload())
 
-    result = submit_phase_output(
-        project,
-        handle.run_id,
-        phase="execute",
-        payload={**_execute_payload(), "plan_artifact_read": False},
-    )
-
-    assert result["next_phase"] == "validate"
-    execute_artifact = json.loads((handle.run_dir / "execute.json").read_text(encoding="utf-8"))
-    assert execute_artifact["plan_artifact_read"] is False
+    try:
+        submit_phase_output(
+            project,
+            handle.run_id,
+            phase="execute",
+            payload={**_execute_payload(), "plan_artifact_read": False},
+        )
+    except ValueError as exc:
+        assert "execute output has unknown fields: plan_artifact_read" in str(exc)
+    else:
+        raise AssertionError("execute should reject legacy plan_artifact_read field")
 
 
 def test_loop_parent_stops_on_iteration_budget(tmp_path):
@@ -359,7 +359,7 @@ def test_loop_retry_context_is_passed_to_next_child(tmp_path):
     next_packet = next_phase_payload(project, handle.run_id)
     assert next_packet["phase"] == "plan"
     loop_context = next_packet["loop_context"]
-    assert loop_context["previous_reflect"]["root_cause"] == "validator failed"
+    assert loop_context["previous_reflect"]["corrective_prompt"] == "change implementation before retrying"
     assert loop_context["last_retry_decision"]["action"] == "retry"
     assert loop_context["last_retry_decision"]["next_plan_hint"] == "change implementation before retrying"
 

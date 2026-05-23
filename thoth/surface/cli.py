@@ -26,7 +26,6 @@ def build_cli_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--attach")
     run_parser.add_argument("--watch")
     run_parser.add_argument("--stop")
-    run_parser.add_argument("--reconcile")
 
     loop_parser = sub.add_parser("loop")
     loop_parser.add_argument("--goal", default="loop")
@@ -47,7 +46,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     auto_parser = sub.add_parser("auto")
     auto_parser.add_argument("--work-id", action="append", dest="work_ids", default=[])
     auto_parser.add_argument("--mode", choices=("loop",), default="loop")
-    auto_parser.add_argument("--scope", choices=("all-open", "ready", "priority-top"), default="all-open")
+    auto_parser.add_argument("--scope", choices=("all-open", "ready"), default="all-open")
     auto_parser.add_argument("--rounds", type=int)
     auto_parser.add_argument("--min-runtime-seconds", type=int, default=8 * 60 * 60)
     auto_parser.add_argument("--host", default="codex")

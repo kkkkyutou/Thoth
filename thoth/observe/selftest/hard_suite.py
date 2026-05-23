@@ -412,7 +412,7 @@ def _repo_hard_suite(project_dir: Path, recorder: Recorder) -> dict[str, Any]:
             "updated_at": utc_now(),
             "source": "selftest",
             "links": [],
-            "payload": {"work_kind": "execution", "runnable": True, "missing_questions": []},
+            "payload": {"goal": "Broken contract", "missing_questions": []},
             "history": [],
         },
     )

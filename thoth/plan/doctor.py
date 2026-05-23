@@ -68,6 +68,7 @@ def _summary_is_current(project_root: Path, expected_summary: dict[str, Any], ex
         "active_work_count",
         "ready_work_count",
         "blocked_work_count",
+        "work_item_migration_count",
     )
     mismatches: list[str] = []
     for key in comparable_keys:
@@ -88,6 +89,7 @@ def build_doctor_payload(project_root: Path) -> dict[str, Any]:
     problems = list(graph.get("problems", [])) + legacy_problems + object_problems
     summary = dict(graph.get("summary", {}))
     summary["legacy_authority_count"] = len(legacy_rows)
+    summary.setdefault("work_item_migration_count", 0)
     decision_counts = summary.get("decision_counts", {})
     work_counts = summary.get("work_item_counts", {})
     legacy_authority_count = int(summary.get("legacy_authority_count", 0))

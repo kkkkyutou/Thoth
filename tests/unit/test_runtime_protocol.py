@@ -37,6 +37,7 @@ def _plan_payload(summary: str = "plan ok") -> dict:
         "summary": summary,
         "authority_complete": True,
         "open_gaps": [],
+        "history_action": "continue",
         "plan": (
             "# Plan\n\n"
             f"{summary}\n\n"
@@ -100,27 +101,27 @@ def test_plan_gap_schema_drift_normalizes_jsonish_items():
         **_plan_payload("authority incomplete"),
         "authority_complete": False,
         "open_gaps": [{"field": "authority_context", "reason": "empty"}],
-        "forbidden_assumptions_used": [None, False, 3],
     }
 
     normalized = validate_phase_output("plan", payload)
 
     assert normalized["open_gaps"] == ['{"field":"authority_context","reason":"empty"}']
-    assert normalized["forbidden_assumptions_used"] == ["null", "false", "3"]
     assert normalized["_normalization_warnings"][0]["field"] == "plan.open_gaps"
     assert normalized["_normalization_warnings"][0]["reason"] == "coerced_to_json_string"
 
 
-def test_plan_discovery_tasks_do_not_trigger_authority_gap():
+def test_plan_rejects_extra_mechanical_fields():
     payload = {
         **_plan_payload("discover source paths"),
         "discovery_tasks": ["locate TRELLIS2 source tree", "create missing target test file"],
     }
 
-    normalized = validate_phase_output("plan", payload)
-
-    assert normalized["discovery_tasks"] == ["locate TRELLIS2 source tree", "create missing target test file"]
-    assert normalized["open_gaps"] == []
+    try:
+        validate_phase_output("plan", payload)
+    except ValueError as exc:
+        assert "plan output has unknown fields: discovery_tasks" in str(exc)
+    else:
+        raise AssertionError("plan output should reject extra mechanical fields")
 
 
 def test_phase_summary_budgets_are_relaxed():
@@ -136,12 +137,6 @@ def test_plan_long_fields_normalize_without_schema_failure():
         **_plan_payload(long_text),
         "plan": long_text * 10,
         "open_gaps": [long_text],
-        "forbidden_assumptions_used": [{"reason": long_text}],
-        "execution_steps": [long_text],
-        "files_expected": [long_text],
-        "commands_expected": [long_text],
-        "validation_plan": long_text,
-        "risk_assessment": {"summary": long_text},
     }
 
     normalized = validate_phase_output("plan", payload)
@@ -149,13 +144,8 @@ def test_plan_long_fields_normalize_without_schema_failure():
     assert utf8_len(normalized["summary"]) <= 1200
     assert utf8_len(normalized["plan"]) <= 12000
     assert utf8_len(normalized["open_gaps"][0]) <= 1024
-    assert utf8_len(normalized["execution_steps"][0]) <= 1024
-    assert utf8_len(normalized["commands_expected"][0]) <= 1024
-    assert utf8_len(normalized["validation_plan"]) <= 1200
-    assert utf8_len(normalized["risk_assessment"]["summary"]) <= 1200
     warning_fields = {row["field"] for row in normalized["_normalization_warnings"]}
     assert "plan.plan" in warning_fields
-    assert "plan.validation_plan" in warning_fields
     assert "plan.open_gaps" in warning_fields
 
 
@@ -273,15 +263,10 @@ def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failu
         "execute",
         {
             **_execute_payload(long_text),
-            "plan_deviations": [long_text],
-            "files_touched": [long_text],
-            "commands_run": [long_text],
-            "artifacts": [{"path": long_text}],
             "official_validation_receipt": {"command": long_text, "passed": True},
         },
     )
     assert utf8_len(execute["summary"]) <= 800
-    assert utf8_len(execute["commands_run"][0]) <= 1024
     assert execute["_normalization_warnings"]
 
     validate = validate_phase_output(
@@ -305,18 +290,12 @@ def test_execute_validate_and_reflect_long_fields_normalize_without_schema_failu
             "summary": long_text,
             "review": long_text * 10,
             "outcome": "failed",
-            "residual_risks": [long_text],
-            "evidence": [long_text],
-            "next_recommendation": long_text,
-            "failure_class": "runtime_drift",
-            "root_cause": long_text,
-            "next_plan_hint": long_text,
+            "corrective_prompt": long_text,
+            "retry_authorized": True,
         },
     )
     assert utf8_len(reflect["summary"]) <= 1200
     assert utf8_len(reflect["review"]) <= 12000
-    assert utf8_len(reflect["root_cause"]) <= 1200
-    assert utf8_len(reflect["next_plan_hint"]) <= 1200
     assert utf8_len(reflect["corrective_prompt"]) <= 2000
     assert reflect["retry_authorized"] is True
     assert reflect["_normalization_warnings"]
@@ -329,8 +308,6 @@ def test_reflect_object_outcome_normalizes_when_status_is_clear():
             "summary": "reflect failed validation",
             "outcome": {"status": "failed", "reason": "runtime contract"},
             "review": "# Review\n\nValidation evidence was not sufficient.",
-            "failure_class": "evidence_insufficient",
-            "root_cause": "command drift was not justified",
             "corrective_prompt": "Return stronger official validation evidence.",
             "retry_authorized": False,
         },
@@ -378,18 +355,16 @@ def test_mechanical_phase_fields_remain_strict():
             {
                 "summary": "reflect",
                 "outcome": "failed",
-                "residual_risks": [],
-                "evidence": [],
-                "next_recommendation": "retry",
+                "review": "# Review\n\nRetry is needed.",
                 "failure_class": "x" * 40,
-                "root_cause": "validator failed",
-                "next_plan_hint": "fix implementation",
+                "corrective_prompt": "fix implementation",
+                "retry_authorized": True,
             },
         )
     except ValueError as exc:
-        assert "reflect.failure_class exceeds 32 UTF-8 bytes" in str(exc)
+        assert "reflect output has unknown fields: failure_class" in str(exc)
     else:
-        raise AssertionError("reflect.failure_class should remain a strict short label")
+        raise AssertionError("reflect extra mechanical fields should be rejected")
 
 
 def test_prepare_execution_writes_packet_and_live_dispatch(tmp_path):
@@ -609,7 +584,7 @@ def test_phase_packets_include_phase_specific_prompt_contract(tmp_path):
     )
     plan_packet = next_phase_payload(project, handle.run_id)
     assert plan_packet["phase"] == "plan"
-    assert plan_packet["phase_authority"]["objective"].startswith("Act as top-level technical planner")
+    assert plan_packet["phase_authority"]["objective"].startswith("Act as a senior planner")
     assert plan_packet["phase_authority"]["summary_budget_utf8"] == 1200
 
     submit_phase_output(
@@ -646,6 +621,7 @@ def test_phase_output_normalizes_overlong_summary(tmp_path):
             "summary": too_long,
             "authority_complete": True,
             "open_gaps": [],
+            "history_action": "continue",
             "plan": "# Plan\n\nRun pytest.",
         },
     )
@@ -674,42 +650,39 @@ def test_phase_prompt_includes_execute_role_contract(tmp_path):
     prompt = build_external_worker_prompt(handle, {})
 
     assert "Phase role contract:" in prompt
-    assert "Role: senior implementation engineer." in prompt
-    assert "Repo-local dependency repair is allowed" in prompt
+    assert "Role: act as the implementation and validation engineer" in prompt
+    assert "repair repo-local engineering issues" in prompt
     assert "final architecture" in prompt
-    assert "MVP, fallback, mock, stub, simplified" in prompt
+    assert "MVP, fallback, mock, stub" in prompt
     assert "GPU-first verification posture" in prompt
 
 
-def test_execute_output_accepts_structured_debug_fields():
-    payload = validate_phase_output(
-        "execute",
-        {
-            "summary": "execute done",
-            "report": "# Execute Report\n\nImplemented the final architecture and ran validation.",
-            "official_validation_receipt": {"command": "pytest -q", "passed": True},
-            "debug_attempts": [{"name": "flex_gemm import", "status": "fixed"}],
-            "dependency_actions": [{"package": "flex_gemm", "scope": ".vendor"}],
-            "verification_steps": [{"command": "pytest -k flex_gemm", "passed": True}],
-            "resolved_failures": ["ModuleNotFoundError: flex_gemm"],
-            "remaining_failures": [],
-        },
-    )
-
-    assert payload["debug_attempts"][0]["name"] == "flex_gemm import"
-    assert payload["dependency_actions"][0]["scope"] == ".vendor"
+def test_execute_output_rejects_extra_debug_fields():
+    try:
+        validate_phase_output(
+            "execute",
+            {
+                "summary": "execute done",
+                "report": "# Execute Report\n\nImplemented the final architecture and ran validation.",
+                "official_validation_receipt": {"command": "pytest -q", "passed": True},
+                "debug_attempts": [{"name": "flex_gemm import", "status": "fixed"}],
+            },
+        )
+    except ValueError as exc:
+        assert "execute output has unknown fields: debug_attempts" in str(exc)
+    else:
+        raise AssertionError("execute debug fields should live inside report, not separate schema fields")
 
 
-def test_reflect_failure_fields_are_synthesized_from_validate_evidence():
+def test_reflect_failure_requires_direct_corrective_prompt():
     payload = validate_phase_output(
         "reflect",
         {
             "summary": "reflect failed validation",
             "outcome": "failed",
             "review": "# Review\n\nValidation failed on a missing dependency; retry execute without weakening acceptance.",
-            "residual_risks": [],
-            "evidence": ["validate failed"],
-            "next_recommendation": "repair dependency",
+            "corrective_prompt": "Repair the flex_gemm import failure and rerun the official validator.",
+            "retry_authorized": True,
         },
         prior_validate_payload={
             "summary": "pytest failed",
@@ -723,14 +696,11 @@ def test_reflect_failure_fields_are_synthesized_from_validate_evidence():
         },
     )
 
-    assert payload["failure_class"] == "dependency_missing"
-    assert "flex_gemm" in payload["root_cause"]
-    assert "test_flex_gemm" in payload["corrective_prompt"]
-    assert "next_plan_hint" not in payload
+    assert "failure_class" not in payload
+    assert "root_cause" not in payload
+    assert "flex_gemm" in payload["corrective_prompt"]
     assert payload["retry_authorized"] is True
-    assert payload["retry_target"] == "execute"
-    assert "official validator" in payload["corrective_prompt"]
-    assert any(item["field"] == "reflect.failure_class" for item in payload["_normalization_warnings"])
+    assert payload["_normalization_warnings"] == []
 
 
 def test_runtime_validate_mechanically_confirms_execute_receipt_without_worker(tmp_path):
@@ -766,9 +736,7 @@ def test_runtime_validate_mechanically_confirms_execute_receipt_without_worker(t
                 return {
                     "summary": "reflect passed",
                     "outcome": "passed",
-                    "residual_risks": [],
-                    "evidence": ["receipt passed"],
-                    "next_recommendation": "close run",
+                    "review": "# Review\n\nThe receipt passed; close the run.",
                 }
             raise AssertionError(f"unexpected worker phase {phase}")
 
@@ -816,9 +784,7 @@ def test_runtime_validate_normalizes_inline_receipt_logs_and_preserves_metric(tm
                 return {
                     "summary": "reflect passed",
                     "outcome": "passed",
-                    "residual_risks": [],
-                    "evidence": ["inline receipt normalized"],
-                    "next_recommendation": "close run",
+                    "review": "# Review\n\nThe inline receipt was normalized and passed.",
                 }
             raise AssertionError(f"unexpected worker phase {phase}")
 
@@ -933,8 +899,6 @@ def test_runtime_validate_rejects_obvious_pytest_target_drift(tmp_path):
                     "summary": "reflect failed",
                     "outcome": "failed",
                     "review": "# Review\n\nThe receipt did not preserve the official pytest target.",
-                    "failure_class": "evidence_insufficient",
-                    "root_cause": "actual command changed the pytest target",
                     "corrective_prompt": "Run validation for the official pytest target and return evidence.",
                     "retry_authorized": False,
                 }
@@ -996,9 +960,9 @@ def test_runtime_validate_does_not_treat_missing_stdout_path_as_inline_log(tmp_p
                 return {
                     "summary": "reflect failed",
                     "outcome": "failed",
-                    "residual_risks": [],
-                    "evidence": ["validate failed on missing stdout path"],
-                    "next_recommendation": "fix runtime receipt contract",
+                    "review": "# Review\n\nThe validate phase failed on missing stdout evidence.",
+                    "corrective_prompt": "Fix the runtime receipt contract; do not edit project code for this evidence-path failure.",
+                    "retry_authorized": False,
                 }
             raise AssertionError(f"unexpected worker phase {phase}")
 
@@ -1056,9 +1020,9 @@ def test_runtime_contract_error_does_not_retry_execute_from_reflect(tmp_path):
                 return {
                     "summary": "reflect failed",
                     "outcome": "failed",
-                    "residual_risks": [],
-                    "evidence": ["validate failed on receipt evidence"],
-                    "next_recommendation": "fix runtime receipt contract",
+                    "review": "# Review\n\nThe validate phase failed on receipt evidence.",
+                    "corrective_prompt": "Fix the runtime receipt contract; do not edit project code for this evidence-path failure.",
+                    "retry_authorized": False,
                 }
             raise AssertionError(f"unexpected worker phase {phase}")
 
@@ -1069,7 +1033,6 @@ def test_runtime_contract_error_does_not_retry_execute_from_reflect(tmp_path):
     validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
     assert validate_payload["runtime_contract_health"] == "runtime_contract_error"
     reflect_payload = json.loads((handle.run_dir / "reflect.json").read_text(encoding="utf-8"))
-    assert reflect_payload["failure_class"] == "runtime_contract_error"
     assert reflect_payload["retry_authorized"] is False
     assert "do not edit project code" in reflect_payload["corrective_prompt"]
 
@@ -1108,7 +1071,6 @@ def test_reflect_feedback_retries_execute_once_inside_single_run(tmp_path):
                 passed = execute_count == 2
                 return {
                     **_execute_payload(f"exec attempt {execute_count}"),
-                    "commands_run": ["pytest -q"],
                     "official_validation_receipt": _receipt_payload(handle, passed=passed),
                 }
             if phase == "reflect":
@@ -1118,19 +1080,14 @@ def test_reflect_feedback_retries_execute_once_inside_single_run(tmp_path):
                     return {
                         "summary": "reflect passed",
                         "outcome": "passed",
-                        "residual_risks": [],
-                        "evidence": ["retry validator passed"],
-                        "next_recommendation": "close run",
+                        "review": "# Review\n\nThe retry validator passed.",
                     }
                 return {
                     "summary": "reflect failed",
                     "outcome": "failed",
-                    "residual_risks": ["validator failed"],
-                    "evidence": ["official receipt failed"],
-                    "next_recommendation": "continue implementation",
-                    "failure_class": "checks",
-                    "root_cause": "first official validator receipt failed",
-                    "next_plan_hint": "repair implementation and rerun official validator",
+                    "review": "# Review\n\nThe first official validator receipt failed.",
+                    "corrective_prompt": "Repair implementation and rerun the official validator.",
+                    "retry_authorized": True,
                 }
             raise AssertionError(f"unexpected worker phase {phase}")
 
@@ -1194,14 +1151,9 @@ def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_
                     {
                         "summary": "plan bad",
                         "authority_complete": "yes",
-                        "authority_coverage": {"goal": True},
                         "open_gaps": [],
-                        "forbidden_assumptions_used": [],
-                        "execution_steps": ["edit"],
-                        "files_expected": [],
-                        "commands_expected": [],
-                        "validation_plan": "run pytest",
-                        "risk_assessment": "low risk",
+                        "history_action": "continue",
+                        "plan": "# Plan\n\nRun pytest.",
                     }
                 )
                 + "\n",
@@ -1213,14 +1165,9 @@ def test_external_worker_archives_invalid_attempt_before_retry(monkeypatch, tmp_
                     {
                         "summary": "plan ok",
                         "authority_complete": True,
-                        "authority_coverage": {"goal": True},
                         "open_gaps": [],
-                        "forbidden_assumptions_used": [],
-                        "execution_steps": ["edit"],
-                        "files_expected": [],
-                        "commands_expected": [],
-                        "validation_plan": "run pytest",
-                        "risk_assessment": "low risk",
+                        "history_action": "continue",
+                        "plan": "# Plan\n\nRun pytest.",
                     }
                 )
                 + "\n",

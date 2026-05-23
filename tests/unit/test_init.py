@@ -27,7 +27,6 @@ from thoth.init.render import (
 )
 from thoth.init.service import abandon_duplicate_timestamp_work_items, initialize_project, preview_project_migration, sync_project_layer
 from thoth.objects import Store
-from thoth.run.phases import default_validate_output_schema
 
 
 @pytest.fixture
@@ -208,8 +207,8 @@ def test_initialize_project_strict_cut_imports_legacy_and_removes_old_surface(ba
     assert not (tmp_path / ".agent-os" / "research-tasks").exists()
     task = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "legacy-task.json").read_text(encoding="utf-8"))
     verdict = json.loads((tmp_path / ".thoth" / "docs" / "work-results" / "legacy-task.result.json").read_text(encoding="utf-8"))
-    assert task["payload"]["legacy_source_id"] == "legacy-import-legacy-task"
-    assert task["payload"]["runnable"] is True
+    assert task["payload"]["acceptance_spec"]["metric"]["name"] == "legacy_import_review"
+    assert task["payload"]["run_limits"]["max_iterations"] == 10
     assert verdict["source"] == "legacy_import"
     import_index = json.loads(
         (tmp_path / ".thoth" / "migrations" / result["migration_id"] / "legacy-import" / "index.json").read_text(encoding="utf-8")
@@ -385,54 +384,44 @@ def test_sync_project_layer_backfills_legacy_discussion_authority(base_config, t
         summary="Legacy work",
         source="test",
         payload={
-            "work_kind": "execution",
-            "runnable": True,
             "goal": "Run legacy work",
             "context": "DISC-sync closed",
             "constraints": ["local"],
-            "execution_plan": ["edit", "test"],
-            "eval_contract": {
-                "entrypoint": {"command": "pytest -q"},
-                "primary_metric": {"name": "checks", "direction": "gte", "threshold": 1},
-                "failure_classes": ["runtime_drift"],
-                "validate_output_schema": default_validate_output_schema(),
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run pytest.",
+                "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                "reference_command": "pytest -q",
             },
-            "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
-            "scheduling": {"priority": 0},
-            "decisions": ["DISC-sync"],
+            "approach_notes": ["edit", "test"],
+            "run_limits": {"max_iterations": 1, "max_runtime_seconds": 60},
+            "scheduling": {"order": None},
             "missing_questions": [],
         },
     )
 
     result = sync_project_layer(tmp_path)
     updated = store.read("work_item", "legacy-work")
-    authority_context = updated["payload"]["authority_context"]
 
-    assert authority_context["source_discussion_id"] == "DISC-sync"
+    assert {"type": "primary_parent", "target": "discussion:DISC-sync"} in updated["links"]
     assert result["authority_repairs"][0]["work_id"] == "legacy-work"
 
 
 def test_sync_abandons_timestamp_duplicate_work_item(tmp_path):
     store = Store(tmp_path)
-    eval_contract = {
-        "entrypoint": {"command": "python -m pytest src/demo_test.py -v"},
-        "primary_metric": {"name": "ok", "direction": "gte", "threshold": 1},
-        "failure_classes": ["metric_not_reached"],
-        "validate_output_schema": default_validate_output_schema(),
-    }
     payload = {
-        "work_kind": "execution",
-        "runnable": True,
         "goal": "Copy core modules",
         "context": "closed discussion",
-        "module": "phase0",
-        "direction": "infra",
         "constraints": ["bitwise"],
-        "execution_plan": ["copy", "test"],
-        "eval_contract": eval_contract,
-        "runtime_policy": {"loop": {"max_iterations": 1, "max_runtime_seconds": 60}},
-        "scheduling": {"priority": 0},
-        "decisions": ["DISC-demo"],
+        "acceptance_spec": {
+            "kind": "script",
+            "description": "Run the demo pytest validator.",
+            "metric": {"name": "ok", "direction": "gte", "threshold": 1},
+            "reference_command": "python -m pytest src/demo_test.py -v",
+        },
+        "approach_notes": ["copy", "test"],
+        "run_limits": {"max_iterations": 1, "max_runtime_seconds": 60},
+        "scheduling": {"order": None},
         "missing_questions": [],
     }
     store.create(
@@ -460,8 +449,7 @@ def test_sync_abandons_timestamp_duplicate_work_item(tmp_path):
 
     assert repairs[0]["status"] == "abandoned"
     assert duplicate["status"] == "abandoned"
-    assert duplicate["payload"]["hidden"] is True
-    assert duplicate["payload"]["superseded_by"] == "work_item:DEMO00-T0.1"
+    assert "superseded by work_item:DEMO00-T0.1" in duplicate["summary"]
     assert {"type": "supersedes", "target": "work_item:work-20260520T100057Z-work"} in stable["links"]
 
     second = abandon_duplicate_timestamp_work_items(tmp_path)

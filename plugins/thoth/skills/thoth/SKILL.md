@@ -18,7 +18,7 @@ Supported commands:
 - `$thoth run`: Start one strict run bound to `work_id@revision`; live runs foreground and `--sleep` detaches the same runtime driver.
 - `$thoth loop`: Start one bounded controller service whose parent creates four-phase child runs.
 - `$thoth review`: Prepare a structured live review packet through the shared Thoth surface.
-- `$thoth auto`: Run the highest-priority actionable work queue until ready/active/failed work is closed, paused, or stopped.
+- `$thoth auto`: Run the DAG-first actionable work queue until ready/active/failed work is closed, paused, or stopped.
 - `$thoth status`: Show repo status and active durable runs from the shared ledger.
 - `$thoth discuss`: Discuss or record planning decisions without entering implementation execution.
 - `$thoth doctor`: Alias for `status --doctor`; strictly audit project health without writing authority.
