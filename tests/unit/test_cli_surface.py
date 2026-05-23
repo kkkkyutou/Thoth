@@ -820,6 +820,35 @@ def test_cli_auto_runs_ready_work_even_when_blocked_work_exists(tmp_path):
     assert events[-1]["status"] == "paused"
 
 
+def test_cli_auto_refreshes_stale_object_graph_summary_before_preflight(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    assert _run_cli(tmp_path, "init", "--sync").returncode == 0
+    _write_task(tmp_path, "late-ready", title="Late Ready", work_goal="Refresh stale summary and run.")
+
+    doctor = _run_cli(tmp_path, "doctor", "--json")
+    doctor_payload = _extract_envelope(doctor.stdout)
+    stale_check = next(check for check in doctor_payload["checks"] if check["id"] == "object-graph-summary-current")
+    assert stale_check["ok"] is False
+    assert "stale_fields" in stale_check["detail"]
+
+    result = _run_cli(
+        tmp_path,
+        "auto",
+        "--rounds",
+        "1",
+        "--min-runtime-seconds",
+        "0",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete", "THOTH_AUTO_HEARTBEAT_SECONDS": "1"},
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "Auto preflight failed" not in result.stdout
+    events = _jsonl_events(result.stdout)
+    controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
+    controller = json.loads((tmp_path / ".thoth" / "objects" / "controller" / f"{controller_id}.json").read_text(encoding="utf-8"))
+    assert "late-ready" in controller["payload"]["completed_work_ids"]
+
+
 def test_cli_auto_failed_child_updates_only_attempted_work_item(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
     for index in range(1, 4):

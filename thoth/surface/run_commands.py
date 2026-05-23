@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from thoth.objects import Store, utc_now
+from thoth.plan.compiler import compile_task_authority
 from thoth.plan.doctor import build_doctor_payload, infer_review_work_id
 from thoth.plan.paths import compiler_state_path, work_items_dir
 from thoth.plan.store import load_work_for_execution, suggest_work_items_for_query
@@ -244,6 +245,27 @@ def _auto_preflight_failures(doctor: dict) -> list[dict]:
         if check.get("ok") is not True:
             failures.append(check)
     return failures
+
+
+def _auto_preflight_has_stale_summary(failures: list[dict]) -> bool:
+    return any(check.get("id") == "object-graph-summary-current" for check in failures)
+
+
+def _auto_execution_safety_doctor(project_root: Path) -> tuple[dict, list[dict], dict]:
+    doctor = build_doctor_payload(project_root)
+    failures = _auto_preflight_failures(doctor)
+    refresh: dict = {"attempted": False, "reason": None, "ok": None}
+    if _auto_preflight_has_stale_summary(failures):
+        refresh = {"attempted": True, "reason": "object_graph_summary_stale", "ok": False}
+        try:
+            compile_task_authority(project_root)
+        except Exception as exc:
+            refresh["error"] = str(exc)
+        else:
+            refresh["ok"] = True
+            doctor = build_doctor_payload(project_root)
+            failures = _auto_preflight_failures(doctor)
+    return doctor, failures, refresh
 
 
 def handle_prepare(args, parser, *, project_root: Path) -> int:
@@ -495,14 +517,13 @@ def handle_auto(args, parser, *, project_root: Path) -> int:
             controller = _append_auto_guidance(project_root, controller, guidance_message)
         reused = True
     else:
-        doctor = build_doctor_payload(project_root)
-        preflight_failures = _auto_preflight_failures(doctor)
+        doctor, preflight_failures, preflight_refresh = _auto_execution_safety_doctor(project_root)
         if preflight_failures:
             print_envelope(
                 command="auto",
                 status="failed",
                 summary="Auto preflight failed execution-safety doctor; no work was executed.",
-                body={"doctor": doctor},
+                body={"doctor": doctor, "preflight_refresh": preflight_refresh},
                 refs=output_refs(project_root / ".thoth" / "docs" / "object-graph-summary.json"),
                 checks=preflight_failures,
             )

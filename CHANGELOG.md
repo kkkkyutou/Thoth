@@ -4,6 +4,12 @@
 
 No pending changes.
 
+## [0.2.6.12] - 2026-05-23
+
+### Fixed
+- `$thoth auto` now repairs a stale `.thoth/docs/object-graph-summary.json` preflight once by refreshing the object graph summary and rerunning the execution-safety doctor before deciding whether to block execution.
+- Auto still refuses real authority or safety failures after the refresh, but no longer blocks ready work solely because derived docs/read-model counts lag behind canonical `.thoth/objects`.
+
 ## [0.2.6.11] - 2026-05-23
 
 ### Changed

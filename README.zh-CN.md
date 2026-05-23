@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.6.11" src="https://img.shields.io/badge/version-0.2.6.11-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.6.12" src="https://img.shields.io/badge/version-0.2.6.12-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.2.6.11 evidence-first validation</strong> · validate 现在审计官方验证证据，不再因安全的命令环境调整直接失败</p>
+  <p><strong>v0.2.6.12 auto preflight refresh</strong> · auto 会先修复过期 object graph summary，再决定是否阻断执行</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth 概念首屏图" />
 </div>
 
