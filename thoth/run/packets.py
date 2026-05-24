@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from thoth.plan.authority_resolution import resolve_strict_task_authority
-from thoth.prompt_specs import build_review_result_shape, command_prompt_authority
+from thoth.prompt_specs import command_prompt_authority
 
 from .io import _read_json, _write_json
 from .guidance import append_run_guidance, guidance_path
@@ -108,32 +108,7 @@ def _build_execution_packet(
             "packet": str(handle.run_dir / "packet.json"),
         },
     }
-    if command_id == "review":
-        packet["required_review_shape"] = build_review_result_shape()
-        expectation = strict_task.get("review_expectation") if isinstance(strict_task, dict) else None
-        packet["review_mode"] = "exact_match" if isinstance(expectation, dict) else "open_ended"
-        if isinstance(expectation, dict):
-            summary = expectation.get("summary")
-            if not isinstance(summary, str) or not summary.strip():
-                summary = "review done"
-            packet["protocol_commands"]["complete_exact"] = " ".join(
-                json.dumps(part)
-                for part in _protocol_command_argv(
-                    handle.project_root,
-                    "complete",
-                    handle.run_id,
-                    "--summary",
-                    summary,
-                    "--result-json",
-                    json.dumps(expectation, ensure_ascii=False),
-                    "--checks-json",
-                    json.dumps(
-                        [{"name": "review_exact_match", "ok": True}],
-                        ensure_ascii=False,
-                    ),
-                )
-            )
-    elif command_id == "loop":
+    if command_id == "loop":
         review_binding = strict_task.get("review_binding") if isinstance(strict_task, dict) else {}
         review_target = review_binding.get("target") if isinstance(review_binding, dict) else None
         review_context = latest_fresh_review_context(
@@ -196,7 +171,7 @@ def prepare_execution(
         work_revision=int(strict_task.get("revision") or 0) if isinstance(strict_task, dict) and strict_task.get("revision") else None,
         host=host,
         executor=executor,
-        durable=command_id in {"run", "loop", "review"},
+        durable=command_id in {"run", "loop"},
         dispatch_mode=dispatch_mode,
         sleep_requested=sleep_requested,
         max_rounds=max_rounds,

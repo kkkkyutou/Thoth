@@ -25,8 +25,8 @@ import yaml
 from thoth.init.render import render_codex_hooks_payload
 from thoth.plan.compiler import compile_task_authority
 from thoth.prompt_specs import (
+    build_codex_selftest_argue_probe_prompt,
     build_codex_selftest_command_probe_prompt,
-    build_codex_selftest_review_probe_prompt,
     codex_installed_runtime_shell_command,
 )
 from thoth.run.io import project_hash
@@ -92,13 +92,13 @@ def _is_live_packet_public_command(public_command: str) -> bool:
     prefixes = (
         "/thoth:run",
         "/thoth:loop",
-        "/thoth:review",
+        "/thoth:argue",
         "$thoth run",
         "$thoth loop",
-        "$thoth review",
+        "$thoth argue",
         "thoth run",
         "thoth loop",
-        "thoth review",
+        "thoth argue",
     )
     return normalized.startswith(prefixes)
 
@@ -227,8 +227,8 @@ def _public_command_id(public_command: str) -> str:
 def _codex_prompt_for_public_command(public_command: str, done_token: str) -> str:
     shell_command = _shell_command_for_public_command(public_command)
     command_id = _public_command_id(public_command)
-    if command_id == "review":
-        return build_codex_selftest_review_probe_prompt(
+    if command_id == "argue":
+        return build_codex_selftest_argue_probe_prompt(
             public_command=public_command,
             shell_command=shell_command,
             done_token=done_token,
@@ -433,7 +433,7 @@ def _normalize_codex_public_command_result(
                 duration_seconds=result.duration_seconds,
             )
     missing_done_token = done_token not in result.stdout
-    if missing_done_token and not is_watch_probe and command_id == "review":
+    if missing_done_token and not is_watch_probe and command_id == "argue":
         return CommandResult(
             argv=result.argv,
             cwd=result.cwd,
@@ -461,8 +461,7 @@ def _run_host_real_flow(
     *,
     run_public_command,
     commands: dict[str, Any],
-    review_expected_executor: str | None = None,
-    review_expected_result: dict[str, Any] | None = None,
+    argue_expected_executor: str | None = None,
     from_step: str | None = None,
     to_step: str | None = None,
 ) -> tuple[list[str], dict[str, CommandResult]]:
@@ -484,7 +483,7 @@ def _run_host_real_flow(
         "run-sleep",
         "run-watch",
         "run-stop",
-        "review",
+        "argue",
         "dashboard-start",
         "dashboard-stop",
         "loop-live",
@@ -932,7 +931,7 @@ def _run_host_real_flow(
             run_id=run_live_id,
             expected_kind="run",
             expected_work_id="task-runtime-probe",
-            expected_executor=review_expected_executor if "--executor codex" in commands["run_live"] else None,
+            expected_executor=argue_expected_executor if "--executor codex" in commands["run_live"] else None,
             public_command=commands["run_live"],
         )
         cleanup_live_stop = _run_thoth(project_dir, "run", "--stop", run_live_id, timeout=20)
@@ -965,7 +964,7 @@ def _run_host_real_flow(
             expected_kind="run",
             expected_work_id="task-runtime-probe",
             public_command=commands["run_sleep"],
-            expected_executor=review_expected_executor if "--executor codex" in commands["run_sleep"] else None,
+            expected_executor=argue_expected_executor if "--executor codex" in commands["run_sleep"] else None,
         )
         if not should_run("run-watch") and not should_run("run-stop"):
             cleanup_sleep_stop = _run_thoth(project_dir, "run", "--stop", run_sleep_id, timeout=20)
@@ -1009,46 +1008,42 @@ def _run_host_real_flow(
             expected_kind="run",
         )
 
-    if should_run("review"):
-        execute("review", commands["review"], timeout=120)
-        review_run_id = _latest_run_id(project_dir, kind="review", work_id="task-review-probe", exclude_run_ids=seen_run_ids)
-        if not review_run_id:
-            raise RuntimeError("review did not create a new run ledger")
-        seen_run_ids.add(review_run_id)
+    if should_run("argue"):
+        execute("argue", commands["argue"], timeout=120)
+        argue_run_id = _latest_run_id(project_dir, kind="argue", work_id="task-review-probe", exclude_run_ids=seen_run_ids)
+        if not argue_run_id:
+            raise RuntimeError("argue did not create a new run ledger")
+        seen_run_ids.add(argue_run_id)
         artifacts.extend(
             _verify_host_run_completion(
                 project_dir,
                 recorder,
-                check_name=_runtime_check_name("review", step_mode("review")),
-                run_id=review_run_id,
-                expected_kind="review",
+                check_name=_runtime_check_name("argue", step_mode("argue")),
+                run_id=argue_run_id,
+                expected_kind="argue",
                 expected_work_id="task-review-probe",
                 expected_host=host_name,
-                expected_executor=review_expected_executor,
-                expected_dispatch_mode=expected_dispatch(commands["review"]),
-                require_findings=True,
+                expected_executor=argue_expected_executor,
+                expected_dispatch_mode=expected_dispatch(commands["argue"]),
                 timeout=120,
             )
         )
-        review_result = _canonical_review_result_payload(
-            project_dir,
-            review_run_id,
-            _result_payload(project_dir, review_run_id),
-        )
-        review_exact_ok = review_expected_result is not None and review_result == review_expected_result
-        review_artifact = recorder.write_json(
-            f"host-{host_name}-review-result.json",
-            review_result if isinstance(review_result, dict) else {},
+        argue_result = _result_payload(project_dir, argue_run_id)
+        argument = argue_result.get("result") if isinstance(argue_result.get("result"), dict) else {}
+        argument_ok = argument.get("decision_impact") == "revise_authority"
+        argument_artifact = recorder.write_json(
+            f"host-{host_name}-argue-result.json",
+            argument,
         )
         recorder.add(
-            _output_check_name("review", step_mode("review")),
-            "passed" if review_exact_ok else "failed",
-            "Review result matched the fixed expected single finding.",
-            [review_artifact],
+            _output_check_name("argue", step_mode("argue")),
+            "passed" if argument_ok else "failed",
+            "Argue result recorded deterministic decision_impact.",
+            [argument_artifact],
         )
-        if not review_exact_ok:
-            raise RuntimeError(f"{host_name} review output did not match the fixed expected finding")
-        _guard_source("review", step_mode("review"))
+        if not argument_ok:
+            raise RuntimeError(f"{host_name} argue output did not record the expected decision_impact")
+        _guard_source("argue", step_mode("argue"))
 
     dashboard_port = int(_read_json(project_dir / ".thoth" / "project" / "project.json").get("dashboard", {}).get("port", 8501))
     if should_run("dashboard-start"):
@@ -1097,7 +1092,7 @@ def _run_host_real_flow(
             run_id=loop_live_id,
             expected_kind="loop",
             expected_work_id="task-runtime-probe",
-            expected_executor=review_expected_executor if "--executor codex" in commands["loop_live"] else None,
+            expected_executor=argue_expected_executor if "--executor codex" in commands["loop_live"] else None,
             public_command=commands["loop_live"],
         )
         cleanup_loop_live_stop = _run_thoth(project_dir, "loop", "--stop", loop_live_id, timeout=20)
@@ -1125,7 +1120,7 @@ def _run_host_real_flow(
             expected_kind="loop",
             expected_work_id="task-runtime-probe",
             public_command=commands["loop_sleep"],
-            expected_executor=review_expected_executor if "--executor codex" in commands["loop_sleep"] else None,
+            expected_executor=argue_expected_executor if "--executor codex" in commands["loop_sleep"] else None,
         )
         if not should_run("loop-stop"):
             cleanup_loop_sleep_stop = _run_thoth(project_dir, "loop", "--stop", loop_run_id, timeout=20)

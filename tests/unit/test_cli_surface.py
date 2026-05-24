@@ -152,7 +152,7 @@ def test_cli_init_creates_project_layer(tmp_path):
 def test_cli_help_shows_minimal_public_commands(tmp_path):
     result = _run_cli(tmp_path, "--help")
     assert result.returncode == 0
-    assert "{init,discuss,run,loop,review,auto,status,doctor,dashboard}" in result.stdout
+    assert "{init,discuss,run,loop,argue,auto,status,doctor,dashboard}" in result.stdout
     for hidden in (" sync", " report", " extend", " orchestration"):
         assert hidden not in result.stdout
 
@@ -385,13 +385,19 @@ def test_cli_discuss_accepts_structured_decision_payload(tmp_path):
     assert payload["status"] == "ok"
 
 
-def test_cli_review_records_note(tmp_path):
+def test_cli_argue_records_adversarial_artifacts(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
-    result = _run_cli(tmp_path, "review", "audit", "this")
-    assert result.returncode == 0
-    packet = _extract_json_object(result.stdout)
-    assert packet["command_id"] == "review"
-    assert packet["dispatch_mode"] == "live_native"
+    result = _run_cli(tmp_path, "argue", "audit", "this", env={"THOTH_TEST_ARGUE_WORKER_MODE": "complete"})
+    assert result.returncode == 0, result.stderr
+    envelope = _extract_envelope(result.stdout)
+    body = envelope["body"]
+    assert body["decision_impact"] == "revise_authority"
+    assert body["target"]["target_kind"] == "idea"
+    assert Path(body["artifacts"]["argument"]).exists()
+    assert Path(body["artifacts"]["attack"]).exists()
+    assert Path(body["artifacts"]["adjudication"]).exists()
+    run = json.loads((tmp_path / ".thoth" / "runs" / body["run_id"] / "run.json").read_text(encoding="utf-8"))
+    assert run["kind"] == "argue"
 
 
 def test_cli_sync_regenerates_project_layer(tmp_path):

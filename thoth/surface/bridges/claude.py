@@ -55,16 +55,20 @@ def _canonical_checks(project_root: Path, command_id: str, command_args: list[st
         "source_map_exists": source_map.exists(),
     }
 
-    if command_id in {"run", "loop", "review"} and not any(flag in command_args for flag in ("--attach", "--watch", "--stop")):
+    if command_id in {"run", "loop", "argue"} and not any(flag in command_args for flag in ("--attach", "--watch", "--stop")):
         packet = _parse_packet(stdout)
-        candidate = str(packet.get("run_id") or "").strip()
+        body = packet.get("body") if isinstance(packet.get("body"), dict) else {}
+        candidate = str(packet.get("run_id") or body.get("run_id") or "").strip()
         if not candidate:
             candidate = _parse_runtime_run_id(stdout)
         checks["run_id"] = candidate
         checks["packet_kind"] = packet.get("packet_kind")
-        checks["dispatch_mode"] = packet.get("dispatch_mode")
+        checks["dispatch_mode"] = packet.get("dispatch_mode") or body.get("dispatch_mode")
         checks["run_ledger_exists"] = bool(candidate) and (project_root / ".thoth" / "runs" / candidate / "run.json").exists()
-        checks["packet_exists"] = bool(candidate) and (project_root / ".thoth" / "runs" / candidate / "packet.json").exists()
+        checks["packet_exists"] = bool(candidate) and (
+            (project_root / ".thoth" / "runs" / candidate / "packet.json").exists()
+            or (project_root / ".thoth" / "runs" / candidate / "argument.json").exists()
+        )
         checks["runtime_event_stream"] = _has_runtime_events(stdout)
 
     return checks
@@ -120,34 +124,9 @@ def _bridge_success(command_id: str, returncode: int, checks: dict[str, Any]) ->
         )
     if command_id == "status":
         return bool(checks.get("project_object_exists") or checks.get("project_manifest_exists"))
-    if command_id in {"run", "loop", "review"} and "run_ledger_exists" in checks:
+    if command_id in {"run", "loop", "argue"} and "run_ledger_exists" in checks:
         return bool(checks.get("run_ledger_exists") and (checks.get("packet_exists") or checks.get("runtime_event_stream")))
     return True
-
-
-def _rewrite_review_prepare_args(command_args: list[str]) -> list[str]:
-    rewritten: list[str] = []
-    target_parts: list[str] = []
-    expects_value = {"--goal", "--target", "--work-id", "--host", "--executor"}
-    idx = 0
-    while idx < len(command_args):
-        token = command_args[idx]
-        if token in expects_value:
-            rewritten.append(token)
-            if idx + 1 < len(command_args):
-                rewritten.append(command_args[idx + 1])
-            idx += 2
-            continue
-        if token.startswith("--"):
-            rewritten.append(token)
-            idx += 1
-            continue
-        target_parts.append(token)
-        idx += 1
-    has_explicit_target = any(flag in rewritten for flag in ("--target", "--goal"))
-    if target_parts and not has_explicit_target:
-        rewritten.extend(["--target", " ".join(target_parts)])
-    return rewritten
 
 
 def _rewrite_run_loop_prepare_args(command_args: list[str]) -> list[str]:
@@ -199,11 +178,7 @@ def run_bridge(command_id: str, command_args: list[str], *, project_root: Path |
     actual_command = command_id
     command_args = _expand_bridge_args(command_id, list(command_args))
     actual_args = list(command_args)
-    if command_id == "review" and not any(flag in command_args for flag in ("--attach", "--watch", "--stop")):
-        actual_command = "prepare"
-        prepare_args = _rewrite_review_prepare_args(command_args)
-        actual_args = ["--command-id", command_id, *prepare_args]
-    elif command_id == "auto" and not any(flag in command_args for flag in ("--watch", "--stop", "--sleep", "--monitor-packet")):
+    if command_id == "auto" and not any(flag in command_args for flag in ("--watch", "--stop", "--sleep", "--monitor-packet")):
         actual_args = [*command_args, "--monitor-packet"]
     argv = [sys.executable, str(cli_entry), actual_command, *actual_args]
     started = time.time()
@@ -218,7 +193,7 @@ def run_bridge(command_id: str, command_args: list[str], *, project_root: Path |
 
     checks = _canonical_checks(project_root, command_id, command_args, result.stdout)
     packet = {}
-    if command_id in {"run", "loop", "review"} and actual_command == "prepare":
+    if command_id in {"run", "loop"} and actual_command == "prepare":
         packet = _parse_packet(result.stdout)
     payload = {
         "schema_version": 1,

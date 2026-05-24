@@ -83,6 +83,15 @@ def apply_run_result_to_work_result(
             "findings_count": len(findings),
         }
         return result
+    if kind == "argue":
+        result["latest_argument"] = {
+            "run_id": run_id,
+            "target": run_payload.get("target"),
+            "summary": summary,
+            "finished_at": finished_at,
+            "decision_impact": result_payload.get("decision_impact"),
+        }
+        return result
 
     terminal_status = status or result.get("status") or "idle"
     if terminal_status == "completed":

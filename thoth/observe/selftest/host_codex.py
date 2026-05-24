@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 from .host_common import (
-    _expected_host_review_result,
     _host_local_state_env,
     _looks_like_transient_host_outage,
     _normalize_codex_public_command_result,
@@ -37,6 +36,8 @@ def _host_codex(
             extra_env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "hold"
         elif public_command.strip().startswith(("$thoth run ", "$thoth loop ")):
             extra_env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "complete"
+        elif public_command.strip().startswith("$thoth argue "):
+            extra_env["THOTH_TEST_ARGUE_WORKER_MODE"] = "complete"
         result, artifacts = _run_codex_public_command(
             project_dir,
             public_command,
@@ -50,7 +51,7 @@ def _host_codex(
             result,
             public_command=public_command,
             done_token=done_token,
-            allow_followup_commands=public_command.strip().startswith("$thoth review"),
+            allow_followup_commands=False,
         )
         return result, artifacts
 
@@ -73,7 +74,7 @@ def _host_codex(
             "run_sleep": "$thoth run --host codex --executor codex --sleep --work-id task-runtime-probe",
             "run_watch": lambda run_id: f"$thoth run --watch {run_id}",
             "run_stop": lambda run_id: f"$thoth run --stop {run_id}",
-            "review": "$thoth review --work-id task-review-probe --host codex --executor codex tracker/review_probe.py",
+            "argue": "$thoth argue --work-id task-review-probe --host codex --executor codex tracker/review_probe.py",
             "loop_live": "$thoth loop --host codex --executor codex --work-id task-runtime-probe",
             "dashboard_start": "$thoth dashboard start",
             "dashboard_stop": "$thoth dashboard stop",
@@ -85,8 +86,7 @@ def _host_codex(
         },
         from_step=from_step,
         to_step=to_step,
-        review_expected_executor="codex",
-        review_expected_result=_expected_host_review_result(),
+        argue_expected_executor="codex",
     )
     artifacts.extend(str(item.get("hooks_path") or "") for item in hook_artifacts if isinstance(item, dict))
     conversations_path = project_dir / ".thoth" / "project" / "conversations.jsonl"
@@ -106,7 +106,7 @@ def _host_codex(
         detail = f"Codex host window completed successfully with from_step={from_step!r} to_step={to_step!r}."
     elif success:
         status = "passed"
-        detail = "Codex host completed the host-real decision/run/review/loop flow through the installed `$thoth` skill and emitted hook ledger notes."
+        detail = "Codex host completed the host-real decision/run/argue/loop flow through the installed `$thoth` skill and emitted hook ledger notes."
     elif any(_looks_like_transient_host_outage(result) for result in command_results.values()):
         status = "failed"
         detail = "Codex host matrix hit an upstream/transient host outage and exceeded the heavy gate's no-degraded policy."

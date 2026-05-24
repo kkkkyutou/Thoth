@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.2.7.0"
+PLUGIN_VERSION = "0.2.8.0"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -67,15 +67,15 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
                 "- If the live observer is interrupted, do not stop the auto controller unless the user explicitly requests `/thoth:auto --stop <controller_id>`.",
             )
         )
-    if spec.command_id == "review":
+    if spec.command_id == "argue":
         rules.append(
-            "- For `review`, inspect `packet.target`, produce structured findings matching `packet.required_review_shape`, and finish through the review protocol rather than free-form prose."
+            "- For `argue`, use the returned argument artifacts as evidence; do not replace attacker/adjudicator output with a local summary."
         )
         rules.append(
-            "- If `packet.review_mode` is `exact_match`, reproduce that exact structured result and do not add prose or extra findings."
+            "- If target resolution is ambiguous, use AskUserQuestion to ask the user to choose one candidate and stop."
         )
         rules.append(
-            "- If `packet.protocol_commands.complete_exact` exists, execute that exact completion command rather than deriving your own variant."
+            "- If `body.authority_patch_preview.confirmation_required` is true, ask for explicit confirmation before running the apply command."
         )
     if spec.command_id == "discuss":
         rules.extend(
@@ -101,7 +101,7 @@ cat > "$THOTH_DISCUSS_ARGUMENTS_FILE" <<'THOTH_DISCUSS_ARGUMENTS_EOF'
 $ARGUMENTS
 THOTH_DISCUSS_ARGUMENTS_EOF
 "${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"'''
-    elif spec.command_id == "review":
+    elif spec.command_id == "argue":
         runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'
     elif spec.command_id in {"run", "loop", "auto"}:
         runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'
@@ -179,8 +179,8 @@ Supported commands:
 ## Shared Rules
 
 - `init`, `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
-- `discuss`, `run`, `loop`, `auto`, and open-ended `review` are high-intelligence paths.
-- `review` exact-match/probe flows are protocol-fast: if the packet exposes an exact result, do not improvise.
+- `discuss`, `run`, `loop`, `auto`, and `argue` are high-intelligence paths.
+- `argue` preserves full attacker/adjudicator artifacts; authority patches require explicit confirmation before apply.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.
 - For `run`, `loop`, and `auto`, preserve trailing natural-language command text as temporary runtime guidance. During a live run, inject user corrections into the active run guidance inbox instead of only narrating advice.
 - Host hooks and subagents may improve throughput but are never correctness requirements.

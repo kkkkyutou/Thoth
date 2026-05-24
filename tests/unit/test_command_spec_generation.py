@@ -85,18 +85,17 @@ def test_claude_discuss_surface_preserves_structured_arguments():
     assert "disable-model-invocation: false" in rendered
 
 
-def test_claude_review_surface_preserves_structured_arguments():
-    spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "review")
+def test_claude_argue_surface_preserves_adversarial_contract():
+    spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "argue")
     rendered = render_claude_command(spec)
-    assert 'scripts/thoth-claude-command.sh" review --host claude $ARGUMENTS' in rendered
+    assert 'scripts/thoth-claude-command.sh" argue --host claude $ARGUMENTS' in rendered
     assert "allowed-tools: Read, Glob, Grep, Bash, Task" in rendered
-    assert "packet.required_review_shape" in rendered
-    assert "packet.review_mode` is `exact_match`" in rendered
-    assert "packet.protocol_commands.complete_exact" in rendered
-    assert "professional judgment and first-principles reasoning" in rendered
-    assert "ask with AskUserQuestion before judging instead of assuming" in rendered
+    assert "attacker/adjudicator output" in rendered
+    assert "target resolution is ambiguous" in rendered
+    assert "ask for explicit confirmation" in rendered
+    assert "decision_impact" in rendered
     assert "route_class: `live_intelligent`" in rendered
-    assert "packet_authority_mode: `review_packet`" in rendered
+    assert "packet_authority_mode: `argument_record`" in rendered
 
 
 def test_claude_auto_surface_documents_monitor_watch_contract():
@@ -140,14 +139,14 @@ def test_codex_runtime_shell_command_uses_installed_plugin_cache_without_checkou
 
 def test_prompt_surface_size_regression():
     run_spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "run")
-    review_spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "review")
+    argue_spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "argue")
     codex_skill = render_codex_skill()
     claude_run = render_claude_command(run_spec)
-    claude_review = render_claude_command(review_spec)
+    claude_argue = render_claude_command(argue_spec)
 
     assert len(codex_skill) < 4600
     assert len(claude_run) < 3200
-    assert len(claude_review) < 3000
+    assert len(claude_argue) < 3200
 
 
 def test_codex_agent_metadata_uses_single_public_entry():

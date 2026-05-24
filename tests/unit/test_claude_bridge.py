@@ -30,6 +30,7 @@ def _run_bridge(tmp_path: Path, command_id: str, *args: str) -> subprocess.Compl
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(ROOT) if not existing else f"{ROOT}:{existing}"
     env["THOTH_CLAUDE_PLUGIN_ROOT"] = str(ROOT)
+    env["THOTH_TEST_ARGUE_WORKER_MODE"] = "complete"
     return subprocess.run(
         [sys.executable, str(_bridge_entry()), command_id, *args],
         cwd=str(tmp_path),
@@ -156,24 +157,23 @@ def test_bridge_uses_plugin_cli_even_if_project_has_shadow_thoth_package(tmp_pat
     assert "shadow-cli-should-not-run" not in payload["stderr"]
 
 
-def test_bridge_rewrites_review_positional_target_for_prepare(tmp_path):
+def test_bridge_argue_runs_adversarial_discussion(tmp_path):
     init_result = _run_bridge(tmp_path, "init")
     assert json.loads(init_result.stdout)["bridge_success"] is True
 
-    result = _run_bridge(tmp_path, "review", "--executor", "codex", "backend/app.py")
+    result = _run_bridge(tmp_path, "argue", "--executor", "codex", "backend/app.py")
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["command_id"] == "review"
-    assert payload["bridged_command_id"] == "prepare"
+    assert payload["command_id"] == "argue"
+    assert payload["bridged_command_id"] == "argue"
     assert payload["bridge_success"] is True
-    assert "--target" in payload["argv"]
-    assert "backend/app.py" in payload["argv"]
-    assert payload["packet"]["command_id"] == "review"
-    assert payload["packet"]["target"] == "backend/app.py"
-    assert "protocol_commands" in payload["packet"]
+    stdout = json.loads(payload["stdout"])
+    assert stdout["body"]["target"]["target_kind"] == "idea"
+    assert stdout["body"]["decision_impact"] == "revise_authority"
+    assert payload["checks"]["run_ledger_exists"] is True
 
 
-def test_bridge_review_packet_includes_strict_work_when_work_id_is_ready(tmp_path):
+def test_bridge_argue_binds_ready_work_item(tmp_path):
     init_result = _run_bridge(tmp_path, "init")
     assert json.loads(init_result.stdout)["bridge_success"] is True
     _write_task(
@@ -196,12 +196,15 @@ def test_bridge_review_packet_includes_strict_work_when_work_id_is_ready(tmp_pat
         },
     )
 
-    result = _run_bridge(tmp_path, "review", "--work-id", "task-review-probe", "tracker/review_probe.py")
+    result = _run_bridge(tmp_path, "argue", "--work-id", "task-review-probe", "tracker/review_probe.py")
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["bridge_success"] is True
-    assert payload["packet"]["strict_task"]["work_id"] == "task-review-probe"
-    assert payload["packet"]["strict_task"]["review_expectation"]["summary"] == "1 issue"
+    stdout = json.loads(payload["stdout"])
+    assert stdout["body"]["target"]["target_kind"] == "work_item"
+    assert stdout["body"]["target"]["target_id"] == "task-review-probe"
+    work_item = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "task-review-probe.json").read_text(encoding="utf-8"))
+    assert work_item["status"] == "ready"
 
 
 def test_bridge_run_without_work_id_returns_candidate_work_items_and_stops(tmp_path):

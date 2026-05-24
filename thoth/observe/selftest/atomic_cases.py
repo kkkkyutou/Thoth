@@ -413,36 +413,36 @@ def case_runtime_loop_lease_conflict(work_root: Path, recorder: Recorder, _capab
         raise RuntimeError("runtime.loop.lease_conflict failed")
 
 
-def case_review_exact_match(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+def case_argue_adversarial(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
     project_dir = _prepare_probe_project(work_root, recorder)
-    _compile_probe_tasks(project_dir, recorder, label_prefix="review.exact_match.compile")
-    _assert_probe_tasks_ready(project_dir, recorder, check_name="review.exact_match.compile")
-    review_result = _run_command(
-        [PYTHON, "-m", "thoth.cli", "review", "--work-id", "task-review-probe", "tracker/review_probe.py"],
+    _compile_probe_tasks(project_dir, recorder, label_prefix="argue.adversarial.compile")
+    _assert_probe_tasks_ready(project_dir, recorder, check_name="argue.adversarial.compile")
+    argue_result = _run_command(
+        [PYTHON, "-m", "thoth.cli", "argue", "--work-id", "task-review-probe", "tracker/review_probe.py"],
         cwd=project_dir,
-        env={"PYTHONPATH": str(ROOT)},
+        env={"PYTHONPATH": str(ROOT), "THOTH_TEST_ARGUE_WORKER_MODE": "complete"},
         timeout=60,
     )
-    review_artifacts = _save_command(recorder, "review-exact-match", review_result)
-    packet = _extract_json(review_result.stdout)
-    run_id = str(packet.get("run_id") or "")
-    complete_exact = str(packet.get("protocol_commands", {}).get("complete_exact") or "")
-    if review_result.returncode != 0 or not run_id or not complete_exact:
-        recorder.add("review.exact_match", "failed", "Review exact-match packet preparation failed.", review_artifacts)
-        raise RuntimeError("review exact-match packet preparation failed")
-    complete_env = {"PYTHONPATH": str(ROOT)}
-    complete_result = _run_command(["bash", "-lc", complete_exact], cwd=project_dir, env=complete_env, timeout=20)
-    completion_artifacts = _save_command(recorder, "review-exact-complete", complete_result)
-    canonical = _canonical_review_result_payload(project_dir, run_id, _result_payload(project_dir, run_id))
-    ok = complete_result.returncode == 0 and canonical == _expected_host_review_result()
+    argue_artifacts = _save_command(recorder, "argue-adversarial", argue_result)
+    envelope = _extract_json(argue_result.stdout)
+    body = envelope.get("body") if isinstance(envelope.get("body"), dict) else {}
+    run_id = str(body.get("run_id") or "")
+    argument_path = body.get("artifacts", {}).get("argument") if isinstance(body.get("artifacts"), dict) else None
+    ok = (
+        argue_result.returncode == 0
+        and bool(run_id)
+        and body.get("decision_impact") == "revise_authority"
+        and isinstance(argument_path, str)
+        and Path(argument_path).exists()
+    )
     recorder.add(
-        "review.exact_match",
+        "argue.adversarial",
         "passed" if ok else "failed",
-        "Packet-provided exact completion produced the fixed expected review finding.",
-        review_artifacts + completion_artifacts + _artifact_paths_for_run(project_dir, run_id),
+        "Argue produced deterministic attacker/adjudicator artifacts without applying authority.",
+        argue_artifacts + _artifact_paths_for_run(project_dir, run_id),
     )
     if not ok:
-        raise RuntimeError("review.exact_match failed")
+        raise RuntimeError("argue.adversarial failed")
 
 
 def case_observe_dashboard(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
@@ -540,9 +540,9 @@ def _host_case_window(case_id: str) -> tuple[str, str | None, str]:
     elif suffix == "run.stop":
         from_step = "run-sleep"
         step = "run-stop"
-    elif suffix == "review.exact_match":
-        from_step = "review"
-        step = "review"
+    elif suffix == "argue.adversarial":
+        from_step = "argue"
+        step = "argue"
     elif suffix == "loop.live_prepare":
         from_step = "loop-live"
         step = "loop-live"
@@ -588,7 +588,7 @@ def run_host_atomic_case(case_id: str, work_root: Path, recorder: Recorder) -> N
             include_dashboard=suffix.startswith("dashboard."),
             label=f"{case_id}.materialize",
         )
-    if suffix.startswith(("run.", "loop.", "review.", "auto.")):
+    if suffix.startswith(("run.", "loop.", "argue.", "auto.")):
         _seed_host_real_tasks(project_dir)
     recorder.add(
         f"{case_id}.seed_repo",
@@ -634,8 +634,8 @@ def case_surface_codex_run_stop(work_root: Path, recorder: Recorder, _capabiliti
     run_host_atomic_case("surface.codex.run.stop", work_root, recorder)
 
 
-def case_surface_codex_review_exact_match(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
-    run_host_atomic_case("surface.codex.review.exact_match", work_root, recorder)
+def case_surface_codex_argue_adversarial(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.codex.argue.adversarial", work_root, recorder)
 
 
 def case_surface_codex_loop_live_prepare(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
@@ -702,8 +702,8 @@ def case_surface_claude_run_stop(work_root: Path, recorder: Recorder, _capabilit
     run_host_atomic_case("surface.claude.run.stop", work_root, recorder)
 
 
-def case_surface_claude_review_exact_match(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
-    run_host_atomic_case("surface.claude.review.exact_match", work_root, recorder)
+def case_surface_claude_argue_adversarial(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.claude.argue.adversarial", work_root, recorder)
 
 
 def case_surface_claude_loop_live_prepare(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:

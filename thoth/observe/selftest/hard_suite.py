@@ -184,13 +184,13 @@ def _repo_hard_suite(project_dir: Path, recorder: Recorder) -> dict[str, Any]:
         ensure_ascii=False,
     )
 
-    review_run_id = ""
+    argue_run_id = ""
     for name, argv in (
         ("repo.status_json", ["status", "--json"]),
         ("repo.doctor_quick", ["doctor", "--quick"]),
         ("repo.sync", ["sync"]),
         ("repo.discuss", ["discuss", "--decision-json", discuss_payload]),
-        ("repo.review", ["review", "selftest", "review"]),
+        ("repo.argue", ["argue", "--target-kind", "idea", "--target-id", "selftest", "argument"]),
         ("repo.report", ["report"]),
     ):
         result = _run_thoth(project_dir, *argv, timeout=120)
@@ -202,19 +202,9 @@ def _repo_hard_suite(project_dir: Path, recorder: Recorder) -> dict[str, Any]:
         )
         if result.returncode != 0:
             raise RuntimeError(f"{name} failed")
-        if name == "repo.review":
-            review_packet = _extract_json(result.stdout)
-            review_run_id = str(review_packet.get("run_id") or "")
-            if review_run_id:
-                stop_review = _run_thoth(project_dir, "run", "--stop", review_run_id, timeout=20)
-                recorder.add(
-                    "repo.review_stop",
-                    "passed" if stop_review.returncode == 0 else "failed",
-                    f"Stopped live review run {review_run_id} before execution lease-sensitive checks.",
-                    _save_command(recorder, "repo-review-stop", stop_review),
-                )
-                if stop_review.returncode != 0:
-                    raise RuntimeError("review stop failed")
+        if name == "repo.argue":
+            argue_packet = _extract_json(result.stdout)
+            argue_run_id = str(argue_packet.get("run_id") or "")
 
     run_result = _run_thoth(project_dir, "run", "--work-id", "task-1", timeout=60)
     run_artifacts = _save_command(recorder, "run-live", run_result)
@@ -441,8 +431,8 @@ def _repo_hard_suite(project_dir: Path, recorder: Recorder) -> dict[str, Any]:
     details["run_id"] = run_id
     details["loop_id"] = loop_id
     details["dashboard_run_id"] = dashboard_run_id
-    if review_run_id:
-        details["review_run_id"] = review_run_id
+    if argue_run_id:
+        details["argue_run_id"] = argue_run_id
     return details
 
 __all__ = [name for name in globals() if not name.startswith("__")]

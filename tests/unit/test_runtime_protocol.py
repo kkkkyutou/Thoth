@@ -10,10 +10,12 @@ from thoth.prompt_validators import utf8_len, validate_phase_output
 from thoth.prompt_specs import phase_prompt_authority
 from thoth.objects import Store
 from thoth.run.driver import execute_runtime_controller
+from thoth.run.argue import run_argue
 from thoth.run.ledger import (
     _update_state,
     append_protocol_event,
     complete_run,
+    create_run,
     fail_run,
     heartbeat_run,
     record_artifact,
@@ -389,16 +391,14 @@ def test_prepare_execution_writes_packet_and_live_dispatch(tmp_path):
 
 def test_protocol_updates_artifacts_and_completion_shape(tmp_path):
     project = _prepare_project(tmp_path)
-    handle, _packet = prepare_execution(
+    handle = create_run(
         project,
-        command_id="review",
+        kind="review",
         title="Review demo",
         work_id=None,
         host="claude",
         executor="claude",
-        sleep_requested=False,
         target="src/app.py",
-        goal="review app",
     )
     append_protocol_event(project, handle.run_id, message="started review", kind="log", phase="analyzing", progress_pct=20)
     heartbeat_run(project, handle.run_id, phase="writing_findings", progress_pct=60, note="heartbeat")
@@ -431,56 +431,64 @@ def test_protocol_updates_artifacts_and_completion_shape(tmp_path):
     assert artifacts["artifacts"][0]["label"] == "findings"
 
 
-def test_review_packet_includes_exact_completion_command_when_expectation_is_frozen(tmp_path):
+def test_argue_runtime_records_argument_without_closing_work(tmp_path, monkeypatch):
     project = _prepare_project(tmp_path)
-    handle, packet = prepare_execution(
-        project,
-        command_id="review",
-        title="Review demo",
-        work_id="task-review-probe",
-        host="claude",
-        executor="codex",
-        sleep_requested=False,
-        target="tracker/review_probe.py",
-        goal="review app",
-        strict_task={
-            "work_id": "task-review-probe",
-            "review_expectation": {
-                "summary": "1 issue",
-                "findings": [
-                    {
-                        "severity": "high",
-                        "title": "Empty title accepted",
-                        "path": "tracker/review_probe.py",
-                        "line": 4,
-                        "summary": "Blank titles are persisted as valid task state.",
-                    }
-                ],
+    store = Store(project)
+    store.create(
+        kind="work_item",
+        object_id="task-argue-probe",
+        status="ready",
+        title="Argue Probe",
+        summary="Probe work item",
+        source="test",
+        payload={
+            "goal": "Keep the work direction strong.",
+            "context": "test",
+            "constraints": ["local"],
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "pytest passes",
+                "metric": {"name": "checks", "direction": "gte", "threshold": 1},
             },
+            "approach_notes": ["Use real validation."],
+            "scheduling": {"order": None},
+            "run_limits": {"max_iterations": 1},
+            "missing_questions": [],
         },
     )
+    monkeypatch.setenv("THOTH_TEST_ARGUE_WORKER_MODE", "complete")
 
-    exact_command = packet["protocol_commands"]["complete_exact"]
-    assert handle.run_id in exact_command
-    assert "--summary" in exact_command
-    assert "--result-json" in exact_command
-    assert "--checks-json" in exact_command
-    assert "review_exact_match" in exact_command
-    assert "Empty title accepted" in exact_command
+    outcome = run_argue(
+        project,
+        query="task-argue-probe",
+        work_id="task-argue-probe",
+        decision_id=None,
+        target_kind=None,
+        target_id=None,
+        host="codex",
+        executor="codex",
+    )
+
+    assert outcome["exit_code"] == 0
+    body = outcome["body"]
+    assert body["decision_impact"] == "revise_authority"
+    assert Path(body["artifacts"]["argument"]).exists()
+    assert Path(body["artifacts"]["authority_patch_preview"]).exists()
+    assert Store(project).read("work_item", "task-argue-probe")["status"] == "ready"
+    result = json.loads((project / ".thoth" / "runs" / body["run_id"] / "result.json").read_text(encoding="utf-8"))
+    assert result["result"]["decision_impact"] == "revise_authority"
 
 
 def test_review_completion_dedupes_duplicate_findings(tmp_path):
     project = _prepare_project(tmp_path)
-    handle, _packet = prepare_execution(
+    handle = create_run(
         project,
-        command_id="review",
+        kind="review",
         title="Review demo",
         work_id=None,
         host="claude",
         executor="claude",
-        sleep_requested=False,
         target="src/app.py",
-        goal="review app",
     )
     complete_run(
         project,
@@ -554,7 +562,7 @@ def test_external_worker_prompt_mentions_protocol_and_limits(tmp_path):
     )
     prompt = build_external_worker_prompt(handle, packet)
     assert handle.run_id in prompt
-    assert "Do not invoke `$thoth run`, `$thoth loop`, or `$thoth review`." in prompt
+    assert "Do not invoke `$thoth run`, `$thoth loop`, or `$thoth argue`." in prompt
     assert "\"max_iterations\": 10" in prompt
     assert "pytest -q tests/test_demo.py" in prompt
     assert "Runtime driver capture path" in prompt

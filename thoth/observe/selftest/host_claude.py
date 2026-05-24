@@ -4,7 +4,6 @@ from pathlib import Path
 
 from .fixtures import _compact_json, _host_real_contract_payloads, _host_real_decision_payload, _shell_quote
 from .host_common import (
-    _expected_host_review_result,
     _host_local_state_env,
     _looks_like_transient_host_outage,
     _read_claude_bridge_events,
@@ -29,6 +28,8 @@ def _host_claude(
         extra_env = _host_local_state_env(project_dir)
         if "--sleep" in public_command.split():
             extra_env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "hold"
+        if public_command.strip().startswith("/thoth:argue "):
+            extra_env["THOTH_TEST_ARGUE_WORKER_MODE"] = "complete"
         return _run_claude_public_command(
             repo_root,
             project_dir,
@@ -59,7 +60,7 @@ def _host_claude(
             "run_sleep": "/thoth:run --executor codex --sleep --work-id task-runtime-probe",
             "run_watch": lambda run_id: f"/thoth:run --watch {run_id}",
             "run_stop": lambda run_id: f"/thoth:run --stop {run_id}",
-            "review": "/thoth:review --work-id task-review-probe --executor codex tracker/review_probe.py",
+            "argue": "/thoth:argue --work-id task-review-probe --executor codex tracker/review_probe.py",
             "loop_live": "/thoth:loop --executor codex --work-id task-runtime-probe",
             "dashboard_start": "/thoth:dashboard start",
             "dashboard_stop": "/thoth:dashboard stop",
@@ -69,10 +70,9 @@ def _host_claude(
             "auto_stop": lambda controller_id: f"/thoth:auto --stop {controller_id}",
             "sync": "/thoth:init --sync",
         },
-        review_expected_executor="codex",
+        argue_expected_executor="codex",
         from_step=from_step,
         to_step=to_step,
-        review_expected_result=_expected_host_review_result(),
     )
     artifacts.extend(flow_artifacts)
     partial_window = from_step is not None or to_step is not None
@@ -89,7 +89,7 @@ def _host_claude(
     bridge_path = project_dir / ".thoth" / "derived" / "host-bridges" / "claude-command-events.jsonl"
     if bridge_path.exists():
         artifacts.append(str(bridge_path))
-    required_bridge_commands = ("init", "status", "doctor", "discuss", "run", "review", "dashboard", "loop", "auto")
+    required_bridge_commands = ("init", "status", "doctor", "discuss", "run", "argue", "dashboard", "loop", "auto")
     success = all(result.returncode == 0 for result in command_results.values())
     if not partial_window:
         success = success and all(command in bridge_commands for command in required_bridge_commands) and all(
@@ -102,7 +102,7 @@ def _host_claude(
         detail = f"Claude host window completed successfully with from_step={from_step!r} to_step={to_step!r}."
     elif success and hook_seen:
         status = "passed"
-        detail = "Claude host completed the host-real decision/run/review/loop/auto flow through the public /thoth:* surface, including real `--executor codex` delegation."
+        detail = "Claude host completed the host-real decision/run/argue/loop/auto flow through the public /thoth:* surface, including real `--executor codex` delegation."
     elif success:
         status = "failed"
         detail = "Claude host completed the command flow, but hook/session evidence was not visible in Claude output."

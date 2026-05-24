@@ -1,4 +1,4 @@
-"""Run, loop, review, prepare, and worker command handlers."""
+"""Run, loop, argue, prepare, and worker command handlers."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 from thoth.objects import Store, utc_now
 from thoth.plan.compiler import compile_task_authority
-from thoth.plan.doctor import build_doctor_payload, infer_review_work_id
+from thoth.plan.doctor import build_doctor_payload
 from thoth.plan.paths import compiler_state_path, work_items_dir
 from thoth.plan.store import load_work_for_execution, suggest_work_items_for_query
 from thoth.run.auto import (
@@ -18,6 +18,7 @@ from thoth.run.auto import (
     find_reusable_auto_controller,
     watch_auto_controller,
 )
+from thoth.run.argue import apply_argue_patch, run_argue
 from thoth.run.controllers import build_auto_request_fingerprint, create_auto_controller, create_orchestration_controller
 from thoth.run.driver import JsonlStdoutSink, execute_runtime_controller
 from thoth.run.guidance import append_run_guidance, guidance_path
@@ -277,11 +278,6 @@ def handle_prepare(args, parser, *, project_root: Path) -> int:
             return _reject_missing_work_id(command_id=args.command_id, args=args, project_root=root)
         strict_task = load_work_for_execution(root, work_id, require_ready=True)
         title = str(strict_task.get("title") or work_id)
-    elif args.command_id == "review" and work_id:
-        strict_task = load_work_for_execution(root, work_id, require_ready=True)
-        title = str(strict_task.get("title") or f"Review: {work_id}")
-    elif args.command_id == "review" and not (args.target or args.goal):
-        parser.exit(2, "thoth: error: Review prepare requires --target or --goal.\n")
     try:
         handle, packet = prepare_execution(root, command_id=args.command_id, title=title, work_id=work_id, host=args.host, executor=_resolve_executor(args), sleep_requested=bool(args.sleep), strict_task=strict_task, target=args.target, goal=args.goal or title, invocation_guidance=_prompt_query(args))
     except ValueError as exc:
@@ -296,34 +292,46 @@ def handle_prepare(args, parser, *, project_root: Path) -> int:
     return 0
 
 
-def handle_review(args, parser, *, project_root: Path) -> int:
-    content = (getattr(args, "goal", None) or " ".join(getattr(args, "rest", []) or [])).strip()
-    note_path = append_project_note(project_root, "review", content)
-    if not content:
-        parser.exit(2, "thoth: error: Review target is required.\n")
-    review_work_id = getattr(args, "work_id", None) or infer_review_work_id(project_root, content)
-    strict_task = None
-    if review_work_id:
-        strict_task = load_work_for_execution(project_root, review_work_id, require_ready=True)
-    try:
-        handle, packet = prepare_execution(
+def handle_argue(args, parser, *, project_root: Path) -> int:
+    content = " ".join(getattr(args, "rest", []) or []).strip()
+    if getattr(args, "apply_artifact", None):
+        outcome = apply_argue_patch(
             project_root,
-            command_id="review",
-            title=f"Review: {content}",
-            work_id=review_work_id,
-            host=args.host,
-            executor=_resolve_executor(args),
-            sleep_requested=False,
-            strict_task=strict_task,
-            target=content,
-            goal=getattr(args, "goal", None) or content,
+            Path(args.apply_artifact),
+            confirm=str(getattr(args, "confirm_apply", "") or ""),
         )
-    except ValueError as exc:
-        if review_work_id and "authority" in str(exc):
-            return _reject_authority_resolution(command_id="review", project_root=project_root, work_id=review_work_id, reason=str(exc))
-        raise
-    print_envelope(command="review", status="ok", summary=f"Prepared live review packet for {content}", body={"packet": packet, "note_path": str(note_path)}, refs=output_refs(note_path, handle.run_dir), checks=[{"name": "live_only", "ok": packet.get("dispatch_mode") == LIVE_DISPATCH_MODE}])
-    return 0
+        print_envelope(
+            command="argue",
+            status=str(outcome["status"]),
+            summary=str(outcome["summary"]),
+            body=outcome.get("body") if isinstance(outcome.get("body"), dict) else {},
+            refs=output_refs(*[Path(path) for path in outcome.get("refs", []) if isinstance(path, str)]),
+            checks=outcome.get("checks") if isinstance(outcome.get("checks"), list) else [],
+        )
+        return int(outcome.get("exit_code", 0))
+    if not content and not (getattr(args, "work_id", None) or getattr(args, "decision_id", None) or (getattr(args, "target_kind", None) and getattr(args, "target_id", None))):
+        parser.exit(2, "thoth: error: Argue target, idea, --work-id, --decision-id, or --target-kind/--target-id is required.\n")
+    note_path = append_project_note(project_root, "argue", content or getattr(args, "work_id", None) or getattr(args, "decision_id", None) or "")
+    outcome = run_argue(
+        project_root,
+        query=content,
+        work_id=getattr(args, "work_id", None),
+        decision_id=getattr(args, "decision_id", None),
+        target_kind=getattr(args, "target_kind", None),
+        target_id=getattr(args, "target_id", None),
+        host=str(getattr(args, "host", "") or "codex"),
+        executor=_resolve_executor(args),
+    )
+    refs = [note_path, *[Path(path) for path in outcome.get("refs", []) if isinstance(path, str)]]
+    print_envelope(
+        command="argue",
+        status=str(outcome["status"]),
+        summary=str(outcome["summary"]),
+        body=outcome.get("body") if isinstance(outcome.get("body"), dict) else {},
+        refs=output_refs(*refs),
+        checks=outcome.get("checks") if isinstance(outcome.get("checks"), list) else [],
+    )
+    return int(outcome.get("exit_code", 0))
 
 
 def handle_run_or_loop(args, parser, *, project_root: Path) -> int:

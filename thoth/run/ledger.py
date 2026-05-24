@@ -417,7 +417,7 @@ def fail_run(
 
 def _close_work_item_from_run(handle: RunHandle, *, status: str) -> None:
     run = handle.run_json()
-    if run.get("kind") == "review":
+    if run.get("kind") in {"review", "argue"}:
         return
     work_id = run.get("work_id")
     if not isinstance(work_id, str) or not work_id:

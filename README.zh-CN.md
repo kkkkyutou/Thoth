@@ -4,7 +4,7 @@
   <h1>🐦 Thoth — Dashboard-First Runtime for Autoresearch</h1>
   <img src="assets/thoth.png" width="80%" alt="Thoth 标志" />
   <p><strong>面向 autoresearch 的 dashboard-first 编排运行时。</strong></p>
-  <p>把容易漂移的 agent 工作收敛成 durable runs、locked work items 和可裁决的结果。</p>
+  <p>把容易漂移的 agent 工作收敛成 durable runs、locked work items 和带论证证据的结果。</p>
   <p>
     <img alt="运行时 Dashboard First" src="https://img.shields.io/badge/runtime-dashboard--first-4B5563?style=for-the-badge&labelColor=3F3F46&color=0F766E" />
     <img alt="模式 Autoresearch" src="https://img.shields.io/badge/mode-autoresearch-4B5563?style=for-the-badge&labelColor=3F3F46&color=B45309" />
@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.6.12" src="https://img.shields.io/badge/version-0.2.6.12-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.8.0" src="https://img.shields.io/badge/version-0.2.8.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.2.6.12 auto preflight refresh</strong> · auto 会先修复过期 object graph summary，再决定是否阻断执行</p>
+  <p><strong>v0.2.8.0 adversarial argue</strong> · 先用 attacker/adjudicator artifact 挑战 work item、decision 或 idea，再决定是否改 authority</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth 概念首屏图" />
 </div>
 
@@ -39,7 +39,7 @@
 +----------------------------------------------------------------------------+
 | Layer 1. Host Surface                                                      |
 |                                                                            |
-|  init   discuss   run   loop   review   auto   status                      |
+|  init   discuss   run   loop   argue   auto   status                       |
 |  doctor dashboard                                                       |
 +----------------------------------------------------------------------------+
                                               |
@@ -62,7 +62,7 @@
 |                                                                            |
 |  run      -> one durable execution packet                                  |
 |  loop     -> one durable recoverable loop packet                           |
-|  review   -> structured findings through the same protocol                 |
+|  argue    -> adversarial discussion and authority patch preview            |
 |  auto     -> priority-driven child loops for actionable work               |
 |                                                                            |
 |                           +---------------------------+                    |
@@ -233,7 +233,7 @@ python -m thoth.selftest --case plan.discuss.compile --case runtime.run.live
 - 不带 `--case` 直接执行 `python -m thoth.selftest` 会故意失败，并打印当前可用 case catalog。
 - 每个 case 都有自己独立的 workdir 和 artifact 目录，JSON 报告按 `case_id` 分项记账，而且任何 case 都不能依赖前一个 case 的副作用。
 - 发布门、回归门和关闭门都必须记录显式 case ID 列表，不能再用 `hard`、`heavy` 这类聚合别名代替。
-- 当前 catalog 分为两类：一类是 repo-local capability probe，例如 `plan.discuss.compile`、`runtime.run.live`、`runtime.loop.sleep`、`review.exact_match`、`observe.dashboard`、`hooks.codex`；另一类是 host-surface probe，例如 `surface.codex.run.live_prepare`、`surface.claude.loop.stop`。
+- 当前 catalog 分为两类：一类是 repo-local capability probe，例如 `plan.discuss.compile`、`runtime.run.live`、`runtime.loop.sleep`、`argue.adversarial`、`observe.dashboard`、`hooks.codex`；另一类是 host-surface probe，例如 `surface.codex.run.live_prepare`、`surface.claude.loop.stop`。
 
 ### Targeted pytest
 
@@ -263,7 +263,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | 在不进入代码执行的前提下记录规划决策。 | 主题、decision payload 或 work payload | 更新后的 discussion、decision 或 work_item 对象，以及生成 docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | 通过 durable runtime packet 执行一个 ready work item。 | `--work-id`，可选 host 或 executor 控制，以及 attach/watch/stop | 含 state、events、phase results、artifacts 和 terminal result 的 durable run ledger |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | 通过 controller service 对一个 ready work item 做迭代执行。 | `--work-id`，可选 resume 或 sleep 控制 | Controller object、child run lineage 和有边界的迭代历史 |
-| `review` | `Claude: /thoth:review`<br>`Codex: $thoth review` | 在不改源码的前提下产出结构化 findings。 | review target、可选 `--work-id`、可选 executor 控制 | 通过共享协议写入的 structured review result |
+| `argue` | `Claude: /thoth:argue`<br>`Codex: $thoth argue` | 对 idea、work item 或 decision 发起 attacker/adjudicator 对抗讨论，默认不静默改 authority。 | `--work-id`、`--decision-id`、`--target-kind`、`--target-id`、free-text idea，或已确认的 `--apply-artifact` | 带完整 attack/adjudication artifact、`decision_impact` 和需确认 authority patch preview 的 argument ledger |
 | `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | 用户离开时按优先级持续推进可行动队列。 | 可选 `--sleep`、`--rounds`、`--scope` 或显式 `--work-id` | Auto controller、child loop lineage、monitor events，以及 terminal 或 paused 摘要 |
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | 展示项目健康、活动 runs、doctor、report 或 dashboard 读面。 | 可选 `--json`、`--doctor`、`--report` 或 `--dashboard` | 基于 authority 和本机 registry 派生出的共享状态快照与读面 |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | `status --doctor` 的别名；严格审计健康状态和 runtime shape。 | 可选 `--quick` 或 `--json` | 含验证结论的健康报告 |
@@ -283,7 +283,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | 适合谁 | 为什么 |
 | --- | --- |
 | 研究和实验型仓库 | 它们需要 durable memory、可回放结果，以及可见的长运行工作。 |
-| 用 AI 做真实改动的工程团队 | 它们需要让代码执行、review 和 acceptance 始终可审计。 |
+| 用 AI 做真实改动的工程团队 | 它们需要让代码执行、对抗性审视和 acceptance 始终可审计。 |
 | 想同时保持 Claude Code 与 Codex 一致性的团队 | 它们需要一个 host-neutral command model，而不是两套不断漂移的工作流。 |
 
 ## 当前限制
