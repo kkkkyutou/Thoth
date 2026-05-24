@@ -17,7 +17,7 @@ Supported commands:
 - `$thoth init`: Initialize, migrate, or resync canonical .thoth authority without taking ownership of repo-root `.codex`.
 - `$thoth run`: Start one strict run bound to `work_id@revision`; live runs foreground and `--sleep` detaches the same runtime driver.
 - `$thoth loop`: Start one bounded controller service whose parent creates four-phase child runs.
-- `$thoth review`: Prepare a structured live review packet through the shared Thoth surface.
+- `$thoth argue`: Run an adversarial attacker/adjudicator discussion against an idea, work item, or decision.
 - `$thoth auto`: Run the DAG-first actionable work queue until ready/active/failed work is closed, paused, or stopped.
 - `$thoth status`: Show repo status and active durable runs from the shared ledger.
 - `$thoth discuss`: Discuss or record planning decisions without entering implementation execution.
@@ -38,7 +38,7 @@ Supported commands:
 - `init` -> `mechanical_fast` / `none` / `result_envelope`
 - `run` -> `live_intelligent` / `high` / `phase_controller`
 - `loop` -> `live_intelligent` / `high` / `phase_controller`
-- `review` -> `live_intelligent` / `high` / `review_packet`
+- `argue` -> `live_intelligent` / `high` / `argument_record`
 - `auto` -> `live_intelligent` / `high` / `phase_controller`
 - `status` -> `mechanical_fast` / `none` / `result_envelope`
 - `discuss` -> `live_intelligent` / `high` / `command_packet`
@@ -48,8 +48,8 @@ Supported commands:
 ## Shared Rules
 
 - `init`, `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
-- `discuss`, `run`, `loop`, `auto`, and open-ended `review` are high-intelligence paths.
-- `review` exact-match/probe flows are protocol-fast: if the packet exposes an exact result, do not improvise.
+- `discuss`, `run`, `loop`, `auto`, and `argue` are high-intelligence paths.
+- `argue` preserves full attacker/adjudicator artifacts; authority patches require explicit confirmation before apply.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.
 - For `run`, `loop`, and `auto`, preserve trailing natural-language command text as temporary runtime guidance. During a live run, inject user corrections into the active run guidance inbox instead of only narrating advice.
 - Host hooks and subagents may improve throughput but are never correctness requirements.

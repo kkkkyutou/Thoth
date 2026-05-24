@@ -67,21 +67,22 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         result_style="terminal receipt only",
         validator_policy="loop budget controls retries; child validate confirms execute's validator receipt",
     ),
-    "review": CommandPromptSpec(
-        command_id="review",
+    "argue": CommandPromptSpec(
+        command_id="argue",
         route_class="live_intelligent",
         intelligence_tier="high",
-        packet_authority_mode="review_packet",
-        objective="Produce the best possible review output: understand user intent, apply professional judgment and first-principles reasoning, and return structured findings without modifying code.",
+        packet_authority_mode="argument_record",
+        objective="Run a human-quality adversarial discussion: resolve the intended target, ask if ambiguous, let an attacker challenge the direction from first principles, then let an independent adjudicator decide decision_impact and preview any authority patch.",
         hard_stops=(
             "Do not modify project code or write fixes.",
-            "Do not reduce the review to a checklist; infer the user's intent from evidence and reason from first principles.",
-            "If the target, intent, or acceptance bar is ambiguous, ask with AskUserQuestion before judging instead of assuming.",
-            "If review_expectation or complete_exact exists, follow it exactly.",
+            "Do not silently choose among multiple plausible work items or decisions; ask with AskUserQuestion instead.",
+            "Do not summarize the executor's position as adjudication; attacker and adjudicator must be independent fresh sessions.",
+            "Do not collapse the result into PASS/WARN/FAIL; use decision_impact.",
+            "Do not mutate work_item, decision, or discussion authority unless the user explicitly confirms the apply step.",
         ),
-        reply_budget_utf8=160,
-        result_style="short summary plus structured findings",
-        validator_policy="exact-match route is protocol_fast; open-ended route stays live but still structured",
+        reply_budget_utf8=220,
+        result_style="short receipt with artifact paths, decision_impact, and confirmation-required patch preview when present",
+        validator_policy="argument artifacts are evidence; only a confirmed apply command may change compact authority fields",
     ),
     "status": CommandPromptSpec(
         command_id="status",
@@ -245,7 +246,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
 
 
 PUBLIC_COMMAND_PROMPT_IDS = frozenset(
-    {"init", "discuss", "run", "loop", "review", "auto", "status", "doctor", "dashboard"}
+    {"init", "discuss", "run", "loop", "argue", "auto", "status", "doctor", "dashboard"}
 )
 INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_PROMPT_IDS
 
@@ -438,7 +439,7 @@ def render_phase_worker_prompt(
         f"Execute exactly one phase: `{phase}`.",
         "Finish with exactly one JSON object and no surrounding prose.",
         "Do not create or edit `.thoth` ledgers by hand.",
-        "Do not invoke `$thoth run`, `$thoth loop`, or `$thoth review`.",
+        "Do not invoke `$thoth run`, `$thoth loop`, or `$thoth argue`.",
         f"Objective: {authority.get('objective')}",
         f"Required fields: {', '.join(str(item) for item in required_fields)}",
         f"Summary budget UTF-8 bytes: {authority.get('summary_budget_utf8')}",
@@ -537,12 +538,12 @@ def build_codex_public_command_prompt(
         )
     if command_id in {"run", "loop"}:
         lines.append("Plan must prove user-authority coverage before execute; executable discovery such as finding paths or creating missing target files should flow into execute, not needs_input.")
-    elif command_id == "review":
+    elif command_id == "argue":
         lines.extend(
             (
-                "If the command returns a review packet, stay inside that review protocol only.",
-                "If `packet.review_mode` is `exact_match`, reproduce that exact structured result.",
-                "If `packet.protocol_commands.complete_exact` exists, execute that exact completion command.",
+                "If target resolution is ambiguous, ask the user to choose; do not guess.",
+                "Treat argument artifacts as evidence, not as automatic run/auto acceptance.",
+                "If an authority patch preview is returned, ask the user before executing any apply command.",
             )
         )
     elif command_id == "discuss":
@@ -627,29 +628,29 @@ def build_codex_selftest_command_probe_prompt(*, public_command: str, shell_comm
     )
 
 
-def build_codex_selftest_review_probe_prompt(*, public_command: str, shell_command: str, done_token: str) -> str:
+def build_codex_selftest_argue_probe_prompt(*, public_command: str, shell_command: str, done_token: str) -> str:
     public_equivalent = public_command.replace("$thoth ", "thoth ", 1)
     return " ".join(
         (
-            "This is a Thoth heavy selftest review probe.",
+            "This is a Thoth heavy selftest argue probe.",
             "Operate only on this repo.",
             f"The Codex public surface is `{public_command}`, but in the workspace shell you must execute it literally as `{shell_command}`.",
             f"The public shell equivalent is `{public_equivalent}`.",
             "Execute that shell command immediately as your first action.",
             "Do not send commentary, progress updates, plans, explanations, or any non-command message before that command.",
-            "After the review packet is prepared, stay inside the Thoth review protocol only.",
-            "Inspect only the review target, the prepared packet, and files directly required by the protocol.",
+            "After the argument run completes, inspect only the returned argument artifact paths if needed.",
             "Do not inspect CLI help, do not explore unrelated files, and do not execute exploratory commands.",
-            "Allowed follow-up commands only: the packet-provided protocol command(s), the strict task eval entrypoint, and the minimum direct file reads needed to perform this review.",
-            "Do not run `--help`, `which`, `codex`, `grep`, or any discovery command after the packet is prepared.",
-            "Do not modify code, do not add a second finding, and do not emit prose outside the structured review result.",
-            "If `packet.strict_task.review_expectation` exists, use that exact object as the final review result.",
-            "If `packet.protocol_commands.complete_exact` exists, execute that exact completion command.",
-            "Run the strict task eval entrypoint exactly once if the packet requires it, then finish the run via the packet-provided complete command.",
-            "For review completion, `--summary` must be a short plain string only; the structured review object belongs only in `--result-json`.",
-            "When completing the run, pass the exact review result via `--result-json` and mark the exact-match check as passing via `--checks-json`.",
-            f"After the review run terminalizes successfully, reply with `{done_token}` only.",
+            "Do not modify code and do not apply any authority patch during the probe.",
+            f"After the argue run terminalizes successfully, reply with `{done_token}` only.",
         )
+    )
+
+
+def build_codex_selftest_review_probe_prompt(*, public_command: str, shell_command: str, done_token: str) -> str:
+    return build_codex_selftest_argue_probe_prompt(
+        public_command=public_command,
+        shell_command=shell_command,
+        done_token=done_token,
     )
 
 
@@ -678,6 +679,7 @@ __all__ = [
     "build_codex_public_command_prompt",
     "codex_installed_runtime_shell_command",
     "build_codex_selftest_command_probe_prompt",
+    "build_codex_selftest_argue_probe_prompt",
     "build_codex_selftest_review_probe_prompt",
     "build_review_result_shape",
     "command_prompt_authority",

@@ -18,7 +18,7 @@ This repository is a disposable probe used by the Thoth heavy selftest.
 The heavy gate is allowed to verify only Thoth public-command conformance:
 
 - `run --sleep` and `loop --sleep` must create durable ledgers and stop cleanly
-- `review` must return one fixed structured finding
+- `argue` must return one fixed adversarial decision record
 - source files under `tracker/` must remain unchanged
 """,
     "tracker/__init__.py": """\

@@ -53,7 +53,7 @@ def test_seed_host_real_app_writes_expected_surface(tmp_path):
     review_probe = (tmp_path / "tracker" / "review_probe.py").read_text(encoding="utf-8")
     readme = (tmp_path / "README.md").read_text(encoding="utf-8")
     assert 'task["title"] = title.strip()' in review_probe
-    assert "one fixed structured finding" in readme
+    assert "one fixed adversarial decision record" in readme
 
 
 def test_seed_host_real_runtime_probe_script_runs(tmp_path):
@@ -217,17 +217,13 @@ def test_codex_prompt_uses_literal_shell_command_for_public_surface():
     assert "Do not inspect files, search memories, explain, retry, or execute any second shell command." in prompt
 
 
-def test_codex_review_prompt_requires_exact_probe_result():
-    prompt = _codex_prompt_for_public_command("$thoth review --work-id task-review-probe tracker/review_probe.py", "DONE_TOKEN")
-    assert "heavy selftest review probe" in prompt
-    assert "stay inside the Thoth review protocol only" in prompt
-    assert "packet.strict_task.review_expectation" in prompt
-    assert "packet.protocol_commands.complete_exact" in prompt
+def test_codex_argue_prompt_requires_literal_probe_command():
+    prompt = _codex_prompt_for_public_command("$thoth argue --work-id task-review-probe tracker/review_probe.py", "DONE_TOKEN")
+    assert "heavy selftest argue probe" in prompt
+    assert "argument run completes" in prompt
     assert "Do not send commentary" in prompt
     assert "Do not inspect CLI help" in prompt
-    assert "Do not run `--help`, `which`, `codex`, `grep`" in prompt
-    assert "`--summary` must be a short plain string only" in prompt
-    assert "packet-provided complete command" in prompt
+    assert "Do not modify code and do not apply any authority patch" in prompt
     assert "reply with `DONE_TOKEN` only" in prompt
 
 
@@ -353,7 +349,7 @@ def test_codex_command_match_accepts_cat_expanded_argument_probe():
     )
 
 
-def test_normalize_codex_public_command_result_allows_followup_commands_for_review_probe():
+def test_normalize_codex_public_command_result_rejects_extra_commands_for_argue_probe():
     command_result = type("CommandResultLike", (), {})()
     command_result.argv = ["codex", "exec"]
     command_result.cwd = "/tmp/project"
@@ -368,7 +364,7 @@ def test_normalize_codex_public_command_result_allows_followup_commands_for_revi
                     "item": {
                         "id": "item_0",
                         "type": "command_execution",
-                        "command": "/bin/bash -lc 'thoth review --work-id task-review-probe tracker/review_probe.py'",
+                        "command": "/bin/bash -lc 'thoth argue --work-id task-review-probe tracker/review_probe.py'",
                         "aggregated_output": "{\"status\":\"ok\"}",
                         "exit_code": 0,
                         "status": "completed",
@@ -394,12 +390,13 @@ def test_normalize_codex_public_command_result_allows_followup_commands_for_revi
 
     normalized = _normalize_codex_public_command_result(
         command_result,
-        public_command="$thoth review --work-id task-review-probe tracker/review_probe.py",
+        public_command="$thoth argue --work-id task-review-probe tracker/review_probe.py",
         done_token="DONE",
-        allow_followup_commands=True,
+        allow_followup_commands=False,
     )
 
-    assert normalized.returncode == 0
+    assert normalized.returncode == 1
+    assert "unexpected extra shell commands" in normalized.stderr
 
 
 def test_normalize_codex_public_command_result_rejects_extra_commands_for_literal_probe():
@@ -531,7 +528,7 @@ def test_normalize_codex_public_command_result_accepts_single_successful_literal
     assert normalized.returncode == 0
 
 
-def test_normalize_codex_public_command_result_still_requires_done_token_for_review_probe():
+def test_normalize_codex_public_command_result_still_requires_done_token_for_argue_probe():
     command_result = type("CommandResultLike", (), {})()
     command_result.argv = ["codex", "exec"]
     command_result.cwd = "/tmp/project"
@@ -546,8 +543,8 @@ def test_normalize_codex_public_command_result_still_requires_done_token_for_rev
                     "item": {
                         "id": "item_0",
                         "type": "command_execution",
-                        "command": "/bin/bash -lc 'thoth review --work-id task-review-probe tracker/review_probe.py'",
-                        "aggregated_output": "{\"command\":\"review\",\"status\":\"ok\"}",
+                        "command": "/bin/bash -lc 'thoth argue --work-id task-review-probe tracker/review_probe.py'",
+                        "aggregated_output": "{\"command\":\"argue\",\"status\":\"ok\"}",
                         "exit_code": 0,
                         "status": "completed",
                     },
@@ -568,9 +565,9 @@ def test_normalize_codex_public_command_result_still_requires_done_token_for_rev
 
     normalized = _normalize_codex_public_command_result(
         command_result,
-        public_command="$thoth review --work-id task-review-probe tracker/review_probe.py",
+        public_command="$thoth argue --work-id task-review-probe tracker/review_probe.py",
         done_token="DONE",
-        allow_followup_commands=True,
+        allow_followup_commands=False,
     )
 
     assert normalized.returncode == 1

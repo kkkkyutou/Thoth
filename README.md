@@ -4,7 +4,7 @@
   <h1>🐦 Thoth — Dashboard-First Runtime for Autoresearch</h1>
   <img src="assets/thoth.png" width="80%" alt="Thoth logo" />
   <p><strong>Dashboard-first orchestration runtime for autoresearch.</strong></p>
-  <p>Turn drifting agent work into durable runs, locked work items, and reviewable verdicts.</p>
+  <p>Turn drifting agent work into durable runs, locked work items, and argument-backed verdicts.</p>
   <p>
     <img alt="Runtime Dashboard First" src="https://img.shields.io/badge/runtime-dashboard--first-4B5563?style=for-the-badge&labelColor=3F3F46&color=0F766E" />
     <img alt="Mode Autoresearch" src="https://img.shields.io/badge/mode-autoresearch-4B5563?style=for-the-badge&labelColor=3F3F46&color=B45309" />
@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.6.12" src="https://img.shields.io/badge/version-0.2.6.12-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.8.0" src="https://img.shields.io/badge/version-0.2.8.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.6.12 auto preflight refresh</strong> · auto repairs stale object graph summaries before deciding whether to block execution</p>
+  <p><strong>v0.2.8.0 adversarial argue</strong> · challenge work items, decisions, or ideas through attacker/adjudicator artifacts before changing authority</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 
@@ -39,7 +39,7 @@
 +----------------------------------------------------------------------------+
 | Layer 1. Host Surface                                                      |
 |                                                                            |
-|  init   discuss   run   loop   review   auto   status                      |
+|  init   discuss   run   loop   argue   auto   status                       |
 |  doctor dashboard                                                       |
 +----------------------------------------------------------------------------+
                                               |
@@ -62,7 +62,7 @@
 |                                                                            |
 |  run      -> one durable execution packet                                  |
 |  loop     -> one durable recoverable loop packet                           |
-|  review   -> structured findings through the same protocol                 |
+|  argue    -> adversarial discussion and authority patch preview            |
 |  auto     -> priority-driven child loops for actionable work               |
 |                                                                            |
 |                           +---------------------------+                    |
@@ -233,7 +233,7 @@ python -m thoth.selftest --case plan.discuss.compile --case runtime.run.live
 - `python -m thoth.selftest` without any `--case` fails on purpose and prints the available case catalog.
 - Every case runs in its own workdir and artifact directory, writes a per-case report entry keyed by `case_id`, and must not depend on side effects from an earlier case.
 - Release, regression, and closeout gates must record explicit case IDs instead of broad aliases such as `hard` or `heavy`.
-- The current catalog is split into repo-local capability probes such as `plan.discuss.compile`, `runtime.run.live`, `runtime.loop.sleep`, `review.exact_match`, `observe.dashboard`, `hooks.codex`, plus host-surface probes such as `surface.codex.run.live_prepare` and `surface.claude.loop.stop`.
+- The current catalog is split into repo-local capability probes such as `plan.discuss.compile`, `runtime.run.live`, `runtime.loop.sleep`, `argue.adversarial`, `observe.dashboard`, `hooks.codex`, plus host-surface probes such as `surface.codex.run.live_prepare` and `surface.claude.loop.stop`.
 
 ### Targeted pytest
 
@@ -263,7 +263,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | Record planning decisions without entering code execution. | Topic, decision payload, or work payload | Updated discussion, decision, or work_item objects plus generated docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | Execute one ready work item through a durable runtime packet. | `--work-id`, optional host or executor controls, optional attach/watch/stop | Durable run ledger with state, events, phase results, artifacts, and terminal result |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | Iterate on one ready work item through a controller service. | `--work-id`, optional resume or sleep controls | Controller object, child run lineage, and bounded iteration history |
-| `review` | `Claude: /thoth:review`<br>`Codex: $thoth review` | Produce structured findings without modifying source code. | Review target, optional `--work-id`, optional executor controls | Structured review result recorded through the shared protocol |
+| `argue` | `Claude: /thoth:argue`<br>`Codex: $thoth argue` | Run an adversarial attacker/adjudicator discussion against an idea, work item, or decision without silently mutating authority. | `--work-id`, `--decision-id`, `--target-kind`, `--target-id`, free-text idea, or confirmed `--apply-artifact` | Argument ledger with full attack/adjudication artifacts, `decision_impact`, and confirmation-required authority patch preview |
 | `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | Run the priority queue while the user is away. | Optional `--sleep`, `--rounds`, `--scope`, or explicit `--work-id` | Auto controller, child loop lineage, monitor events, and terminal or paused summary |
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
@@ -283,7 +283,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | Good fit | Why |
 | --- | --- |
 | Research and experimentation repos | They need durable memory, replayable results, and visible long-running work. |
-| Engineering teams using AI for real changes | They need code execution, review, and acceptance to stay auditable. |
+| Engineering teams using AI for real changes | They need code execution, adversarial critique, and acceptance to stay auditable. |
 | Teams that want Claude Code and Codex parity | They need one host-neutral command model rather than two drifting workflows. |
 
 ## Current Limitations

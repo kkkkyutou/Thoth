@@ -32,7 +32,7 @@ def test_no_public_codex_variant_commands():
 
 def test_executor_mode_documents_exist():
     """Public commands should advertise executor-mode routing instead."""
-    for relpath in ["commands/run.md", "commands/loop.md", "commands/review.md"]:
+    for relpath in ["commands/run.md", "commands/loop.md", "commands/argue.md"]:
         content = (ROOT / relpath).read_text(encoding="utf-8")
         assert "--executor claude|codex" in content
 

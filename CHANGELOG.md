@@ -4,6 +4,21 @@
 
 No pending changes.
 
+## [0.2.8.0] - 2026-05-24
+
+### Added
+- Added public `$thoth argue` / `/thoth:argue` as an adversarial discussion command for ideas, work items, and decisions.
+- `argue` records independent attacker and adjudicator worker artifacts, an `argument.json` envelope, `attack.md`, `adjudication.md`, worker metadata, and an `authority-patch-preview.json` artifact.
+- Added `argue.adversarial`, `surface.codex.argue.adversarial`, and `surface.claude.argue.adversarial` selftest cases to replace the old exact-match review probes.
+
+### Changed
+- `argue` uses `decision_impact` instead of PASS/WARN/FAIL and treats generated patches as evidence until the user explicitly confirms an apply step.
+- Direct apply is limited to compact work item payload fields: `goal`, `context`, `constraints`, `acceptance_spec`, `approach_notes`, and `missing_questions`.
+- Historical `review` run ledgers remain readable for compatibility, but `review` no longer closes work items or appears in generated public command surfaces.
+
+### Removed
+- Removed public `$thoth review` / `/thoth:review` from the CLI, Claude projections, Codex skill surface, generated command docs, and public selftest catalog.
+
 ## [0.2.7.0] - 2026-05-23
 
 ### Changed

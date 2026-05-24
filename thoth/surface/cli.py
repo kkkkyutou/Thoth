@@ -10,7 +10,7 @@ from .handlers import handle_command
 
 def build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="thoth")
-    public_commands = "{init,discuss,run,loop,review,auto,status,doctor,dashboard}"
+    public_commands = "{init,discuss,run,loop,argue,auto,status,doctor,dashboard}"
     sub = parser.add_subparsers(dest="command", required=True, metavar=public_commands)
 
     def add_internal_parser(name: str) -> argparse.ArgumentParser:
@@ -106,12 +106,16 @@ def build_cli_parser() -> argparse.ArgumentParser:
     extend = add_internal_parser("extend")
     extend.add_argument("changed", nargs="*")
 
-    review = sub.add_parser("review")
-    review.add_argument("--goal")
-    review.add_argument("--work-id")
-    review.add_argument("--host", default="codex")
-    review.add_argument("--executor")
-    review.add_argument("rest", nargs="*")
+    argue = sub.add_parser("argue")
+    argue.add_argument("--work-id")
+    argue.add_argument("--decision-id")
+    argue.add_argument("--target-kind", choices=("work_item", "decision", "idea"))
+    argue.add_argument("--target-id")
+    argue.add_argument("--apply-artifact")
+    argue.add_argument("--confirm-apply", help=argparse.SUPPRESS)
+    argue.add_argument("--host", default="codex")
+    argue.add_argument("--executor")
+    argue.add_argument("rest", nargs="*")
 
     hook = add_internal_parser("hook")
     hook.add_argument("--host", required=True, choices=("claude", "codex"))
@@ -131,7 +135,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     prepare = add_internal_parser("prepare")
     prepare.add_argument("--project-root")
-    prepare.add_argument("--command-id", required=True, choices=("run", "loop", "review"))
+    prepare.add_argument("--command-id", required=True, choices=("run", "loop"))
     prepare.add_argument("--work-id")
     prepare.add_argument("--goal")
     prepare.add_argument("--target")
