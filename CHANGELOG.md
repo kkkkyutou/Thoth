@@ -4,10 +4,18 @@
 
 No pending changes.
 
+## [0.2.8.3] - 2026-05-25
+
+### Changed
+- Refreshed README, generated command docs, and plugin manifests to match current smart-init, compact `work_graph`, public `argue`, and DAG-first auto semantics.
+- Clarified that `init` can capture natural-language intent into `source=init:*` discussions without generating ready work or writing unconfirmed summaries into generated docs.
+- Replaced stale priority-queue wording in current public docs with DAG-first actionability and `scheduling.order` terminology.
+- Updated discuss prompt wording so agents may close authority with either a single compact `work_item` or a compact `work_graph`, instead of treating single-work fields as the only route.
+
 ## [0.2.8.2] - 2026-05-25
 
 ### Added
-- `thoth init <natural-language intent>` now initializes the base `.thoth` project and opens or appends a `source=init` discussion containing the raw intent text.
+- `thoth init <natural-language intent>` now initializes the base `.thoth` project and opens or appends a `source=init:<host>` discussion containing the raw intent text.
 - Discussion close now accepts a compact `work_graph` blueprint: explicit work-id keyed nodes plus hard dependency edges that compile into canonical `work_item` objects and `depends_on` links.
 - Init discussions can close with a compact `project_patch` containing only `name`, `description`, and `directions`.
 - Dashboard DAG nodes now expose `authority_status`, `actionability`, `waiting_on`, `downstream`, `goal`, and `acceptance` metadata.

@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.8.2" src="https://img.shields.io/badge/version-0.2.8.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.8.3" src="https://img.shields.io/badge/version-0.2.8.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.8.2 smart init</strong> · natural-language init intent, safe multiline command arguments, compact work_graph DAG closure, and dashboard waiting_on actionability</p>
+  <p><strong>v0.2.8.3 docs refresh</strong> · current smart init docs, public argue terminology, compact work_graph closure, and DAG-first auto actionability</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 
@@ -63,7 +63,7 @@
 |  run      -> one durable execution packet                                  |
 |  loop     -> one durable recoverable loop packet                           |
 |  argue    -> adversarial discussion and authority patch preview            |
-|  auto     -> priority-driven child loops for actionable work               |
+|  auto     -> DAG-first child loops for actionable work                     |
 |                                                                            |
 |                           +---------------------------+                    |
 |                           | Ready Work (--work-id)   |                    |
@@ -133,7 +133,7 @@ Thoth is a dashboard-first orchestration runtime for autoresearch. It assumes ch
 
 ## Smart Init And Compact DAGs
 
-`thoth init` now has two explicit personalities. With no natural-language intent it remains an audit-first mechanical bootstrap, sync, or migration command. With intent, for example `thoth init -- "build a multimodal research project..."`, it first materializes the base `.thoth` project and then stores the raw user text in an open `source=init` discussion. It does not fabricate ready work from that text and it does not bake an unconfirmed summary into generated `AGENTS.md` or `CLAUDE.md`.
+`thoth init` now has two explicit personalities. With no natural-language intent it remains an audit-first mechanical bootstrap, sync, or migration command. With intent, for example `thoth init -- "build a multimodal research project..."`, it first materializes the base `.thoth` project and then stores the raw user text in an open `source=init:*` discussion. It does not fabricate ready work from that text and it does not bake an unconfirmed summary into generated `AGENTS.md` or `CLAUDE.md`.
 
 When the discussion is ready to close, agents can use either one compact `work_item` or a compact `work_graph` blueprint. A `work_graph` is only `nodes` keyed by explicit stable `work_id` plus `edges`; each edge means `to` depends on `from` and is stored as canonical `depends_on` links. Nodes use only `title`, `goal`, `context`, `constraints`, `acceptance_spec`, `approach_notes`, and `missing_questions`. Init discussions may also include a small `project_patch` with only `name`, `description`, and `directions`; ordinary discussions cannot patch project identity.
 
@@ -267,12 +267,12 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 
 | Command | Host Surface | Purpose | Input | Result |
 | --- | --- | --- | --- | --- |
-| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit, initialize, migrate, or resync canonical Thoth authority. | `--sync`, `--migrate preview`, `--migrate apply`, `--migrate --preview`, `--migrate --apply`, or optional config payload | Portable `.thoth` authority, migration ledger, ignore rules, generated projections, dashboard scaffolding, scripts, and tests |
-| `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | Record planning decisions without entering code execution. | Topic, decision payload, or work payload | Updated discussion, decision, or work_item objects plus generated docs view |
+| `init` | `Claude: /thoth:init`<br>`Codex: $thoth init` | Audit, initialize, migrate, resync, or capture natural-language project intent as a `source=init:*` discussion. | `--sync`, `--migrate preview`, `--migrate apply`, `--migrate --preview`, `--migrate --apply`, `--config-json`, `--intent`, `--intent-file`, `[--] [intent...]` | Portable `.thoth` authority, migration ledger, raw intent discussion packet, ignore rules, generated projections, dashboard scaffolding, scripts, and tests |
+| `discuss` | `Claude: /thoth:discuss`<br>`Codex: $thoth discuss` | Record planning decisions without entering code execution. | Topic, decision payload, compact work payload, or compact work_graph payload | Updated discussion, decision, work_item objects, canonical dependency links, and generated docs view |
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | Execute one ready work item through a durable runtime packet. | `--work-id`, optional host or executor controls, optional attach/watch/stop | Durable run ledger with state, events, phase results, artifacts, and terminal result |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | Iterate on one ready work item through a controller service. | `--work-id`, optional resume or sleep controls | Controller object, child run lineage, and bounded iteration history |
 | `argue` | `Claude: /thoth:argue`<br>`Codex: $thoth argue` | Run an adversarial attacker/adjudicator discussion against an idea, work item, or decision without silently mutating authority. | `--work-id`, `--decision-id`, `--target-kind`, `--target-id`, free-text idea, or confirmed `--apply-artifact` | Argument ledger with full attack/adjudication artifacts, `decision_impact`, and confirmation-required authority patch preview |
-| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | Run the priority queue while the user is away. | Optional `--sleep`, `--rounds`, `--scope`, or explicit `--work-id` | Auto controller, child loop lineage, monitor events, and terminal or paused summary |
+| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | Run the DAG-first actionable queue while the user is away. | Optional `--sleep`, `--rounds`, `--scope all-open|ready`, or explicit `--work-id` | Auto controller, child loop lineage, actionability-aware queue snapshots, monitor events, and terminal or paused summary |
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by authority plus local `.thoth` ledgers |

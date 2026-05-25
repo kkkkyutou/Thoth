@@ -1,7 +1,7 @@
 ---
 name: thoth:init
 description: Initialize, migrate, resync, or seed an intent discussion for canonical .thoth authority without taking ownership of repo-root `.codex`.
-argument-hint: "[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--] [intent...]"
+argument-hint: "[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--intent <text>] [--intent-file <path>] [--] [intent...]"
 disable-model-invocation: false
 ---
 
@@ -52,7 +52,7 @@ Initialize audit-first project authority; when natural-language intent is suppli
 ### Hard Stops
 
 1. Do not assume the repo is blank.
-2. Do not assume goals, project identity, migration intent, work priority, unblock policy, or acceptance criteria.
+2. Do not assume goals, project identity, migration intent, work ordering, unblock policy, or acceptance criteria.
 3. Do not turn init intent into ready work immediately.
 4. Do not bake an unconfirmed summary of the raw intent into AGENTS.md, CLAUDE.md, or generated project docs.
 5. Do not combine natural-language init intent with --sync, --migrate, --preview, or --apply.

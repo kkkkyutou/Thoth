@@ -32,7 +32,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="init",
         summary="Initialize, migrate, resync, or seed an intent discussion for canonical .thoth authority without taking ownership of repo-root `.codex`.",
-        argument_hint="[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--] [intent...]",
+        argument_hint="[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--intent <text>] [--intent-file <path>] [--] [intent...]",
         route_class="hybrid_init",
         intelligence_tier="intent_sensitive",
         packet_authority_mode="result_envelope_or_command_packet",
