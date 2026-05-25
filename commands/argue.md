@@ -18,7 +18,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" argue --host claude $ARGUMENTS
+THOTH_ARGUE_ARGUMENTS_FILE="$(mktemp -t thoth-argue-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_ARGUE_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_ARGUE_ARGUMENTS_FILE" <<'THOTH_ARGUE_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_ARGUE_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" argue --host claude --thoth-arguments-file "$THOTH_ARGUE_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
@@ -48,11 +53,11 @@ Run a human-quality adversarial discussion: resolve the intended target, ask if 
 
 ### Hard Stops
 
-- Do not modify project code or write fixes.
-- Do not silently choose among multiple plausible work items or decisions; ask with AskUserQuestion instead.
-- Do not summarize the executor's position as adjudication; attacker and adjudicator must be independent fresh sessions.
-- Do not collapse the result into PASS/WARN/FAIL; use decision_impact.
-- Do not mutate work_item, decision, or discussion authority unless the user explicitly confirms the apply step.
+1. Do not modify project code or write fixes.
+2. Do not silently choose among multiple plausible work items or decisions; ask with AskUserQuestion instead.
+3. Do not summarize the executor's position as adjudication; attacker and adjudicator must be independent fresh sessions.
+4. Do not collapse the result into PASS/WARN/FAIL; use decision_impact.
+5. Do not mutate work_item, decision, or discussion authority unless the user explicitly confirms the apply step.
 
 ### Reply Contract
 

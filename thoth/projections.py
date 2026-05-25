@@ -11,7 +11,7 @@ from .prompt_specs import render_codex_command_micro_prompt, render_command_cont
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.2.8.1"
+PLUGIN_VERSION = "0.2.8.2"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -24,6 +24,16 @@ def _frontmatter_allowed_tools(spec: CommandSpec) -> str:
 
 
 def _claude_bridge_rules(spec: CommandSpec) -> str:
+    if spec.command_id == "init":
+        return """1. Treat the structured bridge payload above as the only authority for this invocation.
+2. If `bridge_success` is `false`, report the exact bridge failure and stop.
+3. If stdout starts with `version=`, repeat stdout exactly and output nothing else.
+4. If no `body.init_intent` exists, report only the mechanical init/sync/migrate receipt.
+5. If `body.init_intent` exists, preserve the returned discussion packet as the live planning authority; do not summarize raw intent into generated docs and do not create ready work.
+6. Use AskUserQuestion to ask the next material question when project_patch or work_graph authority is not closed.
+7. Close init authority only through `packet.protocol_commands.close_authority`, using optional `project_patch` plus compact `work_graph` or `work_item`.
+8. If extra evidence is required, inspect only the smallest artifact explicitly named by the bridge payload.
+9. Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result."""
     if spec.route_class == "mechanical_fast":
         return """- Treat the structured bridge payload above as the only authority for this invocation.
 - If `bridge_success` is `false`, report the exact bridge failure and stop.
@@ -82,7 +92,8 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
             (
                 "- Use AskUserQuestion until compact authority categories are explicit: goal, constraints, decisions, risks, approach_notes, and open_questions.",
                 "- On major semantic changes, write a draft authority checkpoint through `packet.protocol_commands.checkpoint_authority`.",
-                "- When no material assumptions remain, close with the compact authority categories plus `packet.work_json_template` through `packet.protocol_commands.close_authority`.",
+                "- When no material assumptions remain, close with the compact authority categories plus `packet.work_json_template` or `packet.work_graph_schema` through `packet.protocol_commands.close_authority`.",
+                "- Use `packet.init_project_patch_schema` only for init discussions; ordinary discussions cannot patch project name, description, or directions.",
                 "- When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.",
                 "- Do not create ready work if any open_questions remain in the authority capsule.",
             )
@@ -90,21 +101,25 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
     return "\n".join(rules)
 
 
-def render_claude_command(spec: CommandSpec) -> str:
-    runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} $ARGUMENTS'
-    live_packet_contract = spec.intelligence_tier == "high"
-    disable_model_invocation = "false" if live_packet_contract else "true"
-    if spec.command_id == "discuss":
-        runtime_invocation = '''THOTH_DISCUSS_ARGUMENTS_FILE="$(mktemp -t thoth-discuss-arguments.XXXXXX)"
-trap 'rm -f "$THOTH_DISCUSS_ARGUMENTS_FILE"' EXIT
-cat > "$THOTH_DISCUSS_ARGUMENTS_FILE" <<'THOTH_DISCUSS_ARGUMENTS_EOF'
+def _claude_arguments_file_invocation(spec: CommandSpec) -> str:
+    base_args: list[str] = [spec.command_id]
+    if spec.command_id in {"argue", "run", "loop", "auto"}:
+        base_args.extend(["--host", "claude"])
+    args = " ".join(base_args)
+    var_name = f"THOTH_{spec.command_id.upper()}_ARGUMENTS_FILE"
+    heredoc = f"THOTH_{spec.command_id.upper()}_ARGUMENTS_EOF"
+    return f'''{var_name}="$(mktemp -t thoth-{spec.command_id}-arguments.XXXXXX)"
+trap 'rm -f "${var_name}"' EXIT
+cat > "${var_name}" <<'{heredoc}'
 $ARGUMENTS
-THOTH_DISCUSS_ARGUMENTS_EOF
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" discuss --thoth-arguments-file "$THOTH_DISCUSS_ARGUMENTS_FILE"'''
-    elif spec.command_id == "argue":
-        runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'
-    elif spec.command_id in {"run", "loop", "auto"}:
-        runtime_invocation = f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {spec.command_id} --host claude $ARGUMENTS'
+{heredoc}
+"${{CLAUDE_PLUGIN_ROOT}}/scripts/thoth-claude-command.sh" {args} --thoth-arguments-file "${var_name}"'''
+
+
+def render_claude_command(spec: CommandSpec) -> str:
+    runtime_invocation = _claude_arguments_file_invocation(spec)
+    live_packet_contract = spec.intelligence_tier == "high"
+    disable_model_invocation = "false" if live_packet_contract or spec.command_id == "init" else "true"
     response_contract = _claude_bridge_rules(spec)
     prompt_contract = render_command_contract_markdown(spec.command_id, heading_level=3).strip()
     return f"""---
@@ -178,7 +193,8 @@ Supported commands:
 
 ## Shared Rules
 
-- `init`, `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
+- `init` is hybrid: no intent is a mechanical audit-first receipt; natural-language intent opens an inquiring discussion and must be closed through compact project_patch/work_graph authority.
+- `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
 - `discuss`, `run`, `loop`, `auto`, and `argue` are high-intelligence paths.
 - `argue` preserves full attacker/adjudicator artifacts; authority patches require explicit confirmation before apply.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.

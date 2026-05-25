@@ -194,6 +194,40 @@ def _attach_runtime(work_item: dict) -> dict:
     return payload
 
 
+def _work_authority_status(work_item: dict) -> str:
+    return str(work_item.get("ready_state") or work_item.get("authority_status") or work_item.get("status") or "")
+
+
+def _hard_dependency_ids(work_item: dict) -> list[str]:
+    rows: list[str] = []
+    depends_on = work_item.get("depends_on") if isinstance(work_item.get("depends_on"), list) else []
+    for dep in depends_on:
+        if not isinstance(dep, dict):
+            continue
+        if dep.get("type", "hard") != "hard":
+            continue
+        dep_id = dep.get("work_id")
+        if isinstance(dep_id, str) and dep_id:
+            rows.append(dep_id)
+    return rows
+
+
+def _work_actionability(work_item: dict, tasks_by_id: dict[str, dict]) -> tuple[str, list[str]]:
+    authority_status = _work_authority_status(work_item)
+    waiting_on = [
+        dep_id
+        for dep_id in _hard_dependency_ids(work_item)
+        if _work_authority_status(tasks_by_id.get(dep_id, {})) != "validated"
+    ]
+    if authority_status == "ready" and waiting_on:
+        return "waiting_on", waiting_on
+    if authority_status == "ready":
+        return "actionable", []
+    if authority_status in {"blocked", "draft", "abandoned", "validated", "failed", "active"}:
+        return authority_status, waiting_on
+    return authority_status or "unknown", waiting_on
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return _frontend_index_response()
@@ -293,6 +327,12 @@ async def api_dag():
     try:
         modules = load_modules(PROJECT_ROOT)
         tasks = load_all_tasks(PROJECT_ROOT)
+        tasks_by_id = {str(t.get("id") or t.get("work_id") or ""): t for t in tasks if str(t.get("id") or t.get("work_id") or "")}
+        downstream_by_id: dict[str, list[str]] = {work_id: [] for work_id in tasks_by_id}
+        for task in tasks:
+            tid = str(task.get("id", "") or task.get("work_id", ""))
+            for dep_id in _hard_dependency_ids(task):
+                downstream_by_id.setdefault(dep_id, []).append(tid)
         tasks_by_module: dict[str, list[dict]] = {}
         for t in tasks:
             tasks_by_module.setdefault(t.get("module", ""), []).append(t)
@@ -311,25 +351,26 @@ async def api_dag():
                 edges.append({"source": mid, "target": ds, "type": "hard", "level": "module"})
         for task in tasks:
             tid = task.get("id", "") or task.get("work_id", "")
+            actionability, waiting_on = _work_actionability(task, tasks_by_id)
             nodes.append({
                 "id": tid, "label": task.get("title", tid), "type": "work_item",
                 "direction": task.get("direction", ""), "module": task.get("module", ""),
                 "status": get_task_status(task), "progress": calculate_task_progress(task),
+                "authority_status": _work_authority_status(task),
+                "actionability": actionability,
+                "waiting_on": waiting_on,
+                "downstream": sorted(item for item in downstream_by_id.get(tid, []) if item),
+                "goal": task.get("goal_statement", ""),
+                "acceptance": task.get("acceptance_spec", {}),
             })
             for dep in task.get("depends_on", []):
-                edges.append({
-                    "source": dep.get("work_id", ""), "target": tid,
-                    "type": dep.get("type", "soft"), "level": "work_item",
-                    "reason": dep.get("reason", ""),
-                })
-            if task.get("ready_state") in {"blocked", "invalid"} and task.get("blocking_reason"):
-                edges.append({
-                    "source": f"reason:{tid}",
-                    "target": tid,
-                    "type": "hard",
-                    "level": "work_item",
-                    "reason": str(task.get("blocking_reason")),
-                })
+                source = dep.get("work_id", "")
+                if source:
+                    edges.append({
+                        "source": source, "target": tid,
+                        "type": dep.get("type", "soft"), "level": "work_item",
+                        "reason": dep.get("reason", ""),
+                    })
         return {"nodes": nodes, "edges": edges}
     except Exception as exc:
         logger.error("Error in /api/dag: %s", traceback.format_exc())

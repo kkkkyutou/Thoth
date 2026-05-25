@@ -14,9 +14,9 @@ Finish the current strict task through the four-phase RuntimeDriver while preser
 
 ## Hard Stops
 
-- Do not invent or compile a new work item when --work-id is missing.
-- Do not exit the monitoring session before the RuntimeDriver signals a terminal state.
-- Do not hand-edit .thoth ledgers.
+1. Do not invent or compile a new work item when --work-id is missing.
+2. Do not exit the monitoring session before the RuntimeDriver signals a terminal state.
+3. Do not hand-edit .thoth ledgers.
 
 ## Reply Contract
 

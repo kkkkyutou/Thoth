@@ -18,7 +18,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" loop --host claude $ARGUMENTS
+THOTH_LOOP_ARGUMENTS_FILE="$(mktemp -t thoth-loop-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_LOOP_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_LOOP_ARGUMENTS_FILE" <<'THOTH_LOOP_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_LOOP_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" loop --host claude --thoth-arguments-file "$THOTH_LOOP_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
@@ -51,9 +56,9 @@ Advance the current bounded loop through foreground or sleeping RuntimeDriver mo
 
 ### Hard Stops
 
-- Do not decide extra iterations outside the recorded loop budget.
-- Do not proceed to the next loop iteration before the validator signals terminal.
-- Do not expand into iteration diaries or runtime narration.
+1. Do not decide extra iterations outside the recorded loop budget.
+2. Do not proceed to the next loop iteration before the validator signals terminal.
+3. Do not expand into iteration diaries or runtime narration.
 
 ### Reply Contract
 

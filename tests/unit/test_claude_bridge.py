@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from thoth.plan.store import upsert_work_item, upsert_decision
+from thoth.surface.bridges.claude import _expand_bridge_args
 
 
 ROOT = Path(__file__).parent.parent.parent
@@ -139,6 +140,40 @@ def test_bridge_discuss_reads_multiline_arguments_file(tmp_path):
     assert payload["bridge_success"] is True
     assert payload["arguments"] == [args_file.read_text(encoding="utf-8").rstrip("\n")]
     assert "/tmp/thoth-demo-project/eva01/context-snapshot.md" in payload["argv"][-1]
+
+
+def test_bridge_init_reads_multiline_arguments_file_as_raw_intent(tmp_path):
+    args_file = tmp_path / "init-args.txt"
+    args_file.write_text(
+        "我要初始化一个 AI 科研项目\n"
+        "先问清楚目标、验收和 DAG，不要直接生成 ready work\n",
+        encoding="utf-8",
+    )
+
+    result = _run_bridge(tmp_path, "init", "--thoth-arguments-file", str(args_file))
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["bridge_success"] is True
+    assert payload["arguments"] == ["--intent", args_file.read_text(encoding="utf-8").rstrip("\n")]
+    discussions = sorted((tmp_path / ".thoth" / "objects" / "discussion").glob("DISC-*.json"))
+    assert len(discussions) == 1
+    discussion = json.loads(discussions[0].read_text(encoding="utf-8"))
+    assert discussion["source"].startswith("init:")
+    assert discussion["payload"]["raw_intent"] == args_file.read_text(encoding="utf-8").rstrip("\n")
+
+
+def test_bridge_run_arguments_file_uses_shlex_flags(tmp_path):
+    args_file = tmp_path / "run-args.txt"
+    args_file.write_text("--work-id task-auth-fix --sleep", encoding="utf-8")
+
+    assert _expand_bridge_args("run", ["--host", "claude", "--thoth-arguments-file", str(args_file)]) == [
+        "--host",
+        "claude",
+        "--work-id",
+        "task-auth-fix",
+        "--sleep",
+    ]
 
 
 def test_bridge_uses_plugin_cli_even_if_project_has_shadow_thoth_package(tmp_path):

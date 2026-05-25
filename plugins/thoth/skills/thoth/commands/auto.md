@@ -14,10 +14,10 @@ Run actionable work items through child loops while preserving architecture-firs
 
 ## Hard Stops
 
-- Do not execute blocked or draft work.
-- Do not auto-abandon work items.
-- Do not bypass execution-safety doctor preflight.
-- Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.
+1. Do not execute blocked or draft work.
+2. Do not auto-abandon work items.
+3. Do not bypass execution-safety doctor preflight.
+4. Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.
 
 ## Reply Contract
 

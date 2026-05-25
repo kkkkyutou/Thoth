@@ -452,30 +452,40 @@ def upsert_work_item(project_root: Path, payload: dict[str, Any]) -> dict[str, A
     return flattened
 
 
-def create_discussion_placeholder(project_root: Path, content: str, *, host: str = "codex") -> dict[str, Any]:
+def create_discussion_placeholder(
+    project_root: Path,
+    content: str,
+    *,
+    host: str = "codex",
+    source: str | None = None,
+    payload_extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     summary = content.strip() or "discussion"
     store = Store(project_root)
     store.ensure_tree()
     discussion_id = f"DISC-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{slugify(summary)[:24]}"
+    payload = {
+        "messages": [{"role": "user", "content": content, "created_at": utc_now(), "host": host}],
+        "facts": [],
+        "constraints": [],
+        "decisions": [],
+        "open_questions": [
+            "candidate method universe not frozen",
+            "approach and acceptance are not closed",
+            "acceptance_spec is not closed",
+        ],
+        "closure_summary": None,
+    }
+    if payload_extra:
+        payload.update(payload_extra)
     obj = store.create(
         kind="discussion",
         object_id=discussion_id,
         status="inquiring",
         title=summary,
         summary=summary,
-        source=f"discuss:{host}",
-        payload={
-            "messages": [{"role": "user", "content": content, "created_at": utc_now()}],
-            "facts": [],
-            "constraints": [],
-            "decisions": [],
-            "open_questions": [
-                "candidate method universe not frozen",
-                "approach and acceptance are not closed",
-                "acceptance_spec is not closed",
-            ],
-            "closure_summary": None,
-        },
+        source=source or f"discuss:{host}",
+        payload=payload,
     )
     return {
         "schema_version": SCHEMA_VERSION,

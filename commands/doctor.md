@@ -17,7 +17,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" doctor $ARGUMENTS
+THOTH_DOCTOR_ARGUMENTS_FILE="$(mktemp -t thoth-doctor-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_DOCTOR_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_DOCTOR_ARGUMENTS_FILE" <<'THOTH_DOCTOR_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_DOCTOR_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" doctor --thoth-arguments-file "$THOTH_DOCTOR_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
@@ -45,11 +50,11 @@ Report only failing, drifting, missing checks, and any user decisions required t
 
 ### Hard Stops
 
-- Do not pad with passing checks.
-- Do not claim repo health without checks.
-- Do not launch broad Explore, Task, plugin-cache/source scans, or background investigation after the doctor result.
-- If extra evidence is required, inspect only the smallest artifact explicitly named by the doctor payload.
-- If work items are blocked or migration decisions are unresolved, ask with AskUserQuestion instead of guessing or fixing.
+1. Do not pad with passing checks.
+2. Do not claim repo health without checks.
+3. Do not launch broad Explore, Task, plugin-cache/source scans, or background investigation after the doctor result.
+4. If extra evidence is required, inspect only the smallest artifact explicitly named by the doctor payload.
+5. If work items are blocked or migration decisions are unresolved, ask with AskUserQuestion instead of guessing or fixing.
 
 ### Reply Contract
 

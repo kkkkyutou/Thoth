@@ -14,11 +14,11 @@ Report only failing, drifting, missing checks, and any user decisions required t
 
 ## Hard Stops
 
-- Do not pad with passing checks.
-- Do not claim repo health without checks.
-- Do not launch broad Explore, Task, plugin-cache/source scans, or background investigation after the doctor result.
-- If extra evidence is required, inspect only the smallest artifact explicitly named by the doctor payload.
-- If work items are blocked or migration decisions are unresolved, ask with AskUserQuestion instead of guessing or fixing.
+1. Do not pad with passing checks.
+2. Do not claim repo health without checks.
+3. Do not launch broad Explore, Task, plugin-cache/source scans, or background investigation after the doctor result.
+4. If extra evidence is required, inspect only the smallest artifact explicitly named by the doctor payload.
+5. If work items are blocked or migration decisions are unresolved, ask with AskUserQuestion instead of guessing or fixing.
 
 ## Reply Contract
 

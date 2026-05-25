@@ -34,6 +34,8 @@ const statusColors: Record<string, string> = {
   completed: '#2d6a4f',
   blocked: '#a4262c',
   ready: '#7e9ec7',
+  waiting_on: '#7a6f3d',
+  actionable: '#2d6a4f',
   invalid: '#d28a93',
   failed: '#9c6b38',
 }
@@ -48,7 +50,9 @@ const chartOption = computed(() => {
     symbolSize: n.type === 'module' ? 36 : 20,
     category: n.type === 'module' ? 0 : 1,
     itemStyle: {
-      color: n.type === 'module' ? dirColor(n.direction) : (statusColors[n.status ?? 'pending'] ?? '#ccc'),
+      color: n.type === 'module'
+        ? dirColor(n.direction)
+        : (statusColors[n.actionability ?? n.status ?? 'pending'] ?? '#ccc'),
       borderColor: '#fff',
       borderWidth: 2,
     },
@@ -84,6 +88,8 @@ const chartOption = computed(() => {
         const lines = [`<b>${n.label}</b>`, `类型: ${n.type === 'module' ? '模块' : '工作项'}`, `方向: ${n.direction}`]
         if (n.progress != null) lines.push(`进度: ${Math.round(n.progress)}%`)
         if (n.status) lines.push(`状态: ${n.status}`)
+        if (n.actionability) lines.push(`可执行性: ${n.actionability}`)
+        if (n.waiting_on?.length) lines.push(`等待: ${n.waiting_on.join(', ')}`)
         return lines.join('<br/>')
       },
     },
@@ -172,6 +178,20 @@ defineExpose({ reload: load })
           <div v-if="selectedNode.module" class="detail-row"><span class="dl">模块</span><span>{{ selectedNode.module }}</span></div>
           <div class="detail-row"><span class="dl">进度</span><span>{{ Math.round(selectedNode.progress) }}%</span></div>
           <div v-if="selectedNode.status" class="detail-row"><span class="dl">状态</span><span>{{ selectedNode.status }}</span></div>
+          <div v-if="selectedNode.authority_status" class="detail-row"><span class="dl">Authority</span><span>{{ selectedNode.authority_status }}</span></div>
+          <div v-if="selectedNode.actionability" class="detail-row"><span class="dl">Action</span><span>{{ selectedNode.actionability }}</span></div>
+          <div v-if="selectedNode.waiting_on?.length" class="detail-list">
+            <span class="dl">Waiting on</span>
+            <span>{{ selectedNode.waiting_on.join(', ') }}</span>
+          </div>
+          <div v-if="selectedNode.downstream?.length" class="detail-list">
+            <span class="dl">Downstream</span>
+            <span>{{ selectedNode.downstream.join(', ') }}</span>
+          </div>
+          <div v-if="selectedNode.goal" class="detail-text">
+            <span class="dl">Goal</span>
+            <p>{{ selectedNode.goal }}</p>
+          </div>
           <div v-if="selectedNode.work_item_count != null" class="detail-row"><span class="dl">任务数</span><span>{{ selectedNode.work_item_count }}</span></div>
         </div>
       </div>
@@ -253,7 +273,27 @@ defineExpose({ reload: load })
 .detail-row {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   font-size: 13px;
+}
+
+.detail-list,
+.detail-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.detail-list span:last-child {
+  word-break: break-word;
+}
+
+.detail-text p {
+  margin: 0;
+  color: var(--text-primary, #2C1810);
+  word-break: break-word;
 }
 
 .dl {

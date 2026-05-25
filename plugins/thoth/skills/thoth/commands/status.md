@@ -14,8 +14,8 @@ Report only abnormal state, blockers, and active run deltas.
 
 ## Hard Stops
 
-- Do not restate healthy defaults.
-- Do not expand into a dashboard walkthrough.
+1. Do not restate healthy defaults.
+2. Do not expand into a dashboard walkthrough.
 
 ## Reply Contract
 

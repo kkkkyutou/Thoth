@@ -14,7 +14,7 @@ Use the single public entrypoint:
 - `$thoth <command>`
 
 Supported commands:
-- `$thoth init`: Initialize, migrate, or resync canonical .thoth authority without taking ownership of repo-root `.codex`.
+- `$thoth init`: Initialize, migrate, resync, or seed an intent discussion for canonical .thoth authority without taking ownership of repo-root `.codex`.
 - `$thoth run`: Start one strict run bound to `work_id@revision`; live runs foreground and `--sleep` detaches the same runtime driver.
 - `$thoth loop`: Start one bounded controller service whose parent creates four-phase child runs.
 - `$thoth argue`: Run an adversarial attacker/adjudicator discussion against an idea, work item, or decision.
@@ -35,7 +35,7 @@ Supported commands:
 
 ## Route Table
 
-- `init` -> `mechanical_fast` / `none` / `result_envelope`
+- `init` -> `hybrid_init` / `intent_sensitive` / `result_envelope_or_command_packet`
 - `run` -> `live_intelligent` / `high` / `phase_controller`
 - `loop` -> `live_intelligent` / `high` / `phase_controller`
 - `argue` -> `live_intelligent` / `high` / `argument_record`
@@ -47,7 +47,8 @@ Supported commands:
 
 ## Shared Rules
 
-- `init`, `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
+- `init` is hybrid: no intent is a mechanical audit-first receipt; natural-language intent opens an inquiring discussion and must be closed through compact project_patch/work_graph authority.
+- `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
 - `discuss`, `run`, `loop`, `auto`, and `argue` are high-intelligence paths.
 - `argue` preserves full attacker/adjudicator artifacts; authority patches require explicit confirmation before apply.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.

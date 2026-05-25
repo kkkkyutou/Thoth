@@ -31,11 +31,11 @@ class CommandSpec:
 COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="init",
-        summary="Initialize, migrate, or resync canonical .thoth authority without taking ownership of repo-root `.codex`.",
-        argument_hint="[--sync] [--migrate preview|apply] [--migrate --preview|--apply]",
-        route_class="mechanical_fast",
-        intelligence_tier="none",
-        packet_authority_mode="result_envelope",
+        summary="Initialize, migrate, resync, or seed an intent discussion for canonical .thoth authority without taking ownership of repo-root `.codex`.",
+        argument_hint="[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--] [intent...]",
+        route_class="hybrid_init",
+        intelligence_tier="intent_sensitive",
+        packet_authority_mode="result_envelope_or_command_packet",
         acceptance="Authority tree, host projections, Codex hook projection, dashboard, scripts, and tests are generated from one canonical source while repo-root `.codex` remains host-owned.",
         needs_hooks=True,
         scope_can=(
@@ -44,6 +44,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
             "Generate AGENTS.md and CLAUDE.md from the same renderer",
             "Generate a Codex hooks projection under .thoth/derived for global or repo-local host wiring",
             "Generate dashboard, tests, helper scripts, and config",
+            "Capture natural-language project intent as an inquiring discussion without fabricating ready work",
         ),
         scope_cannot=(
             "Silently delete existing project files",

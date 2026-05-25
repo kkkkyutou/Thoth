@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from thoth.objects import Store
 from thoth.plan.store import upsert_work_item, upsert_decision, upsert_work_result
 
 ROOT = Path(__file__).parent.parent.parent
@@ -243,6 +244,42 @@ def test_runtime_progress_reports_auto_failed_attempt_counts(monkeypatch, tmp_pa
     assert auto["attempt_count"] == 1
     assert auto["failed_attempt_count"] == 1
     assert auto["failed_count"] == 1
+
+
+def test_dag_marks_ready_work_waiting_on_unvalidated_dependencies(monkeypatch, tmp_path):
+    _setup_project(tmp_path, monkeypatch)
+    upsert_work_item(
+        tmp_path,
+        {
+            "work_id": "task-upstream",
+            "title": "Upstream work",
+            "status": "ready",
+            "goal": "Finish upstream dependency.",
+            "context": "frontend-runtime",
+            "constraints": ["dashboard"],
+            "acceptance_spec": {
+                "kind": "script",
+                "description": "Run upstream pytest.",
+                "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+            },
+            "approach_notes": ["Run upstream lifecycle."],
+            "scheduling": {"order": None},
+            "missing_questions": [],
+        },
+    )
+    Store(tmp_path).link("work_item", "task-1", link_type="depends_on", target_kind="work_item", target_id="task-upstream")
+    dashboard_app.invalidate_cache()
+    client = TestClient(dashboard_app.app)
+
+    response = client.get("/api/dag")
+
+    assert response.status_code == 200
+    nodes = {node["id"]: node for node in response.json()["nodes"]}
+    assert nodes["task-1"]["authority_status"] == "ready"
+    assert nodes["task-1"]["status"] == "ready"
+    assert nodes["task-1"]["actionability"] == "waiting_on"
+    assert nodes["task-1"]["waiting_on"] == ["task-upstream"]
+    assert nodes["task-upstream"]["downstream"] == ["task-1"]
 
 
 def test_overview_summary_and_gantt_endpoints(monkeypatch, tmp_path):

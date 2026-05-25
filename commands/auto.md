@@ -18,7 +18,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" auto --host claude $ARGUMENTS
+THOTH_AUTO_ARGUMENTS_FILE="$(mktemp -t thoth-auto-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_AUTO_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_AUTO_ARGUMENTS_FILE" <<'THOTH_AUTO_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_AUTO_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" auto --host claude --thoth-arguments-file "$THOTH_AUTO_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
@@ -53,10 +58,10 @@ Run actionable work items through child loops while preserving architecture-firs
 
 ### Hard Stops
 
-- Do not execute blocked or draft work.
-- Do not auto-abandon work items.
-- Do not bypass execution-safety doctor preflight.
-- Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.
+1. Do not execute blocked or draft work.
+2. Do not auto-abandon work items.
+3. Do not bypass execution-safety doctor preflight.
+4. Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.
 
 ### Reply Contract
 
