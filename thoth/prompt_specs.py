@@ -182,7 +182,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         objective="Initialize audit-first project authority; when natural-language intent is supplied, save the raw intent as an init discussion and continue by questioning until compact authority is closed.",
         hard_stops=(
             "Do not assume the repo is blank.",
-            "Do not assume goals, project identity, migration intent, work priority, unblock policy, or acceptance criteria.",
+            "Do not assume goals, project identity, migration intent, work ordering, unblock policy, or acceptance criteria.",
             "Do not turn init intent into ready work immediately.",
             "Do not bake an unconfirmed summary of the raw intent into AGENTS.md, CLAUDE.md, or generated project docs.",
             "Do not combine natural-language init intent with --sync, --migrate, --preview, or --apply.",
@@ -222,7 +222,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
             "Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.",
             "When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.",
             "When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, approach_notes, and open_questions.",
-            "Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.",
+            "Do not hand-author work authority from memory; use packet.work_json_template or packet.work_graph_schema, and obey packet.required_work_json_fields for single work items.",
             "When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.",
             "Do not fabricate ready execution work items from unresolved decisions.",
             "Do not repeat the packet or decision payload verbatim.",

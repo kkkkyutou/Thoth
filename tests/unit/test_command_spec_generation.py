@@ -44,14 +44,14 @@ def test_claude_surface_renders_from_spec():
 def test_claude_init_surface_documents_positional_migration_actions():
     spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "init")
     rendered = render_claude_command(spec)
-    assert "argument-hint: \"[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--] [intent...]\"" in rendered
+    assert "argument-hint: \"[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--intent <text>] [--intent-file <path>] [--] [intent...]\"" in rendered
     assert "disable-model-invocation: false" in rendered
     assert "route_class: `hybrid_init`" in rendered
     assert "THOTH_INIT_ARGUMENTS_FILE" in rendered
     assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the bridge payload." in rendered
     assert "Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result." in rendered
     assert "Use AskUserQuestion to ask the next material question" in rendered
-    assert "Do not assume goals, project identity, migration intent, work priority, unblock policy, or acceptance criteria." in rendered
+    assert "Do not assume goals, project identity, migration intent, work ordering, unblock policy, or acceptance criteria." in rendered
     assert "Do not turn init intent into ready work immediately." in rendered
     assert "project_patch" in rendered
     assert "work_graph" in rendered

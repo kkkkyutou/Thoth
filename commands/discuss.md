@@ -60,7 +60,7 @@ Interrogate the user's idea until the compact authority categories are explicit:
 3. Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.
 4. When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.
 5. When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, approach_notes, and open_questions.
-6. Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.
+6. Do not hand-author work authority from memory; use packet.work_json_template or packet.work_graph_schema, and obey packet.required_work_json_fields for single work items.
 7. When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.
 8. Do not fabricate ready execution work items from unresolved decisions.
 9. Do not repeat the packet or decision payload verbatim.
