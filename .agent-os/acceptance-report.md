@@ -7,14 +7,16 @@
 
 ## Passed Checks
 
-- `EV-048` related to `WS-002`, `WS-003`, `WS-005`, `CD-048`: `0.2.8.1` canonical receipt / reflect runtime-contract 补丁的 `dev` checkout 验证已通过
+- `EV-048` related to `WS-001`, `WS-002`, `WS-003`, `WS-005`, `CD-048`, `REQ-020`, `REQ-034`: `0.2.8.1` canonical receipt / reflect runtime-contract 补丁的 `dev`、`main` 与安装态验证已通过
   - Evidence: `mechanical_validate_phase_output()` 现在先把 execute `official_validation_receipt` 归一化为 compact canonical shape：`actual_command -> command`，`stdout/stderr -> stdout_log/stderr_log`，`metric.{name,value,direction,threshold}` -> 扁平 metric 字段；inline stdout/stderr 会物化到 run-local `worker-logs/official-validator.*.log`，`validate.json` 只落 canonical receipt 字段。
   - Evidence: `validate` 不再要求 execute 自填多项 preserved 布尔字段作为 blocking truth；authority / validator intent / metric / threshold / evidence sufficiency 由 reference command、command relation、exit code、passed、metric 与 log evidence 推导。Command literal mismatch 继续是 diagnostic，明显 pytest target drift 仍失败。
   - Evidence: `validate_phase_output()` 对 phase worker unknown top-level fields 改为丢弃并记录 `_normalization_warnings`，保留 strict bool/outcome/required field 类型约束；`reflect` 在 failed 分支会先从 prior validate evidence 合成缺失的 `corrective_prompt` / `retry_authorized`，runtime contract error 合成为 non-retry operator/runtime instruction。
   - Evidence: phase prompt 已同步为 compact receipt facts 与 unified failed corrective exit；dashboard validate card 已压缩为 command、expected、relation、exit/passed、metric threshold、metric value 与 drift evidence，不再展开 preserved-field bookkeeping。
   - Evidence: 版本 bump 到 `0.2.8.1`；`python -m thoth.cli sync` 已同步 `.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json` 与 `.agents/plugins/marketplace.json`；`bin/thoth doctor --version` 输出 `version=0.2.8.1`。
   - Evidence: `dev` 验证通过：`python -m py_compile` 覆盖 touched runtime/prompt/dashboard/tests；targeted pytest `tests/unit/test_runtime_protocol.py tests/unit/test_run_state_machine.py tests/unit/test_runtime_loader.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py tests/unit/test_cli_surface.py` 为 `122 passed in 168.13s`；dashboard frontend `npm run build` 通过，仅有既有 Vite chunk-size warning；`git diff --check` 与四个 plugin/marketplace JSON 校验通过。
-  - Conclusion: 当前 `dev` checkout 已证明 receipt alias / metric object / inline stdout-stderr / reflect runtime_contract_error non-retry 分支可闭合；发布到 `main`、push 与远端-only Claude/Codex 安装刷新仍待本轮后续收尾执行。
+  - Evidence: 发布面提交 `b10feeb fix: canonicalize validator receipts for 0.2.8.1` 已推送到 `dev`；同一发布面已 cherry-pick 到 `main` 为 `05f0cd9 fix: canonicalize validator receipts for 0.2.8.1`，并推送 `origin/main`。`main` 上同组 `py_compile`、targeted pytest `122 passed in 170.17s`、dashboard frontend build、`git diff --check HEAD~1..HEAD`、manifest JSON 与 `bin/thoth doctor --version` 均通过。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 从 `0.2.8.0` 更新到 `0.2.8.1`；`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.8.1`；Claude cache runtime 与 Codex marketplace root runtime 的 `doctor --version` 均输出 `version=0.2.8.1`。
+  - Conclusion: 当前 checkout、`main` 发布面、Claude 安装态与 Codex 安装态均已对齐到 `0.2.8.1`；demo_project 这类历史 run 的 `actual_command` / inline stdout-stderr / missing non-retry corrective prompt 问题已在 Thoth runtime/prompt/schema 层闭合。
 
 - `EV-047` related to `WS-002`, `WS-003`, `WS-005`, `CD-047`: `0.2.8.0` adversarial argue / public review removal release 的 `dev` 与 `main` 验证已通过
   - Evidence: 新增 `thoth/run/argue.py`，支持 `--work-id`、`--decision-id`、`--target-kind` / `--target-id` 与 free-text idea target resolution；多候选时返回 `needs_input`，不静默猜测。
