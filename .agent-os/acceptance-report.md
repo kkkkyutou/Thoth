@@ -7,6 +7,19 @@
 
 ## Passed Checks
 
+- `EV-047` related to `WS-002`, `WS-003`, `WS-005`, `CD-047`: `0.2.8.0` adversarial argue / public review removal release 的 `dev` 与 `main` 验证已通过
+  - Evidence: 新增 `thoth/run/argue.py`，支持 `--work-id`、`--decision-id`、`--target-kind` / `--target-id` 与 free-text idea target resolution；多候选时返回 `needs_input`，不静默猜测。
+  - Evidence: `argue` 直接创建 durable `kind=argue` run ledger，不走四阶段 RuntimeDriver；运行 attacker 与 adjudicator 两个独立 worker session，并写入 `argument.json`、`attack.md`、`adjudication.md`、`authority-patch-preview.json` 与 `worker-metadata.json`。
+  - Evidence: `decision_impact` 替代 PASS/WARN/FAIL；默认只生成 evidence / artifact，不修改 work item、decision 或 discussion authority。`--apply-artifact` 需要显式确认，只允许 patch compact work payload 字段 `goal`、`context`、`constraints`、`acceptance_spec`、`approach_notes`、`missing_questions`。
+  - Evidence: 公开 `$thoth review` / `/thoth:review` 已从 CLI parser、handlers、Claude bridge/projection、Codex skill/micro prompts、generated command docs、test target catalog 与 public selftest registry 删除；`commands/review.md` 与 `plugins/thoth/skills/thoth/commands/review.md` 删除，替换为 `argue.md`。
+  - Evidence: 历史 `review` run ledger / work_result / validator helpers 仅保留 legacy 读取兼容；`_close_work_item_from_run()` 与 `plan/results.py` 已保证 `review` / `argue` 不会关闭 work item 或把 argument 当作 acceptance。
+  - Evidence: `python -m thoth.cli sync` 在 `dev` 与 `main` 均通过并重新生成 Claude/Codex surfaces；`pyproject.toml`、`thoth/projections.py`、`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`.claude-plugin/marketplace.json` 与 `.agents/plugins/marketplace.json` 均为 `0.2.8.0`。
+  - Evidence: `dev` 验证通过：`python -m py_compile` 覆盖 argue runtime、surface、bridge、selftest 与 touched tests；targeted pytest 第一组 `136 passed in 204.60s`，第二组 `47 passed in 14.80s`；`python -m thoth.selftest --case argue.adversarial` 为 `overall_status=passed`；manifest JSON、`git diff --check`、dashboard frontend `npm run build` 与 `bin/thoth doctor --version` 均通过。
+  - Evidence: 发布面提交 `10e1ed4 feat: replace review with adversarial argue surface` 已推送到 `dev`；同一发布面已 cherry-pick 到 `main` 为 `881f796 feat: replace review with adversarial argue surface`，并推送 `origin/main`。
+  - Evidence: `main` 验证通过：同组 `py_compile`、targeted pytest 第一组 `136 passed in 207.33s`、第二组 `47 passed in 15.50s`、`python -m thoth.selftest --case argue.adversarial` `overall_status=passed`、`git diff --check HEAD~1..HEAD`、manifest JSON、`bin/thoth doctor --version` 输出 `version=0.2.8.0`、dashboard frontend `npm run build`。
+  - Evidence: 远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功；`claude plugin update thoth@thoth --scope user` 从 `0.2.7.0` 更新到 `0.2.8.0`；`codex plugin marketplace upgrade thoth` 成功。`claude plugin list --json` 显示 `thoth@thoth version=0.2.8.0`，Claude cache runtime 与 Codex marketplace root runtime 的 `doctor --version` 均输出 `version=0.2.8.0`。
+  - Conclusion: 当前 checkout、`main` 发布面、Claude 安装态与 Codex 安装态均已对齐到 `0.2.8.0`；公开 review command 已退休，新的 argue surface 作为证据优先、确认后才 apply 的 adversarial discussion 入口。
+
 - `EV-046` related to `WS-002`, `WS-003`, `WS-005`, `CD-046`: `0.2.7.0` compact work authority / DAG auto / plan-history reconcile release 的 `dev` 与 `main` 验证已通过
   - Evidence: `work_item.payload` 新写入路径只接受 compact fields；`work_item_from_payload()` 会把缺 `acceptance_spec` 的 ready public input 转为 blocked，并返回 coarse ready diagnostic；legacy fields 在 public write / canonical object validation 中被拒绝。
   - Evidence: `depends_on` / `decisions` 由 `upsert_work_item()` 转换为 `depends_on` / `decided_by` links；legacy `authority_context` backfill 写 `primary_parent` link；timestamp duplicate 修复改为 stable work item `supersedes` link，不再向 duplicate payload 写 `hidden` / `superseded_by`。

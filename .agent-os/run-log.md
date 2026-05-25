@@ -2,6 +2,16 @@
 
 ## Entries
 
+- 2026-05-24 06:56 UTC [0.2.8.0 adversarial argue release]
+  - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
+  - State changes: 按用户批准计划删除旧 public `$thoth review` / `/thoth:review`，新增 `$thoth argue` / `/thoth:argue`。`argue` 面向 idea、work item 或 decision 做 adversarial discussion，不是代码 review，不输出 PASS/WARN/FAIL，而是通过 `decision_impact` 表达是否 keep / revise / block / needs_input。
+  - State changes: 新 runtime `thoth/run/argue.py` 会解析 `--work-id`、`--decision-id`、`--target-kind` / `--target-id` 或 free-text idea；target ambiguous 时返回 `needs_input`，不猜。运行时创建 durable `kind=argue` ledger，启动 attacker 与 adjudicator 两个独立 worker session，保留 `argument.json`、`attack.md`、`adjudication.md`、`authority-patch-preview.json` 与 worker metadata。
+  - State changes: Authority mutation 默认为禁止；argument 只作为 evidence/artifact。只有用户显式确认 `--apply-artifact` 时，才允许 apply compact work payload 字段 `goal`、`context`、`constraints`、`acceptance_spec`、`approach_notes`、`missing_questions`；decision 目标不做直接历史覆写。`review` / `argue` kind 均不会关闭 work item，`argue` 只更新 `latest_argument`。
+  - Evidence produced: `dev` 发布面提交 `10e1ed4 feat: replace review with adversarial argue surface`；验证通过 `py_compile`、targeted pytest `136 passed in 204.60s` 与 `47 passed in 14.80s`、`python -m thoth.selftest --case argue.adversarial` `overall_status=passed`、`git diff --check`、manifest JSON 校验、dashboard frontend build 与 `bin/thoth doctor --version` 输出 `version=0.2.8.0`。
+  - Evidence produced: 发布面已 cherry-pick 到 `main` 为 `881f796 feat: replace review with adversarial argue surface`；`main` 验证通过同组 `py_compile`、targeted pytest `136 passed in 207.33s` 与 `47 passed in 15.50s`、`argue.adversarial` selftest `overall_status=passed`、`git diff --check HEAD~1..HEAD`、manifest JSON、dashboard frontend build、`bin/thoth doctor --version` 输出 `version=0.2.8.0`。
+  - Evidence produced: `git push origin dev main` 成功，输出 `424bf4a..10e1ed4 dev -> dev` 与 `b902384..881f796 main -> main`。远端-only 安装刷新完成：`claude plugin marketplace update thoth` 成功，`claude plugin update thoth@thoth --scope user` 从 `0.2.7.0` 更新到 `0.2.8.0`，`codex plugin marketplace upgrade thoth` 成功。Claude cache runtime 与 Codex marketplace root runtime 均输出 `version=0.2.8.0`。
+  - Next likely action: 回到 `TD-001`，继续将 `dev` / `main` 分流规则固化为仓库内可执行治理机制。后续使用 critique/dispute/设计挑战时走 `$thoth argue`；历史 `review` ledgers 只作为 legacy evidence 读取，不再作为 public command surface。
+
 - 2026-05-23 17:25 UTC [0.2.7.0 compact work authority / DAG auto release]
   - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
   - State changes: 按用户关于“字段大幅 compact、不要机械字段限制 agent 智能、auto DAG-first、run --reconcile 内收到 plan prompt”的决策发布 `0.2.7.0`。新 `work_item.payload` 写入面只保留 `goal`、`context`、`constraints`、`acceptance_spec`、`approach_notes`、`scheduling`、`run_limits`、`missing_questions`；`decisions` / `depends_on` 只作为 public input convenience，入库时转为 canonical links。
