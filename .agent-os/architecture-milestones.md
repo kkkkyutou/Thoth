@@ -15,15 +15,15 @@
 
 当前已实现事实：
 
-- 公开命令面是 Claude `/thoth:*` 与 Codex `$thoth <command>`，当前只公开 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`
-- Codex 以 executor-mode 进入 `run` / `loop` / `review`
-- `/thoth:init` 采用 audit-first adopt/init，并生成最小 `.thoth/objects/` authority tree 与 `.thoth/docs/` 只读视图
+- 公开命令面是 Claude `/thoth:*` 与 Codex `$thoth <command>`，当前只公开 `init`、`discuss`、`run`、`loop`、`argue`、`auto`、`status`、`doctor`、`dashboard`
+- Codex 以 executor-mode 进入 `run` / `loop` / `argue` / `auto`
+- `/thoth:init` 采用 audit-first adopt/init，并生成最小 `.thoth/objects/` authority tree 与 `.thoth/docs/` 只读视图；带自然语言 intent 时额外打开或追加 `source=init:*` discussion，不直接生成 ready work
 - `/thoth:init --sync` 是当前公开的生成面刷新入口；`/thoth:init --migrate --preview|--apply` 是旧项目迁移入口
 - strict planning authority 已收敛为统一对象图：`.thoth/objects/discussion/`、`.thoth/objects/decision/`、`.thoth/objects/work_item/`、`.thoth/objects/controller/`、`.thoth/objects/run/`、`.thoth/objects/phase_result/`、`.thoth/objects/artifact/` 与 `.thoth/objects/doc_view/`
 - 独立 `Contract` kind 已删除；`work_item.payload` 已收敛为 compact shape：`goal`、`context`、`constraints`、`acceptance_spec`、`approach_notes`、`scheduling`、`run_limits`、`missing_questions`
 - `decisions` / `depends_on` 只作为 public input convenience，入库后表达为 `decided_by` / `depends_on` typed links；legacy `work_kind`、`runnable`、`execution_plan`、`eval_contract`、`runtime_policy` 等字段只允许迁移读取，不允许新写入
 - `run` / `loop` 已收敛为 strict work execution：默认只接受 ready 且具备 `acceptance_spec` 的 `--work-id`，缺少 `--work-id` 时只能召回候选并停止
-- `review` 已收敛为 live-only；CLI 允许显式 `--work-id`，也可按 review target 反推绑定 work item
+- `argue` 已替代旧 public `review`；它针对 idea / work item / decision 运行 attacker / adjudicator 双 session，默认只写论证证据和 confirmation-required authority patch preview
 - 当前 work 级当前结论写入 `.thoth/docs/work-results/*.result.json` 只读视图；原始执行真相来自 `.thoth/objects/run`、`.thoth/objects/phase_result`、`.thoth/objects/artifact` 与 `.thoth/runs/*` ledger
 - 当前单次运行结果同时写入 object graph 与 `.thoth/runs/<run_id>/result.json`，不再把 `acceptance.json` 当主结果文件
 - 当前 run ledger 的长期 canonical 文件集已收敛为 `run.json`、`state.json`、`events.jsonl`、`result.json`、`artifacts.json`
@@ -38,7 +38,7 @@
 - Claude `commands/*.md` 当前已收敛为 runtime-first 薄包装：保留 bridge 执行、最小 fail-fast 规则与一条结果约束，不再重复展开大段 scope/runtime/shared-authority 文本
 - Codex 当前已收敛为“薄 dispatcher + per-command micro prompt files”：根 `plugins/thoth/skills/thoth/SKILL.md` 不再内联全量命令合同，按命令拆分的 micro prompt surface 固定生成到 `plugins/thoth/skills/thoth/commands/*.md`
 - Codex plugin package 当前必须包含 runtime 与 skill：根 `.codex-plugin/plugin.json` 指向仓库根 package，skill path 为 `./plugins/thoth/skills`；Codex `$thoth` micro prompt 优先执行 PATH `thoth`，否则解析已安装 plugin cache 下的 `bin/thoth` 或 `scripts/thoth-cli-entry.py`
-- `review` packet 当前显式区分 `exact_match` 与 `open_ended` 两条内部路由；`run/loop` packet 当前只声明 RuntimeDriver 生命周期，不再把 `next-phase` / `submit-phase` 作为 live 宿主手动协议暴露
+- `argue` packet 当前显式保留 attacker / adjudicator artifact 与 `decision_impact`；`run/loop` packet 当前只声明 RuntimeDriver 生命周期，不再把 `next-phase` / `submit-phase` 作为 live 宿主手动协议暴露
 - dashboard 模板可以把 `.thoth/runs/*` 与 `.thoth/objects/*` 的 active run、history run 和事件日志绑定回 work item 视图
 - dashboard 前端主壳已从旧多页导航切到单一 workbench shell，并保留 `/overview`、`/tasks`、`/milestones`、`/dag`、`/timeline`、`/todo`、`/activity` 的兼容入口
 - dashboard 已新增 `overview-summary` 与 `gantt` 只读读面；驾驶舱、Work Detail 与时间线面板均只消费 `.thoth/objects` authority、work result read view、runtime ledger 与 `.agent-os` 派生结果
@@ -124,7 +124,7 @@
 - `init --sync` 可以按 canonical object graph 与 run 历史重建 docs read view
 - 允许写 authority 的只剩 `Store` API 及其上的 Domain Service
 - `Observe`、hooks、validators 和任何 read model 都不得偷偷修 authority
-- `review` 的 public contract 冻结为 live-only，不保留 `--sleep` 口子
+- `argue` 的 public contract 冻结为 adversarial discussion / evidence surface，不默认修改 authority，不等价于 run acceptance
 - `loop` 只通过 `controller` 对同一个 `work_id@revision` 反复创建 child run，直到 validated、budget exhausted、failed 或 stopped
 - `acceptance_spec` 与 `run_limits` 是 compact `work_item` 的 runtime-hard 合同；CLI 不提供高优先级覆盖入口
 
@@ -177,7 +177,7 @@
 - 2026-04-28: 用户已批准恢复标准分支收尾流程；本轮在 `dev` 验证并提交后，需要仅将发布面代码 `cherry-pick` 到 `main`、推送两个分支，并刷新本机 Claude/Codex 的 Thoth 安装
 - 2026-04-28: 用户重新锁定当前验证合同为“atomic selftest cases + targeted pytest runs”：`python -m thoth.selftest` 只允许显式 `--case`，发布/回归/关闭门改为显式 case list；`pytest` 默认只允许显式 file/nodeid 或 `--thoth-target`，broad sweeps 仅保留给显式豁免场景
 - 2026-04-29: 用户锁定“统一对象图 + Agent Runtime Kernel”重构：`.thoth/objects/<kind>/<object_id>.json` 成为唯一 canonical authority；`Contract` kind 删除并并入 `work_item.payload`；`run` 固定为 `work_id@revision` 的最小 phase chain；`loop` / `orchestration` / `auto` 收敛为 controller service；active run/controller 引用的 work item 完全不可变。
-- 2026-05-01: 用户锁定最终最小公开命令组合：保留 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`；`sync` 改为 `init --sync`，`report` 改为 `status --report`，`orchestration` / `extend` 下沉为内部能力；`auto` 面向离席执行，默认 live、可 sleep，按优先级推进可行动 work。
+- 2026-05-01: 用户当时锁定最小公开命令组合为 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`；`sync` 改为 `init --sync`，`report` 改为 `status --report`，`orchestration` / `extend` 下沉为内部能力。该条已由 2026-05-24 的 `argue` 替换和 2026-05-23 的 DAG-first auto 语义更新。
 - 2026-05-06: `auto` 进一步锁定为 durable background worker + observer monitor 分层；live 不持有执行权，Claude `Monitor` 只是可选观察增强，正确性仍以 Thoth controller、worker supervisor、child run ledger 与 watch JSONL 为准。
-- 2026-05-08: 安装态测试成为 Codex public surface 的验收依据；Codex plugin 不允许再只发布 skill，必须随 package 提供 runtime entrypoint；Claude 宿主委派 Codex worker 的 `run`、`loop`、`review`、`auto` 必须通过真实 `--executor codex` 短运行覆盖。
+- 2026-05-08: 安装态测试成为 Codex public surface 的验收依据；Codex plugin 不允许再只发布 skill，必须随 package 提供 runtime entrypoint；Claude 宿主委派 Codex worker 的 `run`、`loop`、`argue`、`auto` 必须通过真实 `--executor codex` 短运行覆盖。
 - 2026-05-09: `discuss` 长对话 authority 保存补强为语义无损结构化 capsule + draft checkpoint + 显式 close；RuntimeDriver 的 `plan` phase 必须证明 closed `authority_context` 覆盖完整，发现缺口以 `needs_input` 返回 `discuss`，`execute` phase 必须读取本 run 的 `plan.json` 并记录偏离。

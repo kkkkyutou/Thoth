@@ -27,7 +27,7 @@
 - `REQ-024`: 层与层之间传递的协议和数据必须高度确定：同一语义只能有一个 canonical shape；host 适配、dashboard 读面、worker 执行、validator/selftest 都必须围绕同一 authority 数据模型运转。
 - `REQ-025`: 发布门、关闭门与回归门必须以显式 selftest case 列表和显式 pytest target/file 列表记账，不再以 `hard` / `heavy` 或 `light` / `medium` / `heavy` 作为默认公共验证语义。
 - `REQ-026`: 结果模型固定为 `RunResult + work-level current result` 双层：单次尝试详细结果写入 `.thoth/runs/<run_id>/result.json` 与 `run` / `phase_result` objects，work 当前结论作为 `.thoth/docs/work-results/<work_id>.result.json` 只读派生视图，并可由 `init --sync` 按 canonical run/object 历史重建。
-- `REQ-027`: `Observe` 读面必须保持纯读；`status`、`doctor`、`dashboard`、`report`、hooks、validators/read-model 不得偷偷修 authority。`review` 的 public contract 固定为 live-only，不提供 `--sleep`。
+- `REQ-027`: `Observe` 读面必须保持纯读；`status`、`doctor`、`dashboard`、`report`、hooks、validators/read-model 不得偷偷修 authority。`argue` 只记录 adversarial evidence / patch preview，默认不得静默修改 authority。
 - `REQ-028`: 旧的内部主路径 `thoth/runtime.py`、`thoth/task_contracts.py`、`thoth/project_init.py`、`thoth/claude_bridge.py`、`thoth/host_hooks.py` 不得继续保留为实现主入口；主实现必须集中到 `thoth/surface`、`thoth/plan`、`thoth/run`、`thoth/init`、`thoth/observe`。
 - `REQ-029`: 仓库必须提供固定 target manifest 与 changed-path 推荐入口，用于把改动路径翻译成精确 pytest targets 和 selftest cases。
 - `REQ-030`: `.thoth` authority 必须收敛为统一对象图：canonical storage 固定为 `.thoth/objects/<kind>/<object_id>.json`，所有 authority 写入必须经过 `Store` API；`.agent-os`、`.thoth/project/contracts`、`.thoth/project/tasks` 与 dashboard SQLite 不得再作为平行 authority。
@@ -47,7 +47,7 @@
 - `AC-004`: 文档明确记录 `dev` 与 `main` 的边界，以及 `cherry-pick` 为默认集成策略。
 - `AC-005`: 文档准确描述当前插件代码面：
   - 当前公开命令包括 Claude `/thoth:*` 与 Codex `$thoth <command>`
-  - 当前公开命令集合固定为 `init`、`discuss`、`run`、`loop`、`review`、`auto`、`status`、`doctor`、`dashboard`
+  - 当前公开命令集合固定为 `init`、`discuss`、`run`、`loop`、`argue`、`auto`、`status`、`doctor`、`dashboard`
   - Claude 侧 `--executor codex` 继续存在
   - 当前已实现最小 `.thoth/objects` authority tree、durable run/controller runtime 与 dashboard run-ledger / object-graph 读面
 - `AC-006`: `architecture-milestones.md` 中明确分开“当前实现结构”与“目标 V2 架构”。
@@ -59,19 +59,19 @@
 - `AC-012`: `AGENTS.md` 中明确要求新功能同步兼顾 Claude Code 与 Codex，并按固定流程收尾。
 - `AC-013`: 仓库提供可执行的 pytest targeted 选择器：显式 file/nodeid 与 `--thoth-target` 默认允许；裸 `pytest`、目录级 `pytest` 与 `--thoth-tier` broad runs 默认失败；只有 `--thoth-allow-broad` 或 `THOTH_ALLOW_BROAD_TESTS=1` 时才允许 broad sweeps。
 - `AC-014`: 文档中明确写出本轮认可的 Thoth 高维分层架构，且区分“层”与“代码目录”；每层都具备清晰职责说明和层间协议说明。
-- `AC-015`: `run` / `loop` / `review` / dashboard / selftest / host projections 共享同一 authority 数据模型，不再依赖多套平行 shape 或隐式宿主状态。
+- `AC-015`: `run` / `loop` / `argue` / dashboard / selftest / host projections 共享同一 authority 数据模型，不再依赖多套平行 shape 或隐式宿主状态。
 - `AC-016`: 本轮结束时必须具有真实证据证明 repo-local atomic selftest matrix 可独立通过，且至少一组显式 target 的 pytest 命令可通过；同时 `python -m thoth.selftest` 无 `--case` 与裸 `pytest` 默认失败，并按分支治理完成 `dev` 验证与状态记账。
 - `AC-017`: 当前代码与文档明确共享同一 run ledger canonical 形态：`.thoth/runs/<run_id>/run.json`、`state.json`、`events.jsonl`、`result.json`、`artifacts.json`。
 - `AC-018`: 当前代码与文档明确共享同一 work 当前态读视图：`.thoth/docs/work-results/<work_id>.result.json` 作为可重建 current-result view，`status --report` / `dashboard` 读当前结论时优先从对象图和该派生视图消费，`init --sync` 能按 run/object 历史重建它。
-- `AC-019`: `review` 明确为 live-only；`loop` 只通过 controller 对同一个 `work_id@revision` 反复创建 child run，review 结果只能作为同一 work / target 的新鲜输入或后续上下文，不得回退到旧 `task_id + target` / `TaskResult.last_closure_at` 语义。
+- `AC-019`: `argue` 明确为 adversarial discussion / evidence surface，不是代码 review 或 PASS/WARN/FAIL 打分器；`loop` 只通过 controller 对同一个 `work_id@revision` 反复创建 child run，不得回退到旧 `task_id + target` / `TaskResult.last_closure_at` 语义。
 - `AC-020`: 当前仓库文档准确反映新的 canonical 包级骨架：`thoth/surface`、`thoth/plan`、`thoth/run`、`thoth/init`、`thoth/observe`，且不再把已删除的旧顶层内部模块描述成主实现。
 - `AC-021`: 仓库提供 `thoth/test_targets.py` target manifest 与 `scripts/recommend_tests.py` changed-path 推荐入口，能生成精确 pytest/selftest 建议命令。
 - `AC-022`: `Store` 覆盖 create/read/update/tombstone/list/link/unlink、revision conflict、active work lock、schema failure 与 invalid link target；核心对象 kinds 至少覆盖 `project`、`discussion`、`decision`、`work_item`、`controller`、`run`、`phase_result`、`artifact`、`doc_view`。
-- `AC-023`: public `run` / `loop` / `review` 接口使用 `--work-id`；缺少 `--work-id` 时只能返回现有 work item 候选并停止，不允许创建 work item 或触碰代码。
+- `AC-023`: public `run` / `loop` 接口使用 `--work-id`；缺少 `--work-id` 时只能返回现有 work item 候选并停止，不允许创建 work item 或触碰代码。`argue` 可针对 idea / work item / decision 记录论证，但不得把论证结果当成 run acceptance。
 - `AC-024`: selftest case registry 包含并可执行 `discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`orchestration.controller`、`auto.queue`、`observe.object_graph`。
 - `AC-025`: 本轮关闭门只包含核心五项 selftest：`discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`observe.object_graph`；`auto` / `orchestration` 保留 public surface 与现有测试覆盖，但不作为本轮 runtime kernel 关闭门。
 - `AC-026`: `auto` live 默认启动或复用 durable background worker 后只观察 controller；`auto --sleep` 与 Claude bridge 默认返回 `monitor_command`；session 中断不得直接中断 worker，worker stale/missing 时可由同一 controller 恢复；`--min-runtime-seconds` 的默认 `28800` 必须按真实 wall-clock 执行。
-- `AC-027`: 安装态 host-real selftest 覆盖 9 个公开命令与关键模式：Codex `$thoth` 命令从安装态 runtime 执行；Claude `/thoth:* --executor codex` 对 `run`、`loop`、`review`、`auto` 进行真实 Codex worker 委派；Codex hooks 只允许写入一次性测试仓库 `.codex/`，不得修改全局 `~/.codex`。
+- `AC-027`: 安装态 host-real selftest 覆盖 9 个公开命令与关键模式：Codex `$thoth` 命令从安装态 runtime 执行；Claude `/thoth:* --executor codex` 对 `run`、`loop`、`argue`、`auto` 进行真实 Codex worker 委派；Codex hooks 只允许写入一次性测试仓库 `.codex/`，不得修改全局 `~/.codex`。
 - `AC-028`: 新 public work-json 若缺 `acceptance_spec` 必须以 blocked / needs-input 形态保存或拒绝，不得写空 schema 伪装 ready；dashboard/status 只能把 `module` / `direction` 作为派生读模型字段，不得要求 compact authority payload 存储这些 dashboard-only 字段。
 
 ## Non-Goals

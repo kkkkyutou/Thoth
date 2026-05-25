@@ -202,8 +202,8 @@
 
 ### 9.5 在 Thoth 仓库中的具体落地
 
-- 对 `init` / `sync` / `run` / `loop` / `review` 等 public commands，不允许用宿主自然语言补齐缺失执行证据。
-- 对 `thoth:init`，必须坚持 `audit-first adopt/init`：先审查现状，再生成 preview / migration 证据，再做受管更新。
+- 对 `init` / `discuss` / `run` / `loop` / `argue` / `auto` / `status` / `doctor` / `dashboard` 等 public commands，不允许用宿主自然语言补齐缺失执行证据。
+- 对 `thoth:init`，必须坚持 `audit-first adopt/init`：先审查现状，再生成 preview / migration 证据，再做受管更新；带自然语言 intent 时只能保存原文到 `source=init:*` discussion 并继续追问，不得直接生成 ready work，也不得把未经确认的摘要写入生成文档。
 - 对双宿主 surface、bridge、plugin、skill、dashboard、hook 等改动，默认同时检查 Claude Code 与 Codex，不允许单侧漂移。
 - 对 selftest 与 pytest 的收口、回归和发布门，必须显式记录 case IDs 与 target/file 列表，不允许再把 `hard` / `heavy` 或 `light` / `medium` / `heavy` 当默认开发验证语义。
 - 对治理文档或 prompt 合同的修改，同样遵循“最小改动、目标驱动、证据优先”，不要把行为准则写成与项目真实边界相冲突的口号。

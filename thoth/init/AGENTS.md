@@ -6,6 +6,7 @@
 
 - 维护 `/thoth:init` 与 `sync` 的 canonical repo-local 实现。
 - 坚持 `audit-first adopt/init`，禁止把目标仓库默认为空白脚手架。
+- 支持 smart init intent capture：自然语言 intent 只能进入 `source=init:*` discussion，不能绕过 audit-first scaffold，也不能污染生成模板。
 - 保证所有受管写入都能落到 `.thoth/migrations/*` 与 `.thoth/objects/*` 的证据链中。
 - 保证 Claude / Codex 两个宿主面的投影来自同一 canonical authority，而不是分叉模板。
 
@@ -24,6 +25,8 @@
 4. `AGENTS.md` / `CLAUDE.md`、Codex hooks、dashboard、tests、scripts 的生成必须服从同一 canonical source，不允许手工分叉两套逻辑。
 5. 仅在当前请求直接要求时才扩大 managed roots、legacy remove 列表或 host projection 内容。
 6. 修改 preview / apply / sync 逻辑时，必须同时检查“无源文件误删”“resume/adopt 语义不漂移”“双宿主投影不分叉”。
+7. 带 intent 的 init 仍必须先完成 audit-first base project materialization；intent 只打开或追加 `source=init:*` discussion，不直接生成 ready work。
+8. 未经 discussion close 确认的项目摘要不得写入 `AGENTS.md` / `CLAUDE.md` 或项目 docs。
 
 ## 4. 行为准则整合
 
@@ -60,6 +63,7 @@
 ## 5. 本子树的具体边界
 
 - `initialize_project()` 是 audit-first apply orchestration，不是“新建项目向导”。
-- `sync_project_layer()` 只重建 canonical 投影与派生层，不得偷偷接管新的 repo surface。
+- `sync_project_layer()` 可按用户批准受管刷新 Thoth-owned dashboard scaffold；刷新前必须备份到 ignored local state，并保持 host projection / source-map 可审计。
+- smart init 的 intent capture 属于 discussion authority；`initialize_project()` 仍是 audit-first apply orchestration，不是“自然语言直接生成项目计划”的入口。
 - `build_init_preview()` 的 `create/update/preserve/remove` 是 init 语义的核心 authority；新增规则时先想清楚是否会误伤已有仓库。
 - `generate_host_projections()` 输出的是宿主投影，不是宿主私有策略分叉点。
