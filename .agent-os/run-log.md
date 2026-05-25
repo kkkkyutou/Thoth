@@ -2,6 +2,16 @@
 
 ## Entries
 
+- 2026-05-25 04:52 UTC [0.2.8.1 canonical receipt contract dev verification]
+  - Worked on: `OBJ-001`, `WS-002`, `WS-003`, `WS-005`
+  - State changes: 按用户对 demo_project `run-4875414e1c9b` 失败的 postmortem 与后续计划，修复 Thoth execute receipt / mechanical validate / reflect schema 三者契约错位。`official_validation_receipt` 现在在 validate 入口归一化为 compact canonical shape：`actual_command -> command`，`stdout/stderr -> stdout_log/stderr_log`，`metric.{name,value,direction,threshold}` -> 扁平 metric 字段；inline stdout/stderr 物化为 run-local `official-validator.*.log`，`validate.json` 只落 canonical receipt 字段。
+  - State changes: `validate` 不再依赖 execute 自填 `authority_preserved` / `validator_intent_preserved` / `metric_preserved` / `threshold_preserved` / `evidence_sufficient` 作为 blocking truth，而是从 reference command、command relation、exit code、passed、metric、threshold 与日志证据推导；literal command mismatch 仍为 diagnostic，明显 pytest target drift 仍失败。
+  - State changes: Phase worker 顶层 unknown fields 改为丢弃并写 `_normalization_warnings`，保留 strict required fields 与 bool/outcome 类型校验；`reflect` failed 分支会先从 prior validate evidence 合成缺失的 `corrective_prompt` / `retry_authorized`。`runtime_contract_error` 合成为 non-retry operator/runtime repair prompt，不会授权 execute 重试或编辑项目代码。
+  - State changes: Prompt 文案改为 compact receipt facts 与 unified failed corrective exit；dashboard validate card 压缩为 command / relation / exit / metric / drift evidence；版本 bump 到 `0.2.8.1`，README、CHANGELOG 与 Claude/Codex plugin manifests 已通过 `python -m thoth.cli sync` 同步。
+  - Evidence produced: `python -m py_compile thoth/run/phases.py thoth/prompt_validators.py thoth/prompt_specs.py thoth/projections.py templates/dashboard/backend/runtime_loader.py tests/unit/test_runtime_protocol.py tests/unit/test_run_state_machine.py tests/unit/test_runtime_loader.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py tests/unit/test_cli_surface.py` 通过。
+  - Evidence produced: targeted pytest `tests/unit/test_runtime_protocol.py tests/unit/test_run_state_machine.py tests/unit/test_runtime_loader.py tests/unit/test_dashboard_runtime_api.py tests/unit/test_command_spec_generation.py tests/unit/test_plugin_surface.py tests/unit/test_cli_surface.py` 为 `122 passed in 168.13s`；`templates/dashboard/frontend` 的 `npm run build` 通过，仅有既有 Vite chunk-size warning；`git diff --check` 通过；四个 plugin/marketplace JSON 校验通过；`bin/thoth doctor --version` 输出 `version=0.2.8.1`。
+  - Next likely action: 将本轮发布面提交到 `dev`，再按默认策略 cherry-pick 到 `main`，在 `main` 重跑 targeted validation，push `origin dev` / `origin main`，最后执行远端-only Claude Code 与 Codex marketplace update/upgrade 并核验安装态 `version=0.2.8.1`。
+
 - 2026-05-24 06:56 UTC [0.2.8.0 adversarial argue release]
   - Worked on: `OBJ-001`, `WS-001`, `WS-002`, `WS-003`, `WS-005`
   - State changes: 按用户批准计划删除旧 public `$thoth review` / `/thoth:review`，新增 `$thoth argue` / `/thoth:argue`。`argue` 面向 idea、work item 或 decision 做 adversarial discussion，不是代码 review，不输出 PASS/WARN/FAIL，而是通过 `decision_impact` 表达是否 keep / revise / block / needs_input。
