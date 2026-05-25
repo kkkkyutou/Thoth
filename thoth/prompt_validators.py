@@ -487,7 +487,7 @@ def _synthesize_reflect_failure_fields(
         return payload
     missing = [
         field
-        for field in ("failure_class", "root_cause", "corrective_prompt", "retry_authorized")
+        for field in ("corrective_prompt", "retry_authorized")
         if field not in payload
     ]
     if not missing:
@@ -507,8 +507,6 @@ def _synthesize_reflect_failure_fields(
     else:
         next_hint = "repair the validation failure and rerun the official validator"
     synthesized = dict(payload)
-    synthesized.setdefault("failure_class", failure_class)
-    synthesized.setdefault("root_cause", root_cause)
     if "next_plan_hint" in payload:
         synthesized.setdefault("next_plan_hint", next_hint)
     if runtime_contract_error:
@@ -537,7 +535,7 @@ def _synthesize_reflect_failure_fields(
             field=f"reflect.{field}",
             reason="synthesized_from_validate_evidence",
             original_type="missing",
-            limit=FAILURE_CLASS_LIMIT if field == "failure_class" else CORRECTIVE_PROMPT_LIMIT if field == "corrective_prompt" else ROOT_CAUSE_LIMIT,
+            limit=CORRECTIVE_PROMPT_LIMIT if field == "corrective_prompt" else FAILURE_CLASS_LIMIT,
             truncated_or_compacted=True,
         )
     return synthesized
@@ -604,17 +602,26 @@ def validate_phase_output(
     if not isinstance(payload, dict):
         raise ValueError(f"{phase} output must be an object")
     payload = _compat_phase_payload(phase, payload)
+    normalization_warnings: list[dict[str, Any]] = _existing_normalization_warnings(payload)
     allowed = PHASE_ALLOWED_FIELDS.get(phase, set())
     unknown = sorted(set(payload) - allowed)
     if unknown:
-        raise ValueError(f"{phase} output has unknown fields: {', '.join(unknown)}")
+        for field in unknown:
+            _add_normalization_warning(
+                normalization_warnings,
+                field=f"{phase}.{field}",
+                reason="unknown_field_dropped",
+                original_type=type(payload.get(field)).__name__,
+                limit=STRUCTURED_FIELD_TOTAL_LIMIT,
+                truncated_or_compacted=True,
+            )
+        payload = {key: value for key, value in payload.items() if key in allowed}
     required = PHASE_REQUIRED_FIELDS[phase]
     missing = [field for field in required if field not in payload]
     if missing:
         raise ValueError(f"{phase} output missing required fields: {', '.join(missing)}")
 
     normalized = dict(payload)
-    normalization_warnings: list[dict[str, Any]] = []
     normalized["summary"] = _normalize_text_field(
         f"{phase}.summary",
         payload.get("summary"),
@@ -648,7 +655,6 @@ def validate_phase_output(
         normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "validate":
-        preexisting_warnings = _existing_normalization_warnings(payload)
         if not isinstance(payload.get("passed"), bool):
             raise ValueError("validate.passed must be a boolean")
         normalized["metric_name"] = _require_short_text(
@@ -671,7 +677,7 @@ def validate_phase_output(
                         "validate output missing schema-required fields: "
                         + ", ".join(str(field) for field in missing_schema_fields)
                     )
-        normalized["_normalization_warnings"] = [*preexisting_warnings, *normalization_warnings]
+        normalized["_normalization_warnings"] = normalization_warnings
         return normalized
     if phase == "reflect":
         outcome = _normalize_reflect_outcome(payload.get("outcome"), normalization_warnings)
@@ -679,6 +685,12 @@ def validate_phase_output(
             raise ValueError("reflect.outcome must be passed|failed")
         payload = dict(payload)
         payload["outcome"] = outcome
+        if outcome == "failed":
+            payload = _synthesize_reflect_failure_fields(
+                payload,
+                prior_validate_payload=prior_validate_payload,
+                warnings=normalization_warnings,
+            )
         normalized["outcome"] = outcome
         normalized["review"] = _normalize_body_field("reflect.review", payload.get("review"), PHASE_BODY_LIMIT, warnings=normalization_warnings)
         if outcome == "failed":

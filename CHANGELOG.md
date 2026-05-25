@@ -4,6 +4,18 @@
 
 No pending changes.
 
+## [0.2.8.1] - 2026-05-25
+
+### Changed
+- `validate` now canonicalizes execute `official_validation_receipt` fields before auditing: natural aliases such as `actual_command`, `stdout`, `stderr`, and `metric.value` are normalized into compact canonical receipt fields.
+- Phase output validation now drops unknown top-level worker fields with `_normalization_warnings` instead of failing recoverable runs solely because an agent wrote extra schema-shaped commentary.
+- Reflect failure handling keeps `corrective_prompt` as the unified failed-run exit while treating runtime contract errors as operator/runtime repair instructions, not execute retry prompts.
+
+### Fixed
+- Prevented passed project validators from failing Thoth closure when execute used natural receipt field names or inline stdout/stderr evidence.
+- Prevented runtime-contract reflect outputs from failing schema validation when the reviewer correctly chose `retry_authorized=false` but omitted a corrective prompt.
+- Dashboard validate cards now show compact command, metric, relation, and drift evidence instead of expanding preserved-field bookkeeping.
+
 ## [0.2.8.0] - 2026-05-24
 
 ### Added

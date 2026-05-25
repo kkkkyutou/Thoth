@@ -890,6 +890,131 @@ def _write_normalized_receipt_log(
     return str(path)
 
 
+_RECEIPT_CANONICAL_FIELDS = (
+    "command",
+    "reference_command",
+    "command_relation",
+    "equivalence_rationale",
+    "exit_code",
+    "passed",
+    "metric_name",
+    "metric_value",
+    "metric_direction",
+    "threshold",
+    "stdout_log",
+    "stdout_log_path",
+    "stderr_log",
+    "stderr_log_path",
+    "cwd",
+    "python_executable",
+    "env_summary",
+    "validation_method",
+    "materialized_validator_refs",
+)
+
+
+def _receipt_field_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _warn_receipt_alias(
+    warnings: list[dict[str, Any]],
+    *,
+    source_field: str,
+    canonical_field: str,
+) -> None:
+    warnings.append(
+        {
+            "field": f"official_validation_receipt.{source_field}",
+            "reason": "alias_normalized",
+            "canonical_field": canonical_field,
+        }
+    )
+
+
+def _copy_receipt_field(
+    source: dict[str, Any],
+    target: dict[str, Any],
+    warnings: list[dict[str, Any]],
+    canonical_field: str,
+    *aliases: str,
+) -> None:
+    value = source.get(canonical_field)
+    if _receipt_field_present(value):
+        target[canonical_field] = value
+        return
+    for alias in aliases:
+        value = source.get(alias)
+        if _receipt_field_present(value):
+            target[canonical_field] = value
+            _warn_receipt_alias(warnings, source_field=alias, canonical_field=canonical_field)
+            return
+
+
+def _normalize_metric_receipt_fields(
+    source: dict[str, Any],
+    target: dict[str, Any],
+    warnings: list[dict[str, Any]],
+) -> None:
+    metric = source.get("metric")
+    metric_obj = metric if isinstance(metric, dict) else {}
+    metric_aliases = {
+        "metric_name": ("name",),
+        "metric_value": ("value",),
+        "metric_direction": ("direction",),
+        "threshold": ("threshold",),
+    }
+    for canonical_field, nested_aliases in metric_aliases.items():
+        if _receipt_field_present(target.get(canonical_field)):
+            continue
+        value = source.get(canonical_field)
+        if _receipt_field_present(value):
+            target[canonical_field] = value
+            continue
+        for nested_alias in nested_aliases:
+            value = metric_obj.get(nested_alias)
+            if _receipt_field_present(value):
+                target[canonical_field] = value
+                _warn_receipt_alias(
+                    warnings,
+                    source_field=f"metric.{nested_alias}",
+                    canonical_field=canonical_field,
+                )
+                break
+
+
+def _canonicalize_official_validation_receipt(
+    *,
+    receipt: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    canonical: dict[str, Any] = {}
+    _copy_receipt_field(receipt, canonical, warnings, "command", "actual_command")
+    _copy_receipt_field(receipt, canonical, warnings, "reference_command")
+    _copy_receipt_field(receipt, canonical, warnings, "command_relation", "command_equivalence")
+    _copy_receipt_field(receipt, canonical, warnings, "equivalence_rationale", "evidence_rationale")
+    for field in (
+        "exit_code",
+        "passed",
+        "cwd",
+        "python_executable",
+        "env_summary",
+        "validation_method",
+        "materialized_validator_refs",
+    ):
+        _copy_receipt_field(receipt, canonical, warnings, field)
+    _copy_receipt_field(receipt, canonical, warnings, "stdout_log", "stdout")
+    _copy_receipt_field(receipt, canonical, warnings, "stdout_log_path")
+    _copy_receipt_field(receipt, canonical, warnings, "stderr_log", "stderr")
+    _copy_receipt_field(receipt, canonical, warnings, "stderr_log_path")
+    _normalize_metric_receipt_fields(receipt, canonical, warnings)
+    return canonical, warnings
+
+
 def _normalize_receipt_logs(
     *,
     handle: RunHandle,
@@ -962,10 +1087,11 @@ def _normalize_receipt_logs(
 
     if stdout_ok:
         normalized["stdout_log_path"] = str(stdout_path)
-        normalized["stdout_log"] = str(stdout_path)
+        normalized.pop("stdout_log", None)
     if stderr_ok:
         normalized["stderr_log_path"] = str(stderr_path)
-        normalized["stderr_log"] = str(stderr_path)
+        normalized.pop("stderr_log", None)
+    normalized = {key: normalized[key] for key in _RECEIPT_CANONICAL_FIELDS if key in normalized}
     checks.append(
         {
             "name": "receipt_logs_normalized",
@@ -991,12 +1117,13 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
     handle = RunHandle(project_root=project_root.resolve(), run_id=run_id)
     strict_task = phase_packet.get("strict_task") if isinstance(phase_packet.get("strict_task"), dict) else {}
     execute_payload, receipt = _execute_receipt_payload(phase_packet)
+    canonical_receipt, receipt_warnings = _canonicalize_official_validation_receipt(receipt=receipt if receipt else {})
     expected_command = _compact_whitespace(
         strict_task.get("eval_entrypoint", {}).get("command")
         if isinstance(strict_task.get("eval_entrypoint"), dict)
         else ""
     )
-    actual_command = _compact_whitespace(receipt.get("command")) if receipt else ""
+    actual_command = _compact_whitespace(canonical_receipt.get("command")) if canonical_receipt else ""
     checks: list[dict[str, Any]] = []
 
     receipt_present = bool(receipt)
@@ -1005,7 +1132,7 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
     command_matches = True
     if expected_command:
         command_matches = actual_command == expected_command
-        relation, relation_rationale = _command_relation(expected_command, actual_command, receipt)
+        relation, relation_rationale = _command_relation(expected_command, actual_command, {**receipt, **canonical_receipt})
         checks.append(
             {
                 "name": "official_command_matches",
@@ -1023,19 +1150,19 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
             }
         )
     else:
-        relation, relation_rationale = _command_relation(expected_command, actual_command, receipt)
+        relation, relation_rationale = _command_relation(expected_command, actual_command, {**receipt, **canonical_receipt})
 
-    exit_code = receipt.get("exit_code") if receipt else None
+    exit_code = canonical_receipt.get("exit_code") if canonical_receipt else None
     exit_ok = isinstance(exit_code, int) and exit_code == 0
     checks.append({"name": "exit_code_zero", "ok": exit_ok, "detail": f"exit_code={exit_code!r}"})
 
-    receipt_passed = receipt.get("passed") if receipt else None
+    receipt_passed = canonical_receipt.get("passed") if canonical_receipt else None
     checks.append({"name": "receipt_passed", "ok": receipt_passed is True, "detail": f"passed={receipt_passed!r}"})
 
     command_success = bool(exit_ok and receipt_passed is True)
     observed_metric = execute_payload.get("metric_value")
     if not isinstance(observed_metric, (int, float, bool)):
-        observed_metric = receipt.get("metric_value") if receipt else None
+        observed_metric = canonical_receipt.get("metric_value") if canonical_receipt else None
     if not isinstance(observed_metric, (int, float, bool)):
         observed_metric = 1 if command_success else 0
     threshold = _primary_metric_threshold(strict_task)
@@ -1051,30 +1178,34 @@ def mechanical_validate_phase_output(project_root: Path, phase_packet: dict[str,
 
     normalized_receipt, log_checks, log_warnings, logs_ok = _normalize_receipt_logs(
         handle=handle,
-        receipt=receipt if receipt else {},
+        receipt=canonical_receipt,
         observed_success=command_success,
     )
-    if expected_command:
-        normalized_receipt.setdefault("reference_command", expected_command)
-    if relation:
-        normalized_receipt.setdefault("command_relation", relation)
-    if relation_rationale:
-        normalized_receipt.setdefault("equivalence_rationale", relation_rationale)
+    log_warnings = [*receipt_warnings, *log_warnings]
+    if receipt_present:
+        normalized_receipt.setdefault("command", actual_command)
+        normalized_receipt.setdefault("metric_name", _primary_metric_name(strict_task))
+        normalized_receipt.setdefault("metric_value", observed_metric if command_success else 0)
+        normalized_receipt.setdefault("metric_direction", direction)
+        normalized_receipt.setdefault("threshold", threshold)
+        if expected_command:
+            normalized_receipt.setdefault("reference_command", expected_command)
+        if relation:
+            normalized_receipt.setdefault("command_relation", relation)
+        if relation_rationale:
+            normalized_receipt.setdefault("equivalence_rationale", relation_rationale)
     checks.extend(log_checks)
 
     drift_reason = _obvious_validator_drift(expected_command, actual_command)
-    authority_preserved = _receipt_equivalence_bool(receipt, "authority_preserved", not bool(drift_reason)) and not bool(drift_reason)
-    validator_intent_preserved = _receipt_equivalence_bool(
-        receipt,
-        "validator_intent_preserved",
-        bool(actual_command or not expected_command) and not bool(drift_reason),
-    ) and not bool(drift_reason)
-    metric_preserved = _receipt_equivalence_bool(receipt, "metric_preserved", True)
-    receipt_threshold = receipt.get("threshold") if receipt else None
+    relation_preserves_intent = relation not in {"missing", "not_equivalent", "changed"}
+    authority_preserved = bool(actual_command or not expected_command) and not bool(drift_reason)
+    validator_intent_preserved = authority_preserved and relation_preserves_intent
+    metric_preserved = metric_ok
+    receipt_threshold = normalized_receipt.get("threshold") if normalized_receipt else None
     threshold_default = True if receipt_threshold is None else receipt_threshold == threshold
-    threshold_preserved = _receipt_equivalence_bool(receipt, "threshold_preserved", threshold_default)
+    threshold_preserved = threshold_default
     evidence_default = bool(command_success and logs_ok)
-    evidence_sufficient = _receipt_equivalence_bool(receipt, "evidence_sufficient", evidence_default) and evidence_default
+    evidence_sufficient = evidence_default
     checks.extend(
         [
             {

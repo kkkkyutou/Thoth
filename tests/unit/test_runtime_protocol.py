@@ -112,18 +112,19 @@ def test_plan_gap_schema_drift_normalizes_jsonish_items():
     assert normalized["_normalization_warnings"][0]["reason"] == "coerced_to_json_string"
 
 
-def test_plan_rejects_extra_mechanical_fields():
+def test_plan_drops_extra_mechanical_fields():
     payload = {
         **_plan_payload("discover source paths"),
         "discovery_tasks": ["locate TRELLIS2 source tree", "create missing target test file"],
     }
 
-    try:
-        validate_phase_output("plan", payload)
-    except ValueError as exc:
-        assert "plan output has unknown fields: discovery_tasks" in str(exc)
-    else:
-        raise AssertionError("plan output should reject extra mechanical fields")
+    normalized = validate_phase_output("plan", payload)
+
+    assert "discovery_tasks" not in normalized
+    assert any(
+        item["field"] == "plan.discovery_tasks" and item["reason"] == "unknown_field_dropped"
+        for item in normalized["_normalization_warnings"]
+    )
 
 
 def test_phase_summary_budgets_are_relaxed():
@@ -333,7 +334,7 @@ def test_reflect_object_outcome_normalizes_passed_status():
     assert any(item["field"] == "reflect.outcome" for item in payload["_normalization_warnings"])
 
 
-def test_mechanical_phase_fields_remain_strict():
+def test_mechanical_phase_field_types_remain_strict_but_unknowns_are_dropped():
     try:
         validate_phase_output(
             "validate",
@@ -351,22 +352,22 @@ def test_mechanical_phase_fields_remain_strict():
     else:
         raise AssertionError("validate.passed should remain a strict boolean")
 
-    try:
-        validate_phase_output(
-            "reflect",
-            {
-                "summary": "reflect",
-                "outcome": "failed",
-                "review": "# Review\n\nRetry is needed.",
-                "failure_class": "x" * 40,
-                "corrective_prompt": "fix implementation",
-                "retry_authorized": True,
-            },
-        )
-    except ValueError as exc:
-        assert "reflect output has unknown fields: failure_class" in str(exc)
-    else:
-        raise AssertionError("reflect extra mechanical fields should be rejected")
+    reflect = validate_phase_output(
+        "reflect",
+        {
+            "summary": "reflect",
+            "outcome": "failed",
+            "review": "# Review\n\nRetry is needed.",
+            "failure_class": "x" * 40,
+            "corrective_prompt": "fix implementation",
+            "retry_authorized": True,
+        },
+    )
+    assert "failure_class" not in reflect
+    assert any(
+        item["field"] == "reflect.failure_class" and item["reason"] == "unknown_field_dropped"
+        for item in reflect["_normalization_warnings"]
+    )
 
 
 def test_prepare_execution_writes_packet_and_live_dispatch(tmp_path):
@@ -665,21 +666,22 @@ def test_phase_prompt_includes_execute_role_contract(tmp_path):
     assert "GPU-first verification posture" in prompt
 
 
-def test_execute_output_rejects_extra_debug_fields():
-    try:
-        validate_phase_output(
-            "execute",
-            {
-                "summary": "execute done",
-                "report": "# Execute Report\n\nImplemented the final architecture and ran validation.",
-                "official_validation_receipt": {"command": "pytest -q", "passed": True},
-                "debug_attempts": [{"name": "flex_gemm import", "status": "fixed"}],
-            },
-        )
-    except ValueError as exc:
-        assert "execute output has unknown fields: debug_attempts" in str(exc)
-    else:
-        raise AssertionError("execute debug fields should live inside report, not separate schema fields")
+def test_execute_output_drops_extra_debug_fields():
+    payload = validate_phase_output(
+        "execute",
+        {
+            "summary": "execute done",
+            "report": "# Execute Report\n\nImplemented the final architecture and ran validation.",
+            "official_validation_receipt": {"command": "pytest -q", "passed": True},
+            "debug_attempts": [{"name": "flex_gemm import", "status": "fixed"}],
+        },
+    )
+
+    assert "debug_attempts" not in payload
+    assert any(
+        item["field"] == "execute.debug_attempts" and item["reason"] == "unknown_field_dropped"
+        for item in payload["_normalization_warnings"]
+    )
 
 
 def test_reflect_failure_requires_direct_corrective_prompt():
@@ -709,6 +711,37 @@ def test_reflect_failure_requires_direct_corrective_prompt():
     assert "flex_gemm" in payload["corrective_prompt"]
     assert payload["retry_authorized"] is True
     assert payload["_normalization_warnings"] == []
+
+
+def test_reflect_runtime_contract_failure_synthesizes_non_retry_prompt():
+    payload = validate_phase_output(
+        "reflect",
+        {
+            "summary": "reflect failed validation",
+            "outcome": "failed",
+            "review": "# Review\n\nThis is a Thoth receipt contract issue, not a project-code issue.",
+        },
+        prior_validate_payload={
+            "summary": "Official validation evidence failed: stdout_evidence_present",
+            "passed": False,
+            "metric_name": "checks",
+            "metric_value": 1,
+            "threshold": 1,
+            "runtime_contract_health": "runtime_contract_error",
+            "failure_class": "runtime_contract_error",
+            "checks": [
+                {"name": "stdout_evidence_present", "ok": False, "detail": "stdout evidence missing"},
+            ],
+        },
+    )
+
+    assert payload["outcome"] == "failed"
+    assert payload["retry_authorized"] is False
+    assert "Do not retry execute" in payload["corrective_prompt"]
+    assert "project code" in payload["corrective_prompt"]
+    assert "failure_class" not in payload
+    assert "root_cause" not in payload
+    assert any(item["field"] == "reflect.corrective_prompt" for item in payload["_normalization_warnings"])
 
 
 def test_runtime_validate_mechanically_confirms_execute_receipt_without_worker(tmp_path):
@@ -812,6 +845,82 @@ def test_runtime_validate_normalizes_inline_receipt_logs_and_preserves_metric(tm
     run_result = json.loads((handle.run_dir / "result.json").read_text(encoding="utf-8"))
     assert run_result["result"]["metrics"]["bitwise_identical"] == 1.0
     assert run_result["result"]["observed_validation"]["metric_threshold_met"] is True
+
+
+def test_runtime_validate_accepts_compact_receipt_aliases_and_prunes_output(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Alias receipt demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Alias receipt demo",
+            "eval_entrypoint": {"command": "python -m pytest tests/test_demo.py -v"},
+            "primary_metric": {"name": "score", "direction": "gte", "threshold": 0.9},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="normalize natural receipt aliases",
+    )
+
+    class AliasReceiptDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            if phase == "plan":
+                return _plan_payload()
+            if phase == "execute":
+                return {
+                    **_execute_payload(),
+                    "official_validation_receipt": {
+                        "actual_command": "python -m pytest tests/test_demo.py -v",
+                        "exit_code": 0,
+                        "passed": True,
+                        "metric": {"name": "score", "value": 0.93, "direction": "gte", "threshold": 0.9},
+                        "stdout": "============================= test session starts =============================\n1 passed\n",
+                        "stderr": "[empty stderr captured]",
+                        "checks_summary": ["raw worker-only detail should not be persisted"],
+                        "extra_agent_note": "raw receipt detail should be pruned",
+                    },
+                }
+            if phase == "reflect":
+                return {
+                    "summary": "reflect passed",
+                    "outcome": "passed",
+                    "review": "# Review\n\nThe alias receipt was normalized and passed.",
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=AliasReceiptDriver())
+
+    assert status == 0
+    validate_payload = json.loads((handle.run_dir / "validate.json").read_text(encoding="utf-8"))
+    receipt = validate_payload["official_validation_receipt"]
+    assert validate_payload["passed"] is True
+    assert validate_payload["metric_value"] == 0.93
+    assert receipt["command"] == "python -m pytest tests/test_demo.py -v"
+    assert receipt["metric_value"] == 0.93
+    assert receipt["metric_name"] == "score"
+    assert Path(receipt["stdout_log_path"]).exists()
+    assert Path(receipt["stderr_log_path"]).exists()
+    assert "stdout" not in receipt
+    assert "stderr" not in receipt
+    assert "actual_command" not in receipt
+    assert "checks_summary" not in receipt
+    assert "extra_agent_note" not in receipt
+    assert any(
+        item["field"] == "official_validation_receipt.actual_command"
+        and item["reason"] == "alias_normalized"
+        for item in validate_payload["_normalization_warnings"]
+    )
+    assert any(
+        item["field"] == "official_validation_receipt.metric.value"
+        and item["canonical_field"] == "metric_value"
+        for item in validate_payload["_normalization_warnings"]
+    )
 
 
 def test_runtime_validate_accepts_environment_adjusted_reference_command(tmp_path):

@@ -333,22 +333,22 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "4. Validator: if acceptance_spec starts as prose, IO examples, or a missing script name, materialize the validator and record what changed.",
         "5. Evidence: do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
         "6. Task-fit: for example AI research, training, CUDA, or inference tasks should use GPU-first training/inference or official validation when acceptance depends on it.",
-        "7. Receipt: return passed, validation_method, metric, evidence/log refs, acceptance_preserved, summary, and command relation when a reference command exists.",
+        "7. Receipt: return compact facts: command, exit_code, passed, metric_value, stdout_log/stderr_log or paths, and command relation when a reference command exists.",
         "8. Report: explain what was built, what validation was materialized or repaired, and the true remaining failure if not passed.",
     ),
     "validate": (
         "1. Runtime: no separate worker is launched for validate.",
-        "2. Receipt: audit execute's official_validation_receipt, evidence refs, metric, threshold, and acceptance_preserved.",
+        "2. Receipt: normalize execute's official_validation_receipt into one compact canonical shape before auditing it.",
         "3. Command relation: reference command mismatch is diagnostic only when the same acceptance intent is preserved.",
-        "4. Failure: missing receipt/evidence, passed=false, metric miss, authority drift, or insufficient evidence fails validation.",
+        "4. Failure: missing receipt/evidence, passed=false, metric miss, validator drift, or insufficient evidence fails validation.",
         "5. Boundary: validate never repairs code or rewrites acceptance.",
     ),
     "reflect": (
         "1. Role: act as a senior reviewer for the user and the next execute attempt.",
         "2. Evidence: review plan, execute, validate, and receipt artifacts without running new commands.",
         "3. Success: explain why acceptance was preserved and what residual risk remains.",
-        "4. Failure: if the issue is business/project work inside authority, give retry_authorized and a direct corrective_prompt.",
-        "5. Boundary: do not retry needs_input, authority gaps, permission overreach, runtime contract errors, or changed acceptance.",
+        "4. Failure: always provide corrective_prompt; for business/project failures it is the next execute instruction, for runtime_contract_error it is an operator/runtime repair instruction.",
+        "5. Boundary: set retry_authorized=false for needs_input, authority gaps, permission overreach, runtime contract errors, or changed acceptance.",
         "6. Standards: call out MVP/fallback/mock/stub/simplified evidence when it substituted for acceptance_spec.",
     ),
 }
@@ -470,8 +470,9 @@ def render_phase_worker_prompt(
         lines.append("Temporary probes are allowed only as diagnostics; they must not become the implementation path or hide final-architecture failure.")
         lines.append("Choose verification that matches the task. For example, AI research, model training, CUDA, or inference tasks should use a GPU-first verification posture: run real GPU training/inference smoke tests and the official validator early enough to guide implementation instead of substituting CPU-only, mock-only, shape-only, or MVP-only evidence.")
         lines.append("Use focused validation during execute as an engineering feedback loop. If acceptance_spec names a missing script or prose/IO standard, materialize the validator and run it.")
-        lines.append("Return `official_validation_receipt` with passed, validation_method, metric{name,value,direction,threshold}, evidence_refs/log_refs, acceptance_preserved, summary, and materialized_validator_refs when you wrote or changed validators.")
-        lines.append("If the actual command differs from a reference command, include reference_command, actual_command, command_relation, and equivalence_rationale.")
+        lines.append("Return compact `official_validation_receipt` facts: command, exit_code, passed, metric_value, stdout_log/stderr_log or stdout_log_path/stderr_log_path, and materialized_validator_refs when you wrote or changed validators.")
+        lines.append("Prefer canonical `command`, `metric_value`, `stdout_log`, and `stderr_log`; validate also understands natural aliases like actual_command/stdout/stderr and normalizes them.")
+        lines.append("If the actual command differs from a reference command, include reference_command, command_relation, and equivalence_rationale.")
         lines.append("The later validate phase audits this receipt and evidence instead of launching a separate worker or judging command strings as the whole truth.")
         lines.append("If you repair dependencies, prefer repo-local or task-local locations such as `.vendor`; do not mutate global environments unless the work item explicitly authorizes it.")
         lines.append("Do not wait for reflect to solve engineering bugs; debug imports, CUDA visibility, local dependency shims, build issues, and test failures here when they are inside task authority.")
@@ -479,8 +480,8 @@ def render_phase_worker_prompt(
     if phase == "reflect":
         lines.append("Use `review` as a rich markdown technical lead review for the user and next worker.")
         lines.append("If validate failed for a project/business issue still inside task authority, return retry_authorized=true and a direct corrective_prompt for the next execute cycle.")
-        lines.append("If validate failure_class or runtime_contract_health is runtime_contract_error, return retry_authorized=false and explain the Thoth runtime/reconcile issue instead of sending execute back to edit the project.")
-        lines.append("The corrective_prompt should preserve the original goal, acceptance intent, metric, threshold, and final architecture while telling execute to continue debugging the concrete failure.")
+        lines.append("If validate failure_class or runtime_contract_health is runtime_contract_error, return retry_authorized=false and make corrective_prompt an operator/runtime instruction: do not edit project code or retry execute for this evidence-contract failure.")
+        lines.append("The corrective_prompt should preserve the original goal, acceptance intent, metric, threshold, and final architecture; it is the unified failure exit, not always an execute retry prompt.")
         lines.append("If execute drifted into MVP/fallback/mock/stub/simplified paths or task-inappropriate evidence, call that out and instruct execute to remove the shortcut rather than weaken acceptance.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:

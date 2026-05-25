@@ -1,6 +1,6 @@
 {
   "name": "thoth",
-  "version": "0.2.8.0",
+  "version": "0.2.8.1",
   "description": "Dashboard-centric Agent Project OS for auditable AI execution, persistent project state, and human-visible workflow orchestration.",
   "author": {
     "name": "SeeleAI",

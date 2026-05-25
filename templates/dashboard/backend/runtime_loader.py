@@ -361,9 +361,8 @@ def _validate_sections(payload: dict[str, Any]) -> list[dict[str, Any]]:
             f"equivalence={observed.get('equivalence_rationale') or ''}",
             f"exit_code={observed.get('exit_code')!r} passed={observed.get('passed')!r}",
             f"command_matches={observed.get('command_matches')!r} metric_threshold_met={observed.get('metric_threshold_met')!r}",
-            f"authority_preserved={observed.get('authority_preserved')!r} validator_intent_preserved={observed.get('validator_intent_preserved')!r}",
-            f"metric_preserved={observed.get('metric_preserved')!r} threshold_preserved={observed.get('threshold_preserved')!r} evidence_sufficient={observed.get('evidence_sufficient')!r}",
             f"metric_value={observed.get('metric_value')!r}",
+            f"drift={observed.get('validator_drift_reason') or ''}",
         ]
     receipt_items: list[str] = []
     if receipt:

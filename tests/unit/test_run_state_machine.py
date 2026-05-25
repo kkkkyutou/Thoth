@@ -231,7 +231,7 @@ def test_plan_authority_gap_terminalizes_before_execute(tmp_path):
     assert "execute" not in phase_state["phase_statuses"]
 
 
-def test_execute_legacy_plan_artifact_read_field_is_rejected(tmp_path):
+def test_execute_legacy_plan_artifact_read_field_is_dropped(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
         project,
@@ -246,17 +246,20 @@ def test_execute_legacy_plan_artifact_read_field_is_rejected(tmp_path):
     )
     submit_phase_output(project, handle.run_id, phase="plan", payload=_plan_payload())
 
-    try:
-        submit_phase_output(
-            project,
-            handle.run_id,
-            phase="execute",
-            payload={**_execute_payload(), "plan_artifact_read": False},
-        )
-    except ValueError as exc:
-        assert "execute output has unknown fields: plan_artifact_read" in str(exc)
-    else:
-        raise AssertionError("execute should reject legacy plan_artifact_read field")
+    result = submit_phase_output(
+        project,
+        handle.run_id,
+        phase="execute",
+        payload={**_execute_payload(), "plan_artifact_read": False},
+    )
+
+    assert result["terminal"] is False
+    execute_artifact = json.loads((handle.run_dir / "execute.json").read_text(encoding="utf-8"))
+    assert "plan_artifact_read" not in execute_artifact
+    assert any(
+        item["field"] == "execute.plan_artifact_read" and item["reason"] == "unknown_field_dropped"
+        for item in execute_artifact["_normalization_warnings"]
+    )
 
 
 def test_loop_parent_stops_on_iteration_budget(tmp_path):
