@@ -17,6 +17,8 @@ from thoth.plan.discuss import (
     load_authority_json,
     match_open_discussion_for_message,
     open_discussion_candidates,
+    project_patch_template,
+    work_graph_template,
     work_json_template,
 )
 from thoth.plan.compiler import compile_task_authority
@@ -64,8 +66,10 @@ def _discussion_protocol_commands(project_root: Path, discussion_id: str) -> dic
     }
 
 
-def _discussion_packet(project_root: Path, discussion_id: str) -> dict[str, Any]:
+def build_discussion_packet(project_root: Path, discussion_id: str) -> dict[str, Any]:
     template = work_json_template()
+    graph_template = work_graph_template()
+    patch_template = project_patch_template()
     return {
         "packet_kind": "discussion_authority",
         "discussion_id": discussion_id,
@@ -80,7 +84,14 @@ def _discussion_packet(project_root: Path, discussion_id: str) -> dict[str, Any]
             "open_questions": "material unanswered questions; must be empty for ready work",
         },
         "open_discussion_candidates": open_discussion_candidates(project_root),
+        "close_shapes": {
+            "single_work_item": "Use work_item for one executable unit.",
+            "work_graph": "Use work_graph.nodes plus work_graph.edges for a compact DAG. Edges mean `to` depends on `from`.",
+            "init_project_patch": "Only init discussions may include project_patch with name, description, directions.",
+        },
         **template,
+        **graph_template,
+        **patch_template,
     }
 
 
@@ -143,7 +154,7 @@ def handle_discuss(args, parser, *, project_root: Path) -> int:
             "discussion": decision,
             "discussion_mode": discussion_mode,
             "note_path": str(note_path),
-            "packet": _discussion_packet(project_root, decision["discussion_id"]),
+            "packet": build_discussion_packet(project_root, decision["discussion_id"]),
         }
     compiler = compile_task_authority(project_root)
     summary = compiler.get("summary", {})

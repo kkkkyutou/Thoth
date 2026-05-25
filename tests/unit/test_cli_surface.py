@@ -149,6 +149,59 @@ def test_cli_init_creates_project_layer(tmp_path):
     assert "node_modules/" in (tmp_path / "tools" / "dashboard" / "frontend" / ".gitignore").read_text(encoding="utf-8")
 
 
+def test_cli_init_with_intent_creates_init_discussion_packet(tmp_path):
+    raw_intent = "我要做一个 AI 科研项目\n先讨论目标，不要直接生成任务"
+
+    result = _run_cli(tmp_path, "init", raw_intent)
+
+    assert result.returncode == 0, result.stderr
+    payload = _extract_envelope(result.stdout)
+    init_intent = payload["body"]["init_intent"]
+    discussion_id = init_intent["discussion_id"]
+    assert init_intent["status"] == "discussion_open"
+    assert init_intent["packet"]["packet_kind"] == "discussion_authority"
+    assert "work_graph_schema" in init_intent["packet"]
+    stored = json.loads((tmp_path / ".thoth" / "objects" / "discussion" / f"{discussion_id}.json").read_text(encoding="utf-8"))
+    assert stored["source"].startswith("init:")
+    assert stored["payload"]["raw_intent"] == raw_intent
+    assert stored["payload"]["messages"][0]["content"] == raw_intent
+
+
+def test_cli_init_intent_conflicts_with_mutating_modes(tmp_path):
+    result = _run_cli(tmp_path, "init", "--sync", "请初始化一个研究项目")
+
+    assert result.returncode == 2
+    assert "init intent cannot be combined" in result.stderr
+    assert not (tmp_path / ".thoth" / "objects" / "discussion").exists()
+
+
+def test_cli_init_repeated_intent_appends_open_init_discussion(tmp_path):
+    first = _run_cli(tmp_path, "init", "第一段项目意图")
+    assert first.returncode == 0, first.stderr
+    discussion_id = _extract_envelope(first.stdout)["body"]["init_intent"]["discussion_id"]
+
+    second = _run_cli(tmp_path, "init", "第二段补充意图")
+
+    assert second.returncode == 0, second.stderr
+    assert _extract_envelope(second.stdout)["body"]["init_intent"]["discussion_id"] == discussion_id
+    stored = json.loads((tmp_path / ".thoth" / "objects" / "discussion" / f"{discussion_id}.json").read_text(encoding="utf-8"))
+    assert [row["content"] for row in stored["payload"]["messages"]] == ["第一段项目意图", "第二段补充意图"]
+    assert stored["payload"]["raw_intents"] == ["第一段项目意图", "第二段补充意图"]
+    assert stored["payload"]["raw_intent"] == "第一段项目意图\n\n第二段补充意图"
+
+
+def test_cli_init_config_json_with_intent_preserves_config_and_raw_discussion(tmp_path):
+    config = {"name": "SmartInit", "description": "configured description", "directions": ["core"]}
+    result = _run_cli(tmp_path, "init", "--config-json", json.dumps(config), "自然语言目标")
+
+    assert result.returncode == 0, result.stderr
+    project = json.loads((tmp_path / ".thoth" / "objects" / "project" / "project.json").read_text(encoding="utf-8"))
+    assert project["payload"]["project"]["name"] == "SmartInit"
+    discussion_id = _extract_envelope(result.stdout)["body"]["init_intent"]["discussion_id"]
+    discussion = json.loads((tmp_path / ".thoth" / "objects" / "discussion" / f"{discussion_id}.json").read_text(encoding="utf-8"))
+    assert discussion["payload"]["raw_intent"] == "自然语言目标"
+
+
 def test_cli_help_shows_minimal_public_commands(tmp_path):
     result = _run_cli(tmp_path, "--help")
     assert result.returncode == 0
@@ -297,6 +350,210 @@ def test_cli_record_discussion_authority_closes_work(tmp_path):
     work_item = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "close-work.json").read_text(encoding="utf-8"))
     assert {"type": "primary_parent", "target": f"discussion:{discussion_id}"} in work_item["links"]
     assert work_item["status"] == "ready"
+
+
+def test_cli_record_discussion_authority_accepts_compact_work_graph(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    result = _run_cli(tmp_path, "discuss", "close", "a", "dag")
+    discussion_id = json.loads(result.stdout)["body"]["discussion"]["discussion_id"]
+    capsule_path = tmp_path / "authority-graph.json"
+    capsule_path.write_text(
+        json.dumps(
+            {
+                "goal": {"source_summary": "Build a DAG.", "normalized_summary": "Build a DAG."},
+                "constraints": ["temp-project"],
+                "open_questions": [],
+                "completeness": {"is_closed": True},
+                "work_graph": {
+                    "nodes": {
+                        "WG-A": {
+                            "title": "Upstream",
+                            "goal": "Finish upstream.",
+                            "acceptance_spec": {
+                                "kind": "script",
+                                "description": "Run upstream pytest.",
+                                "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                            },
+                            "missing_questions": [],
+                        },
+                        "WG-B": {
+                            "title": "Downstream",
+                            "goal": "Finish downstream.",
+                            "acceptance_spec": {
+                                "kind": "script",
+                                "description": "Run downstream pytest.",
+                                "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                            },
+                            "missing_questions": [],
+                        },
+                    },
+                    "edges": [{"from": "WG-A", "to": "WG-B"}],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    close = _run_cli(
+        tmp_path,
+        "record-discussion-authority",
+        "--project-root",
+        str(tmp_path),
+        "--discussion-id",
+        discussion_id,
+        "--mode",
+        "close",
+        "--authority-json-file",
+        str(capsule_path),
+    )
+
+    assert close.returncode == 0, close.stderr
+    upstream = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "WG-A.json").read_text(encoding="utf-8"))
+    downstream = json.loads((tmp_path / ".thoth" / "objects" / "work_item" / "WG-B.json").read_text(encoding="utf-8"))
+    assert upstream["status"] == "ready"
+    assert downstream["status"] == "ready"
+    assert {"type": "depends_on", "target": "work_item:WG-A"} in downstream["links"]
+
+
+def test_cli_record_discussion_authority_rejects_invalid_work_graph_without_writes(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    result = _run_cli(tmp_path, "discuss", "close", "bad", "dag")
+    discussion_id = json.loads(result.stdout)["body"]["discussion"]["discussion_id"]
+    before = json.loads((tmp_path / ".thoth" / "objects" / "discussion" / f"{discussion_id}.json").read_text(encoding="utf-8"))
+    capsule_path = tmp_path / "authority-bad-graph.json"
+    capsule_path.write_text(
+        json.dumps(
+            {
+                "goal": {"source_summary": "Build a DAG.", "normalized_summary": "Build a DAG."},
+                "open_questions": [],
+                "completeness": {"is_closed": True},
+                "work_graph": {
+                    "nodes": {
+                        "WG-A": {"goal": "A"},
+                        "WG-B": {"goal": "B"},
+                    },
+                    "edges": [{"from": "WG-A", "to": "WG-B"}, {"from": "WG-B", "to": "WG-A"}],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    close = _run_cli(
+        tmp_path,
+        "record-discussion-authority",
+        "--project-root",
+        str(tmp_path),
+        "--discussion-id",
+        discussion_id,
+        "--mode",
+        "close",
+        "--authority-json-file",
+        str(capsule_path),
+    )
+
+    assert close.returncode == 2
+    after = json.loads((tmp_path / ".thoth" / "objects" / "discussion" / f"{discussion_id}.json").read_text(encoding="utf-8"))
+    assert after["revision"] == before["revision"]
+    assert not (tmp_path / ".thoth" / "objects" / "work_item" / "WG-A.json").exists()
+    assert "dependency cycle" in close.stdout
+
+
+def test_init_discussion_close_can_patch_project_and_write_work_graph(tmp_path):
+    init_result = _run_cli(tmp_path, "init", "初始化一个智能研究项目")
+    assert init_result.returncode == 0, init_result.stderr
+    discussion_id = _extract_envelope(init_result.stdout)["body"]["init_intent"]["discussion_id"]
+    capsule_path = tmp_path / "init-close.json"
+    capsule_path.write_text(
+        json.dumps(
+            {
+                "goal": {"source_summary": "Initialize Smart Project.", "normalized_summary": "Initialize Smart Project."},
+                "open_questions": [],
+                "completeness": {"is_closed": True},
+                "project_patch": {
+                    "name": "Smart Project",
+                    "description": "A compact project identity confirmed through init discussion.",
+                    "directions": [{"id": "core", "label_en": "Core"}],
+                },
+                "work_graph": {
+                    "nodes": {
+                        "INIT-W1": {
+                            "title": "First Work",
+                            "goal": "Do first work.",
+                            "acceptance_spec": {
+                                "kind": "script",
+                                "description": "Run first check.",
+                                "metric": {"name": "checks", "direction": "gte", "threshold": 1},
+                            },
+                            "missing_questions": [],
+                        }
+                    },
+                    "edges": [],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    close = _run_cli(
+        tmp_path,
+        "record-discussion-authority",
+        "--project-root",
+        str(tmp_path),
+        "--discussion-id",
+        discussion_id,
+        "--mode",
+        "close",
+        "--authority-json-file",
+        str(capsule_path),
+    )
+
+    assert close.returncode == 0, close.stderr
+    project = json.loads((tmp_path / ".thoth" / "objects" / "project" / "project.json").read_text(encoding="utf-8"))
+    docs_project = json.loads((tmp_path / ".thoth" / "docs" / "project.json").read_text(encoding="utf-8"))
+    assert project["payload"]["project"]["name"] == "Smart Project"
+    assert docs_project["project"]["name"] == "Smart Project"
+    assert (tmp_path / ".thoth" / "objects" / "work_item" / "INIT-W1.json").exists()
+
+
+def test_normal_discussion_rejects_project_patch_without_writes(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    result = _run_cli(tmp_path, "discuss", "normal", "discussion")
+    discussion_id = json.loads(result.stdout)["body"]["discussion"]["discussion_id"]
+    capsule_path = tmp_path / "bad-project-patch.json"
+    capsule_path.write_text(
+        json.dumps(
+            {
+                "goal": {"source_summary": "Patch project.", "normalized_summary": "Patch project."},
+                "open_questions": [],
+                "completeness": {"is_closed": True},
+                "project_patch": {"name": "Should Not Apply"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    close = _run_cli(
+        tmp_path,
+        "record-discussion-authority",
+        "--project-root",
+        str(tmp_path),
+        "--discussion-id",
+        discussion_id,
+        "--mode",
+        "close",
+        "--authority-json-file",
+        str(capsule_path),
+    )
+
+    assert close.returncode == 2
+    project = json.loads((tmp_path / ".thoth" / "objects" / "project" / "project.json").read_text(encoding="utf-8"))
+    assert project["payload"]["project"]["name"] != "Should Not Apply"
+    assert "project_patch is only allowed" in close.stdout
 
 
 def test_cli_record_discussion_authority_needs_input_lists_missing_fields(tmp_path):

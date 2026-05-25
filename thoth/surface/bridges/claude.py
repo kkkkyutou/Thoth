@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -155,14 +156,79 @@ def _rewrite_run_loop_prepare_args(command_args: list[str]) -> list[str]:
     return rewritten
 
 
+def _split_init_arguments_file(content: str) -> list[str]:
+    raw = content.rstrip("\n")
+    if not raw.strip():
+        return []
+    if raw == "--":
+        return []
+    if raw.startswith("--\n") or raw.startswith("-- "):
+        return ["--intent", raw[2:].lstrip()]
+    try:
+        tokens = shlex.split(raw)
+    except ValueError:
+        return ["--intent", raw]
+    if not tokens:
+        return []
+    known_value_flags = {"--config-json", "--intent", "--intent-file", "--migrate"}
+    known_bool_flags = {"--sync", "--preview", "--apply"}
+    if tokens[0] not in known_value_flags and tokens[0] not in known_bool_flags and tokens[0] != "--":
+        return ["--intent", raw]
+    parsed: list[str] = []
+    idx = 0
+    while idx < len(tokens):
+        token = tokens[idx]
+        if token == "--":
+            intent = raw.split("--", 1)[1].lstrip()
+            if intent:
+                parsed.extend(["--intent", intent])
+            return parsed
+        if token in known_value_flags:
+            parsed.append(token)
+            if idx + 1 < len(tokens):
+                parsed.append(tokens[idx + 1])
+                idx += 2
+                continue
+            return parsed
+        if token in known_bool_flags:
+            parsed.append(token)
+            idx += 1
+            continue
+        if token.startswith("-"):
+            parsed.append(token)
+            idx += 1
+            continue
+        intent = " ".join(tokens[idx:]).strip()
+        if intent:
+            parsed.extend(["--intent", intent])
+        return parsed
+    return parsed
+
+
+def _expand_arguments_file(command_id: str, base_args: list[str], path: Path) -> list[str]:
+    content = path.read_text(encoding="utf-8")
+    if command_id == "discuss":
+        file_args = [content.rstrip("\n")] if content.strip() else []
+    elif command_id == "init":
+        file_args = _split_init_arguments_file(content)
+    else:
+        try:
+            file_args = shlex.split(content) if content.strip() else []
+        except ValueError:
+            file_args = [content.rstrip("\n")] if content.strip() else []
+    return [*base_args, *file_args]
+
+
 def _expand_bridge_args(command_id: str, command_args: list[str]) -> list[str]:
-    if command_id != "discuss":
-        return command_args
-    if len(command_args) >= 2 and command_args[0] == "--thoth-arguments-file":
-        path = Path(command_args[1])
-        content = path.read_text(encoding="utf-8")
-        return [content.rstrip("\n")]
-    return command_args
+    args = list(command_args)
+    if "--thoth-arguments-file" not in args:
+        return args
+    idx = args.index("--thoth-arguments-file")
+    if idx + 1 >= len(args):
+        return args
+    path = Path(args[idx + 1])
+    base_args = [*args[:idx], *args[idx + 2 :]]
+    return _expand_arguments_file(command_id, base_args, path)
 
 
 def run_bridge(command_id: str, command_args: list[str], *, project_root: Path | None = None) -> dict[str, Any]:

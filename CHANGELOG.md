@@ -4,6 +4,23 @@
 
 No pending changes.
 
+## [0.2.8.2] - 2026-05-25
+
+### Added
+- `thoth init <natural-language intent>` now initializes the base `.thoth` project and opens or appends a `source=init` discussion containing the raw intent text.
+- Discussion close now accepts a compact `work_graph` blueprint: explicit work-id keyed nodes plus hard dependency edges that compile into canonical `work_item` objects and `depends_on` links.
+- Init discussions can close with a compact `project_patch` containing only `name`, `description`, and `directions`.
+- Dashboard DAG nodes now expose `authority_status`, `actionability`, `waiting_on`, `downstream`, `goal`, and `acceptance` metadata.
+
+### Changed
+- Claude command projections now pass all slash-command arguments through temporary argument files, so multiline user text is preserved instead of being executed by the shell.
+- `init` is now a hybrid route: no intent remains a mechanical audit-first receipt, while intent returns a discussion packet and asks the agent to continue questioning before closing authority.
+- Prompt contracts now describe init/discuss closure through compact `project_patch`, `work_item`, or `work_graph` authority instead of encouraging mechanical field bloat.
+
+### Fixed
+- Prevented multiline `/thoth:init ...` user text from becoming separate shell commands after line breaks.
+- Prevented ready work with unmet hard dependencies from being displayed as authority-blocked in the DAG; it now stays `ready` and shows `actionability=waiting_on`.
+
 ## [0.2.8.1] - 2026-05-25
 
 ### Changed

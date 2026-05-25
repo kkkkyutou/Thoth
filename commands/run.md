@@ -18,7 +18,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" run --host claude $ARGUMENTS
+THOTH_RUN_ARGUMENTS_FILE="$(mktemp -t thoth-run-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_RUN_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_RUN_ARGUMENTS_FILE" <<'THOTH_RUN_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_RUN_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" run --host claude --thoth-arguments-file "$THOTH_RUN_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
@@ -51,9 +56,9 @@ Finish the current strict task through the four-phase RuntimeDriver while preser
 
 ### Hard Stops
 
-- Do not invent or compile a new work item when --work-id is missing.
-- Do not exit the monitoring session before the RuntimeDriver signals a terminal state.
-- Do not hand-edit .thoth ledgers.
+1. Do not invent or compile a new work item when --work-id is missing.
+2. Do not exit the monitoring session before the RuntimeDriver signals a terminal state.
+3. Do not hand-edit .thoth ledgers.
 
 ### Reply Contract
 

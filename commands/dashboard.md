@@ -17,7 +17,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" dashboard $ARGUMENTS
+THOTH_DASHBOARD_ARGUMENTS_FILE="$(mktemp -t thoth-dashboard-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_DASHBOARD_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_DASHBOARD_ARGUMENTS_FILE" <<'THOTH_DASHBOARD_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_DASHBOARD_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" dashboard --thoth-arguments-file "$THOTH_DASHBOARD_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
@@ -45,9 +50,9 @@ Report endpoint, failure point, and one notable runtime delta only.
 
 ### Hard Stops
 
-- Do not narrate the whole UI.
-- Do not omit the failure point or fabricate a runtime delta; when the result is clean, report the absence of failure as the finding.
-- Do not describe dashboard rebuild as scaffold sync; rebuild only installs dependencies, builds dist, and restarts.
+1. Do not narrate the whole UI.
+2. Do not omit the failure point or fabricate a runtime delta; when the result is clean, report the absence of failure as the finding.
+3. Do not describe dashboard rebuild as scaffold sync; rebuild only installs dependencies, builds dist, and restarts.
 
 ### Reply Contract
 

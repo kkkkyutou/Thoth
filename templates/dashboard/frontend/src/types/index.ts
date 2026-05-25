@@ -296,6 +296,12 @@ export interface DagNode {
   direction: string
   module?: string
   status?: WorkItemStatus
+  authority_status?: string
+  actionability?: string
+  waiting_on?: string[]
+  downstream?: string[]
+  goal?: string
+  acceptance?: Record<string, unknown>
   progress: number
   work_item_count?: number
 }

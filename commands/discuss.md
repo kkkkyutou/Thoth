@@ -36,7 +36,8 @@ THOTH_DISCUSS_ARGUMENTS_EOF
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
 - Use AskUserQuestion until compact authority categories are explicit: goal, constraints, decisions, risks, approach_notes, and open_questions.
 - On major semantic changes, write a draft authority checkpoint through `packet.protocol_commands.checkpoint_authority`.
-- When no material assumptions remain, close with the compact authority categories plus `packet.work_json_template` through `packet.protocol_commands.close_authority`.
+- When no material assumptions remain, close with the compact authority categories plus `packet.work_json_template` or `packet.work_graph_schema` through `packet.protocol_commands.close_authority`.
+- Use `packet.init_project_patch_schema` only for init discussions; ordinary discussions cannot patch project name, description, or directions.
 - When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.
 - Do not create ready work if any open_questions remain in the authority capsule.
 
@@ -54,15 +55,15 @@ Interrogate the user's idea until the compact authority categories are explicit:
 
 ### Hard Stops
 
-- Do not modify source code.
-- Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority.
-- Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.
-- When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.
-- When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, approach_notes, and open_questions.
-- Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.
-- When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.
-- Do not fabricate ready execution work items from unresolved decisions.
-- Do not repeat the packet or decision payload verbatim.
+1. Do not modify source code.
+2. Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority.
+3. Ask about every material ambiguity; use AskUserQuestion and continue discussion until no meaningful assumptions remain.
+4. When a major semantic decision changes, checkpoint a compact authority event through the packet protocol command.
+5. When closing, translate the discussion through the compact categories: goal, constraints, decisions, risks, approach_notes, and open_questions.
+6. Do not hand-author a work item from memory; use packet.work_json_template and packet.required_work_json_fields.
+7. When closing authority for an existing work item, preserve its stable work_id; do not omit work_id and create a timestamp work item.
+8. Do not fabricate ready execution work items from unresolved decisions.
+9. Do not repeat the packet or decision payload verbatim.
 
 ### Reply Contract
 

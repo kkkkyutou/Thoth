@@ -17,7 +17,12 @@ The repo-local Thoth runtime command for this slash command has already been
 executed before Claude sees this prompt.
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" status $ARGUMENTS
+THOTH_STATUS_ARGUMENTS_FILE="$(mktemp -t thoth-status-arguments.XXXXXX)"
+trap 'rm -f "$THOTH_STATUS_ARGUMENTS_FILE"' EXIT
+cat > "$THOTH_STATUS_ARGUMENTS_FILE" <<'THOTH_STATUS_ARGUMENTS_EOF'
+$ARGUMENTS
+THOTH_STATUS_ARGUMENTS_EOF
+"${CLAUDE_PLUGIN_ROOT}/scripts/thoth-claude-command.sh" status --thoth-arguments-file "$THOTH_STATUS_ARGUMENTS_FILE"
 ```
 
 ## Response Contract
@@ -45,8 +50,8 @@ Report only abnormal state, blockers, and active run deltas.
 
 ### Hard Stops
 
-- Do not restate healthy defaults.
-- Do not expand into a dashboard walkthrough.
+1. Do not restate healthy defaults.
+2. Do not expand into a dashboard walkthrough.
 
 ### Reply Contract
 

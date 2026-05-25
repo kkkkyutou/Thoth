@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.8.1" src="https://img.shields.io/badge/version-0.2.8.1-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.8.2" src="https://img.shields.io/badge/version-0.2.8.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.8.1 receipt contract</strong> · compact canonical validator receipts with alias normalization and non-retry runtime repair prompts</p>
+  <p><strong>v0.2.8.2 smart init</strong> · natural-language init intent, safe multiline command arguments, compact work_graph DAG closure, and dashboard waiting_on actionability</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 
@@ -47,8 +47,8 @@
 +----------------------------------------------------------------------------+
 | Layer 2. Planning Authority                                                |
 |                                                                            |
-|  init      -> bootstrap, migrate, or resync .thoth authority               |
-|  discuss   -> record discussions, decisions, and work items                |
+|  init      -> bootstrap/migrate/resync or open raw intent discussion       |
+|  discuss   -> record discussions, decisions, work items, and work_graphs   |
 |                                                                            |
 |  Discuss -> Decision -> Work Item Object Graph                             |
 |                                         |                                  |
@@ -130,6 +130,14 @@ Thoth is a dashboard-first orchestration runtime for autoresearch. It assumes ch
 | Dashboard-first visibility | Show live, stale, attachable, and host-specific runtime truth in one read surface. | Parallel work is invisible |
 | Mechanical yes/no acceptance | Force validators, ledgers, and result payloads to decide whether work really passed. | Agents can claim completion too early |
 | Object graph + execution system + locked work items | Freeze what is allowed, compile it into compact accepted work items, and keep authority layers from drifting. | Docs and state rot over time |
+
+## Smart Init And Compact DAGs
+
+`thoth init` now has two explicit personalities. With no natural-language intent it remains an audit-first mechanical bootstrap, sync, or migration command. With intent, for example `thoth init -- "build a multimodal research project..."`, it first materializes the base `.thoth` project and then stores the raw user text in an open `source=init` discussion. It does not fabricate ready work from that text and it does not bake an unconfirmed summary into generated `AGENTS.md` or `CLAUDE.md`.
+
+When the discussion is ready to close, agents can use either one compact `work_item` or a compact `work_graph` blueprint. A `work_graph` is only `nodes` keyed by explicit stable `work_id` plus `edges`; each edge means `to` depends on `from` and is stored as canonical `depends_on` links. Nodes use only `title`, `goal`, `context`, `constraints`, `acceptance_spec`, `approach_notes`, and `missing_questions`. Init discussions may also include a small `project_patch` with only `name`, `description`, and `directions`; ordinary discussions cannot patch project identity.
+
+Dashboard DAG nodes preserve authority status. A ready work item whose hard dependencies are not yet `validated` stays `ready`, while the DAG side panel shows `actionability=waiting_on` and the exact upstream work ids.
 
 ## System At A Glance
 

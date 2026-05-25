@@ -176,21 +176,25 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
     ),
     "init": CommandPromptSpec(
         command_id="init",
-        route_class="mechanical_fast",
-        intelligence_tier="none",
-        packet_authority_mode="result_envelope",
-        objective="Report audit-first adopt/init outcome, generated artifacts, blockers, and user decisions required before continuing.",
+        route_class="hybrid_init",
+        intelligence_tier="intent_sensitive",
+        packet_authority_mode="result_envelope_or_command_packet",
+        objective="Initialize audit-first project authority; when natural-language intent is supplied, save the raw intent as an init discussion and continue by questioning until compact authority is closed.",
         hard_stops=(
             "Do not assume the repo is blank.",
             "Do not assume goals, project identity, migration intent, work priority, unblock policy, or acceptance criteria.",
+            "Do not turn init intent into ready work immediately.",
+            "Do not bake an unconfirmed summary of the raw intent into AGENTS.md, CLAUDE.md, or generated project docs.",
+            "Do not combine natural-language init intent with --sync, --migrate, --preview, or --apply.",
             "Do not launch broad Explore, Task, plugin-cache/source scans, or background investigation after the init result.",
             "If extra evidence is required, inspect only the smallest artifact explicitly named by the init payload.",
-            "If the preview/apply result leaves blocked work or unresolved migration choices, ask with AskUserQuestion and stop.",
+            "If init opens an intent discussion, use AskUserQuestion in Claude or Plan/request_user_input in Codex to ask only the next material questions before closing authority.",
+            "If the preview/apply result leaves blocked work or unresolved migration choices, ask with AskUserQuestion or the host's planning question tool and stop.",
             "Do not narrate the full migration procedure.",
         ),
-        reply_budget_utf8=60,
-        result_style="brief outcome receipt",
-        validator_policy="preview and generated artifacts define success",
+        reply_budget_utf8=180,
+        result_style="brief mechanical receipt when no intent; question-driven planning handoff when intent discussion is opened",
+        validator_policy="scaffold success comes from generated artifacts; intent success comes from preserving raw discussion authority without fabricating work",
     ),
     "sync": CommandPromptSpec(
         command_id="sync",
@@ -390,7 +394,7 @@ def phase_prompt_authority(phase: str) -> dict[str, Any]:
 
 
 def _render_bullets(items: tuple[str, ...]) -> str:
-    return "\n".join(f"- {item}" for item in items)
+    return "\n".join(f"{index}. {item}" for index, item in enumerate(items, start=1))
 
 
 def render_command_contract_markdown(command_id: str, *, heading_level: int = 2) -> str:
@@ -537,6 +541,15 @@ def build_codex_public_command_prompt(
                 "When evidence shows a low-level engineering mistake or runtime mismatch, proactively append guidance or interrupt the active run instead of only narrating the problem.",
             )
         )
+    if command_id == "init":
+        lines.extend(
+            (
+                "If no natural-language intent is present, keep the response as a short mechanical init/sync/migrate receipt.",
+                "If natural-language intent is present, the command must save the raw text into an init discussion and return the discussion packet; do not create ready work from it.",
+                "After an init intent discussion opens, help the user close authority through compact project_patch/work_graph fields only after asking all material questions.",
+                "In Codex non-Plan sessions, tell the user Plan mode is recommended before closing authority; in Plan mode, use request_user_input for the next material question.",
+            )
+        )
     if command_id in {"run", "loop"}:
         lines.append("Plan must prove user-authority coverage before execute; executable discovery such as finding paths or creating missing target files should flow into execute, not needs_input.")
     elif command_id == "argue":
@@ -552,7 +565,8 @@ def build_codex_public_command_prompt(
             (
                 "If the command returns a command packet, use that packet as the only authority for the follow-up action.",
                 "Checkpoint major semantic changes through packet.protocol_commands.checkpoint_authority.",
-                "Close only by filling compact authority categories plus packet.work_json_template, then executing packet.protocol_commands.close_authority.",
+                "Close only by filling compact authority categories plus either packet.work_json_template or packet.work_graph_schema, then executing packet.protocol_commands.close_authority.",
+                "Use packet.init_project_patch_schema only for init discussions; ordinary discussions cannot mutate project name, description, or directions.",
                 "When closing authority for an existing work item, preserve that stable work_id in work_json_template; do not omit work_id and create a timestamp work item.",
                 "Do not restate packet fields or expand into teaching prose.",
             )

@@ -31,7 +31,8 @@ def test_claude_surface_renders_from_spec():
     assert "name: thoth:run" in rendered
     assert "disable-model-invocation: false" in rendered
     assert "allowed-tools: Read, Glob, Grep, Edit, Write, Bash, Task" in rendered
-    assert 'scripts/thoth-claude-command.sh" run --host claude $ARGUMENTS' in rendered
+    assert "THOTH_RUN_ARGUMENTS_FILE" in rendered
+    assert 'scripts/thoth-claude-command.sh" run --host claude --thoth-arguments-file "$THOTH_RUN_ARGUMENTS_FILE"' in rendered
     assert "RuntimeDriver advances phases" in rendered
     assert "do not invent, create, compile, or guess a work item" in rendered
     assert "## Authority Summary" in rendered
@@ -43,13 +44,17 @@ def test_claude_surface_renders_from_spec():
 def test_claude_init_surface_documents_positional_migration_actions():
     spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "init")
     rendered = render_claude_command(spec)
-    assert "argument-hint: \"[--sync] [--migrate preview|apply] [--migrate --preview|--apply]\"" in rendered
+    assert "argument-hint: \"[--sync] [--migrate preview|apply] [--migrate --preview|--apply] [--config-json <json>] [--] [intent...]\"" in rendered
+    assert "disable-model-invocation: false" in rendered
+    assert "route_class: `hybrid_init`" in rendered
+    assert "THOTH_INIT_ARGUMENTS_FILE" in rendered
     assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the bridge payload." in rendered
     assert "Do not launch broad Explore, Task, cache/source scans, or background investigation after the bridge result." in rendered
-    assert "use AskUserQuestion to ask only the unresolved questions and stop" in rendered
+    assert "Use AskUserQuestion to ask the next material question" in rendered
     assert "Do not assume goals, project identity, migration intent, work priority, unblock policy, or acceptance criteria." in rendered
-    assert "If extra evidence is required, inspect only the smallest artifact explicitly named by the init payload." in rendered
-    assert "If the preview/apply result leaves blocked work or unresolved migration choices, ask with AskUserQuestion and stop." in rendered
+    assert "Do not turn init intent into ready work immediately." in rendered
+    assert "project_patch" in rendered
+    assert "work_graph" in rendered
 
 
 def test_claude_doctor_surface_keeps_post_result_checks_minimal():
@@ -82,13 +87,14 @@ def test_claude_discuss_surface_preserves_structured_arguments():
     assert "no material assumptions remain" in rendered
     assert "packet.protocol_commands.close_authority" in rendered
     assert "Do not assume unanswered goals, constraints, success metrics, resources, timing, or authority." in rendered
+    assert "packet.work_graph_schema" in rendered
     assert "disable-model-invocation: false" in rendered
 
 
 def test_claude_argue_surface_preserves_adversarial_contract():
     spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "argue")
     rendered = render_claude_command(spec)
-    assert 'scripts/thoth-claude-command.sh" argue --host claude $ARGUMENTS' in rendered
+    assert 'scripts/thoth-claude-command.sh" argue --host claude --thoth-arguments-file "$THOTH_ARGUE_ARGUMENTS_FILE"' in rendered
     assert "allowed-tools: Read, Glob, Grep, Bash, Task" in rendered
     assert "attacker/adjudicator output" in rendered
     assert "target resolution is ambiguous" in rendered
@@ -116,6 +122,7 @@ def test_codex_skill_lists_single_public_entry():
     assert "./commands/<command>.md" in content
     assert "installed Codex plugin cache or marketplace-root runtime entrypoint" in content
     assert "## Route Table" in content
+    assert "`init` -> `hybrid_init` / `intent_sensitive` / `result_envelope_or_command_packet`" in content
     assert "## Command Contracts" not in content
     assert "### `$thoth run`" not in content
     for command in PUBLIC_CODEX_COMMANDS:
@@ -144,9 +151,9 @@ def test_prompt_surface_size_regression():
     claude_run = render_claude_command(run_spec)
     claude_argue = render_claude_command(argue_spec)
 
-    assert len(codex_skill) < 4600
-    assert len(claude_run) < 3200
-    assert len(claude_argue) < 3200
+    assert len(codex_skill) < 5000
+    assert len(claude_run) < 3500
+    assert len(claude_argue) < 3500
 
 
 def test_codex_agent_metadata_uses_single_public_entry():
