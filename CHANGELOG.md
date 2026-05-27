@@ -4,6 +4,18 @@
 
 No pending changes.
 
+## [0.2.8.5] - 2026-05-27
+
+### Changed
+- `run`, `loop`, and `auto` phase prompts now use an evidence-production doctrine: when acceptance depends on canonical artifacts, metrics, logs, receipts, benchmark output, service state, or files, missing evidence is execution work until it is produced or a concrete root cause, blocker, or budget boundary is captured.
+- `plan` prompts now ask workers to name the canonical evidence ladder in the rich handoff, so fresh execute sessions know which artifacts or signals must be produced before validation can close.
+- `execute` prompts now explicitly reject self-imposed observation-window failures: healthy work should not be killed merely because a metric, log, artifact, or receipt has not appeared yet, while stop/restart remains allowed as explicit debugging or cleanup with logs and a next action.
+- `reflect` prompts now turn missing canonical evidence without a concrete root cause into corrective prompts for continued evidence production or root-cause capture, instead of vague terminal explanations.
+
+### Fixed
+- Reduced the chance that long-running or artifact-producing work is prematurely terminalized after a smoke/debug attempt or short observation window, while preserving the original authority, official validator, metric, and threshold as the only closure standard.
+- Clarified that runtime budget expiry should preserve continuation evidence and the exact next command rather than being reported as success.
+
 ## [0.2.8.4] - 2026-05-27
 
 ### Changed

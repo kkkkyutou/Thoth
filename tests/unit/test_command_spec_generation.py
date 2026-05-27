@@ -36,6 +36,9 @@ def test_claude_surface_renders_from_spec():
     assert "RuntimeDriver advances phases" in rendered
     assert "do not invent, create, compile, or guess a work item" in rendered
     assert "Substantive execution must flow through `packet.executor`" in rendered
+    assert "actively produce canonical acceptance evidence" in rendered
+    assert "short observation window" in rendered
+    assert "concrete root cause, blocker, or budget boundary" in rendered
     assert "every 288s" in rendered
     assert "## Authority Summary" in rendered
     assert "route_class: `live_intelligent`" in rendered
@@ -114,6 +117,7 @@ def test_claude_auto_surface_documents_monitor_watch_contract():
     assert "Monitor tool with `persistent=true`" in rendered
     assert "same watch command in the foreground" in rendered
     assert "every 288s" in rendered
+    assert "actively produce canonical acceptance evidence" in rendered
     assert "do not stop the auto controller" in rendered
 
 
@@ -155,7 +159,7 @@ def test_prompt_surface_size_regression():
     claude_argue = render_claude_command(argue_spec)
 
     assert len(codex_skill) < 5000
-    assert len(claude_run) < 3500
+    assert len(claude_run) < 4600
     assert len(claude_argue) < 3500
 
 

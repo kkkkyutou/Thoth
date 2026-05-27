@@ -37,6 +37,9 @@ THOTH_RUN_ARGUMENTS_EOF
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
 - Substantive execution must flow through `packet.executor`; by default this matches the host unless the user explicitly supplied `--executor`.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.
+- Execute must actively produce canonical acceptance evidence: missing artifacts, metrics, logs, receipts, benchmark output, service state, or files are execution work until produced or until a concrete root cause, blocker, or budget boundary is captured.
+- Do not let healthy work be stopped just because a short observation window has not yet produced canonical evidence; stop or restart only as explicit debugging or cleanup with logs and a next action.
+- If runtime budget expires before acceptance closes, preserve continuation evidence and the exact next command instead of presenting the work as passed.
 - Live monitor should observe sparsely around every 288s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.
 - Trailing text/live corrections are temporary guidance only; never rewrite authority or validators.
 - Use `packet.strict_task.goal_statement`, `packet.strict_task.authority_context`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.
@@ -52,13 +55,14 @@ THOTH_RUN_ARGUMENTS_EOF
 
 ### Objective
 
-Finish the current strict task through the four-phase RuntimeDriver while preserving agent intelligence inside execute.
+Finish the current strict task through the four-phase RuntimeDriver while preserving agent intelligence and producing canonical acceptance evidence inside execute.
 
 ### Hard Stops
 
 1. Do not invent or compile a new work item when --work-id is missing.
 2. Do not exit the monitoring session before the RuntimeDriver signals a terminal state.
-3. Do not hand-edit .thoth ledgers.
+3. Do not treat missing canonical artifacts, metrics, logs, receipts, benchmark output, or service state as final failure before execute has produced them or captured a concrete root cause.
+4. Do not hand-edit .thoth ledgers.
 
 ### Reply Contract
 

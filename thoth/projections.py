@@ -12,7 +12,7 @@ from .run.model import DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.2.8.4"
+PLUGIN_VERSION = "0.2.8.5"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -59,6 +59,9 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
             (
                 "- Substantive execution must flow through `packet.executor`; by default this matches the host unless the user explicitly supplied `--executor`.",
                 "- Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.",
+                "- Execute must actively produce canonical acceptance evidence: missing artifacts, metrics, logs, receipts, benchmark output, service state, or files are execution work until produced or until a concrete root cause, blocker, or budget boundary is captured.",
+                "- Do not let healthy work be stopped just because a short observation window has not yet produced canonical evidence; stop or restart only as explicit debugging or cleanup with logs and a next action.",
+                "- If runtime budget expires before acceptance closes, preserve continuation evidence and the exact next command instead of presenting the work as passed.",
                 f"- Live monitor should observe sparsely around every {observe_interval}s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.",
                 "- Trailing text/live corrections are temporary guidance only; never rewrite authority or validators.",
             )
