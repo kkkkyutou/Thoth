@@ -37,6 +37,9 @@ THOTH_AUTO_ARGUMENTS_EOF
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
 - Substantive execution must flow through `packet.executor`; by default this matches the host unless the user explicitly supplied `--executor`.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.
+- Execute must actively produce canonical acceptance evidence: missing artifacts, metrics, logs, receipts, benchmark output, service state, or files are execution work until produced or until a concrete root cause, blocker, or budget boundary is captured.
+- Do not let healthy work be stopped just because a short observation window has not yet produced canonical evidence; stop or restart only as explicit debugging or cleanup with logs and a next action.
+- If runtime budget expires before acceptance closes, preserve continuation evidence and the exact next command instead of presenting the work as passed.
 - Live monitor should observe sparsely around every 288s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.
 - Trailing text/live corrections are temporary guidance only; never rewrite authority or validators.
 - If the bridge payload exposes `body.monitor_command`, observe that command instead of executing work directly in the Claude session.
@@ -54,14 +57,15 @@ THOTH_AUTO_ARGUMENTS_EOF
 
 ### Objective
 
-Run actionable work items through child loops while preserving architecture-first execution posture and human-quality phase handoffs.
+Run actionable work items through child loops while preserving architecture-first execution, evidence-producing execute behavior, and human-quality phase handoffs.
 
 ### Hard Stops
 
 1. Do not execute blocked or draft work.
 2. Do not auto-abandon work items.
 3. Do not bypass execution-safety doctor preflight.
-4. Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.
+4. Do not let child runs convert missing canonical evidence into terminal explanation when execute can still generate, repair, instrument, rerun, or diagnose it.
+5. Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.
 
 ### Reply Contract
 

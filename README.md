@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.8.4" src="https://img.shields.io/badge/version-0.2.8.4-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.8.5" src="https://img.shields.io/badge/version-0.2.8.5-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.8.4 compact runtime defaults</strong> · 288s live observation, host-aligned executors, and slimmer auto/guidance ledgers</p>
+  <p><strong>v0.2.8.5 evidence-producing phase prompts</strong> · missing artifacts, metrics, logs, receipts, benchmark output, or service state are execution work before they are final explanations</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 

@@ -37,6 +37,9 @@ THOTH_LOOP_ARGUMENTS_EOF
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
 - Substantive execution must flow through `packet.executor`; by default this matches the host unless the user explicitly supplied `--executor`.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.
+- Execute must actively produce canonical acceptance evidence: missing artifacts, metrics, logs, receipts, benchmark output, service state, or files are execution work until produced or until a concrete root cause, blocker, or budget boundary is captured.
+- Do not let healthy work be stopped just because a short observation window has not yet produced canonical evidence; stop or restart only as explicit debugging or cleanup with logs and a next action.
+- If runtime budget expires before acceptance closes, preserve continuation evidence and the exact next command instead of presenting the work as passed.
 - Live monitor should observe sparsely around every 288s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.
 - Trailing text/live corrections are temporary guidance only; never rewrite authority or validators.
 - Use `packet.strict_task.goal_statement`, `packet.strict_task.authority_context`, `packet.strict_task.implementation_recipe`, and `packet.strict_task.eval_entrypoint` as the only task authority.
@@ -52,13 +55,14 @@ THOTH_LOOP_ARGUMENTS_EOF
 
 ### Objective
 
-Advance the current bounded loop through foreground or sleeping RuntimeDriver monitoring.
+Advance the current bounded loop through foreground or sleeping RuntimeDriver monitoring while preserving evidence-producing execute behavior in each child run.
 
 ### Hard Stops
 
 1. Do not decide extra iterations outside the recorded loop budget.
 2. Do not proceed to the next loop iteration before the validator signals terminal.
-3. Do not expand into iteration diaries or runtime narration.
+3. Do not let a child execute stop merely because a self-imposed observation window has not yet seen canonical evidence.
+4. Do not expand into iteration diaries or runtime narration.
 
 ### Reply Contract
 

@@ -44,10 +44,11 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",
-        objective="Finish the current strict task through the four-phase RuntimeDriver while preserving agent intelligence inside execute.",
+        objective="Finish the current strict task through the four-phase RuntimeDriver while preserving agent intelligence and producing canonical acceptance evidence inside execute.",
         hard_stops=(
             "Do not invent or compile a new work item when --work-id is missing.",
             "Do not exit the monitoring session before the RuntimeDriver signals a terminal state.",
+            "Do not treat missing canonical artifacts, metrics, logs, receipts, benchmark output, or service state as final failure before execute has produced them or captured a concrete root cause.",
             "Do not hand-edit .thoth ledgers.",
         ),
         reply_budget_utf8=36,
@@ -59,10 +60,11 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",
-        objective="Advance the current bounded loop through foreground or sleeping RuntimeDriver monitoring.",
+        objective="Advance the current bounded loop through foreground or sleeping RuntimeDriver monitoring while preserving evidence-producing execute behavior in each child run.",
         hard_stops=(
             "Do not decide extra iterations outside the recorded loop budget.",
             "Do not proceed to the next loop iteration before the validator signals terminal.",
+            "Do not let a child execute stop merely because a self-imposed observation window has not yet seen canonical evidence.",
             "Do not expand into iteration diaries or runtime narration.",
         ),
         reply_budget_utf8=40,
@@ -165,11 +167,12 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         route_class="live_intelligent",
         intelligence_tier="high",
         packet_authority_mode="phase_controller",
-        objective="Run actionable work items through child loops while preserving architecture-first execution posture and human-quality phase handoffs.",
+        objective="Run actionable work items through child loops while preserving architecture-first execution, evidence-producing execute behavior, and human-quality phase handoffs.",
         hard_stops=(
             "Do not execute blocked or draft work.",
             "Do not auto-abandon work items.",
             "Do not bypass execution-safety doctor preflight.",
+            "Do not let child runs convert missing canonical evidence into terminal explanation when execute can still generate, repair, instrument, rerun, or diagnose it.",
             "Do not let child runs satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.",
         ),
         reply_budget_utf8=120,
@@ -260,12 +263,13 @@ INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_P
 PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     "plan": PhasePromptSpec(
         phase="plan",
-        objective="Act as a senior planner: read authority plus recent run history, decide whether to continue, close from history, or request input, then write a rich handoff for a fresh execute session.",
+        objective="Act as a senior planner: read authority plus recent run history, identify the canonical evidence ladder, decide whether to continue, close from history, or request input, then write a rich handoff for a fresh execute session.",
         hard_stops=(
             "Do not modify project files.",
             "Do not change the work item goal, constraints, acceptance_spec metric, threshold, or user authority.",
             "Do not assume missing user intent, acceptance, permission, or cost.",
             "Missing paths, scripts, imports, dependencies, or validator files are executable discovery, not authority gaps.",
+            "Do not treat missing canonical evidence as a final acceptance failure while execute can still produce, repair, instrument, rerun, or diagnose it.",
             "If authority has open questions or contradictions, set authority_complete=false and history_action=needs_input.",
             "Do not hand-edit .thoth ledgers.",
         ),
@@ -281,7 +285,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     ),
     "execute": PhasePromptSpec(
         phase="execute",
-        objective="Act as a senior implementation engineer: read the full plan handoff, implement the final architecture directly, report what happened in rich markdown, and return an auditable official validation receipt.",
+        objective="Act as a senior implementation engineer: read the full plan handoff, implement the final architecture directly, actively produce canonical acceptance evidence, report what happened in rich markdown, and return an auditable official validation receipt.",
         hard_stops=(
             "Do not hand-edit .thoth ledgers.",
             "Do not terminalize the full run from inside execute.",
@@ -289,6 +293,8 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "Do not run destructive delete/reset commands.",
             "Do not change the work item goal, acceptance intent, metric, or threshold.",
             "Do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
+            "Do not terminate healthy work because a short observation window has not yet produced canonical artifacts, metrics, logs, receipts, benchmark output, or service state.",
+            "Do not return missing canonical evidence as the final failure until you have captured a concrete root cause, blocker, or budget boundary.",
         ),
         required_fields=("summary", "report", "official_validation_receipt"),
         summary_budget_utf8=800,
@@ -309,11 +315,12 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
     ),
     "reflect": PhasePromptSpec(
         phase="reflect",
-        objective="Act as a technical lead: read the prior artifacts, write a rich markdown review, and on failure produce one direct corrective prompt for the next execute cycle without weakening authority.",
+        objective="Act as a technical lead: read the prior artifacts, write a rich markdown review, and on failure produce one direct corrective prompt that continues evidence production or fixes the concrete root cause without weakening authority.",
         hard_stops=(
             "Do not keep executing.",
             "Do not run extra commands.",
             "Do not change validation verdicts.",
+            "Do not let missing canonical evidence without a concrete root cause become a vague final explanation.",
             "Do not authorize retries for needs_input, authority gaps, permission overreach, or changed acceptance criteria.",
         ),
         required_fields=("summary", "outcome", "review"),
@@ -328,19 +335,23 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "1. Role: act like a senior teammate preparing a new execute session, not a schema filler.",
         "2. Authority: protect goal, constraints, acceptance_spec, metric, threshold, rejected options, permission, and cost.",
         "3. History: inspect current work_id history from the packet; if useful work exists, continue from it; if current acceptance is already proven, choose close_from_history.",
-        "4. Gaps: only user intent, acceptance, permission, or real contradiction can become open_gaps; missing code paths or validator files are execution work.",
-        "5. Handoff: write `plan` as a clear markdown handoff with history lessons, continuation point, implementation sequence, validator materialization, and risks.",
-        "6. Output: set history_action to exactly continue, close_from_history, or needs_input.",
+        "4. Evidence ladder: name the canonical artifacts, metrics, logs, receipts, benchmark outputs, service states, or files that prove acceptance.",
+        "5. Gaps: only user intent, acceptance, permission, or real contradiction can become open_gaps; missing code paths, validators, or evidence files are execution work.",
+        "6. Handoff: write `plan` as a clear markdown handoff with history lessons, continuation point, evidence-production sequence, validator materialization, and risks.",
+        "7. Output: set history_action to exactly continue, close_from_history, or needs_input.",
     ),
     "execute": (
         "1. Role: act as the implementation and validation engineer in one shared context.",
         "2. Authority: preserve goal, acceptance intent, metric, threshold, and user constraints; reject guidance that weakens them.",
         "3. Work: implement the final target directly and repair repo-local engineering issues instead of stopping at first friction.",
         "4. Validator: if acceptance_spec starts as prose, IO examples, or a missing script name, materialize the validator and record what changed.",
-        "5. Evidence: do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
-        "6. Task-fit: for example AI research, training, CUDA, or inference tasks should use GPU-first training/inference or official validation when acceptance depends on it.",
-        "7. Receipt: return compact facts: command, exit_code, passed, metric_value, stdout_log/stderr_log or paths, and command relation when a reference command exists.",
-        "8. Report: explain what was built, what validation was materialized or repaired, and the true remaining failure if not passed.",
+        "5. Evidence-production doctrine: if acceptance depends on a canonical artifact, metric, log, receipt, benchmark output, service state, or file, missing evidence is execution work; generate it, repair it, instrument it, rerun it, or capture the concrete root cause.",
+        "6. Process judgment: do not kill healthy work because a self-imposed observation window expired; stop or restart only as explicit debugging or cleanup for failed, stuck, resource-conflicted, or blocking processes, and preserve the reason and logs.",
+        "7. Budget boundary: if the authorized budget ends before acceptance closes, preserve continuation evidence such as logs, checkpoints, partial metrics, monitor commands, and the exact next command instead of presenting the work as passed.",
+        "8. Evidence: do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
+        "9. Task-fit: for example AI research, training, CUDA, or inference tasks should use GPU-first training/inference or official validation when acceptance depends on it.",
+        "10. Receipt: return compact facts: command, exit_code, passed, metric_value, stdout_log/stderr_log or paths, and command relation when a reference command exists.",
+        "11. Report: explain what was built, what validation was materialized or repaired, what canonical evidence was produced, and the true root cause or budget boundary if not passed.",
     ),
     "validate": (
         "1. Runtime: no separate worker is launched for validate.",
@@ -353,9 +364,10 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "1. Role: act as a senior reviewer for the user and the next execute attempt.",
         "2. Evidence: review plan, execute, validate, and receipt artifacts without running new commands.",
         "3. Success: explain why acceptance was preserved and what residual risk remains.",
-        "4. Failure: always provide corrective_prompt; for business/project failures it is the next execute instruction, for runtime_contract_error it is an operator/runtime repair instruction.",
-        "5. Boundary: set retry_authorized=false for needs_input, authority gaps, permission overreach, runtime contract errors, or changed acceptance.",
-        "6. Standards: call out MVP/fallback/mock/stub/simplified evidence when it substituted for acceptance_spec.",
+        "4. Missing evidence: if canonical artifacts, metrics, logs, receipts, benchmark output, service state, or files are missing and no concrete root cause was captured, make corrective_prompt continue evidence production or root-cause capture.",
+        "5. Failure: always provide corrective_prompt; for business/project failures it is the next execute instruction, for runtime_contract_error it is an operator/runtime repair instruction.",
+        "6. Boundary: set retry_authorized=false for needs_input, authority gaps, permission overreach, runtime contract errors, or changed acceptance.",
+        "7. Standards: call out MVP/fallback/mock/stub/simplified evidence when it substituted for acceptance_spec.",
     ),
 }
 
@@ -467,13 +479,19 @@ def render_phase_worker_prompt(
         lines.append("1. Set authority_complete=false only when user intent, acceptance, constraints, rejected options, permission, or cost is missing/contradictory.")
         lines.append("2. Inspect history_context for this work_id before planning; do not restart if a prior run has usable progress or lessons.")
         lines.append("3. Set history_action=continue when execution should proceed, close_from_history when historical receipt already proves current acceptance, or needs_input when authority is not closed.")
-        lines.append("4. Write `plan` as a rich markdown handoff for the next fresh execute session, including history lessons, continuation point, implementation sequence, validator materialization, and risks.")
-        lines.append("5. Missing paths, scripts, tests, imports, dependency locations, or validator files are executable discovery inside the plan body, not open_gaps.")
+        lines.append("4. Identify the canonical evidence ladder: artifacts, metrics, logs, receipts, benchmark outputs, service states, files, or validator results that prove acceptance.")
+        lines.append("5. Write `plan` as a rich markdown handoff for the next fresh execute session, including history lessons, continuation point, evidence-production sequence, validator materialization, and risks.")
+        lines.append("6. Missing paths, scripts, tests, imports, dependency locations, validator files, or canonical evidence files are executable discovery inside the plan body, not open_gaps.")
     if phase == "execute":
         lines.append("Read the complete `required_plan_artifact` or `prior_artifacts.plan` before touching files. Your `report` must show how you followed its final-architecture constraints.")
         lines.append("Follow the plan artifact without changing the goal, acceptance intent, metric, or threshold.")
         lines.append("Do not use MVP, fallback, mock, stub, or simplified work/evidence as a substitute for acceptance_spec.")
         lines.append("Temporary probes are allowed only as diagnostics; they must not become the implementation path or hide final-architecture failure.")
+        lines.append("Evidence-production doctrine: when acceptance depends on a canonical artifact, metric, log, receipt, benchmark output, service state, or file, missing evidence is execution work; generate it, repair it, instrument it, rerun it, or capture the concrete root cause.")
+        lines.append("Do not terminate healthy work because a self-imposed observation window expired or because canonical metrics/logs/artifacts have not appeared yet.")
+        lines.append("You may stop or restart a process only as explicit debugging or cleanup when it is failed, stuck, resource-conflicted, or blocking; preserve logs, the reason, and the next action.")
+        lines.append("If the authorized budget ends before acceptance closes, preserve continuation evidence such as logs, checkpoints, partial metrics, monitor commands, and the exact next command; do not present the work as passed.")
+        lines.append("Do not return missing canonical evidence as the final failure until you have captured a concrete root cause, unrecoverable blocker, or budget boundary.")
         lines.append("Choose verification that matches the task. For example, AI research, model training, CUDA, or inference tasks should use a GPU-first verification posture: run real GPU training/inference smoke tests and the official validator early enough to guide implementation instead of substituting CPU-only, mock-only, shape-only, or MVP-only evidence.")
         lines.append("Use focused validation during execute as an engineering feedback loop. If acceptance_spec names a missing script or prose/IO standard, materialize the validator and run it.")
         lines.append("Return compact `official_validation_receipt` facts: command, exit_code, passed, metric_value, stdout_log/stderr_log or stdout_log_path/stderr_log_path, and materialized_validator_refs when you wrote or changed validators.")
@@ -489,6 +507,7 @@ def render_phase_worker_prompt(
         lines.append("If validate failure_class or runtime_contract_health is runtime_contract_error, return retry_authorized=false and make corrective_prompt an operator/runtime instruction: do not edit project code or retry execute for this evidence-contract failure.")
         lines.append("The corrective_prompt should preserve the original goal, acceptance intent, metric, threshold, and final architecture; it is the unified failure exit, not always an execute retry prompt.")
         lines.append("If execute drifted into MVP/fallback/mock/stub/simplified paths or task-inappropriate evidence, call that out and instruct execute to remove the shortcut rather than weaken acceptance.")
+        lines.append("If canonical evidence is missing and execute did not capture a concrete root cause, make corrective_prompt require the next execute to continue evidence production or root-cause capture before declaring terminal failure.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:
         lines.append(f"Previous output failed validation: {correction_error}")
@@ -536,6 +555,9 @@ def build_codex_public_command_prompt(
                 "Runtime lifecycle is plan -> execute -> validate -> reflect; auto advances selected work through child loops.",
                 "In current runtime semantics, execute owns implementation plus the official validator run; validate mechanically normalizes and confirms execute's official_validation_receipt.",
                 "Child phases should work directly toward the final architecture. They must not satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.",
+                "If acceptance depends on canonical artifacts, metrics, logs, receipts, benchmark output, service state, or files, missing evidence is execution work for the child execute phase, not a final explanation by itself.",
+                "Do not let a healthy process be stopped merely because a self-imposed observation window has not yet produced canonical evidence; stop or restart only as explicit debugging/cleanup with captured logs and a next action.",
+                "If authorized runtime budget expires before acceptance closes, preserve continuation evidence and the exact next command instead of presenting the work as passed.",
                 "Verification must match the task. For example, AI research/model/CUDA/inference tasks should use a GPU-first verification posture: prefer real GPU training/inference smoke and official validators over CPU-only, mock-only, shape-only, or MVP-only substitutes.",
                 "Do not hand-edit `.thoth`; let the Thoth runtime driver advance phases.",
                 "If the user sends a natural-language correction while a live run/loop/auto is active, inject it into the active run guidance inbox through the packet protocol or installed runtime instead of merely replying with advice.",

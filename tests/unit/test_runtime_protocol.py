@@ -661,6 +661,12 @@ def test_phase_prompt_includes_execute_role_contract(tmp_path):
     assert "Phase role contract:" in prompt
     assert "Role: act as the implementation and validation engineer" in prompt
     assert "repair repo-local engineering issues" in prompt
+    assert "Evidence-production doctrine" in prompt
+    assert "missing evidence is execution work" in prompt
+    assert "self-imposed observation window" in prompt
+    assert "stop or restart a process only as explicit debugging or cleanup" in prompt
+    assert "authorized budget ends before acceptance closes" in prompt
+    assert "captured a concrete root cause" in prompt
     assert "final architecture" in prompt
     assert "MVP, fallback, mock, stub" in prompt
     assert "GPU-first verification posture" in prompt
