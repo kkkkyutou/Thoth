@@ -148,6 +148,13 @@
 - `run --reconcile` 从 public surface 删除；历史 run 续做进入 `plan` phase，`history_context` 带入最近 runs，`history_action` 决定继续、从历史关闭或回到用户补 authority。
 - `discuss` 对外 compact authority categories 使用 `goal`、`constraints`、`decisions`、`risks`、`approach_notes`、`open_questions`；旧 `run_instructions` 仅作为历史 authority_context 兼容输入保留。
 
+2026-05-27 的 `0.2.8.5` 对 phase prompt 的执行哲学作出补强：
+
+- `plan` 不只生成实现顺序，还必须识别 canonical evidence ladder：验收需要的 artifacts、metrics、logs、receipts、benchmark outputs、service states、files 或 validator results。
+- `execute` 是 evidence-producing engineer：缺失 canonical evidence 是执行工作而不是最终解释，必须先尝试生成、修复、插桩、续跑、重跑或抓具体 root cause。
+- 健康进程不得因自设短观察窗口未看到 evidence 而被私自停止；stop/restart 只作为有理由的 debugging/cleanup 行为，并必须保留日志、理由和下一步。
+- `reflect` 遇到 missing evidence 且没有 concrete root cause 时，`corrective_prompt` 必须推动下一轮 execute 继续 evidence production 或 root-cause capture，而不是把 missing evidence 写成模糊终局。
+
 ## Workstreams
 
 - `WS-001` `[active]`: 分支治理与 `main` 隔离
