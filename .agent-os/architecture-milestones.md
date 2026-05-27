@@ -155,6 +155,13 @@
 - 健康进程不得因自设短观察窗口未看到 evidence 而被私自停止；stop/restart 只作为有理由的 debugging/cleanup 行为，并必须保留日志、理由和下一步。
 - `reflect` 遇到 missing evidence 且没有 concrete root cause 时，`corrective_prompt` 必须推动下一轮 execute 继续 evidence production 或 root-cause capture，而不是把 missing evidence 写成模糊终局。
 
+2026-05-27 的 `0.2.8.6` 对 long-running continuation 作出补强：
+
+- `execute` / `reflect` prompt 明确区分 first-artifact evidence 与 acceptance evidence。训练、benchmark sweep、data generation、service warmup 等长程任务不能把启动日志、单条 metric、checkpoint 或最小产物当成验收终点。
+- `reflect` 的 schema normalization 不再用 receipt-only 模板覆盖已有 technical review；当 failed output 漏掉机械 retry 字段时，runtime synthesis 会把 `review` / `summary` 中的下一步工程判断压进 `corrective_prompt`。
+- RuntimeDriver 对明确的 long-running `metric_not_reached` / `evidence_insufficient` 且包含 first-artifact / partial metric / missing eval / no threshold record 证据的失败，记录 `retry_mode=evidence_continuation`，并将 reflect feedback execute retry budget 提升到最多 2 次。
+- 该补丁只增加 continuation 智能与 retry 容错，不降低 official validator、metric、threshold 或 authority boundary。
+
 ## Workstreams
 
 - `WS-001` `[active]`: 分支治理与 `main` 隔离
@@ -190,3 +197,4 @@
 - 2026-05-06: `auto` 进一步锁定为 durable background worker + observer monitor 分层；live 不持有执行权，Claude `Monitor` 只是可选观察增强，正确性仍以 Thoth controller、worker supervisor、child run ledger 与 watch JSONL 为准。
 - 2026-05-08: 安装态测试成为 Codex public surface 的验收依据；Codex plugin 不允许再只发布 skill，必须随 package 提供 runtime entrypoint；Claude 宿主委派 Codex worker 的 `run`、`loop`、`argue`、`auto` 必须通过真实 `--executor codex` 短运行覆盖。
 - 2026-05-09: `discuss` 长对话 authority 保存补强为语义无损结构化 capsule + draft checkpoint + 显式 close；RuntimeDriver 的 `plan` phase 必须证明 closed `authority_context` 覆盖完整，发现缺口以 `needs_input` 返回 `discuss`，`execute` phase 必须读取本 run 的 `plan.json` 并记录偏离。
+- 2026-05-27: 长程任务的 first-artifact evidence 只证明启动，不证明验收；`reflect` 与 runtime retry synthesis 必须保留 technical continuation guidance，并允许明确 long-running evidence continuation failure 使用 `evidence_continuation` retry mode。

@@ -41,6 +41,7 @@
 - `REQ-038`: live foreground observation 默认必须稀疏化为 `288` 秒节奏，以降低前台宿主 token 消耗；terminal/error、worker-invalid、missing receipt、runtime mismatch 与用户纠偏必须能绕过安静观察间隔。
 - `REQ-039`: public execution 默认必须宿主对齐：Claude 宿主默认 Claude executor，Codex 宿主默认 Codex executor；显式 `--executor claude|codex` 仍作为有意跨宿主执行覆盖口保留。
 - `REQ-040`: `run` / `loop` / `auto` phase prompts 必须采用 evidence-production first 执行哲学：当验收依赖 canonical artifact、metric、log、receipt、benchmark output、service state 或文件时，缺失 evidence 不能被 prompt 鼓励为最终解释，而必须先作为 execute 可继续生成、修复、插桩、续跑、重跑或 root-cause capture 的执行工作处理；健康进程不得因自设短观察窗口未见 evidence 被私自终止。
+- `REQ-041`: 长程任务的 first-artifact evidence 只能证明启动或最小产物路径可用，不能替代 acceptance evidence。训练、benchmark sweep、data generation、service warmup 等 work 在只看到 partial metric stream、missing eval interval、`threshold_record=null`、`record_counts` 未闭合或类似证据时，`reflect` 与 runtime retry synthesis 必须保留 technical continuation guidance，推动下一轮继续/resume canonical execution，而不是把失败收窄成 validator receipt cleanup。
 
 ## Acceptance Criteria
 
@@ -79,6 +80,7 @@
 - `AC-029`: `run` / `loop` / `auto` / `argue` 在没有显式 `--executor` 时必须把 executor 解析为当前 host；Claude projection 传入 `--host claude` 即应得到 Claude executor，Codex public entry 默认得到 Codex executor。
 - `AC-030`: auto controller payload 不得长期重复保存可派生的 queue/count/attempted/completed/failed 列表；dashboard/status 必须从 `work_refs`、`attempts`、cursor、supervisor 与 object graph 派生这些读面。
 - `AC-031`: `plan` prompt 必须要求列出 canonical evidence ladder；`execute` prompt 必须明确 missing evidence is execution work、禁止 self-imposed observation-window kill、允许有理由的 debugging stop/restart 并要求保存日志/下一步、预算到期时保存 continuation evidence；`reflect` prompt 必须在 missing evidence 且无 concrete root cause 时给出继续 evidence production/root-cause capture 的 corrective_prompt。
+- `AC-032`: `reflect` failed 输出缺少机械 retry 字段时，runtime 合成的 `corrective_prompt` 必须保留 `review` / `summary` 中已有的技术方向；对明确 long-running evidence continuation 的 `metric_not_reached` / `evidence_insufficient` 场景，runtime 可记录 `retry_mode=evidence_continuation` 并给出最多 2 次 execute retry budget。
 
 ## Non-Goals
 
