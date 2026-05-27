@@ -294,6 +294,7 @@ PHASE_PROMPT_SPECS: dict[str, PhasePromptSpec] = {
             "Do not change the work item goal, acceptance intent, metric, or threshold.",
             "Do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
             "Do not terminate healthy work because a short observation window has not yet produced canonical artifacts, metrics, logs, receipts, benchmark output, or service state.",
+            "Do not treat first-artifact evidence from a long-running task as acceptance evidence.",
             "Do not return missing canonical evidence as the final failure until you have captured a concrete root cause, blocker, or budget boundary.",
         ),
         required_fields=("summary", "report", "official_validation_receipt"),
@@ -347,11 +348,12 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "4. Validator: if acceptance_spec starts as prose, IO examples, or a missing script name, materialize the validator and record what changed.",
         "5. Evidence-production doctrine: if acceptance depends on a canonical artifact, metric, log, receipt, benchmark output, service state, or file, missing evidence is execution work; generate it, repair it, instrument it, rerun it, or capture the concrete root cause.",
         "6. Process judgment: do not kill healthy work because a self-imposed observation window expired; stop or restart only as explicit debugging or cleanup for failed, stuck, resource-conflicted, or blocking processes, and preserve the reason and logs.",
-        "7. Budget boundary: if the authorized budget ends before acceptance closes, preserve continuation evidence such as logs, checkpoints, partial metrics, monitor commands, and the exact next command instead of presenting the work as passed.",
-        "8. Evidence: do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
-        "9. Task-fit: for example AI research, training, CUDA, or inference tasks should use GPU-first training/inference or official validation when acceptance depends on it.",
-        "10. Receipt: return compact facts: command, exit_code, passed, metric_value, stdout_log/stderr_log or paths, and command relation when a reference command exists.",
-        "11. Report: explain what was built, what validation was materialized or repaired, what canonical evidence was produced, and the true root cause or budget boundary if not passed.",
+        "7. Long-running work: for training, benchmark sweeps, data generation, service warmup, or similar tasks, distinguish first-artifact evidence from acceptance evidence; do not stop at a fixed short step count unless acceptance is met or a real budget/blocker is captured.",
+        "8. Budget boundary: if the authorized budget ends before acceptance closes, preserve continuation evidence such as logs, checkpoints, partial metrics, monitor commands, and the exact next command instead of presenting the work as passed.",
+        "9. Evidence: do not use MVP, fallback, mock, stub, or simplified evidence as a substitute for acceptance_spec.",
+        "10. Task-fit: for example AI research, training, CUDA, or inference tasks should use GPU-first training/inference or official validation when acceptance depends on it.",
+        "11. Receipt: return compact facts: command, exit_code, passed, metric_value, stdout_log/stderr_log or paths, and command relation when a reference command exists.",
+        "12. Report: explain what was built, what validation was materialized or repaired, what canonical evidence was produced, and the true root cause, continuation path, or budget boundary if not passed.",
     ),
     "validate": (
         "1. Runtime: no separate worker is launched for validate.",
@@ -365,9 +367,10 @@ PHASE_ROLE_CONTRACTS: dict[str, tuple[str, ...]] = {
         "2. Evidence: review plan, execute, validate, and receipt artifacts without running new commands.",
         "3. Success: explain why acceptance was preserved and what residual risk remains.",
         "4. Missing evidence: if canonical artifacts, metrics, logs, receipts, benchmark output, service state, or files are missing and no concrete root cause was captured, make corrective_prompt continue evidence production or root-cause capture.",
-        "5. Failure: always provide corrective_prompt; for business/project failures it is the next execute instruction, for runtime_contract_error it is an operator/runtime repair instruction.",
-        "6. Boundary: set retry_authorized=false for needs_input, authority gaps, permission overreach, runtime contract errors, or changed acceptance.",
-        "7. Standards: call out MVP/fallback/mock/stub/simplified evidence when it substituted for acceptance_spec.",
+        "5. Long-running failure: if validation only proves a first-artifact gate, partial metric stream, missing eval interval, or no threshold record for a long-running task, make corrective_prompt continue/resume the canonical work instead of narrowing to receipt hygiene.",
+        "6. Failure: always provide corrective_prompt; for business/project failures it is the next execute instruction, for runtime_contract_error it is an operator/runtime repair instruction.",
+        "7. Boundary: set retry_authorized=false for needs_input, authority gaps, permission overreach, runtime contract errors, or changed acceptance.",
+        "8. Standards: call out MVP/fallback/mock/stub/simplified evidence when it substituted for acceptance_spec.",
     ),
 }
 
@@ -489,6 +492,7 @@ def render_phase_worker_prompt(
         lines.append("Temporary probes are allowed only as diagnostics; they must not become the implementation path or hide final-architecture failure.")
         lines.append("Evidence-production doctrine: when acceptance depends on a canonical artifact, metric, log, receipt, benchmark output, service state, or file, missing evidence is execution work; generate it, repair it, instrument it, rerun it, or capture the concrete root cause.")
         lines.append("Do not terminate healthy work because a self-imposed observation window expired or because canonical metrics/logs/artifacts have not appeared yet.")
+        lines.append("For long-running training, benchmark sweeps, data generation, service warmup, or similar work, first-artifact evidence proves startup only; continue or resume canonical execution until acceptance evidence, a concrete blocker, or a real budget boundary exists.")
         lines.append("You may stop or restart a process only as explicit debugging or cleanup when it is failed, stuck, resource-conflicted, or blocking; preserve logs, the reason, and the next action.")
         lines.append("If the authorized budget ends before acceptance closes, preserve continuation evidence such as logs, checkpoints, partial metrics, monitor commands, and the exact next command; do not present the work as passed.")
         lines.append("Do not return missing canonical evidence as the final failure until you have captured a concrete root cause, unrecoverable blocker, or budget boundary.")
@@ -508,6 +512,7 @@ def render_phase_worker_prompt(
         lines.append("The corrective_prompt should preserve the original goal, acceptance intent, metric, threshold, and final architecture; it is the unified failure exit, not always an execute retry prompt.")
         lines.append("If execute drifted into MVP/fallback/mock/stub/simplified paths or task-inappropriate evidence, call that out and instruct execute to remove the shortcut rather than weaken acceptance.")
         lines.append("If canonical evidence is missing and execute did not capture a concrete root cause, make corrective_prompt require the next execute to continue evidence production or root-cause capture before declaring terminal failure.")
+        lines.append("If a long-running task only reached first-artifact evidence, a partial metric stream, a missing eval interval, or no threshold record, preserve that diagnosis in corrective_prompt and tell execute to continue or resume the canonical run rather than spend the retry on receipt-only cleanup.")
     lines.extend(f"Hard stop: {item}" for item in hard_stops)
     if correction_error:
         lines.append(f"Previous output failed validation: {correction_error}")
@@ -556,6 +561,7 @@ def build_codex_public_command_prompt(
                 "In current runtime semantics, execute owns implementation plus the official validator run; validate mechanically normalizes and confirms execute's official_validation_receipt.",
                 "Child phases should work directly toward the final architecture. They must not satisfy work through MVP, fallback, mock, stub, simplified, branch-only, or compatibility-shim implementations unless authority explicitly asks for them.",
                 "If acceptance depends on canonical artifacts, metrics, logs, receipts, benchmark output, service state, or files, missing evidence is execution work for the child execute phase, not a final explanation by itself.",
+                "For long-running work, first-artifact evidence proves startup only; continue or resume canonical execution until acceptance evidence, a concrete blocker, or a real budget boundary exists.",
                 "Do not let a healthy process be stopped merely because a self-imposed observation window has not yet produced canonical evidence; stop or restart only as explicit debugging/cleanup with captured logs and a next action.",
                 "If authorized runtime budget expires before acceptance closes, preserve continuation evidence and the exact next command instead of presenting the work as passed.",
                 "Verification must match the task. For example, AI research/model/CUDA/inference tasks should use a GPU-first verification posture: prefer real GPU training/inference smoke and official validators over CPU-only, mock-only, shape-only, or MVP-only substitutes.",

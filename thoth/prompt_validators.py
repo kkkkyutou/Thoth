@@ -477,6 +477,32 @@ def _infer_failure_class(validate_payload: dict[str, Any] | None, failed_check: 
     return "validation_failed"
 
 
+def _review_guidance_excerpt(payload: dict[str, Any]) -> str:
+    candidates = []
+    for field in ("corrective_prompt", "review", "summary"):
+        value = payload.get(field)
+        if isinstance(value, str) and value.strip():
+            candidates.append(value.strip())
+    if not candidates:
+        return ""
+    text = "\n\n".join(candidates)
+    for marker in (
+        "## Guidance For Next Execute",
+        "## Direction For The Next Execute",
+        "## Direction",
+        "## Next",
+        "下一次 execute",
+        "下一步",
+        "继续",
+    ):
+        index = text.lower().find(marker.lower())
+        if index >= 0:
+            text = text[index:]
+            break
+    excerpt, _changed = _truncate_utf8_single_line(text, max(240, CORRECTIVE_PROMPT_LIMIT - 360))
+    return excerpt
+
+
 def _synthesize_reflect_failure_fields(
     payload: dict[str, Any],
     *,
@@ -506,6 +532,7 @@ def _synthesize_reflect_failure_fields(
         next_hint = f"repair validation failure in {check_name} and rerun the official validator"
     else:
         next_hint = "repair the validation failure and rerun the official validator"
+    review_guidance = _review_guidance_excerpt(payload)
     synthesized = dict(payload)
     if "next_plan_hint" in payload:
         synthesized.setdefault("next_plan_hint", next_hint)
@@ -519,14 +546,22 @@ def _synthesize_reflect_failure_fields(
             ),
         )
     else:
-        synthesized.setdefault(
-            "corrective_prompt",
-            (
+        if review_guidance:
+            corrective_prompt = (
+                "Do not weaken the validator, metric, threshold, or work goal. "
+                "Preserve the technical direction already captured in the reflect review; do not replace it with "
+                f"receipt-only cleanup. Reflect guidance: {review_guidance}"
+            )
+        else:
+            corrective_prompt = (
                 "Do not weaken the validator, metric, threshold, or work goal. "
                 f"Repair the implementation issue shown by validate evidence: {root_cause}. "
                 "Continue as a senior engineer, debug the concrete failure, rerun focused checks, "
                 "then rerun the official validator in the same runtime environment and return a fresh official_validation_receipt."
-            ),
+            )
+        synthesized.setdefault(
+            "corrective_prompt",
+            corrective_prompt,
         )
     synthesized.setdefault("retry_authorized", not runtime_contract_error)
     for field in missing:
