@@ -217,7 +217,6 @@ def prepare_execution(
         guidance_payload = {
             "initial": entry,
             "inbox_path": str(inbox_path),
-            "semantics": "temporary execution guidance; authority and validator remain unchanged",
         }
     if command_id == "run" and isinstance(strict_task, dict):
         initialize_run_phase_state(handle, strict_task=strict_task, goal=goal or title, target=target, guidance=guidance_payload)

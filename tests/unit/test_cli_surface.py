@@ -923,6 +923,25 @@ def test_cli_runtime_defaults_and_prepare_packet(tmp_path):
     assert events[-1]["status"] == "completed"
 
 
+def test_cli_executor_defaults_to_host(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    _write_task(tmp_path, "task-claude", title="Claude Host Task", work_goal="Use the host-aligned executor.")
+
+    result = _run_cli(
+        tmp_path,
+        "run",
+        "--host",
+        "claude",
+        "--work-id",
+        "task-claude",
+        env={"THOTH_TEST_EXTERNAL_WORKER_MODE": "complete"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    events = _jsonl_events(result.stdout)
+    assert events[0]["executor"] == "claude"
+
+
 def test_cli_run_records_trailing_guidance(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
     _write_task(tmp_path)
@@ -1016,7 +1035,10 @@ def test_cli_auto_runs_ready_work_even_when_blocked_work_exists(tmp_path):
     controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
     controller_path = tmp_path / ".thoth" / "objects" / "controller" / f"{controller_id}.json"
     controller = json.loads(controller_path.read_text(encoding="utf-8"))
-    assert "ready-work" in controller["payload"]["completed_work_ids"]
+    assert controller["payload"]["attempts"][0]["work_id"] == "ready-work"
+    assert controller["payload"]["attempts"][0]["status"] == "completed"
+    assert "completed_work_ids" not in controller["payload"]
+    assert "queue" not in controller["payload"]
     assert events[-1]["type"] == "thoth.auto.terminal"
     assert events[-1]["status"] == "paused"
 
@@ -1047,7 +1069,9 @@ def test_cli_auto_refreshes_stale_object_graph_summary_before_preflight(tmp_path
     events = _jsonl_events(result.stdout)
     controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
     controller = json.loads((tmp_path / ".thoth" / "objects" / "controller" / f"{controller_id}.json").read_text(encoding="utf-8"))
-    assert "late-ready" in controller["payload"]["completed_work_ids"]
+    assert controller["payload"]["attempts"][0]["work_id"] == "late-ready"
+    assert controller["payload"]["attempts"][0]["status"] == "completed"
+    assert "completed_work_ids" not in controller["payload"]
 
 
 def test_cli_auto_failed_child_updates_only_attempted_work_item(tmp_path):
@@ -1071,12 +1095,12 @@ def test_cli_auto_failed_child_updates_only_attempted_work_item(tmp_path):
     controller_id = next(event.get("controller_id") for event in events if event.get("controller_id"))
     controller = json.loads((tmp_path / ".thoth" / "objects" / "controller" / f"{controller_id}.json").read_text(encoding="utf-8"))
     payload = controller["payload"]
-    assert payload["attempted_work_ids"] == ["task-1"]
-    assert payload["failed_work_ids"] == ["task-1"]
     assert payload["attempts"][0]["work_id"] == "task-1"
     assert payload["attempts"][0]["run_id"].startswith("loop-")
     assert payload["attempts"][0]["status"] == "failed"
-    assert [item["work_id"] for item in payload["queue"]] == ["task-2", "task-3"]
+    assert "attempted_work_ids" not in payload
+    assert "failed_work_ids" not in payload
+    assert "queue" not in payload
     assert load_work_result(tmp_path, "task-1")["status"] == "attempt_failed"
     assert load_work_result(tmp_path, "task-2") == {}
     assert load_work_result(tmp_path, "task-3") == {}
@@ -1109,9 +1133,9 @@ def test_cli_auto_failed_children_are_backed_by_child_attempts(tmp_path):
     assert [attempt["work_id"] for attempt in attempts] == ["task-1", "task-2"]
     assert [attempt["status"] for attempt in attempts] == ["failed", "failed"]
     assert len({attempt["run_id"] for attempt in attempts}) == 2
-    assert payload["attempted_work_ids"] == ["task-1", "task-2"]
-    assert payload["failed_work_ids"] == ["task-1", "task-2"]
-    assert payload["queue"] == []
+    assert "attempted_work_ids" not in payload
+    assert "failed_work_ids" not in payload
+    assert "queue" not in payload
 
 
 def test_cli_auto_sleep_starts_background_controller(tmp_path):

@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.8.3" src="https://img.shields.io/badge/version-0.2.8.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.8.4" src="https://img.shields.io/badge/version-0.2.8.4-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.2.8.3 docs refresh</strong> · 对齐 smart init、public argue 术语、compact work_graph 闭合和 DAG-first auto 可执行性文档</p>
+  <p><strong>v0.2.8.4 compact runtime defaults</strong> · 288s live 观察、宿主对齐 executor，以及更瘦的 auto/guidance ledger</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth 概念首屏图" />
 </div>
 
@@ -272,7 +272,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | 通过 durable runtime packet 执行一个 ready work item。 | `--work-id`，可选 host 或 executor 控制，以及 attach/watch/stop | 含 state、events、phase results、artifacts 和 terminal result 的 durable run ledger |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | 通过 controller service 对一个 ready work item 做迭代执行。 | `--work-id`，可选 resume 或 sleep 控制 | Controller object、child run lineage 和有边界的迭代历史 |
 | `argue` | `Claude: /thoth:argue`<br>`Codex: $thoth argue` | 对 idea、work item 或 decision 发起 attacker/adjudicator 对抗讨论，默认不静默改 authority。 | `--work-id`、`--decision-id`、`--target-kind`、`--target-id`、free-text idea，或已确认的 `--apply-artifact` | 带完整 attack/adjudication artifact、`decision_impact` 和需确认 authority patch preview 的 argument ledger |
-| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | 用户离开时运行 DAG-first actionable queue。 | 可选 `--sleep`、`--rounds`、`--scope all-open|ready` 或显式 `--work-id` | Auto controller、child loop lineage、actionability-aware queue snapshots、monitor events，以及 terminal 或 paused 摘要 |
+| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | 用户离开时运行 DAG-first actionable queue。 | 可选 `--sleep`、`--rounds`、`--scope all-open|ready` 或显式 `--work-id` | Auto controller、durable background worker、稀疏 foreground watch events、child loop lineage，以及 terminal 或 paused 摘要 |
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | 展示项目健康、活动 runs、doctor、report 或 dashboard 读面。 | 可选 `--json`、`--doctor`、`--report` 或 `--dashboard` | 基于 authority 和本机 registry 派生出的共享状态快照与读面 |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | `status --doctor` 的别名；严格审计健康状态和 runtime shape。 | 可选 `--quick` 或 `--json` | 含验证结论的健康报告 |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | `status --dashboard` 的别名；管理本地 dashboard runtime。 | 可选动作：`start`、`stop` 或 `rebuild` | 由 authority 与本机 `.thoth` ledgers 驱动的本地 dashboard 进程和读接口 |
@@ -285,6 +285,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | Locked planning authority | ``.thoth/objects/discussion/`、`.thoth/objects/decision/` 和 `.thoth/objects/work_item/` 定义了执行允许做什么。 |
 | Script-backed verification | Validators、doctor checks 和 selftests 以机械方式裁决 pass 或 fail。 |
 | Shared read model | `status`、`report` 和 `dashboard` 都读取同一 authority，而不是依赖聊天记忆。 |
+| 宿主对齐执行 | Claude 默认使用 Claude worker，Codex 默认使用 Codex worker；显式 `--executor claude|codex` 仍可用于有意的跨宿主执行。 |
 
 ## 适用对象
 

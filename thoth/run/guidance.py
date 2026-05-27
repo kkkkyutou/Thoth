@@ -50,9 +50,10 @@ def append_run_guidance(
         "source": str(source or "live_user"),
         "phase": phase or None,
         "message": text,
-        "interrupt_requested": bool(interrupt_requested),
         "parent_run_id": parent_run_id or None,
     }
+    if interrupt_requested:
+        entry["interrupt_requested"] = True
     _append_jsonl(guidance_path(project_root, run_id), entry)
     return entry
 
@@ -83,16 +84,6 @@ def guidance_context(project_root: Path, run_id: str, *, limit: int = GUIDANCE_T
     return {
         "inbox_path": str(path),
         "tail": entries,
-        "has_guidance": bool(entries),
-        "policy": {
-            "semantics": "temporary execution guidance only; does not modify authority or validator",
-            "read_points": [
-                "phase start",
-                "before key implementation choices",
-                "after failures",
-                "before focused validation reruns",
-            ],
-        },
     }
 
 

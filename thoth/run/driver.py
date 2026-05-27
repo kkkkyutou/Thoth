@@ -12,7 +12,7 @@ from typing import Any, Protocol
 from .io import _read_json
 from .lease import release_repo_lease
 from .ledger import _append_event, _update_run, _update_state, _write_stopped_result, fail_run, heartbeat_run
-from .model import ACTIVE_STATUSES, RunHandle, utc_now
+from .model import ACTIVE_STATUSES, DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS, RunHandle, utc_now
 from .phases import PhaseDriver, mechanical_validate_phase_output, next_phase_payload, submit_phase_output
 from .supervisor import write_run_supervisor
 
@@ -118,7 +118,7 @@ def execute_runtime_controller(
     *,
     driver: PhaseDriver,
     sink: RuntimeEventSink | None = None,
-    heartbeat_interval_seconds: float = 300.0,
+    heartbeat_interval_seconds: float = DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS,
 ) -> int:
     """Run the mechanical controller until terminal state using one phase driver."""
 

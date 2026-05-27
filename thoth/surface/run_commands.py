@@ -117,7 +117,8 @@ def _resolve_executor(args) -> str:
     explicit = str(getattr(args, "executor", "") or "").strip().lower()
     if explicit:
         return "codex" if explicit == "codex" else "claude"
-    return "codex"
+    host = str(getattr(args, "host", "") or "").strip().lower()
+    return "claude" if host == "claude" else "codex"
 
 
 def _prompt_query(args) -> str:
@@ -208,7 +209,6 @@ def _append_auto_guidance(project_root: Path, controller: dict, message: str) ->
     payload["guidance"] = {
         "message": message,
         "source": "host_agent",
-        "semantics": "temporary controller-level execution guidance; authority and validators remain unchanged",
         "created_at": utc_now(),
     }
     cursor = payload.get("cursor") if isinstance(payload.get("cursor"), dict) else {}

@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "thoth",
-      "version": "0.2.8.3",
+      "version": "0.2.8.4",
       "source": {
         "source": "local",
         "path": "."

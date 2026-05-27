@@ -56,21 +56,21 @@ def _host_claude(
             "doctor": "/thoth:doctor --quick",
             "discuss_decision": f"/thoth:discuss --decision-json {decision_arg}",
             "discuss_contracts": contract_commands,
-            "run_live": "/thoth:run --executor codex --work-id task-runtime-probe",
-            "run_sleep": "/thoth:run --executor codex --sleep --work-id task-runtime-probe",
+            "run_live": "/thoth:run --work-id task-runtime-probe",
+            "run_sleep": "/thoth:run --sleep --work-id task-runtime-probe",
             "run_watch": lambda run_id: f"/thoth:run --watch {run_id}",
             "run_stop": lambda run_id: f"/thoth:run --stop {run_id}",
-            "argue": "/thoth:argue --work-id task-review-probe --executor codex tracker/review_probe.py",
-            "loop_live": "/thoth:loop --executor codex --work-id task-runtime-probe",
+            "argue": "/thoth:argue --work-id task-review-probe tracker/review_probe.py",
+            "loop_live": "/thoth:loop --work-id task-runtime-probe",
             "dashboard_start": "/thoth:dashboard start",
             "dashboard_stop": "/thoth:dashboard stop",
-            "loop_sleep": "/thoth:loop --executor codex --sleep --work-id task-runtime-probe",
+            "loop_sleep": "/thoth:loop --sleep --work-id task-runtime-probe",
             "loop_stop": lambda run_id: f"/thoth:loop --stop {run_id}",
-            "auto": "/thoth:auto --executor codex --sleep --rounds 1 --min-runtime-seconds 0",
+            "auto": "/thoth:auto --sleep --rounds 1 --min-runtime-seconds 0",
             "auto_stop": lambda controller_id: f"/thoth:auto --stop {controller_id}",
             "sync": "/thoth:init --sync",
         },
-        argue_expected_executor="codex",
+        argue_expected_executor="claude",
         from_step=from_step,
         to_step=to_step,
     )
@@ -102,7 +102,7 @@ def _host_claude(
         detail = f"Claude host window completed successfully with from_step={from_step!r} to_step={to_step!r}."
     elif success and hook_seen:
         status = "passed"
-        detail = "Claude host completed the host-real decision/run/argue/loop/auto flow through the public /thoth:* surface, including real `--executor codex` delegation."
+        detail = "Claude host completed the host-real decision/run/argue/loop/auto flow through the public /thoth:* surface with host-aligned Claude execution."
     elif success:
         status = "failed"
         detail = "Claude host completed the command flow, but hook/session evidence was not visible in Claude output."

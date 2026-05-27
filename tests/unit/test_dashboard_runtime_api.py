@@ -132,11 +132,10 @@ def _setup_project(tmp_path: Path, monkeypatch) -> None:
             "payload": {
                 "controller_type": "auto",
                 "state": "running",
-                "elapsed_seconds": 720,
+                "started_at": "2026-04-23T01:00:00Z",
                 "min_runtime_seconds": 28800,
-                "queue": [{"work_id": "task-1"}],
-                "completed_work_ids": [],
-                "failed_work_ids": [],
+                "work_refs": [{"work_id": "task-1", "revision": 1}],
+                "attempts": [],
                 "cursor": {"rounds_attempted": 1, "active_run_id": "run-1"},
             },
             "history": [],
@@ -232,7 +231,6 @@ def test_runtime_progress_reports_auto_failed_attempt_counts(monkeypatch, tmp_pa
             "finished_at": "2026-04-23T01:12:00Z",
         }
     ]
-    controller["payload"]["failed_work_ids"] = ["task-1"]
     controller_path.write_text(json.dumps(controller, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     dashboard_app.invalidate_cache()
     client = TestClient(dashboard_app.app)

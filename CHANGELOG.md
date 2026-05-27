@@ -4,6 +4,17 @@
 
 No pending changes.
 
+## [0.2.8.4] - 2026-05-27
+
+### Changed
+- Live foreground observation now defaults to a sparse `288s` cadence in host prompts and auto watch snapshots, while terminal/error evidence, worker-invalid output, missing receipts, runtime mismatch, and user corrections still interrupt the quiet interval.
+- Runtime executor defaults now align with the host: Claude surfaces default to Claude workers and Codex surfaces default to Codex workers; explicit `--executor claude|codex` remains available for deliberate cross-host execution.
+- Auto controller payloads and guidance ledgers are more compact: queue/count/attempted/completed/failed views are derived from `work_refs`, `attempts`, and runtime state instead of being duplicated as long-lived authority fields.
+
+### Fixed
+- Prevented Claude `/thoth:*` runs without an explicit `--executor` from silently falling back to Codex execution.
+- Reduced foreground live/watch token pressure and stdout noise without compacting rich phase handoffs such as `plan`, `execute.report`, `reflect.review`, or corrective prompts.
+
 ## [0.2.8.3] - 2026-05-25
 
 ### Changed
@@ -133,7 +144,7 @@ No pending changes.
 - `execute` now owns the implementation/debug/official-validator cycle in one Codex or Claude worker session and returns a compact `official_validation_receipt` with command, interpreter, cwd, environment summary, exit code, logs, and checks.
 - `validate` is now a mechanical receipt-confirmation phase instead of a separate intelligent worker, preventing execute/validate interpreter or CUDA environment drift.
 - `reflect` now acts as a human-style corrective reviewer: successful runs record compact lessons, while failed validation can feed one direct corrective prompt back into `execute` without changing authority, metrics, thresholds, or validators.
-- Live host prompt surfaces now prefer low-frequency monitoring around 90 seconds during quiet progress, but proactively append or interrupt guidance when clear runtime/environment mistakes appear.
+- Live host prompt surfaces started preferring low-frequency quiet-progress monitoring in this line; current releases use the longer 288s cadence documented in 0.2.8.4.
 
 ### Fixed
 - Prevented runs from failing solely because validate used a different Python environment than execute after execute had already passed the official validator.

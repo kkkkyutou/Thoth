@@ -7,11 +7,12 @@ from pathlib import Path
 
 from .command_specs import COMMAND_SPECS, CommandSpec, PUBLIC_CODEX_COMMANDS
 from .prompt_specs import render_codex_command_micro_prompt, render_command_contract_markdown
+from .run.model import DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS
 
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.2.8.3"
+PLUGIN_VERSION = "0.2.8.4"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -24,6 +25,7 @@ def _frontmatter_allowed_tools(spec: CommandSpec) -> str:
 
 
 def _claude_bridge_rules(spec: CommandSpec) -> str:
+    observe_interval = int(DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS)
     if spec.command_id == "init":
         return """1. Treat the structured bridge payload above as the only authority for this invocation.
 2. If `bridge_success` is `false`, report the exact bridge failure and stop.
@@ -55,9 +57,9 @@ def _claude_bridge_rules(spec: CommandSpec) -> str:
     if spec.command_id in {"run", "loop", "auto"}:
         rules.extend(
             (
-                "- If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.",
+                "- Substantive execution must flow through `packet.executor`; by default this matches the host unless the user explicitly supplied `--executor`.",
                 "- Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.",
-                "- Live monitor should poll quietly around every 90s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.",
+                f"- Live monitor should observe sparsely around every {observe_interval}s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.",
                 "- Trailing text/live corrections are temporary guidance only; never rewrite authority or validators.",
             )
         )

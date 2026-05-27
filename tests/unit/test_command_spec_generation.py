@@ -35,6 +35,8 @@ def test_claude_surface_renders_from_spec():
     assert 'scripts/thoth-claude-command.sh" run --host claude --thoth-arguments-file "$THOTH_RUN_ARGUMENTS_FILE"' in rendered
     assert "RuntimeDriver advances phases" in rendered
     assert "do not invent, create, compile, or guess a work item" in rendered
+    assert "Substantive execution must flow through `packet.executor`" in rendered
+    assert "every 288s" in rendered
     assert "## Authority Summary" in rendered
     assert "route_class: `live_intelligent`" in rendered
     assert "packet_authority_mode: `phase_controller`" in rendered
@@ -111,6 +113,7 @@ def test_claude_auto_surface_documents_monitor_watch_contract():
     assert "body.monitor_command" in rendered
     assert "Monitor tool with `persistent=true`" in rendered
     assert "same watch command in the foreground" in rendered
+    assert "every 288s" in rendered
     assert "do not stop the auto controller" in rendered
 
 

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from thoth.run.model import DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS
+
 
 @dataclass(frozen=True)
 class CommandPromptSpec:
@@ -510,6 +512,7 @@ def build_codex_public_command_prompt(
     done_token: str,
 ) -> str:
     spec = command_prompt_spec(command_id)
+    observe_interval = int(DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS)
     lines = [
         "Operate only on this repo.",
         "Use the installed skill named thoth.",
@@ -537,7 +540,7 @@ def build_codex_public_command_prompt(
                 "Do not hand-edit `.thoth`; let the Thoth runtime driver advance phases.",
                 "If the user sends a natural-language correction while a live run/loop/auto is active, inject it into the active run guidance inbox through the packet protocol or installed runtime instead of merely replying with advice.",
                 "Treat such live corrections as temporary guidance: they may steer execution and debugging, but they must not rewrite work authority or validation criteria.",
-                "Prefer waiting over polling: check roughly every 90 seconds during quiet progress, unless terminal/error evidence, worker-invalid, missing receipt, runtime mismatch, or user guidance appears.",
+                f"Prefer sparse foreground observation: check roughly every {observe_interval} seconds during quiet progress, unless terminal/error evidence, worker-invalid, missing receipt, runtime mismatch, or user guidance appears.",
                 "When evidence shows a low-level engineering mistake or runtime mismatch, proactively append guidance or interrupt the active run instead of only narrating the problem.",
             )
         )

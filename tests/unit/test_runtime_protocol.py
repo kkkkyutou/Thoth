@@ -228,7 +228,7 @@ def test_invocation_guidance_flows_into_phase_packets(tmp_path):
     phase = next_phase_payload(project, handle.run_id)
     assert phase["guidance"]["inherited"]["initial"]["source"] == "initial_invocation"
     assert phase["guidance"]["current"]["tail"][0]["message"] == "Focus on repo-local flex_gemm repair before giving up."
-    assert "temporary execution guidance" in phase["guidance"]["current"]["policy"]["semantics"]
+    assert "policy" not in phase["guidance"]["current"]
 
 
 def test_live_guidance_interrupt_can_be_pending_for_phase(tmp_path):

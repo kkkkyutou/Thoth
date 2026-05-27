@@ -35,9 +35,9 @@ THOTH_AUTO_ARGUMENTS_EOF
 - Do not hand-edit `.thoth` or manually call runtime protocol commands; the Thoth RuntimeDriver advances phases.
 - If `packet.dispatch_mode` is `external_worker`, do not duplicate the work locally; report the run id, worker mode, and the correct follow-up only.
 - If you only describe what should happen next instead of reporting the executed runtime result, treat that as failure.
-- If `packet.executor == codex`, the substantive execution must really flow through Codex rather than being silently done by Claude.
+- Substantive execution must flow through `packet.executor`; by default this matches the host unless the user explicitly supplied `--executor`.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.
-- Live monitor should poll quietly around every 90s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.
+- Live monitor should observe sparsely around every 288s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.
 - Trailing text/live corrections are temporary guidance only; never rewrite authority or validators.
 - If the bridge payload exposes `body.monitor_command`, observe that command instead of executing work directly in the Claude session.
 - Prefer the Claude Monitor tool with `persistent=true` for `body.monitor_command` when available; otherwise use Bash to run the same watch command in the foreground.

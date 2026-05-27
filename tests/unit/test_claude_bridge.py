@@ -32,6 +32,7 @@ def _run_bridge(tmp_path: Path, command_id: str, *args: str) -> subprocess.Compl
     env["PYTHONPATH"] = str(ROOT) if not existing else f"{ROOT}:{existing}"
     env["THOTH_CLAUDE_PLUGIN_ROOT"] = str(ROOT)
     env["THOTH_TEST_ARGUE_WORKER_MODE"] = "complete"
+    env["THOTH_TEST_EXTERNAL_WORKER_MODE"] = "complete"
     return subprocess.run(
         [sys.executable, str(_bridge_entry()), command_id, *args],
         cwd=str(tmp_path),
@@ -255,6 +256,20 @@ def test_bridge_run_without_work_id_returns_candidate_work_items_and_stops(tmp_p
     assert payload["bridge_success"] is False
     assert "task-auth-fix" in payload["stdout"]
     assert "No work item was created" in payload["stdout"]
+
+
+def test_bridge_run_defaults_executor_to_claude_host(tmp_path):
+    init_result = _run_bridge(tmp_path, "init")
+    assert json.loads(init_result.stdout)["bridge_success"] is True
+    _write_task(tmp_path, "task-runtime-probe", title="Runtime Probe", work_goal="Check host-aligned executor.")
+
+    result = _run_bridge(tmp_path, "run", "--host", "claude", "--work-id", "task-runtime-probe")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["bridge_success"] is True
+    events = [json.loads(line) for line in payload["stdout"].splitlines() if line.strip()]
+    assert events[0]["executor"] == "claude"
 
 
 def test_bridge_auto_returns_monitor_packet_without_blocking_on_watch(tmp_path):

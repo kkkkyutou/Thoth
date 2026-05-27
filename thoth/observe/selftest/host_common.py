@@ -775,7 +775,7 @@ def _run_host_real_flow(
             and controller.get("kind") == "controller"
             and controller_payload.get("controller_type") == "auto"
             and controller_payload.get("host") == host_name
-            and controller_payload.get("executor") == "codex"
+            and controller_payload.get("executor") == (argue_expected_executor or host_name)
             and bool(supervisor.get("pid") or supervisor.get("state"))
         )
         recorder.add(
@@ -931,7 +931,7 @@ def _run_host_real_flow(
             run_id=run_live_id,
             expected_kind="run",
             expected_work_id="task-runtime-probe",
-            expected_executor=argue_expected_executor if "--executor codex" in commands["run_live"] else None,
+            expected_executor=argue_expected_executor,
             public_command=commands["run_live"],
         )
         cleanup_live_stop = _run_thoth(project_dir, "run", "--stop", run_live_id, timeout=20)
@@ -964,7 +964,7 @@ def _run_host_real_flow(
             expected_kind="run",
             expected_work_id="task-runtime-probe",
             public_command=commands["run_sleep"],
-            expected_executor=argue_expected_executor if "--executor codex" in commands["run_sleep"] else None,
+            expected_executor=argue_expected_executor,
         )
         if not should_run("run-watch") and not should_run("run-stop"):
             cleanup_sleep_stop = _run_thoth(project_dir, "run", "--stop", run_sleep_id, timeout=20)
@@ -1092,7 +1092,7 @@ def _run_host_real_flow(
             run_id=loop_live_id,
             expected_kind="loop",
             expected_work_id="task-runtime-probe",
-            expected_executor=argue_expected_executor if "--executor codex" in commands["loop_live"] else None,
+            expected_executor=argue_expected_executor,
             public_command=commands["loop_live"],
         )
         cleanup_loop_live_stop = _run_thoth(project_dir, "loop", "--stop", loop_live_id, timeout=20)
@@ -1120,7 +1120,7 @@ def _run_host_real_flow(
             expected_kind="loop",
             expected_work_id="task-runtime-probe",
             public_command=commands["loop_sleep"],
-            expected_executor=argue_expected_executor if "--executor codex" in commands["loop_sleep"] else None,
+            expected_executor=argue_expected_executor,
         )
         if not should_run("loop-stop"):
             cleanup_loop_sleep_stop = _run_thoth(project_dir, "loop", "--stop", loop_run_id, timeout=20)

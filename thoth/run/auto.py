@@ -19,7 +19,7 @@ from thoth.run.controllers import list_auto_actionable_work
 from thoth.run.driver import JsonlStdoutSink, RuntimeEventSink, SilentSink, execute_runtime_controller
 from thoth.run.io import _append_jsonl, _read_json, _write_json, local_registry_root
 from thoth.run.ledger import _append_event
-from thoth.run.model import ACTIVE_STATUSES, RunHandle
+from thoth.run.model import ACTIVE_STATUSES, DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS, RunHandle
 from thoth.run.packets import prepare_execution
 from thoth.run.service import attach_run, list_active_runs
 from thoth.run.supervisor import supervisor_process_alive, write_controller_supervisor
@@ -28,14 +28,36 @@ from thoth.run.supervisor import supervisor_process_alive, write_controller_supe
 DriverFactory = Callable[[RunHandle], Any]
 AUTO_CONTROLLER_ACTIVE_STATUSES = {"queued", "running", "idle"}
 AUTO_CONTROLLER_TERMINAL_STATUSES = {"completed", "paused", "stopped", "cancelled", "failed"}
+AUTO_DERIVED_PAYLOAD_KEYS = {
+    "queue",
+    "attempted_work_ids",
+    "completed_work_ids",
+    "failed_work_ids",
+    "skipped_work_ids",
+    "elapsed_seconds",
+}
 
 
 def auto_heartbeat_interval_seconds() -> float:
-    raw = os.environ.get("THOTH_AUTO_HEARTBEAT_SECONDS", "120")
+    raw = os.environ.get("THOTH_AUTO_HEARTBEAT_SECONDS", str(int(DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS)))
     try:
         return max(1.0, float(raw))
     except ValueError:
-        return 120.0
+        return DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS
+
+
+def _compact_auto_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    compact = dict(payload)
+    attempts = compact.get("attempts")
+    if isinstance(attempts, list):
+        for key in AUTO_DERIVED_PAYLOAD_KEYS:
+            compact.pop(key, None)
+    cursor = compact.get("cursor")
+    if isinstance(cursor, dict):
+        cursor = dict(cursor)
+        cursor.pop("completed_work_ids", None)
+        compact["cursor"] = cursor
+    return compact
 
 
 def _emit(sink: RuntimeEventSink, controller_id: str, event_type: str, **payload: Any) -> None:
@@ -51,6 +73,7 @@ def _update_controller(project_root: Path, controller: dict[str, Any], *, status
     for _ in range(3):
         payload = dict(current.get("payload") if isinstance(current.get("payload"), dict) else {})
         payload.update(payload_updates)
+        payload = _compact_auto_payload(payload)
         try:
             return store.update(
                 "controller",
@@ -69,7 +92,7 @@ def _update_controller(project_root: Path, controller: dict[str, Any], *, status
         "controller",
         object_id,
         expected_revision=int(current.get("revision", 0)),
-        updates={"status": status, "payload": {**(current.get("payload") if isinstance(current.get("payload"), dict) else {}), **payload_updates}},
+        updates={"status": status, "payload": _compact_auto_payload({**(current.get("payload") if isinstance(current.get("payload"), dict) else {}), **payload_updates})},
         history_summary=f"auto controller -> {status}",
         source="auto",
     )
@@ -202,6 +225,8 @@ def list_auto_controller_statuses(project_root: Path) -> list[dict[str, Any]]:
         cursor = payload.get("cursor") if isinstance(payload.get("cursor"), dict) else {}
         controller_id = str(controller.get("object_id") or "")
         attempts = _attempt_rows(payload)
+        scope = str(payload.get("scope") or "all-open")
+        queue_count = len(_remaining_queue_snapshot(project_root, payload, scope=scope))
         rows.append(
             {
                 "controller_id": controller_id,
@@ -211,14 +236,14 @@ def list_auto_controller_statuses(project_root: Path) -> list[dict[str, Any]]:
                 "executor": payload.get("executor"),
                 "scope": payload.get("scope"),
                 "fixed_queue": bool(payload.get("fixed_queue")),
-                "elapsed_seconds": payload.get("elapsed_seconds"),
+                "elapsed_seconds": _controller_elapsed_seconds(payload, time()),
                 "min_runtime_seconds": payload.get("min_runtime_seconds"),
                 "rounds": payload.get("rounds"),
                 "rounds_attempted": cursor.get("rounds_attempted"),
                 "active_run_id": cursor.get("active_run_id"),
-                "queue_count": len(payload.get("queue")) if isinstance(payload.get("queue"), list) else 0,
-                "attempted_count": len(payload.get("attempted_work_ids")) if isinstance(payload.get("attempted_work_ids"), list) else 0,
-                "completed_count": len(payload.get("completed_work_ids")) if isinstance(payload.get("completed_work_ids"), list) else 0,
+                "queue_count": queue_count,
+                "attempted_count": len(_attempt_work_ids(payload)),
+                "completed_count": _attempt_status_count(payload, "completed"),
                 "attempt_count": len(attempts),
                 "failed_attempt_count": _attempt_status_count(payload, "failed"),
                 "failed_count": _attempt_status_count(payload, "failed"),
@@ -267,6 +292,9 @@ def _controller_elapsed_seconds(payload: dict[str, Any], started_at: float) -> i
     started = payload.get("started_at_epoch")
     if isinstance(started, (int, float)) and started > 0:
         return int(time() - float(started))
+    elapsed = payload.get("elapsed_seconds")
+    if isinstance(elapsed, (int, float)):
+        return int(elapsed)
     return int(time() - started_at)
 
 
@@ -310,15 +338,11 @@ def _controller_actionable(project_root: Path, payload: dict[str, Any], *, scope
         rows = _fixed_queue_actionable(project_root, payload)
     else:
         rows = list_auto_actionable_work(project_root, scope=scope)
-    attempted = payload.get("attempted_work_ids")
-    attempted_set = {item for item in attempted if isinstance(item, str)} if isinstance(attempted, list) else set()
-    failed = payload.get("failed_work_ids")
-    failed_set = {item for item in failed if isinstance(item, str)} if isinstance(failed, list) else set()
+    attempted_set = set(_attempt_work_ids(payload))
     return [
         row
         for row in rows
         if str(row.get("work_id") or "") not in attempted_set
-        and str(row.get("work_id") or "") not in failed_set
     ]
 
 
@@ -335,13 +359,6 @@ def _queue_snapshot(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def _append_unique(values: Any, item: str) -> list[str]:
-    rows = [value for value in values if isinstance(value, str)] if isinstance(values, list) else []
-    if item not in rows:
-        rows.append(item)
-    return rows
-
-
 def _attempt_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     attempts = payload.get("attempts")
     if not isinstance(attempts, list):
@@ -349,17 +366,31 @@ def _attempt_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(item) for item in attempts if isinstance(item, dict)]
 
 
+def _attempt_work_ids(payload: dict[str, Any], *, status: str | None = None) -> list[str]:
+    attempts = _attempt_rows(payload)
+    rows = [
+        str(item.get("work_id"))
+        for item in attempts
+        if isinstance(item.get("work_id"), str)
+        and (status is None or item.get("status") == status)
+    ]
+    if rows or attempts:
+        return rows
+    legacy_key = {
+        None: "attempted_work_ids",
+        "completed": "completed_work_ids",
+        "failed": "failed_work_ids",
+        "skipped": "skipped_work_ids",
+    }.get(status)
+    legacy = payload.get(legacy_key) if legacy_key else None
+    return [item for item in legacy if isinstance(item, str)] if isinstance(legacy, list) else []
+
+
 def _attempt_status_count(payload: dict[str, Any], status: str) -> int:
     attempts = _attempt_rows(payload)
     if attempts:
         return sum(1 for item in attempts if item.get("status") == status)
-    if status == "failed":
-        failed = payload.get("failed_work_ids")
-        return len([item for item in failed if isinstance(item, str)]) if isinstance(failed, list) else 0
-    if status == "completed":
-        completed = payload.get("completed_work_ids")
-        return len([item for item in completed if isinstance(item, str)]) if isinstance(completed, list) else 0
-    return 0
+    return len(_attempt_work_ids(payload, status=status))
 
 
 def _append_attempt(
@@ -371,16 +402,20 @@ def _append_attempt(
     child_status: int,
 ) -> None:
     attempts = _attempt_rows(payload)
-    attempts = [item for item in attempts if item.get("run_id") != run_id]
+    if run_id:
+        attempts = [item for item in attempts if item.get("run_id") != run_id]
+    else:
+        attempts = [item for item in attempts if item.get("work_id") != work_id or item.get("status") != status]
     attempts.append(
         {
             "work_id": work_id,
-            "run_id": run_id,
             "status": status,
             "child_status": child_status,
             "finished_at": utc_now(),
         }
     )
+    if run_id:
+        attempts[-1]["run_id"] = run_id
     payload["attempts"] = attempts
 
 
@@ -392,18 +427,19 @@ def _controller_snapshot(project_root: Path, controller: dict[str, Any]) -> dict
     payload = controller.get("payload") if isinstance(controller.get("payload"), dict) else {}
     cursor = payload.get("cursor") if isinstance(payload.get("cursor"), dict) else {}
     controller_id = str(controller.get("object_id") or "")
+    scope = str(payload.get("scope") or "all-open")
     return {
         "type": "thoth.auto.snapshot",
         "ts": utc_now(),
         "controller_id": controller_id,
         "status": controller.get("status"),
         "state": payload.get("state"),
-        "elapsed_seconds": payload.get("elapsed_seconds"),
+        "elapsed_seconds": _controller_elapsed_seconds(payload, time()),
         "min_runtime_seconds": payload.get("min_runtime_seconds"),
         "rounds_attempted": cursor.get("rounds_attempted"),
         "active_run_id": cursor.get("active_run_id"),
-        "queue_count": len(payload.get("queue")) if isinstance(payload.get("queue"), list) else 0,
-        "completed_count": len(payload.get("completed_work_ids")) if isinstance(payload.get("completed_work_ids"), list) else 0,
+        "queue_count": len(_remaining_queue_snapshot(project_root, payload, scope=scope)),
+        "completed_count": _attempt_status_count(payload, "completed"),
         "attempt_count": len(_attempt_rows(payload)),
         "failed_attempt_count": _attempt_status_count(payload, "failed"),
         "failed_count": _attempt_status_count(payload, "failed"),
@@ -448,7 +484,6 @@ def execute_auto_controller(
     _emit(event_sink, controller_id, "thoth.auto.started", scope=scope, rounds=rounds_limit)
 
     rounds_attempted = 0
-    completed_work_ids = [item for item in payload.get("completed_work_ids", []) if isinstance(item, str)] if isinstance(payload.get("completed_work_ids"), list) else []
     last_idle_emit = 0.0
     last_idle_update = 0.0
     heartbeat_interval = auto_heartbeat_interval_seconds()
@@ -462,7 +497,6 @@ def execute_auto_controller(
         cursor = payload.get("cursor") if isinstance(payload.get("cursor"), dict) else {}
         rounds_attempted = int(cursor.get("rounds_attempted") or rounds_attempted)
         if _rounds_reached_after_min_runtime(payload, cursor, started_at):
-            remaining_queue = _remaining_queue_snapshot(project_root, payload, scope=scope)
             controller = _update_controller(
                 project_root,
                 controller,
@@ -471,8 +505,6 @@ def execute_auto_controller(
                     "state": "budget_exhausted",
                     "budget_exhausted_by": "rounds_after_min_runtime",
                     "finished_at": utc_now(),
-                    "elapsed_seconds": _controller_elapsed_seconds(payload, started_at),
-                    "queue": remaining_queue,
                     "cursor": {**cursor, "rounds_attempted": rounds_attempted},
                 },
             )
@@ -481,7 +513,6 @@ def execute_auto_controller(
             return 2
 
         actionable = _controller_actionable(project_root, payload, scope=scope)
-        payload["queue"] = _queue_snapshot(actionable)
         if not actionable:
             elapsed = int(time() - started_at)
             if not _min_runtime_reached(payload, started_at):
@@ -491,9 +522,7 @@ def execute_auto_controller(
                     payload.update(
                         {
                             "state": "idle",
-                            "elapsed_seconds": elapsed,
                             "last_heartbeat_at": utc_now(),
-                            "queue": [],
                         }
                     )
                     controller = _update_controller(project_root, controller, status="idle", payload_updates=payload)
@@ -516,9 +545,6 @@ def execute_auto_controller(
                 payload_updates={
                     "state": "completed",
                     "finished_at": utc_now(),
-                    "elapsed_seconds": elapsed,
-                    "completed_work_ids": completed_work_ids,
-                    "queue": [],
                 },
             )
             _emit(event_sink, controller_id, "thoth.auto.terminal", status="completed", elapsed_seconds=elapsed)
@@ -539,9 +565,7 @@ def execute_auto_controller(
         strict_task = load_work_for_execution(project_root, work_id, require_ready=False)
         if str(strict_task.get("ready_state") or strict_task.get("status") or "") not in {"ready", "failed"}:
             _emit(event_sink, controller_id, "thoth.auto.skipped", work_id=work_id, reason="not_actionable")
-            payload["attempted_work_ids"] = _append_unique(payload.get("attempted_work_ids"), work_id)
-            payload["skipped_work_ids"] = _append_unique(payload.get("skipped_work_ids"), work_id)
-            payload["queue"] = _remaining_queue_snapshot(project_root, payload, scope=scope)
+            _append_attempt(payload, work_id=work_id, run_id="", status="skipped", child_status=0)
             controller = _update_controller(project_root, controller, status="running", payload_updates=payload)
             controller = store.read("controller", controller_id)
             continue
@@ -563,21 +587,16 @@ def execute_auto_controller(
         cursor = {
             "index": rounds_attempted - 1,
             "active_run_id": handle.run_id,
-            "completed_work_ids": completed_work_ids,
             "rounds_attempted": rounds_attempted,
         }
         controller = _update_controller(project_root, controller, status="running", payload_updates={"cursor": cursor})
         _emit(event_sink, controller_id, "thoth.auto.child.started", work_id=work_id, run_id=handle.run_id, round=rounds_attempted)
         child_status = execute_runtime_controller(project_root, handle.run_id, driver=driver_factory(handle), sink=event_sink)
         if child_status == 0:
-            completed_work_ids.append(work_id)
-            payload["completed_work_ids"] = _append_unique(payload.get("completed_work_ids"), work_id)
             _append_attempt(payload, work_id=work_id, run_id=handle.run_id, status="completed", child_status=child_status)
         else:
-            payload["failed_work_ids"] = _append_unique(payload.get("failed_work_ids"), work_id)
             _append_attempt(payload, work_id=work_id, run_id=handle.run_id, status="failed", child_status=child_status)
             _emit(event_sink, controller_id, "thoth.auto.risk", work_id=work_id, run_id=handle.run_id, child_status=child_status)
-        payload["attempted_work_ids"] = _append_unique(payload.get("attempted_work_ids"), work_id)
         child_handle = RunHandle(project_root=project_root, run_id=handle.run_id)
         _append_event(child_handle, f"auto controller {controller_id} observed child exit {child_status}", kind="auto")
         controller = store.read("controller", controller_id)
@@ -587,14 +606,11 @@ def execute_auto_controller(
             return 130
         current_payload = controller.get("payload") if isinstance(controller.get("payload"), dict) else {}
         current_payload.update(payload)
-        current_payload["queue"] = _remaining_queue_snapshot(project_root, current_payload, scope=scope)
         current_payload["cursor"] = {
             "index": rounds_attempted,
             "active_run_id": None,
-            "completed_work_ids": current_payload.get("completed_work_ids", completed_work_ids),
             "rounds_attempted": rounds_attempted,
         }
-        current_payload["elapsed_seconds"] = _controller_elapsed_seconds(current_payload, started_at)
         controller = _update_controller(project_root, controller, status="running", payload_updates=current_payload)
 
 

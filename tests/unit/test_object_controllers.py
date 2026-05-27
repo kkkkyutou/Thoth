@@ -65,11 +65,11 @@ def test_auto_controller_records_linear_queue_cursor(tmp_path):
 
     assert controller["payload"]["controller_type"] == "auto"
     assert controller["payload"]["mode"] == "loop"
-    assert [item["work_id"] for item in controller["payload"]["queue"]] == ["work-a", "work-b"]
+    assert [item["work_id"] for item in controller["payload"]["work_refs"]] == ["work-a", "work-b"]
+    assert "queue" not in controller["payload"]
     assert controller["payload"]["cursor"] == {
         "index": 0,
         "active_run_id": None,
-        "completed_work_ids": [],
         "rounds_attempted": 0,
     }
     assert controller["payload"]["min_runtime_seconds"] == 8 * 60 * 60
@@ -102,7 +102,7 @@ def test_auto_controller_records_temporary_guidance_without_fingerprint_drift(tm
     )
 
     assert controller["payload"]["guidance"]["message"] == "repair repo-local imports before failing"
-    assert controller["payload"]["guidance"]["semantics"].startswith("temporary controller-level")
+    assert "semantics" not in controller["payload"]["guidance"]
     assert "guidance" not in controller["payload"]["request_fingerprint"]
 
 

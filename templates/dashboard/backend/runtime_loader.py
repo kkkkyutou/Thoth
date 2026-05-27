@@ -567,17 +567,21 @@ def _list_auto_controllers(project_root: Path) -> list[dict[str, Any]]:
             continue
         cursor = body.get("cursor") if isinstance(body.get("cursor"), dict) else {}
         attempts = _auto_attempt_rows(body)
+        work_refs = body.get("work_refs") if isinstance(body.get("work_refs"), list) else []
+        attempted_ids = set(_auto_attempt_work_ids(body))
+        legacy_queue = body.get("queue") if isinstance(body.get("queue"), list) else []
+        queue_count = max(0, len(work_refs) - len(attempted_ids)) if work_refs else len(legacy_queue)
         rows.append(
             {
                 "controller_id": payload.get("object_id") or path.stem,
                 "status": payload.get("status"),
                 "state": body.get("state"),
-                "elapsed_seconds": body.get("elapsed_seconds"),
+                "elapsed_seconds": _auto_elapsed_seconds(body),
                 "min_runtime_seconds": body.get("min_runtime_seconds"),
                 "rounds_attempted": cursor.get("rounds_attempted"),
                 "active_run_id": cursor.get("active_run_id"),
-                "queue_count": len(body.get("queue")) if isinstance(body.get("queue"), list) else 0,
-                "completed_count": len(body.get("completed_work_ids")) if isinstance(body.get("completed_work_ids"), list) else 0,
+                "queue_count": queue_count,
+                "completed_count": _auto_attempt_status_count(body, "completed"),
                 "attempt_count": len(attempts),
                 "failed_attempt_count": _auto_attempt_status_count(body, "failed"),
                 "failed_count": _auto_attempt_status_count(body, "failed"),
@@ -595,17 +599,39 @@ def _auto_attempt_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(item) for item in attempts if isinstance(item, dict)]
 
 
+def _auto_attempt_work_ids(payload: dict[str, Any], *, status: str | None = None) -> list[str]:
+    attempts = _auto_attempt_rows(payload)
+    rows = [
+        str(item.get("work_id"))
+        for item in attempts
+        if isinstance(item.get("work_id"), str)
+        and (status is None or item.get("status") == status)
+    ]
+    if rows or attempts:
+        return rows
+    legacy_key = {
+        None: "attempted_work_ids",
+        "completed": "completed_work_ids",
+        "failed": "failed_work_ids",
+    }.get(status)
+    legacy = payload.get(legacy_key) if legacy_key else None
+    return [item for item in legacy if isinstance(item, str)] if isinstance(legacy, list) else []
+
+
+def _auto_elapsed_seconds(payload: dict[str, Any]) -> int | None:
+    if isinstance(payload.get("elapsed_seconds"), int):
+        return int(payload["elapsed_seconds"])
+    started = _parse_timestamp(payload.get("started_at"))
+    if started is None:
+        return None
+    return max(0, int((datetime.now(timezone.utc) - started.astimezone(timezone.utc)).total_seconds()))
+
+
 def _auto_attempt_status_count(payload: dict[str, Any], status: str) -> int:
     attempts = _auto_attempt_rows(payload)
     if attempts:
         return sum(1 for item in attempts if item.get("status") == status)
-    if status == "failed":
-        failed = payload.get("failed_work_ids")
-        return len([item for item in failed if isinstance(item, str)]) if isinstance(failed, list) else 0
-    if status == "completed":
-        completed = payload.get("completed_work_ids")
-        return len([item for item in completed if isinstance(item, str)]) if isinstance(completed, list) else 0
-    return 0
+    return len(_auto_attempt_work_ids(payload, status=status))
 
 
 def _tail_text(path: Path, *, limit: int) -> str:

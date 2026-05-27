@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.8.3" src="https://img.shields.io/badge/version-0.2.8.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.2.8.4" src="https://img.shields.io/badge/version-0.2.8.4-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.8.3 docs refresh</strong> · current smart init docs, public argue terminology, compact work_graph closure, and DAG-first auto actionability</p>
+  <p><strong>v0.2.8.4 compact runtime defaults</strong> · 288s live observation, host-aligned executors, and slimmer auto/guidance ledgers</p>
   <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
 </div>
 
@@ -272,7 +272,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `run` | `Claude: /thoth:run`<br>`Codex: $thoth run` | Execute one ready work item through a durable runtime packet. | `--work-id`, optional host or executor controls, optional attach/watch/stop | Durable run ledger with state, events, phase results, artifacts, and terminal result |
 | `loop` | `Claude: /thoth:loop`<br>`Codex: $thoth loop` | Iterate on one ready work item through a controller service. | `--work-id`, optional resume or sleep controls | Controller object, child run lineage, and bounded iteration history |
 | `argue` | `Claude: /thoth:argue`<br>`Codex: $thoth argue` | Run an adversarial attacker/adjudicator discussion against an idea, work item, or decision without silently mutating authority. | `--work-id`, `--decision-id`, `--target-kind`, `--target-id`, free-text idea, or confirmed `--apply-artifact` | Argument ledger with full attack/adjudication artifacts, `decision_impact`, and confirmation-required authority patch preview |
-| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | Run the DAG-first actionable queue while the user is away. | Optional `--sleep`, `--rounds`, `--scope all-open|ready`, or explicit `--work-id` | Auto controller, child loop lineage, actionability-aware queue snapshots, monitor events, and terminal or paused summary |
+| `auto` | `Claude: /thoth:auto`<br>`Codex: $thoth auto` | Run the DAG-first actionable queue while the user is away. | Optional `--sleep`, `--rounds`, `--scope all-open|ready`, or explicit `--work-id` | Auto controller, durable background worker, sparse foreground watch events, child loop lineage, and terminal or paused summary |
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by authority plus local `.thoth` ledgers |
@@ -285,6 +285,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | Locked planning authority | `.thoth/objects/discussion/`, `.thoth/objects/decision/`, and `.thoth/objects/work_item/` define what execution is allowed to do. |
 | Script-backed verification | Validators, doctor checks, and selftests decide pass or fail mechanically. |
 | Shared read model | `status`, `report`, and `dashboard` all read from the same authority instead of chat memory. |
+| Host-aligned execution | Claude defaults to Claude workers and Codex defaults to Codex workers; explicit `--executor claude|codex` remains available for deliberate cross-host runs. |
 
 ## Who It Is For
 

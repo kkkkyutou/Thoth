@@ -232,7 +232,6 @@ def create_auto_controller(
             "guidance": {
                 "message": guidance_text,
                 "source": "initial_invocation",
-                "semantics": "temporary controller-level execution guidance; authority and validators remain unchanged",
                 "created_at": utc_now(),
             }
             if guidance_text
@@ -249,13 +248,8 @@ def create_auto_controller(
                 fixed_queue=bool(work_ids),
             ),
             "work_refs": refs,
-            "queue": refs,
             "attempts": [],
-            "attempted_work_ids": [],
-            "completed_work_ids": [],
-            "failed_work_ids": [],
-            "skipped_work_ids": [],
-            "cursor": {"index": 0, "active_run_id": None, "completed_work_ids": [], "rounds_attempted": 0},
+            "cursor": {"index": 0, "active_run_id": None, "rounds_attempted": 0},
             "created_at": utc_now(),
         },
     )
