@@ -750,6 +750,42 @@ def test_reflect_runtime_contract_failure_synthesizes_non_retry_prompt():
     assert any(item["field"] == "reflect.corrective_prompt" for item in payload["_normalization_warnings"])
 
 
+def test_reflect_synthesis_preserves_rich_review_guidance():
+    payload = validate_phase_output(
+        "reflect",
+        {
+            "summary": "reflect failed validation",
+            "outcome": "failed",
+            "review": (
+                "# Review\n\n"
+                "Validation failed because the canonical run only reached a first-artifact gate.\n\n"
+                "## Guidance For Next Execute\n"
+                "Continue the canonical training run, diagnose `shape_surface_supervision_active=false`, "
+                "wait for the eval interval, and do not spend the retry on receipt-only cleanup."
+            ),
+        },
+        prior_validate_payload={
+            "summary": "Official validation evidence failed: official_command_matches, metric_threshold_met",
+            "passed": False,
+            "metric_name": "phase1",
+            "metric_value": 0,
+            "threshold": 1,
+            "runtime_contract_health": "failed",
+            "failure_class": "metric_not_reached",
+            "checks": [
+                {"name": "official_command_matches", "ok": False, "detail": "diagnostic only"},
+                {"name": "metric_threshold_met", "ok": False, "detail": "value=0 threshold=1"},
+            ],
+        },
+    )
+
+    assert payload["retry_authorized"] is True
+    assert "Continue the canonical training run" in payload["corrective_prompt"]
+    assert "shape_surface_supervision_active=false" in payload["corrective_prompt"]
+    assert "receipt-only cleanup" in payload["corrective_prompt"]
+    assert "official_command_matches" not in payload["corrective_prompt"]
+
+
 def test_runtime_validate_mechanically_confirms_execute_receipt_without_worker(tmp_path):
     project = _prepare_project(tmp_path)
     handle, _packet = prepare_execution(
@@ -1225,6 +1261,73 @@ def test_reflect_feedback_retries_execute_once_inside_single_run(tmp_path):
     assert (handle.run_dir / "phase-retries" / "retry-1" / "validate.json").exists()
     guidance = (handle.run_dir / "guidance.jsonl").read_text(encoding="utf-8")
     assert "reflect_feedback" in guidance
+
+
+def test_long_running_metric_miss_gets_continuation_retry_budget(tmp_path):
+    project = _prepare_project(tmp_path)
+    handle, _packet = prepare_execution(
+        project,
+        command_id="run",
+        title="Long training demo",
+        work_id="task-1",
+        host="codex",
+        executor="codex",
+        sleep_requested=False,
+        strict_task={
+            "work_id": "task-1",
+            "title": "Train a long-running model",
+            "goal_statement": "Continue training until thresholds are met; do not stop at first-artifact evidence.",
+            "eval_entrypoint": {"command": "python check_metrics.py"},
+            "primary_metric": {"name": "threshold_met", "threshold": 1},
+            "validate_output_schema": default_validate_output_schema(),
+        },
+        goal="retry continuation after first-artifact evidence",
+    )
+    calls: list[str] = []
+
+    class ContinuationDriver:
+        def execute_phase(self, *, handle, phase_packet):
+            phase = phase_packet["phase"]
+            calls.append(phase)
+            if phase == "plan":
+                return _plan_payload("long training plan")
+            if phase == "execute":
+                receipt = _receipt_payload(handle, passed=False, command="python check_metrics.py")
+                receipt.update(
+                    {
+                        "exit_code": 0,
+                        "metric_value": 0,
+                        "threshold": 1,
+                        "stdout_log": "record_counts={train:1,eval:0}; threshold_record=null\n",
+                    }
+                )
+                return {
+                    **_execute_payload("first-artifact evidence only"),
+                    "official_validation_receipt": receipt,
+                }
+            if phase == "reflect":
+                return {
+                    "summary": "only first-artifact evidence exists",
+                    "outcome": "failed",
+                    "review": "# Review\n\nThe model training only reached a first-artifact gate.",
+                    "corrective_prompt": (
+                        "Continue the canonical training run; record_counts={train:1,eval:0}, "
+                        "threshold_record=null, and this is not acceptance evidence."
+                    ),
+                    "retry_authorized": True,
+                }
+            raise AssertionError(f"unexpected worker phase {phase}")
+
+    status = execute_runtime_controller(project, handle.run_id, driver=ContinuationDriver())
+
+    assert status == 1
+    assert calls == ["plan", "execute", "reflect", "execute", "reflect", "execute", "reflect"]
+    phase_state = json.loads((handle.run_dir / "phase_state.json").read_text(encoding="utf-8"))
+    attempts = phase_state["reflect_feedback"]["attempts"]
+    assert len(attempts) == 2
+    assert phase_state["reflect_feedback"]["max_retries"] == 2
+    assert phase_state["reflect_feedback"]["retry_mode"] == "evidence_continuation"
+    assert attempts[-1]["retry_mode"] == "evidence_continuation"
 
 
 def test_execute_worker_has_no_default_timeout_from_run_payload(tmp_path):

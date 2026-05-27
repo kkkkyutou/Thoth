@@ -38,6 +38,7 @@ THOTH_RUN_ARGUMENTS_EOF
 - Substantive execution must flow through `packet.executor`; by default this matches the host unless the user explicitly supplied `--executor`.
 - Runtime lifecycle is `plan -> execute -> validate -> reflect`; execute owns the official validator receipt, validate confirms it mechanically.
 - Execute must actively produce canonical acceptance evidence: missing artifacts, metrics, logs, receipts, benchmark output, service state, or files are execution work until produced or until a concrete root cause, blocker, or budget boundary is captured.
+- For long-running work, first-artifact evidence proves startup only; continue or resume canonical execution until acceptance evidence, a concrete blocker, or a real budget boundary exists.
 - Do not let healthy work be stopped just because a short observation window has not yet produced canonical evidence; stop or restart only as explicit debugging or cleanup with logs and a next action.
 - If runtime budget expires before acceptance closes, preserve continuation evidence and the exact next command instead of presenting the work as passed.
 - Live monitor should observe sparsely around every 288s; on clear runtime/env mistakes, append or interrupt guidance instead of only narrating.

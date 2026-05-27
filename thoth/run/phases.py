@@ -40,6 +40,7 @@ RUN_PHASE_PROGRESS = {
     "reflect": 95,
 }
 RUN_REFLECT_FEEDBACK_LIMIT = 1
+RUN_CONTINUATION_FEEDBACK_LIMIT = 2
 
 
 class PhaseDriver(Protocol):
@@ -1350,6 +1351,77 @@ def _reflect_feedback_state(controller: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
+def _long_running_text(controller: dict[str, Any], payload: dict[str, Any], prior_validate: dict[str, Any]) -> str:
+    strict_task = controller.get("strict_task") if isinstance(controller.get("strict_task"), dict) else {}
+    chunks: list[str] = []
+    for source in (strict_task, payload, prior_validate):
+        if not isinstance(source, dict):
+            continue
+        for key in (
+            "title",
+            "goal_statement",
+            "context",
+            "summary",
+            "review",
+            "corrective_prompt",
+            "execute_summary",
+            "failure_class",
+        ):
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                chunks.append(value)
+        for key in ("constraints", "approach_notes"):
+            value = source.get(key)
+            if isinstance(value, list):
+                chunks.extend(item for item in value if isinstance(item, str))
+    observed = prior_validate.get("observed_validation")
+    if isinstance(observed, dict):
+        chunks.extend(str(value) for value in observed.values() if isinstance(value, (str, int, float, bool)))
+    return "\n".join(chunks).lower()
+
+
+def _reflect_indicates_continuation(controller: dict[str, Any], payload: dict[str, Any], prior_validate: dict[str, Any]) -> bool:
+    if prior_validate.get("runtime_contract_health") == "runtime_contract_error":
+        return False
+    if prior_validate.get("failure_class") not in {"metric_not_reached", "evidence_insufficient"}:
+        return False
+    text = _long_running_text(controller, payload, prior_validate)
+    long_running_markers = (
+        "train",
+        "training",
+        "long-running",
+        "long running",
+        "benchmark sweep",
+        "data generation",
+        "service warmup",
+        "continue",
+        "resume",
+        "继续",
+        "长训",
+    )
+    evidence_progress_markers = (
+        "first-artifact",
+        "first artifact",
+        "partial metric",
+        "metric stream",
+        "threshold_record",
+        "threshold record",
+        "record_counts",
+        "eval=0",
+        "no threshold",
+        "max-steps 1",
+        "max_steps 1",
+        "checkpoint",
+        "metrics.jsonl",
+        "not acceptance evidence",
+        "only 1",
+        "只有 1",
+    )
+    return any(marker in text for marker in long_running_markers) and any(
+        marker in text for marker in evidence_progress_markers
+    )
+
+
 def _reflect_next_hint(payload: dict[str, Any]) -> str:
     for field in ("corrective_prompt", "next_plan_hint", "next_recommendation"):
         value = payload.get(field)
@@ -1396,7 +1468,13 @@ def _reflect_authorizes_execute_retry(controller: dict[str, Any], payload: dict[
         return False
     feedback = _reflect_feedback_state(controller)
     attempts = feedback.get("attempts") if isinstance(feedback.get("attempts"), list) else []
-    return len(attempts) < int(feedback.get("max_retries") or RUN_REFLECT_FEEDBACK_LIMIT)
+    max_retries = int(feedback.get("max_retries") or RUN_REFLECT_FEEDBACK_LIMIT)
+    if _reflect_indicates_continuation(controller, payload, prior_validate):
+        max_retries = max(max_retries, RUN_CONTINUATION_FEEDBACK_LIMIT)
+        feedback["max_retries"] = max_retries
+        feedback["retry_mode"] = "evidence_continuation"
+        controller["reflect_feedback"] = feedback
+    return len(attempts) < max_retries
 
 
 def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase: str, payload: dict[str, Any]) -> PhaseOutcome:
@@ -1481,6 +1559,7 @@ def _phase_outcome_for_run(handle: RunHandle, controller: dict[str, Any], phase:
                     "corrective_prompt": corrective_prompt,
                     "archived_artifacts": archived,
                     "failure_class": (_prior_validate_payload(controller) or {}).get("failure_class"),
+                    "retry_mode": feedback.get("retry_mode") or "bugfix",
                 }
             )
             feedback["attempts"] = attempts

@@ -4,6 +4,16 @@
 
 No pending changes.
 
+## [0.2.8.6] - 2026-05-27
+
+### Changed
+- `execute` and `reflect` phase prompts now explicitly distinguish first-artifact evidence from acceptance evidence for long-running training, benchmark sweeps, data generation, service warmup, and similar tasks.
+- Reflect retry synthesis now preserves rich reviewer guidance when a worker omits mechanical `corrective_prompt` fields, instead of replacing the technical direction with receipt-only validation check summaries.
+- Runs that clearly need long-running evidence continuation can receive one extra reflect feedback cycle, so a receipt/import hygiene retry does not consume the only chance to continue canonical evidence production.
+
+### Fixed
+- Prevented `metric_not_reached` on a partial metric stream, missing eval interval, or missing threshold record from narrowing the next execute attempt to validator/receipt cleanup when the review already identified canonical continuation work.
+
 ## [0.2.8.5] - 2026-05-27
 
 ### Changed
