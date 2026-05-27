@@ -38,6 +38,8 @@
 - `REQ-035`: `auto` 的长时执行必须由 Thoth-owned durable background worker 持有，live / sleep / Claude Monitor / Codex foreground watch 只能作为观察器；正确性与恢复点必须落在 `.thoth/objects/controller`、`.thoth/local/controllers/*/supervisor.json`、child run ledger 与 watch JSONL 中。
 - `REQ-036`: Codex 安装态插件必须包含 Thoth runtime entrypoint 与生成 skill，不能是 skill-only package；Codex host-real selftest 必须从已安装 marketplace cache 或 PATH 解析 runtime，不得回退到当前本地 checkout。
 - `REQ-037`: `auto` 必须按 DAG-first semantics 选择 work：依赖只在 dependency work item status 为 `validated` 时满足，`abandoned` 不满足；不再使用 priority / priority-top 语义，只允许可选 `scheduling.order` 做同层排序；`all-open` scope 顺序为 active、ready、failed，`ready` scope 只消费 ready。`run --reconcile` 不再是 public flag；历史 run 进度恢复必须由 `plan` phase 的 `history_context` / `history_action` 驱动。
+- `REQ-038`: live foreground observation 默认必须稀疏化为 `288` 秒节奏，以降低前台宿主 token 消耗；terminal/error、worker-invalid、missing receipt、runtime mismatch 与用户纠偏必须能绕过安静观察间隔。
+- `REQ-039`: public execution 默认必须宿主对齐：Claude 宿主默认 Claude executor，Codex 宿主默认 Codex executor；显式 `--executor claude|codex` 仍作为有意跨宿主执行覆盖口保留。
 
 ## Acceptance Criteria
 
@@ -48,7 +50,7 @@
 - `AC-005`: 文档准确描述当前插件代码面：
   - 当前公开命令包括 Claude `/thoth:*` 与 Codex `$thoth <command>`
   - 当前公开命令集合固定为 `init`、`discuss`、`run`、`loop`、`argue`、`auto`、`status`、`doctor`、`dashboard`
-  - Claude 侧 `--executor codex` 继续存在
+  - Claude 侧 `--executor codex` 继续存在，但默认 executor 与宿主对齐
   - 当前已实现最小 `.thoth/objects` authority tree、durable run/controller runtime 与 dashboard run-ledger / object-graph 读面
 - `AC-006`: `architecture-milestones.md` 中明确分开“当前实现结构”与“目标 V2 架构”。
 - `AC-007`: `.agent-os/official-sources/` 中存在平台真源治理文档。
@@ -71,8 +73,10 @@
 - `AC-024`: selftest case registry 包含并可执行 `discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`orchestration.controller`、`auto.queue`、`observe.object_graph`。
 - `AC-025`: 本轮关闭门只包含核心五项 selftest：`discuss.subtree.close`、`run.phase_contract`、`run.locked_work`、`loop.controller`、`observe.object_graph`；`auto` / `orchestration` 保留 public surface 与现有测试覆盖，但不作为本轮 runtime kernel 关闭门。
 - `AC-026`: `auto` live 默认启动或复用 durable background worker 后只观察 controller；`auto --sleep` 与 Claude bridge 默认返回 `monitor_command`；session 中断不得直接中断 worker，worker stale/missing 时可由同一 controller 恢复；`--min-runtime-seconds` 的默认 `28800` 必须按真实 wall-clock 执行。
-- `AC-027`: 安装态 host-real selftest 覆盖 9 个公开命令与关键模式：Codex `$thoth` 命令从安装态 runtime 执行；Claude `/thoth:* --executor codex` 对 `run`、`loop`、`argue`、`auto` 进行真实 Codex worker 委派；Codex hooks 只允许写入一次性测试仓库 `.codex/`，不得修改全局 `~/.codex`。
+- `AC-027`: 安装态 host-real selftest 覆盖 9 个公开命令与关键模式：Codex `$thoth` 命令从安装态 runtime 执行并默认使用 Codex executor；Claude `/thoth:*` 对 `run`、`loop`、`argue`、`auto` 默认使用 Claude executor，同时保留显式 `--executor codex` 覆盖路径；Codex hooks 只允许写入一次性测试仓库 `.codex/`，不得修改全局 `~/.codex`。
 - `AC-028`: 新 public work-json 若缺 `acceptance_spec` 必须以 blocked / needs-input 形态保存或拒绝，不得写空 schema 伪装 ready；dashboard/status 只能把 `module` / `direction` 作为派生读模型字段，不得要求 compact authority payload 存储这些 dashboard-only 字段。
+- `AC-029`: `run` / `loop` / `auto` / `argue` 在没有显式 `--executor` 时必须把 executor 解析为当前 host；Claude projection 传入 `--host claude` 即应得到 Claude executor，Codex public entry 默认得到 Codex executor。
+- `AC-030`: auto controller payload 不得长期重复保存可派生的 queue/count/attempted/completed/failed 列表；dashboard/status 必须从 `work_refs`、`attempts`、cursor、supervisor 与 object graph 派生这些读面。
 
 ## Non-Goals
 

@@ -16,7 +16,7 @@
 当前已实现事实：
 
 - 公开命令面是 Claude `/thoth:*` 与 Codex `$thoth <command>`，当前只公开 `init`、`discuss`、`run`、`loop`、`argue`、`auto`、`status`、`doctor`、`dashboard`
-- Codex 以 executor-mode 进入 `run` / `loop` / `argue` / `auto`
+- `run` / `loop` / `argue` / `auto` 默认按宿主对齐 executor：Claude host 默认 Claude executor，Codex host 默认 Codex executor；显式 `--executor claude|codex` 仍可用于有意跨宿主执行
 - `/thoth:init` 采用 audit-first adopt/init，并生成最小 `.thoth/objects/` authority tree 与 `.thoth/docs/` 只读视图；带自然语言 intent 时额外打开或追加 `source=init:*` discussion，不直接生成 ready work
 - `/thoth:init --sync` 是当前公开的生成面刷新入口；`/thoth:init --migrate --preview|--apply` 是旧项目迁移入口
 - strict planning authority 已收敛为统一对象图：`.thoth/objects/discussion/`、`.thoth/objects/decision/`、`.thoth/objects/work_item/`、`.thoth/objects/controller/`、`.thoth/objects/run/`、`.thoth/objects/phase_result/`、`.thoth/objects/artifact/` 与 `.thoth/objects/doc_view/`
@@ -31,6 +31,8 @@
 - 当前 phase 产物固定为 `plan.json`、`execute.json`、`validate.json`、`reflect.json`；`result.json.result` 固定包含 `phase_statuses`、`validate_passed`、`final_summary`、`artifacts`、`next_hint`
 - 当前 `loop` 已收敛为 controller service：controller 记录预算与 child lineage，每轮显式创建独立 child `run`，child run 与普通 run 复用同一 `plan -> execute -> validate -> reflect` RuntimeDriver
 - 当前 `auto` 已收敛为 durable controller worker service：真实执行 owner 是 detached auto worker，live / sleep / Claude Monitor / Codex watch 都只是观察器；worker supervisor 写在 `.thoth/local/controllers/<controller_id>/supervisor.json`，controller truth、child run ledger 与 watch JSONL 是恢复依据
+- 当前 live foreground observation 默认按 `288` 秒稀疏观察节奏工作，terminal/error、worker-invalid、missing receipt、runtime mismatch 与用户纠偏可绕过安静间隔；auto watch 同步使用该节奏减少前台 token 与 stdout 噪音
+- 当前 auto controller payload 已 compact：长期 truth 保留 policy / `work_refs` / cursor / attempts / active guidance，queue、count、attempted、completed、failed、worker_alive、elapsed 等展示字段由 status/dashboard/watch 读面派生
 - 当前 `auto --min-runtime-seconds` 默认 `28800`，按真实 wall-clock 约束执行；idle 时 heartbeat/rescan，`--rounds` 只在达到最小运行时间后作为退出上限，同一 controller 内失败 work 只尝试一次并记录风险后继续队列
 - heartbeat 当前写入 `state.json.last_heartbeat_at`，而不是单独的 `heartbeat.json`
 - active run/controller 引用的 `work_item` 完全锁定；`Store.update/tombstone/link/unlink` 对该 work item 必须拒绝，直到执行进入 terminal 状态
