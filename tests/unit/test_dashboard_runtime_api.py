@@ -218,6 +218,60 @@ def test_runtime_progress_and_event_endpoints(monkeypatch, tmp_path):
     assert logs_payload["logs"]["plan"]["stderr"]["tail"] == "worker stderr latest line"
 
 
+def test_observe_plugin_tool_and_metrics_endpoints(monkeypatch, tmp_path):
+    _setup_project(tmp_path, monkeypatch)
+    manifest_path = tmp_path / ".thoth" / "extensions" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "plugins": [
+                    {
+                        "id": "metrics-demo",
+                        "version": "1.0.0",
+                        "enabled": True,
+                        "surfaces": ["dashboard", "tui"],
+                        "capabilities": ["metrics_provider"],
+                        "source": ".thoth/extensions/plugins/metrics-demo",
+                        "config": {
+                            "run_name": "unit-demo",
+                            "metrics_files": [".thoth/extensions/plugins/metrics-demo/metrics.jsonl"],
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    metrics_path = tmp_path / ".thoth" / "extensions" / "plugins" / "metrics-demo" / "metrics.jsonl"
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.write_text(
+        '{"step":1,"split":"train","metrics":{"loss_total":3.0}}\n'
+        '{"step":2,"split":"train","metrics":{"loss_total":2.5}}\n',
+        encoding="utf-8",
+    )
+    dashboard_app.invalidate_cache()
+    client = TestClient(dashboard_app.app)
+
+    observe = client.get("/api/observe")
+    plugins = client.get("/api/plugins")
+    tools = client.get("/api/tools")
+    metrics = client.get("/api/metrics")
+
+    assert observe.status_code == 200
+    assert observe.json()["providers"]["metrics"]["record_count"] == 2
+    assert plugins.status_code == 200
+    assert plugins.json()["enabled_plugin_count"] == 1
+    assert tools.status_code == 200
+    assert {tool["id"] for tool in tools.json()["tools"]} >= {"todo", "thoth-triggers"}
+    assert metrics.status_code == 200
+    assert metrics.json()["metrics"][0]["name"] == "train.loss_total"
+
+
 def test_runtime_progress_reports_auto_failed_attempt_counts(monkeypatch, tmp_path):
     _setup_project(tmp_path, monkeypatch)
     controller_path = tmp_path / ".thoth" / "objects" / "controller" / "controller-auto-1.json"

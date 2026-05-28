@@ -6,7 +6,7 @@ export const en = {
     detail: 'Detail',
     dag: 'DAG',
     gantt: 'Gantt',
-    todo: 'Todo',
+    todo: 'Tools',
     activity: 'Activity',
     system: 'System',
   },

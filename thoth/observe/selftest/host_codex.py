@@ -78,6 +78,7 @@ def _host_codex(
             "loop_live": "$thoth loop --work-id task-runtime-probe",
             "dashboard_start": "$thoth dashboard start",
             "dashboard_stop": "$thoth dashboard stop",
+            "tui": "$thoth tui --snapshot-json --no-gpu",
             "loop_sleep": "$thoth loop --sleep --work-id task-runtime-probe",
             "loop_stop": lambda run_id: f"$thoth loop --stop {run_id}",
             "auto": "$thoth auto --sleep --rounds 1 --min-runtime-seconds 0",

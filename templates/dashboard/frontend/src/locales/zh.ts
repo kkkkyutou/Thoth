@@ -6,7 +6,7 @@ export const zh = {
     detail: '详情',
     dag: 'DAG',
     gantt: 'Gantt',
-    todo: '待办',
+    todo: '工具',
     activity: '活动',
     system: '系统',
   },

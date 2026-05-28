@@ -12,6 +12,7 @@ PORTABLE_AUTHORITY_PATHS = (
     ".thoth/objects/work_item/",
     ".thoth/objects/discussion/",
     ".thoth/objects/decision/",
+    ".thoth/extensions/",
     ".thoth/docs/agent-entry.md",
     ".thoth/docs/project.json",
     ".thoth/docs/source-map.json",

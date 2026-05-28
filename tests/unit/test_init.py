@@ -84,9 +84,12 @@ def test_generate_thoth_runtime(base_config, tmp_path):
     manifest = json.loads((tmp_path / ".thoth" / "objects" / "project" / "project.json").read_text(encoding="utf-8"))
     assert manifest["payload"]["project"]["name"] == "UnitTestProject"
     assert manifest["payload"]["dashboard"]["port"] == 8501
+    assert manifest["payload"]["extensions"]["manifest"] == ".thoth/extensions/manifest.json"
+    assert (tmp_path / ".thoth" / "extensions" / "manifest.json").exists()
     assert (tmp_path / ".thoth" / "docs" / "object-graph-summary.json").exists()
     assert (tmp_path / ".thoth" / ".gitignore").exists()
     assert "/runs/" in (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
+    assert "/extensions/" not in (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
 
 
 def test_generate_pre_commit_config(base_config, tmp_path):
@@ -272,6 +275,42 @@ def test_initialize_project_appends_gitignore_rules_idempotently(base_config, tm
     assert thoth_lines.count("/objects/run/") == 1
     assert frontend_lines.count("node_modules/") == 1
     assert frontend_lines.count("dist/") == 1
+
+
+def test_sync_project_layer_preserves_extension_manifest_and_plugins(base_config, tmp_path):
+    initialize_project(base_config, tmp_path)
+    manifest_path = tmp_path / ".thoth" / "extensions" / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "plugins": [
+                    {
+                        "id": "project-metrics",
+                        "version": "1.0.0",
+                        "enabled": True,
+                        "surfaces": ["dashboard", "tui"],
+                        "capabilities": ["metrics_provider"],
+                        "source": ".thoth/extensions/plugins/project-metrics",
+                        "config": {"metrics_files": ["metrics.jsonl"]},
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plugin_file = tmp_path / ".thoth" / "extensions" / "plugins" / "project-metrics" / "plugin.txt"
+    plugin_file.parent.mkdir(parents=True, exist_ok=True)
+    plugin_file.write_text("keep me\n", encoding="utf-8")
+
+    result = sync_project_layer(tmp_path)
+
+    assert result is not None
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["plugins"][0]["id"] == "project-metrics"
+    assert plugin_file.read_text(encoding="utf-8") == "keep me\n"
 
 
 def test_init_git_status_shows_authority_but_not_runtime_cache(base_config, tmp_path):

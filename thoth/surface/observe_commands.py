@@ -14,6 +14,7 @@ from thoth.init.service import initialize_project, preview_project_migration
 from thoth.plan.doctor import build_doctor_payload, render_doctor_text
 from thoth.run.status import build_status_payload
 from thoth.surface.envelope import output_refs, print_envelope
+from thoth.tui.cli import main as tui_main
 
 
 def _normalize_preview_apply(args, flag_name: str, parser, command_name: str) -> None:
@@ -122,6 +123,31 @@ def handle_dashboard(args, parser, *, project_root: Path) -> int:
     result = manage_dashboard(project_root, getattr(args, "action", "start"))
     print_envelope(command="dashboard", status=result["status"], summary=result["summary"], body=result, refs=output_refs(project_root / ".thoth" / "derived" / "dashboard.pid"), checks=[{"name": f"dashboard_{result['action']}", "ok": result["status"] == "ok"}])
     return 0
+
+
+def handle_tui(args, parser, *, project_root: Path) -> int:
+    argv = ["--project-root", str(getattr(args, "tui_project_root", None) or project_root)]
+    if getattr(args, "snapshot_json", False):
+        argv.append("--snapshot-json")
+    if getattr(args, "export_snapshots", False):
+        argv.append("--export-snapshots")
+    if getattr(args, "snapshot_dir", None):
+        argv.extend(["--snapshot-dir", str(args.snapshot_dir)])
+    if getattr(args, "refresh", None) is not None:
+        argv.extend(["--refresh", str(args.refresh)])
+    if getattr(args, "metrics_refresh", None) is not None:
+        argv.extend(["--metrics-refresh", str(args.metrics_refresh)])
+    if getattr(args, "runs_refresh", None) is not None:
+        argv.extend(["--runs-refresh", str(args.runs_refresh)])
+    if getattr(args, "gpu_refresh", None) is not None:
+        argv.extend(["--gpu-refresh", str(args.gpu_refresh)])
+    if getattr(args, "ui_frame", None) is not None:
+        argv.extend(["--ui-frame", str(args.ui_frame)])
+    if getattr(args, "metrics_max_records", None) is not None:
+        argv.extend(["--metrics-max-records", str(args.metrics_max_records)])
+    if getattr(args, "no_gpu", False):
+        argv.append("--no-gpu")
+    return tui_main(argv)
 
 
 def handle_report(args, parser, *, project_root: Path) -> int:

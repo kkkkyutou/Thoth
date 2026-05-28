@@ -42,6 +42,7 @@ _REPO_CASES: tuple[SelftestCaseSpec, ...] = (
     SelftestCaseSpec("runtime.loop.lease_conflict", "repo_local", 20.0, False, "none", "runtime_repo", atomic_cases.case_runtime_loop_lease_conflict, ("runtime", "loop", "lease")),
     SelftestCaseSpec("argue.adversarial", "repo_local", 20.0, False, "none", "probe_repo", atomic_cases.case_argue_adversarial, ("argue", "adversarial")),
     SelftestCaseSpec("observe.dashboard", "repo_local", 75.0, False, "none", "runtime_repo", atomic_cases.case_observe_dashboard, ("observe", "dashboard")),
+    SelftestCaseSpec("observe.tui", "repo_local", 30.0, False, "none", "runtime_repo", atomic_cases.case_observe_tui, ("observe", "tui")),
     SelftestCaseSpec("hooks.codex", "repo_local", 20.0, False, "none", "runtime_repo", atomic_cases.case_hooks_codex, ("hooks", "codex")),
 )
 
@@ -64,6 +65,7 @@ _HOST_CASES: tuple[SelftestCaseSpec, ...] = (
     SelftestCaseSpec("surface.codex.dashboard.start", "host_surface", 90.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_dashboard_start, ("surface", "codex", "dashboard")),
     SelftestCaseSpec("surface.codex.dashboard.stop", "host_surface", 120.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_dashboard_stop, ("surface", "codex", "dashboard")),
     SelftestCaseSpec("surface.codex.init_sync", "host_surface", 60.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_init_sync, ("surface", "codex", "init", "sync")),
+    SelftestCaseSpec("surface.codex.tui", "host_surface", 90.0, True, "codex", "host_probe", atomic_cases.case_surface_codex_tui, ("surface", "codex", "tui")),
     SelftestCaseSpec("surface.claude.init", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_init, ("surface", "claude", "init")),
     SelftestCaseSpec("surface.claude.status", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_status, ("surface", "claude", "status")),
     SelftestCaseSpec("surface.claude.doctor", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_doctor, ("surface", "claude", "doctor")),
@@ -81,6 +83,7 @@ _HOST_CASES: tuple[SelftestCaseSpec, ...] = (
     SelftestCaseSpec("surface.claude.dashboard.start", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_dashboard_start, ("surface", "claude", "dashboard")),
     SelftestCaseSpec("surface.claude.dashboard.stop", "host_surface", 45.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_dashboard_stop, ("surface", "claude", "dashboard")),
     SelftestCaseSpec("surface.claude.init_sync", "host_surface", 25.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_init_sync, ("surface", "claude", "init", "sync")),
+    SelftestCaseSpec("surface.claude.tui", "host_surface", 60.0, True, "claude", "host_probe", atomic_cases.case_surface_claude_tui, ("surface", "claude", "tui")),
 )
 
 

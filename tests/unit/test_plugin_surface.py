@@ -121,4 +121,11 @@ def test_plugin_shell_wrapper_exists_for_fresh_install_envs():
     assert '"jsonschema>=4.0"' in content
     assert '"fastapi>=0.100.0"' in content
     assert '"uvicorn>=0.23.0"' in content
+    assert '"rich>=14.0.0"' in content
+    assert '"textual>=6.0.0"' in content
+    assert '"psutil>=5.9.0"' in content
+    assert '"nvidia-ml-py>=13.0.0"' in content
+    assert '"pillow>=10.0.0"' in content
+    for module_name in ["rich", "textual", "psutil", "pynvml", "PIL"]:
+        assert f'"{module_name}"' in content
     assert 'exec "${PYTHON_BIN}" "${PLUGIN_ROOT}/scripts/thoth-cli-entry.py" "$@"' in content

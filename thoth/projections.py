@@ -12,7 +12,7 @@ from .run.model import DEFAULT_LIVE_OBSERVE_INTERVAL_SECONDS
 
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_NAME = "thoth"
-PLUGIN_VERSION = "0.2.8.6"
+PLUGIN_VERSION = "0.3.0"
 PLUGIN_REPOSITORY = "https://github.com/SeeleAI/Thoth"
 PLUGIN_PACKAGE_DIR = "."
 PLUGIN_SKILLS_PATH = "./plugins/thoth/skills"
@@ -200,7 +200,7 @@ Supported commands:
 ## Shared Rules
 
 - `init` is hybrid: no intent is a mechanical audit-first receipt; natural-language intent opens an inquiring discussion and must be closed through compact project_patch/work_graph authority.
-- `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
+- `status`, `doctor`, `dashboard`, and `tui` are mechanical fast-path commands and should return only short receipts.
 - `discuss`, `run`, `loop`, `auto`, and `argue` are high-intelligence paths.
 - `argue` preserves full attacker/adjudicator artifacts; authority patches require explicit confirmation before apply.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.

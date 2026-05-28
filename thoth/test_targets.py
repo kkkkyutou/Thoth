@@ -32,6 +32,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
             "runtime.loop.lease_conflict",
             "argue.adversarial",
             "observe.dashboard",
+            "observe.tui",
             "hooks.codex",
         ),
         description="Atomic selftest registry, repo-local runtime probes, and host-surface helpers.",
@@ -77,6 +78,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
             "surface.codex.dashboard.start",
             "surface.codex.dashboard.stop",
             "surface.codex.init_sync",
+            "surface.codex.tui",
         ),
         description="Public CLI and generated command surface behavior.",
     ),
@@ -101,6 +103,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
             "surface.claude.dashboard.start",
             "surface.claude.dashboard.stop",
             "surface.claude.init_sync",
+            "surface.claude.tui",
         ),
         description="Claude bridge surface and slash-command projection behavior.",
     ),
@@ -110,7 +113,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
             "tests/unit/test_dashboard_runtime_api.py",
             "tests/integration/test_dashboard_api.py",
         ),
-        recommended_selftest_cases=("observe.dashboard",),
+        recommended_selftest_cases=("observe.dashboard", "observe.tui"),
         description="Dashboard backend read model and runtime status views.",
     ),
     "init-workflow": TargetSpec(
@@ -142,7 +145,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
             "tests/unit/test_data_loader.py",
             "tests/unit/test_runtime_loader.py",
         ),
-        recommended_selftest_cases=("observe.dashboard",),
+        recommended_selftest_cases=("observe.dashboard", "observe.tui"),
         description="Status/report/read-model derivation logic.",
     ),
 }
@@ -150,6 +153,9 @@ TARGET_SPECS: dict[str, TargetSpec] = {
 
 PATH_TARGET_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("thoth/observe/selftest/", ("selftest-core", "runtime-core", "surface-cli", "claude-bridge")),
+    ("thoth/tui/", ("observe-read-model", "selftest-core", "surface-cli")),
+    ("thoth/observe/extensions.py", ("observe-read-model", "dashboard-runtime", "plugin-surface")),
+    ("thoth/observe/providers.py", ("observe-read-model", "dashboard-runtime", "selftest-core")),
     ("thoth/run/", ("runtime-core", "selftest-core")),
     ("thoth/surface/", ("surface-cli", "claude-bridge")),
     ("thoth/projections.py", ("surface-cli", "claude-bridge", "selftest-core")),

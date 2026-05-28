@@ -148,6 +148,21 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         result_style="brief operator receipt",
         validator_policy="dashboard is read-only over .thoth ledgers",
     ),
+    "tui": CommandPromptSpec(
+        command_id="tui",
+        route_class="mechanical_fast",
+        intelligence_tier="none",
+        packet_authority_mode="result_envelope",
+        objective="Open or snapshot the read-only terminal dashboard from shared observe providers without mutating authority or runtime ledgers.",
+        hard_stops=(
+            "Do not mutate .thoth authority, run ledgers, checkpoints, or training artifacts.",
+            "Do not infer metrics paths by scanning arbitrary project directories; metrics must come from enabled extension providers.",
+            "Do not narrate the whole UI; report only the launch/snapshot result and any provider errors.",
+        ),
+        reply_budget_utf8=56,
+        result_style="brief TUI launch or snapshot receipt",
+        validator_policy="tui is read-only over shared observe providers",
+    ),
     "orchestration": CommandPromptSpec(
         command_id="orchestration",
         route_class="mechanical_fast",
@@ -255,7 +270,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
 
 
 PUBLIC_COMMAND_PROMPT_IDS = frozenset(
-    {"init", "discuss", "run", "loop", "argue", "auto", "status", "doctor", "dashboard"}
+    {"init", "discuss", "run", "loop", "argue", "auto", "status", "doctor", "dashboard", "tui"}
 )
 INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_PROMPT_IDS
 

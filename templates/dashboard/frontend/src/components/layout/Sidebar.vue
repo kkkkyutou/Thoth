@@ -65,7 +65,11 @@ const directions = computed(
 
 @media (max-width: 960px) {
   .sidebar {
-    display: none;
+    width: 100%;
+    min-width: 0;
+    max-height: 38vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border-light);
   }
 }
 </style>

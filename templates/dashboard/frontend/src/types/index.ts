@@ -458,6 +458,7 @@ export interface ResearchConfig {
   }
   runtime?: Record<string, unknown>
   hosts?: Record<string, unknown>
+  extensions?: Record<string, unknown>
 }
 
 export interface WorkItemFilters {
@@ -466,4 +467,80 @@ export interface WorkItemFilters {
   direction?: string
   limit?: number
   offset?: number
+}
+
+export interface ProviderEnvelope<T = Record<string, unknown>> {
+  schema_version?: number
+  kind?: string
+  provider?: {
+    last_refreshed_at?: string
+    last_refreshed_epoch?: number
+    refresh_seconds?: number | null
+    stale_seconds?: number
+    last_error?: string | null
+  }
+  [key: string]: T | unknown
+}
+
+export interface ObserveSnapshot {
+  schema_version: number
+  generated_at: string
+  project_root: string
+  providers: {
+    project?: ProviderEnvelope
+    authority?: ProviderEnvelope
+    work_items?: ProviderEnvelope
+    runs?: ProviderEnvelope
+    metrics?: ProviderEnvelope
+    plugins?: ProviderEnvelope
+    tools?: ProviderEnvelope
+    system?: ProviderEnvelope
+  }
+  overview?: OverviewSummary | Record<string, unknown>
+}
+
+export interface PluginSummary {
+  schema_version: number
+  manifest_path: string
+  manifest_error?: string | null
+  validation_errors?: string[]
+  plugin_count: number
+  enabled_plugin_count: number
+  metrics_configured: boolean
+  system_configured?: boolean
+  plugins: Array<{
+    id: string
+    title: string
+    version: string
+    enabled: boolean
+    surfaces: string[]
+    capabilities: string[]
+    source: string
+  }>
+  tool_plugins: ToolPlugin[]
+}
+
+export interface ToolPlugin {
+  id: string
+  title?: string
+  kind?: string
+  capabilities?: string[]
+  enabled?: boolean
+  description?: string
+  source?: string
+}
+
+export interface MetricsProviderPayload {
+  schema_version: number
+  kind: string
+  configured: boolean
+  record_count?: number
+  latest_step?: number | null
+  run_name?: string | null
+  metrics?: Array<Record<string, unknown>>
+  source_files?: string[]
+  bad_lines?: number
+  provider_errors?: string[]
+  message?: string
+  provider?: ProviderEnvelope['provider']
 }

@@ -201,17 +201,17 @@ defineExpose({ reload: load })
 
 <style scoped>
 .todo-panel {
-  padding: 24px;
-  max-width: 800px;
+  padding: 0;
+  max-width: none;
 }
 
 .error-msg {
-  color: #a4262c;
+  color: var(--status-blocked);
   text-align: center;
   padding: 40px;
 }
 .empty-hint {
-  color: var(--text-secondary, #6b5b4e);
+  color: var(--text-secondary);
   text-align: center;
   padding: 40px;
   font-size: 14px;
@@ -226,16 +226,16 @@ defineExpose({ reload: load })
 
 .input {
   padding: 8px 12px;
-  border: 1px solid var(--border, #e8e0d6);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   font-size: 13px;
-  background: var(--bg-card, #ffffff);
-  color: var(--text-primary, #2C1810);
+  background: var(--bg-input);
+  color: var(--text-primary);
   outline: none;
   flex: 1;
 }
 .input:focus {
-  border-color: var(--accent, #CC8B3A);
+  border-color: var(--accent-primary);
 }
 .input.small {
   padding: 6px 10px;
@@ -249,8 +249,8 @@ defineExpose({ reload: load })
   padding: 8px 16px;
   border: none;
   border-radius: 8px;
-  background: var(--accent, #CC8B3A);
-  color: #fff;
+  background: var(--accent-primary);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -264,10 +264,10 @@ defineExpose({ reload: load })
 .btn-small {
   width: 30px;
   height: 30px;
-  border: 1px solid var(--border, #e8e0d6);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   background: transparent;
-  color: var(--accent, #CC8B3A);
+  color: var(--accent-cyan);
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
@@ -289,9 +289,10 @@ defineExpose({ reload: load })
 }
 
 .project-group {
-  background: var(--bg-card, #ffffff);
-  border-radius: 12px;
-  box-shadow: 0 1px 4px rgba(44, 24, 16, 0.06);
+  background: rgba(247, 241, 232, 0.04);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
   overflow: hidden;
 }
 
@@ -304,12 +305,12 @@ defineExpose({ reload: load })
   user-select: none;
 }
 .project-header:hover {
-  background: var(--bg-secondary, #f0ebe4);
+  background: rgba(210, 31, 60, 0.1);
 }
 
 .collapse-icon {
   font-size: 12px;
-  color: var(--text-secondary, #6b5b4e);
+  color: var(--text-secondary);
   transition: transform 0.2s;
 }
 .collapse-icon.open {
@@ -320,13 +321,13 @@ defineExpose({ reload: load })
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-primary, #2C1810);
+  color: var(--text-primary);
   flex: 1;
 }
 
 .task-count {
   font-size: 12px;
-  color: var(--text-secondary, #6b5b4e);
+  color: var(--text-secondary);
 }
 
 .project-body {
@@ -339,7 +340,7 @@ defineExpose({ reload: load })
   align-items: center;
   gap: 10px;
   padding: 8px 0;
-  border-bottom: 1px solid var(--bg-secondary, #f0ebe4);
+  border-bottom: 1px solid rgba(247, 241, 232, 0.08);
 }
 .todo-item:last-of-type {
   border-bottom: none;
@@ -348,7 +349,7 @@ defineExpose({ reload: load })
 .todo-check {
   width: 16px;
   height: 16px;
-  accent-color: var(--accent, #CC8B3A);
+  accent-color: var(--accent-primary);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -356,27 +357,27 @@ defineExpose({ reload: load })
 .todo-desc {
   flex: 1;
   font-size: 13px;
-  color: var(--text-primary, #2C1810);
+  color: var(--text-primary);
   cursor: text;
 }
 .todo-item.done .todo-desc {
   text-decoration: line-through;
-  color: var(--text-secondary, #6b5b4e);
+  color: var(--text-secondary);
 }
 
 .edit-input {
   flex: 1;
   padding: 4px 8px;
-  border: 1px solid var(--accent, #CC8B3A);
+  border: 1px solid var(--accent-primary);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
-  background: #fffdf8;
+  background: var(--bg-input);
 }
 
 .due-label {
   font-size: 11px;
-  color: var(--text-secondary, #6b5b4e);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 

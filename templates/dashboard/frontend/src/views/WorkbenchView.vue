@@ -66,4 +66,18 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
 }
+
+@media (max-width: 960px) {
+  .workbench__body {
+    flex-direction: column;
+  }
+
+  .workbench__body :deep(.main-panel) {
+    order: 1;
+  }
+
+  .workbench__body :deep(.sidebar) {
+    order: 2;
+  }
+}
 </style>

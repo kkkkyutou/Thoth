@@ -21,6 +21,8 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.requests import Request
+from thoth.observe.extensions import extension_summary, tool_plugins
+from thoth.observe.providers import observe_snapshot
 from thoth.observe.read_model import derive_gantt_rows, overview_summary_read_model
 
 from data_loader import (
@@ -242,6 +244,43 @@ async def api_config():
     try:
         return load_project_config(PROJECT_ROOT)
     except Exception as exc:
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.get("/api/observe")
+async def api_observe():
+    try:
+        return observe_snapshot(PROJECT_ROOT)
+    except Exception as exc:
+        logger.error("Error in /api/observe: %s", traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.get("/api/plugins")
+async def api_plugins():
+    try:
+        return extension_summary(PROJECT_ROOT)
+    except Exception as exc:
+        logger.error("Error in /api/plugins: %s", traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.get("/api/tools")
+async def api_tools():
+    try:
+        tools = tool_plugins(PROJECT_ROOT)
+        return {"schema_version": 1, "tool_count": len(tools), "tools": tools}
+    except Exception as exc:
+        logger.error("Error in /api/tools: %s", traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.get("/api/metrics")
+async def api_metrics():
+    try:
+        return observe_snapshot(PROJECT_ROOT)["providers"]["metrics"]
+    except Exception as exc:
+        logger.error("Error in /api/metrics: %s", traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 

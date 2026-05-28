@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = withDefaults(defineProps<{
   value: number
   color?: string
@@ -9,8 +11,6 @@ const props = withDefaults(defineProps<{
 })
 
 const clampedValue = computed(() => Math.max(0, Math.min(100, props.value)))
-
-import { computed } from 'vue'
 </script>
 
 <template>
@@ -42,7 +42,8 @@ import { computed } from 'vue'
 
 .progress-bar-track {
   flex: 1;
-  background: var(--bg-hover, #f0ebe4);
+  background: rgba(247, 241, 232, 0.08);
+  border: 1px solid rgba(247, 241, 232, 0.12);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -50,12 +51,13 @@ import { computed } from 'vue'
 .progress-bar-fill {
   border-radius: 999px;
   transition: width 0.4s ease;
+  box-shadow: 0 0 16px currentColor;
 }
 
 .progress-bar-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary, #6b5b4e);
+  color: var(--text-secondary);
   min-width: 36px;
   text-align: right;
 }

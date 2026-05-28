@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from thoth.command_specs import COMMAND_SPECS
+from thoth.observe.extensions import ensure_extension_manifest
 from thoth.plan.compiler import compile_task_authority
 from thoth.plan.store import ensure_work_authority_tree
 from thoth.objects import Store
@@ -178,6 +179,7 @@ This document is the canonical human-readable project instruction source for `{c
 - Commit the portable authority paths:
 {portable_paths}
 - Runtime evidence lives under `.thoth/runs`, `.thoth/derived`, generated work-results, and runtime object kinds such as run/artifact/controller/phase_result; these are local by default and ignored by Git.
+- UI/read extensions live under `.thoth/extensions/` and are portable by default; `init --sync` must preserve that directory.
 - A fresh clone resumes from committed authority by running `thoth status --json` and starting a new `thoth run --work-id ...`; it cannot attach to old machine-local processes, PIDs, leases, workers, or dashboard state.
 - Canonical planning storage lives in `.thoth/objects/<kind>/<object_id>.json`.
 - Planning authority is object-graph driven: `discussion -> decision -> work_item`.
@@ -205,9 +207,10 @@ This document is the canonical human-readable project instruction source for `{c
 
 def generate_thoth_runtime(config: dict[str, Any], project_dir: Path) -> None:
     thoth_dir = project_dir / ".thoth"
-    for rel in ("objects", "docs", "runs", "migrations", "derived"):
+    for rel in ("objects", "docs", "runs", "migrations", "derived", "extensions", "extensions/plugins"):
         (thoth_dir / rel).mkdir(parents=True, exist_ok=True)
     ensure_project_gitignore_rules(project_dir)
+    ensure_extension_manifest(project_dir)
     ensure_work_authority_tree(project_dir)
     directions = [_normalize_direction_entry(direction, index) for index, direction in enumerate(config.get("directions", []))]
     project_payload = {
@@ -245,6 +248,11 @@ def generate_thoth_runtime(config: dict[str, Any], project_dir: Path) -> None:
                 "claude": {"projection": "CLAUDE.md"},
                 "codex": {"projection": "AGENTS.md"},
             },
+            "extensions": {
+                "manifest": ".thoth/extensions/manifest.json",
+                "plugins_dir": ".thoth/extensions/plugins",
+                "sync_policy": "preserve",
+            },
         },
     )
     manifest = {
@@ -267,6 +275,11 @@ def generate_thoth_runtime(config: dict[str, Any], project_dir: Path) -> None:
         "hosts": {
             "claude": {"projection": "CLAUDE.md"},
             "codex": {"projection": "AGENTS.md"},
+        },
+        "extensions": {
+            "manifest": ".thoth/extensions/manifest.json",
+            "plugins_dir": ".thoth/extensions/plugins",
+            "sync_policy": "preserve",
         },
         "legacy_removed": {
             "agent_os_authority": True,
@@ -354,6 +367,7 @@ This file is a generated project operation contract for `{config["name"]}`.
 - `run` and `loop` are durable by default and support attach/watch/stop lifecycle.
 - Hooks and subagents may enhance throughput but are never correctness dependencies.
 - Dashboard, status, and doctor are read surfaces derived from `.thoth/objects` and `.thoth/runs/*`; they are not authority writers.
+- Dashboard and TUI extensions live under `.thoth/extensions/`; generated dashboard core may be refreshed, but extension manifests and plugins must not be overwritten by `init --sync`.
 - New feature work must keep Claude Code and Codex project surfaces in sync.
 
 ## Think Before Coding

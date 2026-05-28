@@ -87,12 +87,16 @@ const runtime = computed(() => store.overviewSummary?.runtime)
   place-items: center;
   width: 46px;
   height: 46px;
-  border-radius: 14px;
-  background: linear-gradient(145deg, #3c2a1f, #6a492e);
-  color: #fff8ef;
+  border: 1px solid rgba(210, 31, 60, 0.64);
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(210, 31, 60, 0.32), rgba(82, 240, 255, 0.08)),
+    #13090b;
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.12em;
+  box-shadow: 0 0 24px rgba(210, 31, 60, 0.24);
 }
 
 .header__title {
@@ -116,9 +120,9 @@ const runtime = computed(() => store.overviewSummary?.runtime)
   align-items: baseline;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid rgba(47, 33, 24, 0.08);
+  border: 1px solid var(--border-light);
   border-radius: 999px;
-  background: rgba(255, 253, 248, 0.75);
+  background: rgba(247, 241, 232, 0.05);
   color: var(--text-secondary);
 }
 
@@ -147,10 +151,11 @@ const runtime = computed(() => store.overviewSummary?.runtime)
 
 .header__button {
   padding: 10px 14px;
-  border-radius: 999px;
-  background: var(--text-primary);
-  color: #fff7ef;
-  box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(210, 31, 60, 0.58);
+  border-radius: var(--radius);
+  background: rgba(210, 31, 60, 0.18);
+  color: var(--text-primary);
+  box-shadow: 0 0 22px rgba(210, 31, 60, 0.16) inset;
 }
 
 @media (max-width: 1080px) {

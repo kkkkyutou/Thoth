@@ -4,6 +4,21 @@
 
 No pending changes.
 
+## [0.3.0] - 2026-05-28
+
+### Added
+- Added first-class `$thoth tui` / `/thoth:tui` public surfaces with ANSI-free snapshot JSON and mechanical PNG snapshot export.
+- Added shared observe providers for project, authority, work items, runs, metrics, plugins, tools, and system/GPU data so Dashboard and TUI read the same source model.
+- Added portable `.thoth/extensions/manifest.json` support for project plugins, metrics/loss providers, system snapshots, and isolated dashboard tool plugins.
+- Added synthetic `tests/fixtures/dashboard_demo/` data with LLM training metrics, authority objects, runs, artifacts, plugin metadata, tools, and deterministic system/GPU fixture data.
+- Added v3 README teaser assets for the redesigned dashboard and TUI.
+
+### Changed
+- Redesigned the dashboard as a dark red and ceramic-white neon cockpit with plugin-aware visual panels for authority graphs, work matrices, phase steppers, progress bars, loss curves, GPU resources, event timelines, artifacts, dependency DAGs, Gantt lanes, health, and tool plugins.
+- Moved metrics/loss discovery behind explicit extension provider configuration; projects without a metrics provider now show an actionable empty state.
+- `init --sync` preserves `.thoth/extensions/` while refreshing the managed dashboard scaffold.
+- Dashboard Todo, validate/sync, and health-check capabilities are exposed as isolated tool plugins instead of being mixed into the read provider API.
+
 ## [0.2.8.6] - 2026-05-27
 
 ### Changed

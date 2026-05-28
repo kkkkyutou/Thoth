@@ -15,12 +15,14 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.8.6" src="https://img.shields.io/badge/version-0.2.8.6-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.2.8.6 long-run continuation prompts</strong> · reflect preserves rich reviewer guidance and long-running work does not stop at first-artifact evidence</p>
-  <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth concept banner" />
+  <p><strong>v0.3.0 TUI + plugin-aware dashboard</strong> · shared read providers, portable extensions, neon cockpit visuals, and first-class `$thoth tui` snapshots</p>
+  <img src="assets/thoth-dashboard-teaser-v3.png" width="100%" alt="Thoth plugin-aware dashboard cockpit" />
+  <br />
+  <img src="assets/thoth-tui-teaser-v3.png" width="100%" alt="Thoth terminal dashboard snapshot" />
 </div>
 
 ## Control Plane At A Glance
@@ -40,7 +42,7 @@
 | Layer 1. Host Surface                                                      |
 |                                                                            |
 |  init   discuss   run   loop   argue   auto   status                       |
-|  doctor dashboard                                                       |
+|  doctor dashboard tui                                                     |
 +----------------------------------------------------------------------------+
                                               |
                                               v
@@ -90,14 +92,15 @@
 | Layer 4. Read Surfaces                                                     |
 |                                                                            |
 |  dashboard -> human-visible runtime workbench                              |
+|  tui       -> terminal snapshots over the same read providers              |
 |  status    -> active / stale / attachable run summaries                    |
 |  doctor    -> strict health, projection, and runtime-shape audit           |
 |  report    -> available through status --report                           |
 |                                                                            |
-|                     +-----------+-----------+-----------+-----------+      |
-|                     |           |           |           |                  |
-|                     v           v           v           v                  |
-|                 Dashboard    Status      Report      Doctor                |
+|                +-----------+-----------+-----------+-----------+------+    |
+|                |           |           |           |           |           |
+|                v           v           v           v           v           |
+|             Dashboard      TUI       Status      Report      Doctor        |
 +----------------------------------------------------------------------------+
 
 Key invariants:
@@ -105,7 +108,7 @@ Key invariants:
 - .agent-os is the human governance layer
 - run and loop are strict --work-id surfaces
 - auto executes only actionable ready/active/failed work; blocked and draft work require human decisions
-- dashboard, status, report, and doctor are read surfaces, not authority writers
+- dashboard, tui, status, report, and doctor are read surfaces, not authority writers
 - run, loop, and auto progress through the RuntimeDriver until terminal or paused
 ```
 
@@ -152,19 +155,19 @@ Humans should not spend their attention tracking every grain of sand in the funn
 | Work Item | Freeze goal, context, constraints, acceptance spec, approach notes, scheduling, run limits, and missing questions. | Discussion, decisions, requirements, acceptance rules | Ready or blocked work item |
 | Run | Execute one frozen `work_id@revision` through phase results. | Work item, controller policy, host surface | `.thoth/objects/run` plus `.thoth/runs/<run_id>` ledger |
 | Result | Produce a mechanical verdict instead of narration alone. | Validator outputs, artifacts, runtime checks | Structured result and acceptance evidence |
-| Dashboard | Let humans read the final state without replaying the chat. | Portable authority plus local ledgers and read models | Inspectable project truth |
+| Dashboard / TUI | Let humans read the final state without replaying the chat. | Portable authority plus local ledgers, extensions, and read providers | Inspectable project truth in browser or terminal |
 
 ## Portable Authority And Local State
 
 Thoth project state is intentionally split into three layers.
 
-Portable authority is the Git state needed to continue work after a fresh clone. Commit `AGENTS.md`, `CLAUDE.md` when the Claude surface is enabled, `.thoth/objects/project/`, `.thoth/objects/work_item/`, `.thoth/objects/discussion/`, `.thoth/objects/decision/`, `.thoth/docs/agent-entry.md`, `.thoth/docs/project.json`, and `.thoth/docs/source-map.json`. These files define the project, discussion history, decisions, and accepted work item graph.
+Portable authority is the Git state needed to continue work after a fresh clone. Commit `AGENTS.md`, `CLAUDE.md` when the Claude surface is enabled, `.thoth/objects/project/`, `.thoth/objects/work_item/`, `.thoth/objects/discussion/`, `.thoth/objects/decision/`, `.thoth/extensions/`, `.thoth/docs/agent-entry.md`, `.thoth/docs/project.json`, and `.thoth/docs/source-map.json`. These files define the project, discussion history, decisions, accepted work item graph, and project-local read extensions.
 
 Runtime evidence is local by default. New projects get `.thoth/.gitignore` rules for `.thoth/runs/`, `.thoth/derived/`, `.thoth/docs/work-results/`, `.thoth/objects/run/`, `.thoth/objects/artifact/`, `.thoth/objects/controller/`, and `.thoth/objects/phase_result/`. These ledgers remain on disk for local audit, but a fresh machine should start a new run rather than attach to old PIDs, leases, workers, supervisors, or dashboard processes.
 
 Dashboard dependencies and cache are also local. Thoth writes idempotent ignore rules for `tools/dashboard/frontend/node_modules/`, `tools/dashboard/frontend/dist/`, Vite cache, backend Python cache, and the dashboard SQLite read model under `.thoth/derived/dashboard/`. If a team intentionally wants to carry a run to another machine, export a concise report with `thoth status --report` or archive the specific `.thoth/runs/<run_id>` evidence bundle explicitly; Thoth does not add every runtime ledger to Git by default.
 
-`thoth init --sync` refreshes the managed dashboard scaffold when the installed plugin has newer runtime/read-model fixes. The previous scaffold is copied to ignored `.thoth/derived/dashboard-sync-backups/` before overwrite, so stale dashboard code can be recovered without making local backup files Git-visible.
+`thoth init --sync` refreshes the managed dashboard scaffold when the installed plugin has newer runtime/read-model fixes. The previous scaffold is copied to ignored `.thoth/derived/dashboard-sync-backups/` before overwrite, so stale dashboard code can be recovered without making local backup files Git-visible. The portable `.thoth/extensions/manifest.json` and `.thoth/extensions/plugins/` tree are preserved; metrics and loss curves must be attached through an enabled extension provider rather than inferred by scanning arbitrary project folders.
 
 Fresh-clone recovery means:
 
@@ -217,6 +220,8 @@ $thoth run --work-id task-1
 ```text
 /thoth:dashboard
 $thoth dashboard
+/thoth:tui --snapshot-json
+$thoth tui --snapshot-json
 ```
 
 ## Host Install And Upgrade
@@ -276,6 +281,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by authority plus local `.thoth` ledgers |
+| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | Open or snapshot the read-only terminal dashboard backed by shared providers. | Optional `--snapshot-json`, `--export-snapshots`, `--snapshot-dir`, `--no-gpu`, refresh controls | ANSI-free JSON or visual snapshots for authority, runs, metrics, plugins, tools, and system state |
 
 ## Why Trust It
 
@@ -284,7 +290,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | Local runtime truth | `.thoth/runs/*` keeps run, state, events, artifacts, and result payloads on the current machine by default. |
 | Locked planning authority | `.thoth/objects/discussion/`, `.thoth/objects/decision/`, and `.thoth/objects/work_item/` define what execution is allowed to do. |
 | Script-backed verification | Validators, doctor checks, and selftests decide pass or fail mechanically. |
-| Shared read model | `status`, `report`, and `dashboard` all read from the same authority instead of chat memory. |
+| Shared read model | `status`, `report`, `dashboard`, and `tui` all read from shared providers instead of chat memory. |
 | Host-aligned execution | Claude defaults to Claude workers and Codex defaults to Codex workers; explicit `--executor claude|codex` remains available for deliberate cross-host runs. |
 
 ## Who It Is For
