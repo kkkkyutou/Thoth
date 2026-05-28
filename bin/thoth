@@ -16,15 +16,15 @@ else
 fi
 
 required_modules_available() {
-  "${PYTHON_BIN}" -c 'import importlib.util, sys; missing = [name for name in ("yaml", "jsonschema", "fastapi", "uvicorn") if importlib.util.find_spec(name) is None]; sys.exit(1 if missing else 0)' >/dev/null 2>&1
+  "${PYTHON_BIN}" -c 'import importlib.util, sys; missing = [name for name in ("yaml", "jsonschema", "fastapi", "uvicorn", "rich", "textual", "psutil", "pynvml", "PIL") if importlib.util.find_spec(name) is None]; sys.exit(1 if missing else 0)' >/dev/null 2>&1
 }
 
 install_runtime_dependencies() {
   local target_python="$1"
-  if "${target_python}" -m pip install "pyyaml>=6.0" "jsonschema>=4.0" "fastapi>=0.100.0" "uvicorn>=0.23.0"; then
+  if "${target_python}" -m pip install "pyyaml>=6.0" "jsonschema>=4.0" "fastapi>=0.100.0" "uvicorn>=0.23.0" "rich>=14.0.0" "textual>=6.0.0" "psutil>=5.9.0" "nvidia-ml-py>=13.0.0" "pillow>=10.0.0"; then
     return 0
   fi
-  "${target_python}" -m pip install -i https://pypi.org/simple "pyyaml>=6.0" "jsonschema>=4.0" "fastapi>=0.100.0" "uvicorn>=0.23.0"
+  "${target_python}" -m pip install -i https://pypi.org/simple "pyyaml>=6.0" "jsonschema>=4.0" "fastapi>=0.100.0" "uvicorn>=0.23.0" "rich>=14.0.0" "textual>=6.0.0" "psutil>=5.9.0" "nvidia-ml-py>=13.0.0" "pillow>=10.0.0"
 }
 
 bootstrap_runtime_venv() {
@@ -44,10 +44,10 @@ bootstrap_runtime_venv() {
     fi
   fi
 
-  if ! "${venv_dir}/bin/python" -c 'import importlib.util, sys; missing = [name for name in ("yaml", "jsonschema", "fastapi", "uvicorn") if importlib.util.find_spec(name) is None]; sys.exit(1 if missing else 0)' >/dev/null 2>&1; then
+  if ! "${venv_dir}/bin/python" -c 'import importlib.util, sys; missing = [name for name in ("yaml", "jsonschema", "fastapi", "uvicorn", "rich", "textual", "psutil", "pynvml", "PIL") if importlib.util.find_spec(name) is None]; sys.exit(1 if missing else 0)' >/dev/null 2>&1; then
     if ! install_runtime_dependencies "${venv_dir}/bin/python"; then
       echo "Thoth runtime dependency bootstrap failed." >&2
-      echo "Install this plugin runtime with: ${venv_dir}/bin/python -m pip install 'pyyaml>=6.0' 'jsonschema>=4.0' 'fastapi>=0.100.0' 'uvicorn>=0.23.0'" >&2
+      echo "Install this plugin runtime with: ${venv_dir}/bin/python -m pip install 'pyyaml>=6.0' 'jsonschema>=4.0' 'fastapi>=0.100.0' 'uvicorn>=0.23.0' 'rich>=14.0.0' 'textual>=6.0.0' 'psutil>=5.9.0' 'nvidia-ml-py>=13.0.0' 'pillow>=10.0.0'" >&2
       exit 1
     fi
   fi

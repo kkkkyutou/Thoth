@@ -15,12 +15,14 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.2.8.6" src="https://img.shields.io/badge/version-0.2.8.6-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.2.8.6 long-run continuation prompts</strong> · reflect 保留 reviewer 的真实纠偏，长程任务不会把 first-artifact evidence 当成验收终点</p>
-  <img src="assets/thoth-teaser-figure-v2.png" width="100%" alt="Thoth 概念首屏图" />
+  <p><strong>v0.3.0 TUI + plugin-aware dashboard</strong> · 共享 read provider、可提交 extensions、霓虹驾驶舱视觉，以及一等公民 `$thoth tui` 快照</p>
+  <img src="assets/thoth-dashboard-teaser-v3.png" width="100%" alt="Thoth 插件化 dashboard 驾驶舱" />
+  <br />
+  <img src="assets/thoth-tui-teaser-v3.png" width="100%" alt="Thoth 终端 dashboard 快照" />
 </div>
 
 ## 控制平面一览
@@ -40,7 +42,7 @@
 | Layer 1. Host Surface                                                      |
 |                                                                            |
 |  init   discuss   run   loop   argue   auto   status                       |
-|  doctor dashboard                                                       |
+|  doctor dashboard tui                                                     |
 +----------------------------------------------------------------------------+
                                               |
                                               v
@@ -90,14 +92,15 @@
 | Layer 4. Read Surfaces                                                     |
 |                                                                            |
 |  dashboard -> human-visible runtime workbench                              |
+|  tui       -> terminal snapshots over the same read providers              |
 |  status    -> active / stale / attachable run summaries                    |
 |  doctor    -> strict health, projection, and runtime-shape audit           |
 |  report    -> available through status --report                           |
 |                                                                            |
-|                     +-----------+-----------+-----------+-----------+      |
-|                     |           |           |           |                  |
-|                     v           v           v           v                  |
-|                 Dashboard    Status      Report      Doctor                |
+|                +-----------+-----------+-----------+-----------+------+    |
+|                |           |           |           |           |           |
+|                v           v           v           v           v           |
+|             Dashboard      TUI       Status      Report      Doctor        |
 +----------------------------------------------------------------------------+
 
 关键约束:
@@ -105,7 +108,7 @@
 - `.agent-os` 是 human governance layer
 - `run` 和 `loop` 都是 strict `--work-id` surface
 - `auto` 只执行 ready/active/failed 这类可行动 work；blocked 和 draft 必须由人做决策
-- `dashboard`、`status`、`report`、`doctor` 是 read surfaces，不写 authority
+- `dashboard`、`tui`、`status`、`report`、`doctor` 是 read surfaces，不写 authority
 - `run`、`loop`、`auto` 必须进入 terminal 或 paused
 ```
 
@@ -152,19 +155,19 @@ Dashboard DAG 会保留 authority status。一个 hard dependency 尚未 `valida
 | Work Item | 冻结 goal、context、constraints、acceptance spec、approach notes、scheduling、run limits 和 missing questions。 | Discussion、decisions、requirements、acceptance 规则 | Ready 或 blocked work item |
 | Run | 执行一个 frozen `work_id@revision`。 | Work item、controller policy、host surface | `.thoth/objects/run` 与 `.thoth/runs/<run_id>` ledger |
 | Result | 产出机械裁决，而不只是叙述性总结。 | Validator 输出、artifacts、runtime checks | Structured result 和 acceptance evidence |
-| Dashboard | 让人无需回放聊天记录就能读取最终状态。 | Portable authority 加本地 ledgers 和 read model | 可检查的项目真相 |
+| Dashboard / TUI | 让人无需回放聊天记录就能读取最终状态。 | Portable authority 加本地 ledgers、extensions 和 read providers | 浏览器或终端里的可检查项目真相 |
 
 ## Portable Authority 与本机状态
 
 Thoth 项目状态明确分为三层。
 
-Portable authority 是换电脑后继续工作的 Git 状态。应提交 `AGENTS.md`、启用 Claude surface 时的 `CLAUDE.md`、`.thoth/objects/project/`、`.thoth/objects/work_item/`、`.thoth/objects/discussion/`、`.thoth/objects/decision/`、`.thoth/docs/agent-entry.md`、`.thoth/docs/project.json` 和 `.thoth/docs/source-map.json`。这些文件定义项目、讨论历史、决策和可运行 work item graph。
+Portable authority 是换电脑后继续工作的 Git 状态。应提交 `AGENTS.md`、启用 Claude surface 时的 `CLAUDE.md`、`.thoth/objects/project/`、`.thoth/objects/work_item/`、`.thoth/objects/discussion/`、`.thoth/objects/decision/`、`.thoth/extensions/`、`.thoth/docs/agent-entry.md`、`.thoth/docs/project.json` 和 `.thoth/docs/source-map.json`。这些文件定义项目、讨论历史、决策、可运行 work item graph，以及项目级读面扩展。
 
 Runtime evidence 默认是本机状态。新项目会生成 `.thoth/.gitignore`，忽略 `.thoth/runs/`、`.thoth/derived/`、`.thoth/docs/work-results/`、`.thoth/objects/run/`、`.thoth/objects/artifact/`、`.thoth/objects/controller/` 和 `.thoth/objects/phase_result/`。这些 ledger 仍保留在磁盘上供本机复盘，但新机器应该从 authority 启动新的 run，而不是接管旧机器上的 PID、lease、worker、supervisor 或 dashboard 进程。
 
 Dashboard 依赖与缓存也默认是本机状态。Thoth 会幂等写入 ignore 规则，忽略 `tools/dashboard/frontend/node_modules/`、`tools/dashboard/frontend/dist/`、Vite cache、backend Python cache，以及 `.thoth/derived/dashboard/` 下的 dashboard SQLite read model。如果团队确实需要把某个 run 带到另一台机器，应显式用 `thoth status --report` 导出简明报告，或手动归档指定 `.thoth/runs/<run_id>` evidence bundle；Thoth 不会默认把全部 runtime ledger 加进 Git。
 
-`thoth init --sync` 会在已安装插件包含新的 runtime/read-model 修复时刷新受管 dashboard scaffold。覆盖前旧 scaffold 会备份到已忽略的 `.thoth/derived/dashboard-sync-backups/`，因此可以恢复旧文件，但不会让本地备份污染 Git 状态。
+`thoth init --sync` 会在已安装插件包含新的 runtime/read-model 修复时刷新受管 dashboard scaffold。覆盖前旧 scaffold 会备份到已忽略的 `.thoth/derived/dashboard-sync-backups/`，因此可以恢复旧文件，但不会让本地备份污染 Git 状态。可提交的 `.thoth/extensions/manifest.json` 与 `.thoth/extensions/plugins/` 会被保留；metrics / loss 曲线必须通过启用的 extension provider 接入，而不是扫描任意项目目录猜测。
 
 Fresh clone 的恢复语义是：
 
@@ -217,6 +220,8 @@ $thoth run --work-id task-1
 ```text
 /thoth:dashboard
 $thoth dashboard
+/thoth:tui --snapshot-json
+$thoth tui --snapshot-json
 ```
 
 ## 宿主安装与升级
@@ -276,15 +281,16 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | 展示项目健康、活动 runs、doctor、report 或 dashboard 读面。 | 可选 `--json`、`--doctor`、`--report` 或 `--dashboard` | 基于 authority 和本机 registry 派生出的共享状态快照与读面 |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | `status --doctor` 的别名；严格审计健康状态和 runtime shape。 | 可选 `--quick` 或 `--json` | 含验证结论的健康报告 |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | `status --dashboard` 的别名；管理本地 dashboard runtime。 | 可选动作：`start`、`stop` 或 `rebuild` | 由 authority 与本机 `.thoth` ledgers 驱动的本地 dashboard 进程和读接口 |
+| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | 打开或导出基于 shared providers 的只读终端 dashboard。 | 可选 `--snapshot-json`、`--export-snapshots`、`--snapshot-dir`、`--no-gpu`、刷新控制 | 覆盖 authority、runs、metrics、plugins、tools 和 system state 的无 ANSI JSON 或视觉快照 |
 
 ## 为什么值得信任
 
 | 信号 | 你可以检查什么 |
 | --- | --- |
 | Local runtime truth | `.thoth/runs/*` 默认在当前机器保留 run、state、events、artifacts 和 result payload。 |
-| Locked planning authority | ``.thoth/objects/discussion/`、`.thoth/objects/decision/` 和 `.thoth/objects/work_item/` 定义了执行允许做什么。 |
+| Locked planning authority | `.thoth/objects/discussion/`、`.thoth/objects/decision/` 和 `.thoth/objects/work_item/` 定义了执行允许做什么。 |
 | Script-backed verification | Validators、doctor checks 和 selftests 以机械方式裁决 pass 或 fail。 |
-| Shared read model | `status`、`report` 和 `dashboard` 都读取同一 authority，而不是依赖聊天记忆。 |
+| Shared read model | `status`、`report`、`dashboard` 和 `tui` 都读取 shared providers，而不是依赖聊天记忆。 |
 | 宿主对齐执行 | Claude 默认使用 Claude worker，Codex 默认使用 Codex worker；显式 `--executor claude|codex` 仍可用于有意的跨宿主执行。 |
 
 ## 适用对象

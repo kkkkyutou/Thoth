@@ -487,6 +487,37 @@ def case_observe_dashboard(work_root: Path, recorder: Recorder, _capabilities: d
         raise RuntimeError("observe.dashboard failed")
 
 
+def case_observe_tui(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    project_dir = _prepare_runtime_project(work_root, recorder, include_dashboard=False)
+    result = _run_command(
+        [PYTHON, "-m", "thoth.cli", "tui", "--snapshot-json", "--no-gpu"],
+        cwd=project_dir,
+        env={"PYTHONPATH": str(ROOT)},
+        timeout=30,
+    )
+    artifacts = _save_command(recorder, "observe-tui-snapshot", result)
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        payload = {}
+    snapshot_artifact = recorder.write_json("observe/tui-snapshot.json", payload if isinstance(payload, dict) else {})
+    providers = payload.get("providers") if isinstance(payload.get("providers"), dict) else {}
+    ok = (
+        result.returncode == 0
+        and payload.get("schema_version") == 1
+        and payload.get("gpu", {}).get("reason") == "disabled"
+        and {"project", "authority", "work_items", "runs", "metrics", "plugins", "tools", "system"}.issubset(set(providers))
+    )
+    recorder.add(
+        "observe.tui",
+        "passed" if ok else "failed",
+        "TUI emitted an ANSI-free shared-provider JSON snapshot without entering interactive mode.",
+        artifacts + [snapshot_artifact],
+    )
+    if not ok:
+        raise RuntimeError("observe.tui failed")
+
+
 def case_hooks_codex(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
     project_dir = _prepare_runtime_project(work_root, recorder)
     hooks_config = render_codex_hooks_payload()
@@ -564,6 +595,9 @@ def _host_case_window(case_id: str) -> tuple[str, str | None, str]:
     elif suffix == "dashboard.stop":
         from_step = "dashboard-start"
         step = "dashboard-stop"
+    elif suffix == "tui":
+        from_step = "tui"
+        step = "tui"
     else:
         step = suffix.replace(".", "-")
     if suffix in {"status", "doctor", "sync", "init_sync"}:
@@ -670,6 +704,10 @@ def case_surface_codex_init_sync(work_root: Path, recorder: Recorder, _capabilit
     run_host_atomic_case("surface.codex.init_sync", work_root, recorder)
 
 
+def case_surface_codex_tui(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.codex.tui", work_root, recorder)
+
+
 def case_surface_claude_init(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
     run_host_atomic_case("surface.claude.init", work_root, recorder)
 
@@ -736,3 +774,7 @@ def case_surface_claude_dashboard_stop(work_root: Path, recorder: Recorder, _cap
 
 def case_surface_claude_init_sync(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
     run_host_atomic_case("surface.claude.init_sync", work_root, recorder)
+
+
+def case_surface_claude_tui(work_root: Path, recorder: Recorder, _capabilities: dict[str, Any]) -> None:
+    run_host_atomic_case("surface.claude.tui", work_root, recorder)

@@ -16,9 +16,13 @@ html {
 
 body {
   font-family: var(--font-sans);
+  min-width: 320px;
   background:
-    radial-gradient(circle at top left, rgba(218, 157, 79, 0.18), transparent 28%),
-    linear-gradient(180deg, #fcf7ef 0%, #f7efe4 100%);
+    linear-gradient(90deg, rgba(210, 31, 60, 0.07) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(82, 240, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(132deg, rgba(82, 240, 255, 0.08), transparent 32%),
+    linear-gradient(180deg, #080607 0%, #11090b 48%, #060505 100%);
+  background-size: 46px 46px, 46px 46px, auto, auto;
   color: var(--text-primary);
   line-height: 1.55;
 }
@@ -31,7 +35,6 @@ h1,
 h2,
 h3,
 h4 {
-  font-family: var(--font-serif);
   line-height: 1.2;
 }
 
@@ -41,6 +44,10 @@ button {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 input,
@@ -60,33 +67,45 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(191, 124, 43, 0.12);
+  box-shadow: 0 0 0 3px rgba(210, 31, 60, 0.18);
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent-primary);
+  outline: 2px solid var(--accent-cyan);
   outline-offset: 2px;
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-medium);
+  background: rgba(247, 241, 232, 0.2);
   border-radius: 999px;
 }
 
 ::selection {
-  background: rgba(191, 124, 43, 0.2);
+  background: rgba(210, 31, 60, 0.35);
 }
 
 .card {
-  background: var(--bg-card);
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(247, 241, 232, 0.055), transparent 42%),
+    var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius);
   box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-top: 1px solid rgba(210, 31, 60, 0.34);
 }
 
 .pill {
@@ -96,23 +115,35 @@ textarea:focus {
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.badge-pending { background: var(--status-pending); color: #5f4b3d; }
-.badge-in_progress { background: var(--status-progress); color: #5a4622; }
-.badge-completed { background: var(--status-completed); color: #ffffff; }
-.badge-blocked { background: var(--status-blocked); color: #fff7f1; }
-.badge-ready { background: var(--status-ready); color: #f7fbff; }
-.badge-invalid { background: var(--status-invalid); color: #fff7fb; }
-.badge-failed { background: var(--status-failed); color: #fff6ee; }
+.badge-pending { background: var(--status-pending); color: var(--text-secondary); }
+.badge-in_progress { background: var(--status-progress); color: #1a0d08; }
+.badge-completed { background: var(--status-completed); color: #061014; }
+.badge-blocked { background: var(--status-blocked); color: #fff7f4; }
+.badge-ready { background: var(--status-ready); color: #fff7f4; }
+.badge-invalid { background: var(--status-invalid); color: #1a0d08; }
+.badge-failed { background: var(--status-failed); color: #fff7f4; }
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.18s ease;
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+  transform: translateY(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

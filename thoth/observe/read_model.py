@@ -27,6 +27,7 @@ def load_config(project_root: Path) -> dict[str, Any]:
         "dashboard": manifest.get("dashboard", {}),
         "runtime": manifest.get("runtime", {}),
         "hosts": manifest.get("hosts", {}),
+        "extensions": manifest.get("extensions", {}),
     }
 
 

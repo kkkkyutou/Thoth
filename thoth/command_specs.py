@@ -192,6 +192,18 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         scope_cannot=("Read host session state as runtime truth", "Use rebuild as scaffold template sync"),
         lifecycle=("serve",),
     ),
+    CommandSpec(
+        command_id="tui",
+        summary="Open or snapshot the read-only terminal dashboard backed by shared Thoth providers.",
+        argument_hint="[--snapshot-json] [--export-snapshots] [--snapshot-dir <path>] [--no-gpu] [--refresh <seconds>]",
+        route_class="mechanical_fast",
+        intelligence_tier="none",
+        packet_authority_mode="result_envelope",
+        acceptance="TUI reads shared provider snapshots for authority, work items, runs, metrics, plugins, tools, and GPU state without mutating project authority or runtime ledgers.",
+        scope_can=("Open the terminal dashboard", "Emit ANSI-free snapshot JSON", "Export visual snapshots for verification"),
+        scope_cannot=("Mutate .thoth authority", "Stop, resume, or edit training/runtime artifacts", "Guess metrics paths without an extension manifest"),
+        lifecycle=("read", "render"),
+    ),
 )
 
 

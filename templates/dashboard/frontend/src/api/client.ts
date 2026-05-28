@@ -16,7 +16,11 @@ import type {
   WorkItemListResponse,
   WorkItemRunsResponse,
   Milestone,
+  MetricsProviderPayload,
+  ObserveSnapshot,
+  PluginSummary,
   TodoProject,
+  ToolPlugin,
   TreeDirection,
 } from '@/types'
 
@@ -40,6 +44,10 @@ export const api = {
   getProgress: () => request<ProgressData>('/progress'),
   getOverviewSummary: () => request<OverviewSummary>('/overview-summary'),
   getSystemStatus: () => request<SystemStatus>('/status'),
+  getObserve: () => request<ObserveSnapshot>('/observe'),
+  getPlugins: () => request<PluginSummary>('/plugins'),
+  getTools: () => request<{ schema_version: number; tool_count: number; tools: ToolPlugin[] }>('/tools'),
+  getMetrics: () => request<MetricsProviderPayload>('/metrics'),
 
   getWorkItems: (filters?: WorkItemFilters) => {
     const params = new URLSearchParams()

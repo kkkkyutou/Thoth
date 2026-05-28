@@ -5,10 +5,14 @@ import type {
   ActivityEvent,
   DagData,
   GanttRow,
+  MetricsProviderPayload,
+  ObserveSnapshot,
   OverviewSummary,
+  PluginSummary,
   ProgressData,
   ResearchConfig,
   SystemStatus,
+  ToolPlugin,
   WorkItem,
   TreeDirection,
   TreeModule,
@@ -28,6 +32,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const gantt = ref<GanttRow[]>([])
   const activity = ref<ActivityEvent[]>([])
   const systemStatus = ref<SystemStatus | null>(null)
+  const observeSnapshot = ref<ObserveSnapshot | null>(null)
+  const pluginSummary = ref<PluginSummary | null>(null)
+  const toolPlugins = ref<ToolPlugin[]>([])
+  const metricsProvider = ref<MetricsProviderPayload | null>(null)
+  const workItems = ref<WorkItem[]>([])
 
   const selectedWorkItem = ref<WorkItem | null>(null)
   const selectedModuleId = ref<string | null>(null)
@@ -119,6 +128,13 @@ export const useDashboardStore = defineStore('dashboard', () => {
       api.getProgress(),
       api.getOverviewSummary(),
       api.getSystemStatus(),
+      api.getObserve(),
+      api.getPlugins(),
+      api.getTools(),
+      api.getMetrics(),
+      api.getWorkItems({ limit: 1000 }),
+      api.getDag(),
+      api.getGantt(),
     ])
     if (results[0].status === 'fulfilled') config.value = results[0].value
     else lastError.value = `config: ${stringifyError(results[0].reason)}`
@@ -134,6 +150,27 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
     if (results[4].status === 'fulfilled') systemStatus.value = results[4].value
     else lastError.value = `system: ${stringifyError(results[4].reason)}`
+
+    if (results[5].status === 'fulfilled') observeSnapshot.value = results[5].value
+    else lastError.value = `observe: ${stringifyError(results[5].reason)}`
+
+    if (results[6].status === 'fulfilled') pluginSummary.value = results[6].value
+    else lastError.value = `plugins: ${stringifyError(results[6].reason)}`
+
+    if (results[7].status === 'fulfilled') toolPlugins.value = results[7].value.tools
+    else lastError.value = `tools: ${stringifyError(results[7].reason)}`
+
+    if (results[8].status === 'fulfilled') metricsProvider.value = results[8].value
+    else lastError.value = `metrics: ${stringifyError(results[8].reason)}`
+
+    if (results[9].status === 'fulfilled') workItems.value = results[9].value.work_items
+    else lastError.value = `work items: ${stringifyError(results[9].reason)}`
+
+    if (results[10].status === 'fulfilled') dag.value = results[10].value
+    else lastError.value = `dag: ${stringifyError(results[10].reason)}`
+
+    if (results[11].status === 'fulfilled') gantt.value = results[11].value
+    else lastError.value = `gantt: ${stringifyError(results[11].reason)}`
 
     lastUpdatedAt.value = new Date().toISOString()
     loading.bootstrap = false
@@ -241,12 +278,17 @@ export const useDashboardStore = defineStore('dashboard', () => {
     loading,
     modules,
     overviewSummary,
+    observeSnapshot,
+    pluginSummary,
     progress,
     selectedModule,
     selectedModuleId,
     selectedWorkItem,
     systemStatus,
+    toolPlugins,
+    metricsProvider,
     tree,
+    workItems,
     clearSelection,
     fetchActivity,
     fetchBootstrap,

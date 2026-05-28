@@ -64,6 +64,7 @@ def _host_claude(
             "loop_live": "/thoth:loop --work-id task-runtime-probe",
             "dashboard_start": "/thoth:dashboard start",
             "dashboard_stop": "/thoth:dashboard stop",
+            "tui": "/thoth:tui --snapshot-json --no-gpu",
             "loop_sleep": "/thoth:loop --sleep --work-id task-runtime-probe",
             "loop_stop": lambda run_id: f"/thoth:loop --stop {run_id}",
             "auto": "/thoth:auto --sleep --rounds 1 --min-runtime-seconds 0",
@@ -89,7 +90,7 @@ def _host_claude(
     bridge_path = project_dir / ".thoth" / "derived" / "host-bridges" / "claude-command-events.jsonl"
     if bridge_path.exists():
         artifacts.append(str(bridge_path))
-    required_bridge_commands = ("init", "status", "doctor", "discuss", "run", "argue", "dashboard", "loop", "auto")
+    required_bridge_commands = ("init", "status", "doctor", "discuss", "run", "argue", "dashboard", "tui", "loop", "auto")
     success = all(result.returncode == 0 for result in command_results.values())
     if not partial_window:
         success = success and all(command in bridge_commands for command in required_bridge_commands) and all(

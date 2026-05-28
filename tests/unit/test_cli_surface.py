@@ -205,9 +205,22 @@ def test_cli_init_config_json_with_intent_preserves_config_and_raw_discussion(tm
 def test_cli_help_shows_minimal_public_commands(tmp_path):
     result = _run_cli(tmp_path, "--help")
     assert result.returncode == 0
-    assert "{init,discuss,run,loop,argue,auto,status,doctor,dashboard}" in result.stdout
+    assert "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui}" in result.stdout
     for hidden in (" sync", " report", " extend", " orchestration"):
         assert hidden not in result.stdout
+
+
+def test_cli_tui_snapshot_json_is_launch_safe(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+
+    result = _run_cli(tmp_path, "tui", "--snapshot-json", "--no-gpu")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == 1
+    assert payload["project_root"] == str(tmp_path)
+    assert payload["gpu"]["reason"] == "disabled"
+    assert payload["metrics"]["configured"] is False
 
 
 def test_cli_discuss_records_note(tmp_path):

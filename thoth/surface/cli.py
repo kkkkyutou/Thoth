@@ -10,7 +10,7 @@ from .handlers import handle_command
 
 def build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="thoth")
-    public_commands = "{init,discuss,run,loop,argue,auto,status,doctor,dashboard}"
+    public_commands = "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui}"
     sub = parser.add_subparsers(dest="command", required=True, metavar=public_commands)
 
     def add_internal_parser(name: str) -> argparse.ArgumentParser:
@@ -88,6 +88,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     dashboard = sub.add_parser("dashboard")
     dashboard.add_argument("action", nargs="?", default="start", choices=("start", "stop", "rebuild"))
+
+    tui = sub.add_parser("tui")
+    tui.add_argument("--project-root", dest="tui_project_root")
+    tui.add_argument("--snapshot-json", action="store_true")
+    tui.add_argument("--export-snapshots", action="store_true")
+    tui.add_argument("--snapshot-dir")
+    tui.add_argument("--refresh", type=float)
+    tui.add_argument("--metrics-refresh", type=float)
+    tui.add_argument("--runs-refresh", type=float)
+    tui.add_argument("--gpu-refresh", type=float)
+    tui.add_argument("--ui-frame", type=float)
+    tui.add_argument("--metrics-max-records", type=int)
+    tui.add_argument("--no-gpu", action="store_true")
 
     add_internal_parser("sync")
 
@@ -209,7 +222,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_cli_parser()
     args, extras = parser.parse_known_args(argv)
     if extras:
-        if args.command in {"run", "loop", "auto"}:
+        if args.command == "tui":
+            parser.error(f"unrecognized arguments: {' '.join(extras)}")
+        elif args.command in {"run", "loop", "auto"}:
             prompt_after_separator = bool(extras and extras[0] == "--")
             prompt_tokens = extras[1:] if prompt_after_separator else extras
             unknown_flags = [] if prompt_after_separator else [token for token in prompt_tokens if token.startswith("-")]

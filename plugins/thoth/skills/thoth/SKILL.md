@@ -23,6 +23,7 @@ Supported commands:
 - `$thoth discuss`: Discuss or record planning decisions without entering implementation execution.
 - `$thoth doctor`: Alias for `status --doctor`; strictly audit project health without writing authority.
 - `$thoth dashboard`: Alias for `status --dashboard`; manage the local dashboard backed by .thoth ledgers.
+- `$thoth tui`: Open or snapshot the read-only terminal dashboard backed by shared Thoth providers.
 
 ## Dispatcher
 
@@ -44,11 +45,12 @@ Supported commands:
 - `discuss` -> `live_intelligent` / `high` / `command_packet`
 - `doctor` -> `mechanical_fast` / `none` / `result_envelope`
 - `dashboard` -> `mechanical_fast` / `none` / `result_envelope`
+- `tui` -> `mechanical_fast` / `none` / `result_envelope`
 
 ## Shared Rules
 
 - `init` is hybrid: no intent is a mechanical audit-first receipt; natural-language intent opens an inquiring discussion and must be closed through compact project_patch/work_graph authority.
-- `status`, `doctor`, and `dashboard` are mechanical fast-path commands and should return only short receipts.
+- `status`, `doctor`, `dashboard`, and `tui` are mechanical fast-path commands and should return only short receipts.
 - `discuss`, `run`, `loop`, `auto`, and `argue` are high-intelligence paths.
 - `argue` preserves full attacker/adjudicator artifacts; authority patches require explicit confirmation before apply.
 - `run` and `loop` use one RuntimeDriver: lifecycle is `plan -> execute -> validate -> reflect`; live is foreground monitor, `--sleep` is detached monitor.

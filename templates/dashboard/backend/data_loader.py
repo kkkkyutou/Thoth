@@ -301,6 +301,7 @@ def load_project_config(base_dir: str | Path) -> dict[str, Any]:
     dashboard = manifest.get("dashboard", {}) if isinstance(manifest, dict) else {}
     runtime = manifest.get("runtime", {}) if isinstance(manifest, dict) else {}
     hosts = manifest.get("hosts", {}) if isinstance(manifest, dict) else {}
+    extensions = manifest.get("extensions", {}) if isinstance(manifest, dict) else {}
     payload = {
         "project": {
             "name": project.get("name", project_root.name),
@@ -314,6 +315,7 @@ def load_project_config(base_dir: str | Path) -> dict[str, Any]:
         "dashboard": dashboard,
         "runtime": runtime if isinstance(runtime, dict) else {},
         "hosts": hosts if isinstance(hosts, dict) else {},
+        "extensions": extensions if isinstance(extensions, dict) else {},
     }
     return _set_cache("project_config", payload)
 

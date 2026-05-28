@@ -486,6 +486,7 @@ def _run_host_real_flow(
         "argue",
         "dashboard-start",
         "dashboard-stop",
+        "tui",
         "loop-live",
         "loop-sleep",
         "loop-stop",
@@ -1175,6 +1176,28 @@ def _run_host_real_flow(
         if not dashboard_stopped:
             raise RuntimeError(f"{host_name} dashboard did not stop cleanly")
         _guard_source("dashboard-stop", step_mode("dashboard-stop"))
+
+    if should_run("tui"):
+        tui_result = execute("tui", commands["tui"], timeout=75)
+        if tui_result is None:
+            raise RuntimeError("tui result was unexpectedly missing")
+        output = _command_output("tui", commands["tui"], tui_result)
+        try:
+            tui_payload = json.loads(output)
+        except json.JSONDecodeError:
+            tui_payload = {}
+        tui_artifact = recorder.write_json(f"host-{host_name}-tui-snapshot.json", tui_payload if isinstance(tui_payload, dict) else {})
+        providers = tui_payload.get("providers") if isinstance(tui_payload.get("providers"), dict) else {}
+        tui_ok = tui_payload.get("schema_version") == 1 and "runs" in providers and tui_payload.get("gpu", {}).get("reason") == "disabled"
+        recorder.add(
+            _runtime_check_name("tui", step_mode("tui")),
+            "passed" if tui_ok else "failed",
+            "TUI surface returned a launch-safe snapshot JSON payload.",
+            [tui_artifact],
+        )
+        if not tui_ok:
+            raise RuntimeError(f"{host_name} tui did not return a valid snapshot JSON payload")
+        _guard_source("tui", step_mode("tui"))
 
     if should_run("sync"):
         execute("sync", commands["sync"], timeout=240)
