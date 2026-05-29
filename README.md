@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.3.1" src="https://img.shields.io/badge/version-0.3.1-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.3.0 TUI + plugin-aware dashboard</strong> · shared read providers, portable extensions, neon cockpit visuals, and first-class `$thoth tui` snapshots</p>
+  <p><strong>v0.3.1 dashboard sync hotfix</strong> · lean `init --sync` backups for the v0.3 TUI and plugin-aware dashboard release</p>
   <img src="assets/thoth-dashboard-teaser-v3.png" width="100%" alt="Thoth plugin-aware dashboard cockpit" />
   <br />
   <img src="assets/thoth-tui-teaser-v3.png" width="100%" alt="Thoth terminal dashboard snapshot" />

@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.3.1" src="https://img.shields.io/badge/version-0.3.1-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.3.0 TUI + plugin-aware dashboard</strong> · 共享 read provider、可提交 extensions、霓虹驾驶舱视觉，以及一等公民 `$thoth tui` 快照</p>
+  <p><strong>v0.3.1 dashboard sync 热修</strong> · 为 v0.3 TUI 与插件化 dashboard 发布面提供轻量 `init --sync` 备份</p>
   <img src="assets/thoth-dashboard-teaser-v3.png" width="100%" alt="Thoth 插件化 dashboard 驾驶舱" />
   <br />
   <img src="assets/thoth-tui-teaser-v3.png" width="100%" alt="Thoth 终端 dashboard 快照" />
