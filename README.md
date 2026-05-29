@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.3.1" src="https://img.shields.io/badge/version-0.3.1-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.3.2" src="https://img.shields.io/badge/version-0.3.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.3.1 dashboard sync hotfix</strong> · lean `init --sync` backups for the v0.3 TUI and plugin-aware dashboard release</p>
+  <p><strong>v0.3.2 interactive TUI hotfix</strong> · fast keyboard navigation, loss detail charts, and trusted Python TUI plugins</p>
   <img src="assets/thoth-dashboard-teaser-v3.png" width="100%" alt="Thoth plugin-aware dashboard cockpit" />
   <br />
   <img src="assets/thoth-tui-teaser-v3.png" width="100%" alt="Thoth terminal dashboard snapshot" />
@@ -224,6 +224,15 @@ $thoth dashboard
 $thoth tui --snapshot-json
 ```
 
+You can run the interactive TUI from any repository that has already completed `thoth init`:
+
+```bash
+cd /path/to/your/project
+thoth tui
+```
+
+`thoth tui` is read-only. It uses the same shared providers as the dashboard, so loss/metrics data must come from enabled `.thoth/extensions/manifest.json` providers. The interactive view supports `Tab` / `Shift+Tab`, arrow selection, `Enter` detail, `Esc` back, `/` search, `s` EMA emphasis, `d` decimal precision, `?` help, and `r` refresh. Python TUI extensions are loaded only when the manifest entry is enabled, targets the `tui` surface, declares `tui_python_plugin` or `tui_panel`, and explicitly sets `trusted: true`; use `--no-python-plugins` for a renderer-free safe launch.
+
 ## Host Install And Upgrade
 
 | Host | First install | Stable upgrade | Important note |
@@ -281,7 +290,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by authority plus local `.thoth` ledgers |
-| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | Open or snapshot the read-only terminal dashboard backed by shared providers. | Optional `--snapshot-json`, `--export-snapshots`, `--snapshot-dir`, `--no-gpu`, refresh controls | ANSI-free JSON or visual snapshots for authority, runs, metrics, plugins, tools, and system state |
+| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | Open or snapshot the read-only terminal dashboard backed by shared providers. | Optional `--snapshot-json`, `--export-snapshots`, `--snapshot-dir`, `--no-gpu`, `--no-python-plugins`, loss detail and refresh controls | ANSI-free JSON or visual snapshots for authority, runs, metrics, plugins, tools, and system state |
 
 ## Why Trust It
 

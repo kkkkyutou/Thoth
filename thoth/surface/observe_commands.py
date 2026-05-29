@@ -145,6 +145,14 @@ def handle_tui(args, parser, *, project_root: Path) -> int:
         argv.extend(["--ui-frame", str(args.ui_frame)])
     if getattr(args, "metrics_max_records", None) is not None:
         argv.extend(["--metrics-max-records", str(args.metrics_max_records)])
+    if getattr(args, "local_window_steps", None) is not None:
+        argv.extend(["--local-window-steps", str(args.local_window_steps)])
+    if getattr(args, "global_max_points", None) is not None:
+        argv.extend(["--global-max-points", str(args.global_max_points)])
+    if getattr(args, "decimal_places", None) is not None:
+        argv.extend(["--decimal-places", str(args.decimal_places)])
+    if getattr(args, "no_python_plugins", False):
+        argv.append("--no-python-plugins")
     if getattr(args, "no_gpu", False):
         argv.append("--no-gpu")
     return tui_main(argv)

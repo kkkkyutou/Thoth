@@ -195,7 +195,7 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec(
         command_id="tui",
         summary="Open or snapshot the read-only terminal dashboard backed by shared Thoth providers.",
-        argument_hint="[--snapshot-json] [--export-snapshots] [--snapshot-dir <path>] [--no-gpu] [--refresh <seconds>]",
+        argument_hint="[--snapshot-json] [--export-snapshots] [--snapshot-dir <path>] [--no-gpu] [--no-python-plugins] [--refresh <seconds>]",
         route_class="mechanical_fast",
         intelligence_tier="none",
         packet_authority_mode="result_envelope",

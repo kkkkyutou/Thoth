@@ -100,6 +100,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
     tui.add_argument("--gpu-refresh", type=float)
     tui.add_argument("--ui-frame", type=float)
     tui.add_argument("--metrics-max-records", type=int)
+    tui.add_argument("--local-window-steps", type=int)
+    tui.add_argument("--global-max-points", type=int)
+    tui.add_argument("--decimal-places", type=int)
+    tui.add_argument("--no-python-plugins", action="store_true")
     tui.add_argument("--no-gpu", action="store_true")
 
     add_internal_parser("sync")

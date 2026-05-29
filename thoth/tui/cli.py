@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+from .metrics import DEFAULT_GLOBAL_MAX_POINTS, DEFAULT_LOCAL_WINDOW_STEPS
 from .snapshot import build_snapshot
 
 
@@ -23,6 +24,10 @@ def build_parser(prog: str = "thoth tui") -> argparse.ArgumentParser:
     parser.add_argument("--gpu-refresh", type=float)
     parser.add_argument("--ui-frame", type=float)
     parser.add_argument("--metrics-max-records", type=int, default=200000)
+    parser.add_argument("--local-window-steps", type=int, default=DEFAULT_LOCAL_WINDOW_STEPS)
+    parser.add_argument("--global-max-points", type=int, default=DEFAULT_GLOBAL_MAX_POINTS)
+    parser.add_argument("--decimal-places", type=int, default=5)
+    parser.add_argument("--no-python-plugins", action="store_true")
     parser.add_argument("--no-gpu", action="store_true")
     return parser
 
@@ -36,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
             project_root=project_root,
             no_gpu=args.no_gpu,
             metrics_max_records=args.metrics_max_records,
+            no_python_plugins=args.no_python_plugins,
+            local_window_steps=args.local_window_steps,
+            global_max_points=args.global_max_points,
+            decimal_places=args.decimal_places,
         )
         try:
             sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
@@ -66,6 +75,10 @@ def main(argv: list[str] | None = None) -> int:
         gpu_refresh_seconds=args.gpu_refresh,
         ui_frame_seconds=args.ui_frame,
         metrics_max_records=args.metrics_max_records,
+        no_python_plugins=args.no_python_plugins,
+        local_window_steps=args.local_window_steps,
+        global_max_points=args.global_max_points,
+        decimal_places=args.decimal_places,
     )
     app.run()
     return 0

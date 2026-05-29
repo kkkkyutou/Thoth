@@ -51,6 +51,7 @@ class ExtensionPlugin:
     config: dict[str, Any]
     title: str = ""
     description: str = ""
+    trusted: bool = False
 
     @property
     def has_metrics(self) -> bool:
@@ -143,6 +144,7 @@ def extension_plugins(project_root: Path) -> list[ExtensionPlugin]:
                 config=config,
                 title=str(row.get("title") or plugin_id),
                 description=str(row.get("description") or ""),
+                trusted=bool(row.get("trusted", False)),
             )
         )
     return plugins
@@ -251,6 +253,7 @@ def extension_summary(project_root: Path) -> dict[str, Any]:
                 "surfaces": list(plugin.surfaces),
                 "capabilities": list(plugin.capabilities),
                 "source": plugin.source,
+                "trusted": plugin.trusted,
             }
             for plugin in plugins
         ],
