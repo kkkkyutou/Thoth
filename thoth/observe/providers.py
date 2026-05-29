@@ -14,7 +14,7 @@ from thoth.observe.read_model import active_auto_controllers, load_config, load_
 from thoth.run.io import _read_json
 from thoth.run.service import list_active_runs
 from thoth.tui.gpu import snapshot_gpu
-from thoth.tui.metrics import read_metric_file, summarize_metrics
+from thoth.tui.metrics import DEFAULT_GLOBAL_MAX_POINTS, DEFAULT_LOCAL_WINDOW_STEPS, read_metric_file, summarize_metrics
 
 
 def utc_now() -> str:
@@ -157,7 +157,14 @@ def runs_provider(project_root: Path) -> dict[str, Any]:
     )
 
 
-def metrics_provider(project_root: Path) -> dict[str, Any]:
+def metrics_provider(
+    project_root: Path,
+    *,
+    max_records: int = 200000,
+    local_window_steps: int = DEFAULT_LOCAL_WINDOW_STEPS,
+    global_max_points: int = DEFAULT_GLOBAL_MAX_POINTS,
+    decimal_places: int = 5,
+) -> dict[str, Any]:
     configs = metrics_plugin_configs(project_root)
     if not configs:
         return stamp_provider(
@@ -189,13 +196,19 @@ def metrics_provider(project_root: Path) -> dict[str, Any]:
             path = Path(item)
             if not path.is_absolute():
                 path = project_root / path
-            next_records, next_bad = read_metric_file(path)
+            next_records, next_bad = read_metric_file(path, max_records=max_records)
             records.extend(next_records)
             bad_lines += next_bad
             source_files.append(str(path))
             if not path.exists():
                 provider_errors.append(f"missing metrics file: {path}")
-    payload = summarize_metrics(records, run_name=run_name)
+    payload = summarize_metrics(
+        records,
+        run_name=run_name,
+        decimal_places=decimal_places,
+        local_window_steps=local_window_steps,
+        global_max_points=global_max_points,
+    )
     payload.update(
         {
             "configured": True,
@@ -294,7 +307,15 @@ def system_provider(project_root: Path, *, include_gpu: bool = True) -> dict[str
     )
 
 
-def observe_snapshot(project_root: Path, *, include_gpu: bool = True) -> dict[str, Any]:
+def observe_snapshot(
+    project_root: Path,
+    *,
+    include_gpu: bool = True,
+    metrics_max_records: int = 200000,
+    local_window_steps: int = DEFAULT_LOCAL_WINDOW_STEPS,
+    global_max_points: int = DEFAULT_GLOBAL_MAX_POINTS,
+    decimal_places: int = 5,
+) -> dict[str, Any]:
     """Build the shared read snapshot used by dashboard and TUI surfaces."""
 
     project_root = project_root.resolve()
@@ -303,7 +324,13 @@ def observe_snapshot(project_root: Path, *, include_gpu: bool = True) -> dict[st
         "authority": authority_provider(project_root),
         "work_items": work_items_provider(project_root),
         "runs": runs_provider(project_root),
-        "metrics": metrics_provider(project_root),
+        "metrics": metrics_provider(
+            project_root,
+            max_records=metrics_max_records,
+            local_window_steps=local_window_steps,
+            global_max_points=global_max_points,
+            decimal_places=decimal_places,
+        ),
         "plugins": plugins_provider(project_root),
         "tools": tools_provider(project_root),
         "system": system_provider(project_root, include_gpu=include_gpu),

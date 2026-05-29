@@ -1,7 +1,7 @@
 ---
 name: thoth:tui
 description: Open or snapshot the read-only terminal dashboard backed by shared Thoth providers.
-argument-hint: "[--snapshot-json] [--export-snapshots] [--snapshot-dir <path>] [--no-gpu] [--refresh <seconds>]"
+argument-hint: "[--snapshot-json] [--export-snapshots] [--snapshot-dir <path>] [--no-gpu] [--no-python-plugins] [--refresh <seconds>]"
 disable-model-invocation: true
 ---
 

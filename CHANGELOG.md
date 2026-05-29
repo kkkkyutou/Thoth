@@ -4,6 +4,17 @@
 
 No pending changes.
 
+## [0.3.2] - 2026-05-29
+
+### Added
+- Added interactive TUI keyboard navigation for tabs, row selection, metric/run detail, search, EMA emphasis, decimal precision, help, and refresh.
+- Added trusted Python TUI plugin API v1 with manifest `trusted: true` gating, path containment, provider/renderer roles, plugin notices, and slow renderer warnings.
+- Added local/global loss detail views with connected Braille charts, EMA overlays, incremental metric tailing, and min/max downsampling that preserves endpoints and spikes.
+
+### Changed
+- Reworked the TUI app around provider caches and split refreshes so arrow/Enter/Esc style actions mutate only in-memory UI state and do not synchronously refresh metrics, runs, or GPU.
+- Kept snapshot JSON renderer-free and ANSI-free while surfacing Python plugin audit notices.
+
 ## [0.3.1] - 2026-05-29
 
 ### Fixed

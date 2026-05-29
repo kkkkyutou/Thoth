@@ -213,7 +213,19 @@ def test_cli_help_shows_minimal_public_commands(tmp_path):
 def test_cli_tui_snapshot_json_is_launch_safe(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
 
-    result = _run_cli(tmp_path, "tui", "--snapshot-json", "--no-gpu")
+    result = _run_cli(
+        tmp_path,
+        "tui",
+        "--snapshot-json",
+        "--no-gpu",
+        "--no-python-plugins",
+        "--local-window-steps",
+        "1000",
+        "--global-max-points",
+        "80",
+        "--decimal-places",
+        "3",
+    )
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
@@ -221,6 +233,9 @@ def test_cli_tui_snapshot_json_is_launch_safe(tmp_path):
     assert payload["project_root"] == str(tmp_path)
     assert payload["gpu"]["reason"] == "disabled"
     assert payload["metrics"]["configured"] is False
+    assert payload["tui"]["no_python_plugins"] is True
+    assert payload["tui"]["global_max_points"] == 80
+    assert payload["tui"]["decimal_places"] == 3
 
 
 def test_cli_discuss_records_note(tmp_path):
