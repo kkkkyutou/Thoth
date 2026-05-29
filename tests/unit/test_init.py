@@ -374,14 +374,27 @@ def test_sync_project_layer_updates_dashboard_with_ignored_backup(base_config, t
     initialize_project(base_config, tmp_path)
     dashboard_file = tmp_path / "tools" / "dashboard" / "backend" / "progress_calculator.py"
     dashboard_file.write_text("drifted dashboard\n", encoding="utf-8")
+    (tmp_path / "tools" / "dashboard" / "frontend" / "node_modules" / "pkg").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tools" / "dashboard" / "frontend" / "node_modules" / "pkg" / "index.js").write_text("heavy dependency\n", encoding="utf-8")
+    (tmp_path / "tools" / "dashboard" / "frontend" / "dist").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tools" / "dashboard" / "frontend" / "dist" / "index.html").write_text("regenerable build\n", encoding="utf-8")
+    (tmp_path / "tools" / "dashboard" / "backend" / "__pycache__").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tools" / "dashboard" / "backend" / "__pycache__" / "progress_calculator.pyc").write_bytes(b"cache")
+    (tmp_path / "tools" / "dashboard" / "frontend" / ".pytest_cache").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "tools" / "dashboard" / "frontend" / ".pytest_cache" / "README.md").write_text("cache\n", encoding="utf-8")
 
     result = sync_project_layer(tmp_path)
 
     assert "drifted dashboard" not in dashboard_file.read_text(encoding="utf-8")
     backup = result["dashboard"]["backup"]
     assert backup is not None
-    backup_path = tmp_path / backup["backup_path"] / "backend" / "progress_calculator.py"
+    backup_root = tmp_path / backup["backup_path"]
+    backup_path = backup_root / "backend" / "progress_calculator.py"
     assert "drifted dashboard" in backup_path.read_text(encoding="utf-8")
+    assert not (backup_root / "frontend" / "node_modules").exists()
+    assert not (backup_root / "frontend" / "dist").exists()
+    assert not (backup_root / "backend" / "__pycache__").exists()
+    assert not (backup_root / "frontend" / ".pytest_cache").exists()
     assert "/derived/" in (tmp_path / ".thoth" / ".gitignore").read_text(encoding="utf-8")
 
     dashboard_file.write_text("second drift\n", encoding="utf-8")

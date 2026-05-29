@@ -4,6 +4,11 @@
 
 No pending changes.
 
+## [0.3.1] - 2026-05-29
+
+### Fixed
+- Excluded regenerable dashboard scaffold directories such as `node_modules`, `dist`, `__pycache__`, and `.pytest_cache` from `init --sync` dashboard backups, preventing large frontend dependency trees from being copied into `.thoth/derived/dashboard-sync-backups/`.
+
 ## [0.3.0] - 2026-05-28
 
 ### Added

@@ -17,6 +17,8 @@ from thoth.plan.store import ensure_work_authority_tree
 from thoth.objects import Store
 from thoth.state_layout import PORTABLE_AUTHORITY_PATHS, ensure_project_gitignore_rules
 
+from .migration import _backup_ignore
+
 LEGACY_CONFIG_FILE = ".research-config.yaml"
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES_DIR = ROOT / "templates"
@@ -130,7 +132,7 @@ def _backup_dashboard_scaffold(project_dir: Path, dest: Path) -> dict[str, Any] 
     backup_root = project_dir / ".thoth" / "derived" / "dashboard-sync-backups" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     backup_dest = backup_root / "tools" / "dashboard"
     backup_dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(dest, backup_dest, dirs_exist_ok=True)
+    shutil.copytree(dest, backup_dest, dirs_exist_ok=True, ignore=_backup_ignore)
     manifest = {
         "schema_version": 1,
         "created_at": _utc_iso(),
