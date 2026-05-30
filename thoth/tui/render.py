@@ -8,6 +8,7 @@ from rich import box
 from rich.align import Align
 from rich.columns import Columns
 from rich.console import Group
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -28,7 +29,7 @@ THEME = {
     "bg": "#080607",
 }
 
-TABS = ("loss", "runs", "authority", "gpu", "plugins")
+TABS = ("cockpit", "loss", "runs", "logs", "authority", "gpu", "plugins")
 
 
 def fmt(value: Any, places: int = 5) -> str:
@@ -77,6 +78,7 @@ def _status_bar(snapshot: Mapping[str, Any], active_tab: str = "loss") -> Panel:
     generated = snapshot.get("generated_at") or ""
     line = Text()
     line.append(" THOTH TUI ", style=f"bold {THEME['red_hot']} on {THEME['bg']}")
+    line.append(" v2", style=THEME["cyan"])
     line.append(f" tab={active_tab}", style=THEME["white"])
     line.append(f" step={metrics.get('latest_step')}", style=THEME["white"])
     line.append(f" records={metrics.get('record_count', 0)}", style=THEME["muted"])
@@ -87,6 +89,26 @@ def _status_bar(snapshot: Mapping[str, Any], active_tab: str = "loss") -> Panel:
     line.append("  ")
     line.append(str(generated), style=THEME["muted"])
     return Panel(line, box=box.SQUARE, border_style=THEME["red"], padding=(0, 1))
+
+
+def _overview_panel(snapshot: Mapping[str, Any]) -> Panel:
+    providers = _providers(snapshot)
+    work = providers.get("work_items") if isinstance(providers.get("work_items"), Mapping) else {}
+    runs = providers.get("runs") if isinstance(providers.get("runs"), Mapping) else {}
+    authority = providers.get("authority") if isinstance(providers.get("authority"), Mapping) else {}
+    logs = providers.get("logs") if isinstance(providers.get("logs"), Mapping) else {}
+    counts = work.get("status_counts") if isinstance(work.get("status_counts"), Mapping) else {}
+    table = Table.grid(expand=True)
+    table.add_column(style=THEME["muted"])
+    table.add_column(justify="right", style=THEME["white"])
+    table.add_column(style=THEME["muted"])
+    table.add_column(justify="right", style=THEME["white"])
+    table.add_row("ready", str(counts.get("ready", 0)), "active runs", str(runs.get("active_count", 0)))
+    table.add_row("blocked", str(counts.get("blocked", 0)), "total runs", str(runs.get("run_count", 0)))
+    table.add_row("validated", str(counts.get("validated", 0)), "log rows", str(logs.get("log_count", 0)))
+    problems = authority.get("problems") if isinstance(authority.get("problems"), list) else []
+    table.add_row("authority problems", str(len(problems)), "layout", str((snapshot.get("tui") or {}).get("layout", "auto")))
+    return frame(table, "Live Cockpit", subtitle="read-only authority, runs, logs")
 
 
 def _authority_panel(snapshot: Mapping[str, Any]) -> Panel:
@@ -156,6 +178,32 @@ def _runs_overview_panel(snapshot: Mapping[str, Any], *, selected: int = 0, max_
             str(run.get("latest_message") or "")[:70],
         )
     return frame(_provider_error_wrap(table, runs), f"Runs ({runs.get('run_count', 0)})", subtitle=f"{runs.get('active_count', 0)} active")
+
+
+def _logs_panel(snapshot: Mapping[str, Any], *, max_rows: int = 16) -> Panel:
+    logs = _providers(snapshot).get("logs") if isinstance(_providers(snapshot).get("logs"), Mapping) else {}
+    rows = logs.get("logs") if isinstance(logs.get("logs"), list) else []
+    table = Table(box=box.SIMPLE, expand=True)
+    table.add_column("Run", style=THEME["white"], no_wrap=True)
+    table.add_column("Phase", style=THEME["cyan"], no_wrap=True)
+    table.add_column("Level", style=THEME["amber"], no_wrap=True)
+    table.add_column("Message", style=THEME["white"])
+    if not rows:
+        table.add_row("-", str(logs.get("phase") or "all"), "-", "No matching run log events.")
+    for row in rows[:max_rows]:
+        style = f"bold {THEME['red_hot']}" if row.get("highlight") else THEME["white"]
+        table.add_row(
+            f"[{style}]{escape(str(row.get('run_id') or ''))}[/]",
+            escape(str(row.get("phase") or "")),
+            escape(str(row.get("level") or "")),
+            f"[{style}]{escape(str(row.get('message') or ''))}[/]",
+        )
+    subtitle = "follow={follow} search={search!r} phase={phase}".format(
+        follow=logs.get("follow", True),
+        search=logs.get("search") or "",
+        phase=logs.get("phase") or "all",
+    )
+    return frame(_provider_error_wrap(table, logs), f"Logs ({logs.get('log_count', 0)})", subtitle=subtitle)
 
 
 def _run_detail_panel(snapshot: Mapping[str, Any], *, selected: int = 0) -> Panel:
@@ -321,17 +369,67 @@ def _plugins_panel(snapshot: Mapping[str, Any], *, plugin_renderables: Sequence[
     return frame(body, "Plugins / Tools / Errors", subtitle=f"python_panels={len(plugin_renderables)}")
 
 
+def _action_result_panel(action_result: Mapping[str, Any] | None) -> Panel:
+    if not action_result:
+        return frame("No action has run in this session.", "Action Result", border=THEME["muted"])
+    body = Table.grid(expand=True)
+    body.add_column(style=THEME["muted"])
+    body.add_column(style=THEME["white"])
+    for key in ("action_id", "status", "summary", "target_id", "duration_ms"):
+        value = action_result.get(key)
+        if value is not None:
+            body.add_row(key, str(value))
+    body_payload = action_result.get("body") if isinstance(action_result.get("body"), Mapping) else {}
+    output = body_payload.get("output") or body_payload.get("recommended_command")
+    if output:
+        body.add_row("output", str(output)[:500])
+    return frame(body, "Action Result", border=THEME["amber"] if action_result.get("compatibility_stub") else THEME["red"])
+
+
+def _palette_panel(
+    snapshot: Mapping[str, Any],
+    *,
+    selected: int = 0,
+    pending_action_id: str | None = None,
+    selected_run_id: str | None = None,
+) -> Panel:
+    tui = snapshot.get("tui") if isinstance(snapshot.get("tui"), Mapping) else {}
+    actions = tui.get("actions") if isinstance(tui.get("actions"), list) else []
+    table = Table(box=box.SIMPLE, expand=True)
+    table.add_column("", width=2)
+    table.add_column("Action", style=THEME["white"])
+    table.add_column("Target", style=THEME["muted"])
+    table.add_column("State", style=THEME["cyan"])
+    table.add_column("Description", style=THEME["white"])
+    if not actions:
+        table.add_row("-", "none", "-", "-", "No actions registered.")
+    for index, action in enumerate(actions):
+        action_id = str(action.get("id") or "")
+        marker = ">" if index == selected else " "
+        target = selected_run_id if action.get("target_kind") == "run" else str(action.get("target_kind") or "surface")
+        state = "confirm" if pending_action_id == action_id else str(action.get("backend_state") or "available")
+        style = f"bold {THEME['red_hot']}" if index == selected else THEME["white"]
+        table.add_row(marker, f"[{style}]{escape(str(action.get('title') or action_id))}[/]", escape(str(target or "-")), state, escape(str(action.get("description") or "")))
+    subtitle = "Enter confirms selected action; Esc cancels"
+    if pending_action_id:
+        subtitle = f"Press Enter again to confirm {pending_action_id}; Esc cancels"
+    return frame(table, "Command Palette", subtitle=subtitle, border=THEME["amber"])
+
+
 def _help_panel() -> Panel:
     keys = Table.grid(expand=True)
     keys.add_column(ratio=1)
     keys.add_column(ratio=3)
     for key, action in [
         ("Tab / Shift+Tab", "switch tab"),
-        ("1..5", "jump to tab"),
+        ("1..7", "jump to tab"),
         ("Up / Down", "select row"),
         ("Enter", "open metric or run detail"),
         ("Esc", "return to overview / hide search / close help"),
         ("/", "focus search"),
+        ("p / Ctrl+P", "command palette with confirmation"),
+        ("f", "toggle log follow"),
+        ("v", "cycle log phase filter"),
         ("s", "toggle EMA emphasis"),
         ("d", "cycle decimal places"),
         ("r", "refresh providers asynchronously"),
@@ -344,7 +442,7 @@ def _help_panel() -> Panel:
 
 def _footer() -> Panel:
     return Panel(
-        Align.left(" Tab switch  ↑↓ select  Enter detail  Esc back  / search  s EMA  d decimals  r refresh  ? help  q quit "),
+        Align.left(" Tab switch  ↑↓ select  Enter detail  p palette  / search  f follow  v phase  r refresh  ? help  q quit "),
         border_style=THEME["red"],
         box=box.SQUARE,
     )
@@ -352,10 +450,12 @@ def _footer() -> Panel:
 
 def dashboard_renderable(snapshot: dict[str, Any]) -> Group:
     return Group(
-        _status_bar(snapshot, "overview"),
+        _status_bar(snapshot, "cockpit"),
+        _overview_panel(snapshot),
         Columns([_authority_panel(snapshot), _gpu_panel(snapshot)], equal=True, expand=True),
         _loss_table_panel(snapshot),
         _runs_overview_panel(snapshot),
+        _logs_panel(snapshot),
         _work_items_panel(snapshot),
         _plugins_panel(snapshot),
         _footer(),
@@ -375,16 +475,46 @@ def tab_renderable(
     show_help: bool = False,
     decimal_places: int = 5,
     plugin_renderables: Sequence[Any] = (),
+    palette_open: bool = False,
+    palette_selected_index: int = 0,
+    pending_action_id: str | None = None,
+    action_result: Mapping[str, Any] | None = None,
+    layout_mode: str = "wide",
+    selected_run_id: str | None = None,
 ) -> Group:
     header = _status_bar(snapshot, tab_id)
+    if palette_open:
+        return Group(
+            header,
+            _palette_panel(
+                snapshot,
+                selected=palette_selected_index,
+                pending_action_id=pending_action_id,
+                selected_run_id=selected_run_id,
+            ),
+            _action_result_panel(action_result),
+            _footer(),
+        )
     if show_help:
         return Group(header, _help_panel(), _footer())
+    if tab_id == "cockpit":
+        if layout_mode == "compact":
+            return Group(header, _overview_panel(snapshot), _runs_overview_panel(snapshot, selected=selected_run_index, max_rows=6), _logs_panel(snapshot, max_rows=8), _action_result_panel(action_result), _footer())
+        return Group(
+            header,
+            Columns([_overview_panel(snapshot), _authority_panel(snapshot), _gpu_panel(snapshot)], equal=True, expand=True),
+            Columns([_runs_overview_panel(snapshot, selected=selected_run_index, max_rows=8), _logs_panel(snapshot, max_rows=8)], equal=True, expand=True),
+            _action_result_panel(action_result),
+            _footer(),
+        )
     if tab_id == "loss":
         body: Any = _metric_detail_panel(snapshot, selected=selected_metric_index, places=decimal_places, show_smooth=show_smooth) if detail else _loss_table_panel(snapshot, selected=selected_metric_index, places=decimal_places)
         return Group(header, body, _gpu_panel(snapshot), _footer())
     if tab_id == "runs":
         body = _run_detail_panel(snapshot, selected=selected_run_index) if run_detail else _runs_overview_panel(snapshot, selected=selected_run_index)
         return Group(header, body, _footer())
+    if tab_id == "logs":
+        return Group(header, _logs_panel(snapshot), _footer())
     if tab_id == "authority":
         return Group(header, _authority_panel(snapshot), _work_items_panel(snapshot, selected=selected_work_index), _footer())
     if tab_id == "gpu":

@@ -1,17 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import DagChart from '@/components/charts/DagChart.vue'
-import GanttChart from '@/components/charts/GanttChart.vue'
-import ModuleDetail from '@/components/detail/ModuleDetail.vue'
-import WorkItemDetail from '@/components/detail/WorkItemDetail.vue'
-import ActivityPanel from '@/components/panels/ActivityPanel.vue'
 import CockpitPanel from '@/components/panels/CockpitPanel.vue'
+import MetricsPanel from '@/components/panels/MetricsPanel.vue'
+import PluginsPanel from '@/components/panels/PluginsPanel.vue'
+import RunsPanel from '@/components/panels/RunsPanel.vue'
 import SystemPanel from '@/components/panels/SystemPanel.vue'
-import TodoPanel from '@/components/todo/TodoPanel.vue'
-import ToolPluginPanel from '@/components/visual/ToolPluginPanel.vue'
-import WorkItemsPanel from '@/views/WorkItemsPanel.vue'
-import { locale } from '@/locales'
+import WorkPanel from '@/components/panels/WorkPanel.vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import type { WorkbenchTab } from '@/types'
 
@@ -19,29 +14,24 @@ const router = useRouter()
 const store = useDashboardStore()
 
 const tabs = computed<Array<{ key: WorkbenchTab; label: string }>>(() => [
-  { key: 'overview', label: locale.tabs.overview },
-  { key: 'detail', label: locale.tabs.detail },
-  { key: 'dag', label: locale.tabs.dag },
-  { key: 'gantt', label: locale.tabs.gantt },
-  { key: 'todo', label: locale.tabs.todo },
-  { key: 'activity', label: locale.tabs.activity },
-  { key: 'system', label: locale.tabs.system },
+  { key: 'cockpit', label: 'Cockpit' },
+  { key: 'runs', label: 'Runs' },
+  { key: 'work', label: 'Work' },
+  { key: 'metrics', label: 'Metrics' },
+  { key: 'system', label: 'System' },
+  { key: 'plugins', label: 'Plugins' },
 ])
 
 const tabRoute: Record<WorkbenchTab, string> = {
-  overview: '/overview',
-  detail: '/work-items',
-  dag: '/dag',
-  gantt: '/timeline',
-  todo: '/todo',
-  activity: '/activity',
+  cockpit: '/cockpit',
+  runs: '/runs',
+  work: '/work',
+  metrics: '/metrics',
   system: '/system',
+  plugins: '/plugins',
 }
 
 function activateTab(tab: WorkbenchTab) {
-  if (tab === 'detail') {
-    store.clearSelection()
-  }
   store.setActiveTab(tab)
   router.push(tabRoute[tab])
 }
@@ -63,36 +53,12 @@ function activateTab(tab: WorkbenchTab) {
 
     <div class="main-panel__content">
       <Transition name="fade" mode="out-in">
-        <CockpitPanel v-if="store.activeTab === 'overview'" key="overview" />
-        <WorkItemDetail
-          v-else-if="store.activeTab === 'detail' && store.selectedWorkItem"
-          :key="store.selectedWorkItem.id"
-        />
-        <ModuleDetail
-          v-else-if="store.activeTab === 'detail' && store.selectedModule"
-          :key="store.selectedModule.id"
-        />
-        <WorkItemsPanel v-else-if="store.activeTab === 'detail'" key="work-items" />
-        <DagChart v-else-if="store.activeTab === 'dag'" key="dag" />
-        <GanttChart v-else-if="store.activeTab === 'gantt'" key="gantt" />
-        <section v-else-if="store.activeTab === 'todo'" key="todo" class="tools-panel">
-          <article class="tools-panel__section">
-            <div class="tools-panel__header">
-              <span>Tool Plugins</span>
-              <strong>{{ store.toolPlugins.length }}</strong>
-            </div>
-            <ToolPluginPanel :tools="store.toolPlugins" />
-          </article>
-          <article class="tools-panel__section">
-            <div class="tools-panel__header">
-              <span>Local Todo DB</span>
-              <strong>write</strong>
-            </div>
-            <TodoPanel />
-          </article>
-        </section>
-        <ActivityPanel v-else-if="store.activeTab === 'activity'" key="activity" />
-        <SystemPanel v-else key="system" />
+        <CockpitPanel v-if="store.activeTab === 'cockpit'" key="cockpit" />
+        <RunsPanel v-else-if="store.activeTab === 'runs'" key="runs" />
+        <WorkPanel v-else-if="store.activeTab === 'work'" key="work" />
+        <MetricsPanel v-else-if="store.activeTab === 'metrics'" key="metrics" />
+        <SystemPanel v-else-if="store.activeTab === 'system'" key="system" />
+        <PluginsPanel v-else key="plugins" />
       </Transition>
     </div>
   </main>
@@ -136,41 +102,17 @@ function activateTab(tab: WorkbenchTab) {
   padding: 16px;
 }
 
-.main-panel__placeholder {
-  display: grid;
-  place-items: center;
-  min-height: 240px;
-  color: var(--text-muted);
-}
+@media (max-width: 720px) {
+  .main-panel__tabs {
+    padding: 10px;
+  }
 
-.tools-panel {
-  display: grid;
-  gap: 16px;
-}
+  .main-panel__tab {
+    padding: 7px 10px;
+  }
 
-.tools-panel__section {
-  padding: 16px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  background: rgba(19, 9, 11, 0.84);
-  box-shadow: var(--shadow-soft);
-}
-
-.tools-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.tools-panel__header strong {
-  color: var(--accent-cyan);
-  font-family: var(--font-mono);
-  letter-spacing: 0;
-  text-transform: none;
+  .main-panel__content {
+    padding: 10px;
+  }
 }
 </style>

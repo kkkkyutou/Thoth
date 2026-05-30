@@ -14,6 +14,8 @@ from thoth.observe.extensions import (
     manifest_validation_errors,
     metrics_plugin_configs,
 )
+from thoth.observe.actions import action_catalog, ensure_action_token, run_observe_action, validate_action_token
+from thoth.observe.plugin_service import create_plugin, validate_plugins
 from thoth.observe.providers import observe_snapshot
 from thoth.tui.app import ThothTuiApp
 from thoth.tui.chart import render_connected_chart
@@ -30,11 +32,46 @@ DEMO = ROOT / "tests" / "fixtures" / "dashboard_demo"
 def test_extension_manifest_default_is_portable(tmp_path):
     manifest = ensure_extension_manifest(tmp_path)
 
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
+    assert manifest["kind"] == "thoth.extensions"
+    assert manifest["actions"] == []
     assert (tmp_path / ".thoth" / "extensions" / "manifest.json").exists()
     assert (tmp_path / ".thoth" / "extensions" / "plugins").is_dir()
     assert metrics_plugin_configs(tmp_path) == []
     assert extension_summary(tmp_path)["metrics_configured"] is False
+
+
+def test_extension_manifest_v1_is_migrated_by_managed_entrypoint(tmp_path):
+    manifest_path = tmp_path / ".thoth" / "extensions" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "plugins": [
+                    {
+                        "id": "metrics-demo",
+                        "version": "1",
+                        "enabled": True,
+                        "surfaces": ["dashboard"],
+                        "capabilities": ["metrics_provider"],
+                        "source": ".thoth/extensions/plugins/metrics-demo",
+                        "config": {"metrics_files": "metrics.jsonl"},
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    manifest = ensure_extension_manifest(tmp_path)
+
+    assert manifest["schema_version"] == 2
+    assert manifest["plugins"][0]["id"] == "metrics-demo"
+    assert manifest["last_migration"]["from_schema_version"] == 1
+    assert manifest_path.with_suffix(".json.v1.bak").exists()
 
 
 def test_extension_manifest_reports_duplicate_plugin_ids(tmp_path):
@@ -43,7 +80,7 @@ def test_extension_manifest_reports_duplicate_plugin_ids(tmp_path):
     manifest_path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "plugins": [
                     {"id": "dup", "version": "1", "enabled": True, "surfaces": [], "capabilities": [], "source": "a", "config": {}},
                     {"id": "dup", "version": "2", "enabled": True, "surfaces": [], "capabilities": [], "source": "b", "config": {}},
@@ -58,6 +95,55 @@ def test_extension_manifest_reports_duplicate_plugin_ids(tmp_path):
 
     assert "duplicate plugin id: dup" in manifest_validation_errors(tmp_path)
     assert extension_summary(tmp_path)["plugin_count"] == 1
+
+
+def test_plugin_create_and_validate_write_local_receipts(tmp_path):
+    result = create_plugin(
+        tmp_path,
+        plugin_id="demo-tool",
+        title="Demo Tool",
+        surfaces="dashboard,tui",
+        capabilities="tool,metrics_provider",
+    )
+
+    assert result["plugin"]["id"] == "demo-tool"
+    assert (tmp_path / ".thoth" / "extensions" / "plugins" / "demo-tool" / "README.md").exists()
+    assert result["receipt"]["path"].startswith(".thoth/local/actions/")
+
+    validation = validate_plugins(tmp_path)
+
+    assert validation["status"] == "ok"
+    assert validation["errors"] == []
+    assert validation["receipt"]["path"].startswith(".thoth/local/actions/")
+    summary = extension_summary(tmp_path)
+    assert summary["enabled_plugin_count"] == 1
+    assert summary["debug"]["plugin_ids"] == ["demo-tool"]
+
+
+def test_observe_action_catalog_includes_shared_low_risk_actions(tmp_path):
+    actions = {item["id"]: item for item in action_catalog()}
+
+    assert {"refresh", "attach", "watch", "stop", "validate", "sync", "health-check"} <= set(actions)
+    assert actions["refresh"]["confirmation_required"] is False
+    assert actions["health-check"]["confirmation_required"] is False
+    assert actions["stop"]["confirmation_required"] is True
+    assert actions["validate"]["confirmation_required"] is True
+    assert actions["sync"]["confirmation_required"] is True
+
+    preview = run_observe_action(tmp_path, "sync", confirmed=False)
+
+    assert preview["status"] == "confirm_required"
+    assert preview["body"]["recommended_command"] == "thoth init --sync"
+    assert not (tmp_path / ".thoth" / "local" / "actions").exists()
+
+
+def test_dashboard_action_token_is_local_and_validated(tmp_path):
+    token = ensure_action_token(tmp_path)
+
+    assert len(token) >= 24
+    assert (tmp_path / ".thoth" / "local" / "dashboard" / "action-token").exists()
+    assert validate_action_token(tmp_path, token) is True
+    assert validate_action_token(tmp_path, "wrong-token") is False
 
 
 def test_metrics_parser_and_smoothing_helpers():
@@ -392,11 +478,14 @@ async def _run_textual_tui_keymap_smoke(tmp_path):
     )
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
-        assert app.active_tab == "loss"
+        assert app.active_tab == "cockpit"
         await pilot.press("tab")
         await pilot.pause()
-        assert app.active_tab == "runs"
+        assert app.active_tab == "loss"
         await pilot.press("shift+tab")
+        await pilot.pause()
+        assert app.active_tab == "cockpit"
+        await pilot.press("tab")
         await pilot.pause()
         assert app.active_tab == "loss"
         await pilot.press("down")

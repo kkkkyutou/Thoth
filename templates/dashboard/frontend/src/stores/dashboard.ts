@@ -40,7 +40,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
 
   const selectedWorkItem = ref<WorkItem | null>(null)
   const selectedModuleId = ref<string | null>(null)
-  const activeTab = ref<WorkbenchTab>('overview')
+  const activeTab = ref<WorkbenchTab>('cockpit')
   const lastUpdatedAt = ref<string | null>(null)
   const lastError = ref<string | null>(null)
 
@@ -221,11 +221,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   async function loadTabData(tab: WorkbenchTab) {
-    if (tab === 'dag') {
+    if (tab === 'work') {
       await fetchDag()
-    } else if (tab === 'gantt') {
+    } else if (tab === 'runs') {
       await fetchGantt()
-    } else if (tab === 'activity') {
+      await fetchActivity()
+    } else if (tab === 'metrics') {
+      await fetchBootstrap()
+    } else if (tab === 'plugins') {
       await fetchActivity()
     } else if (tab === 'system') {
       await fetchSystemStatus()
@@ -242,7 +245,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     try {
       selectedWorkItem.value = await api.getWorkItem(workId)
       selectedModuleId.value = null
-      activeTab.value = 'detail'
+      activeTab.value = 'work'
     } catch (error) {
       lastError.value = `work item ${workId}: ${stringifyError(error)}`
     } finally {
@@ -253,7 +256,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   function selectModule(moduleId: string) {
     selectedModuleId.value = moduleId
     selectedWorkItem.value = null
-    activeTab.value = 'detail'
+    activeTab.value = 'work'
   }
 
   function clearSelection() {

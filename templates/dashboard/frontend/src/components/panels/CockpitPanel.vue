@@ -13,6 +13,8 @@ import ProgressStackBar from '@/components/visual/ProgressStackBar.vue'
 import RunPhaseStepper from '@/components/visual/RunPhaseStepper.vue'
 import ToolPluginPanel from '@/components/visual/ToolPluginPanel.vue'
 import WorkItemMatrix from '@/components/visual/WorkItemMatrix.vue'
+import ActiveRunInstrument from '@/components/v2/ActiveRunInstrument.vue'
+import RunCompare from '@/components/v2/RunCompare.vue'
 import { locale } from '@/locales'
 import { useDashboardStore } from '@/stores/dashboard'
 import type { MetricsProviderPayload, RunSummary } from '@/types'
@@ -72,27 +74,29 @@ function openWorkItem(workId: string) {
   <section class="cockpit">
     <section class="cockpit__mast">
       <div class="cockpit__identity">
-        <span class="cockpit__eyebrow">{{ locale.cockpit.title }}</span>
+        <span class="cockpit__eyebrow">Cockpit Command Deck</span>
         <h2>{{ projectName }}</h2>
         <p>{{ projectDescription }}</p>
       </div>
-      <div class="cockpit__rings">
-        <NeonProgressRing
-          :value="summary?.headline.overall_progress ?? 0"
-          label="validated"
-          tone="red"
-        />
-        <NeonProgressRing
-          :value="totalCount ? (readyCount / totalCount) * 100 : 0"
-          label="ready"
-          tone="cyan"
-        />
-        <NeonProgressRing
-          :value="totalCount ? (blockedCount / totalCount) * 100 : 0"
-          label="blocked"
-          tone="amber"
-        />
-      </div>
+      <ActiveRunInstrument :runs="runs" />
+    </section>
+
+    <section class="cockpit__rings">
+      <NeonProgressRing
+        :value="summary?.headline.overall_progress ?? 0"
+        label="validated"
+        tone="red"
+      />
+      <NeonProgressRing
+        :value="totalCount ? (readyCount / totalCount) * 100 : 0"
+        label="ready"
+        tone="cyan"
+      />
+      <NeonProgressRing
+        :value="totalCount ? (blockedCount / totalCount) * 100 : 0"
+        label="blocked"
+        tone="amber"
+      />
     </section>
 
     <section class="cockpit__strip" aria-label="headline counts">
@@ -161,6 +165,14 @@ function openWorkItem(workId: string) {
           <strong>{{ runs.length }} ledgers</strong>
         </header>
         <RunPhaseStepper :runs="runs" />
+      </article>
+
+      <article class="cockpit-card cockpit-card--wide">
+        <header>
+          <span>Run Compare</span>
+          <strong>latest ledgers</strong>
+        </header>
+        <RunCompare :runs="runs" />
       </article>
 
       <article class="cockpit-card">

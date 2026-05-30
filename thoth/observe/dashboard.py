@@ -13,10 +13,12 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
+from thoth.observe.actions import action_token_path, ensure_action_token
 from thoth.observe.dashboard_contract import dashboard_static_contract_warnings
 from thoth.observe.read_model import load_config
 
 DEFAULT_DASHBOARD_PORT = 8501
+DEFAULT_DASHBOARD_HOST = "127.0.0.1"
 DASHBOARD_PORT_SCAN_LIMIT = 100
 
 
@@ -422,6 +424,8 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
     pid = _read_pid(project_root)
     metadata_port = _read_port(project_root)
     preferred_port = metadata_port or dashboard_port(project_root)
+    action_token = ensure_action_token(project_root)
+    token_path = action_token_path(project_root)
     frontend_status = _ensure_frontend_ready(project_root, force_build=rebuild)
     contract_warnings = dashboard_static_contract_warnings(project_root / "tools" / "dashboard")
     if _process_alive(pid) and _pid_matches_dashboard(project_root, pid):
@@ -437,6 +441,8 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
             "url": f"http://localhost:{port}",
             "reused": True,
             "frontend": frontend_status,
+            "host": DEFAULT_DASHBOARD_HOST,
+            "action_token_path": str(token_path.relative_to(project_root)),
             "warnings": contract_warnings,
         }
     _cleanup_dashboard_metadata(project_root)
@@ -461,6 +467,8 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
             "url": f"http://localhost:{port}",
             "reused": True,
             "frontend": frontend_status,
+            "host": DEFAULT_DASHBOARD_HOST,
+            "action_token_path": str(token_path.relative_to(project_root)),
             "port_owner": port_owner,
             "checked_ports": checked_ports,
             "warnings": contract_warnings,
@@ -469,6 +477,11 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
     log_path.parent.mkdir(parents=True, exist_ok=True)
     python_bin = _python_bin(project_root)
     log_handle = log_path.open("a", encoding="utf-8")
+    dashboard_host = os.environ.get("DASHBOARD_HOST", DEFAULT_DASHBOARD_HOST).strip() or DEFAULT_DASHBOARD_HOST
+    env = os.environ.copy()
+    env.setdefault("DASHBOARD_HOST", dashboard_host)
+    env.setdefault("THOTH_DASHBOARD_ACTION_TOKEN", action_token)
+    env.setdefault("THOTH_DASHBOARD_ACTION_TOKEN_FILE", str(token_path))
     try:
         proc = subprocess.Popen(
             [
@@ -477,12 +490,12 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
                 "uvicorn",
                 "app:app",
                 "--host",
-                "0.0.0.0",
+                dashboard_host,
                 "--port",
                 str(port),
             ],
             cwd=str(backend_dir),
-            env=os.environ.copy(),
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
@@ -516,6 +529,8 @@ def start_dashboard(project_root: Path, *, rebuild: bool = False) -> dict[str, A
         "url": f"http://localhost:{port}",
         "reused": False,
         "frontend": frontend_status,
+        "host": dashboard_host,
+        "action_token_path": str(token_path.relative_to(project_root)),
         "port_owner": port_owner,
         "checked_ports": checked_ports,
         "warnings": contract_warnings,

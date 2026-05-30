@@ -8,13 +8,12 @@ export type WorkItemStatus =
   | 'failed'
 
 export type WorkbenchTab =
-  | 'overview'
-  | 'detail'
-  | 'dag'
-  | 'gantt'
-  | 'todo'
-  | 'activity'
+  | 'cockpit'
+  | 'runs'
+  | 'work'
+  | 'metrics'
   | 'system'
+  | 'plugins'
 
 export interface Dependency {
   work_id: string

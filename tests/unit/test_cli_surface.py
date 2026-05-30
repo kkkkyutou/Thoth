@@ -205,9 +205,40 @@ def test_cli_init_config_json_with_intent_preserves_config_and_raw_discussion(tm
 def test_cli_help_shows_minimal_public_commands(tmp_path):
     result = _run_cli(tmp_path, "--help")
     assert result.returncode == 0
-    assert "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui}" in result.stdout
+    assert "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui,plugin}" in result.stdout
     for hidden in (" sync", " report", " extend", " orchestration"):
         assert hidden not in result.stdout
+
+
+def test_cli_plugin_create_list_validate_writes_receipts(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+
+    create = _run_cli(
+        tmp_path,
+        "plugin",
+        "create",
+        "demo-tool",
+        "--title",
+        "Demo Tool",
+        "--capability",
+        "tool,metrics_provider",
+    )
+    assert create.returncode == 0, create.stderr
+    create_payload = _extract_envelope(create.stdout)
+    assert create_payload["body"]["plugin"]["id"] == "demo-tool"
+    assert create_payload["body"]["receipt"]["path"].startswith(".thoth/local/actions/")
+
+    listed = _run_cli(tmp_path, "plugin", "list")
+    assert listed.returncode == 0, listed.stderr
+    listed_payload = _extract_envelope(listed.stdout)
+    assert listed_payload["body"]["plugins"]["plugin_count"] == 1
+    assert listed_payload["body"]["plugins"]["plugins"][0]["id"] == "demo-tool"
+
+    validated = _run_cli(tmp_path, "plugin", "validate")
+    assert validated.returncode == 0, validated.stderr
+    validated_payload = _extract_envelope(validated.stdout)
+    assert validated_payload["body"]["validation"]["errors"] == []
+    assert len(list((tmp_path / ".thoth" / "local" / "actions").glob("act-*.json"))) >= 2
 
 
 def test_cli_tui_snapshot_json_is_launch_safe(tmp_path):

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from thoth.objects import Store
+from thoth.observe.actions import record_action_receipt
 from thoth.plan.store import upsert_work_item, upsert_decision, upsert_work_result
 
 ROOT = Path(__file__).parent.parent.parent
@@ -270,6 +271,54 @@ def test_observe_plugin_tool_and_metrics_endpoints(monkeypatch, tmp_path):
     assert {tool["id"] for tool in tools.json()["tools"]} >= {"todo", "thoth-triggers"}
     assert metrics.status_code == 200
     assert metrics.json()["metrics"][0]["name"] == "train.loss_total"
+
+
+def test_delta_sse_index_and_debug_endpoints(monkeypatch, tmp_path):
+    _setup_project(tmp_path, monkeypatch)
+    record_action_receipt(
+        tmp_path,
+        action="unit.debug",
+        status="ok",
+        summary="debug receipt",
+    )
+    dashboard_app.invalidate_cache()
+    client = TestClient(dashboard_app.app)
+
+    first_delta = client.get("/api/delta")
+    assert first_delta.status_code == 200
+    first_payload = first_delta.json()
+    assert first_payload["changed"] is True
+    assert first_payload["cursor"]
+
+    second_delta = client.get(f"/api/delta?cursor={first_payload['cursor']}")
+    assert second_delta.status_code == 200
+    assert second_delta.json()["changed"] is False
+
+    stream = client.get("/api/invalidation/stream?once=true")
+    assert stream.status_code == 200
+    assert "text/event-stream" in stream.headers["content-type"]
+    assert "event: thoth.invalidate" in stream.text
+
+    token_response = client.get("/api/action-token")
+    assert token_response.status_code == 200
+    token = token_response.json()["token"]
+    assert token_response.json()["header"] == "X-Thoth-Action-Token"
+
+    rejected_index = client.post("/api/read-model/index")
+    assert rejected_index.status_code == 403
+
+    index = client.post("/api/read-model/index", headers={"X-Thoth-Action-Token": token})
+    assert index.status_code == 200
+    index_payload = index.json()
+    assert index_payload["sqlite"]["available"] is True
+    assert index_payload["counts"]["work_items"] == 1
+    assert "available" in index_payload["duckdb"]
+
+    debug = client.get("/api/debug/summary")
+    assert debug.status_code == 200
+    debug_payload = debug.json()
+    assert debug_payload["plugins"]["manifest_path"] == ".thoth/extensions/manifest.json"
+    assert debug_payload["actions"]["recent_receipts"][0]["action"] == "unit.debug"
 
 
 def test_runtime_progress_reports_auto_failed_attempt_counts(monkeypatch, tmp_path):

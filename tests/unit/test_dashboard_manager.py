@@ -62,6 +62,8 @@ def test_select_dashboard_port_skips_foreign_occupied_port(monkeypatch, tmp_path
 def test_start_dashboard_uses_next_free_port_when_preferred_is_occupied(monkeypatch, tmp_path):
     _make_dashboard_tree(tmp_path)
     launched: list[int] = []
+    launched_env: list[dict[str, str]] = []
+    launched_host: list[str] = []
 
     monkeypatch.setattr(dashboard, "dashboard_port", lambda _root: 8501)
     monkeypatch.setattr(dashboard, "_ensure_frontend_ready", lambda _root, force_build: {"status": "ok", "built": False})
@@ -88,6 +90,8 @@ def test_start_dashboard_uses_next_free_port_when_preferred_is_occupied(monkeypa
 
     def fake_popen(args, **kwargs):
         launched.append(8502 if "--port" in args and args[args.index("--port") + 1] == "8502" else 0)
+        launched_host.append(args[args.index("--host") + 1])
+        launched_env.append(kwargs.get("env") or {})
         return FakeProcess()
 
     monkeypatch.setattr(dashboard.subprocess, "Popen", fake_popen)
@@ -97,9 +101,14 @@ def test_start_dashboard_uses_next_free_port_when_preferred_is_occupied(monkeypa
     assert result["status"] == "ok"
     assert result["port"] == 8502
     assert result["reused"] is False
+    assert result["host"] == "127.0.0.1"
+    assert result["action_token_path"] == ".thoth/local/dashboard/action-token"
     assert "warnings" in result
     assert launched == [8502]
+    assert launched_host == ["127.0.0.1"]
+    assert launched_env[0]["THOTH_DASHBOARD_ACTION_TOKEN"]
     assert (tmp_path / ".thoth" / "derived" / "dashboard.port").read_text(encoding="utf-8").strip() == "8502"
+    assert (tmp_path / ".thoth" / "local" / "dashboard" / "action-token").exists()
 
 
 def test_start_dashboard_reuses_same_workspace_dashboard_without_metadata(monkeypatch, tmp_path):
@@ -129,6 +138,8 @@ def test_start_dashboard_reuses_same_workspace_dashboard_without_metadata(monkey
     assert result["port"] == 8501
     assert result["pid"] == 4321
     assert result["reused"] is True
+    assert result["host"] == "127.0.0.1"
+    assert result["action_token_path"] == ".thoth/local/dashboard/action-token"
     assert "warnings" in result
     assert (tmp_path / ".thoth" / "derived" / "dashboard.pid").read_text(encoding="utf-8").strip() == "4321"
 

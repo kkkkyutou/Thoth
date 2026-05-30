@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 
 EXTENSIONS_DIR = ".thoth/extensions"
 EXTENSIONS_MANIFEST = f"{EXTENSIONS_DIR}/manifest.json"
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 
 
 BUILTIN_TOOL_PLUGINS: tuple[dict[str, Any], ...] = (
@@ -35,7 +36,9 @@ BUILTIN_TOOL_PLUGINS: tuple[dict[str, Any], ...] = (
 
 DEFAULT_EXTENSION_MANIFEST: dict[str, Any] = {
     "schema_version": MANIFEST_SCHEMA_VERSION,
+    "kind": "thoth.extensions",
     "plugins": [],
+    "actions": [],
     "builtin_tools": list(BUILTIN_TOOL_PLUGINS),
 }
 
@@ -74,12 +77,81 @@ def default_manifest() -> dict[str, Any]:
     return json.loads(json.dumps(DEFAULT_EXTENSION_MANIFEST))
 
 
+def _utc_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def migrate_extension_manifest_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Return a schema v2 manifest while preserving schema v1 plugin rows."""
+
+    original_version = payload.get("schema_version")
+    if original_version == MANIFEST_SCHEMA_VERSION:
+        migrated = dict(payload)
+        migrated.setdefault("kind", "thoth.extensions")
+        migrated.setdefault("plugins", [])
+        migrated.setdefault("actions", [])
+        migrated.setdefault("builtin_tools", list(BUILTIN_TOOL_PLUGINS))
+        return migrated, None
+    if original_version not in (None, 1):
+        migrated = dict(payload)
+        migrated.setdefault("plugins", [])
+        migrated.setdefault("actions", [])
+        migrated.setdefault("builtin_tools", list(BUILTIN_TOOL_PLUGINS))
+        return migrated, None
+
+    migrated = default_manifest()
+    rows = payload.get("plugins")
+    migrated["plugins"] = rows if isinstance(rows, list) else []
+    builtin_tools = payload.get("builtin_tools")
+    if isinstance(builtin_tools, list):
+        migrated["builtin_tools"] = builtin_tools
+    actions = payload.get("actions")
+    if isinstance(actions, list):
+        migrated["actions"] = actions
+    migration = {
+        "from_schema_version": 1 if original_version in (None, 1) else original_version,
+        "to_schema_version": MANIFEST_SCHEMA_VERSION,
+        "migrated_at": _utc_iso(),
+    }
+    migrated["last_migration"] = migration
+    return migrated, migration
+
+
+def migrate_extension_manifest_file(project_root: Path) -> dict[str, Any]:
+    """Upgrade an existing v1 manifest to schema v2 on disk when needed."""
+
+    path = manifest_path(project_root)
+    if not path.exists():
+        return {"changed": False, "manifest": default_manifest(), "migration": None}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"changed": False, "manifest": load_extension_manifest(project_root), "migration": None}
+    if not isinstance(payload, dict):
+        return {"changed": False, "manifest": load_extension_manifest(project_root), "migration": None}
+    migrated, migration = migrate_extension_manifest_payload(payload)
+    if migration is None:
+        return {"changed": False, "manifest": migrated, "migration": None}
+    backup = path.with_suffix(path.suffix + ".v1.bak")
+    if not backup.exists():
+        backup.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(migrated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {
+        "changed": True,
+        "manifest": migrated,
+        "migration": migration,
+        "backup_path": str(backup.relative_to(project_root)),
+        "manifest_path": EXTENSIONS_MANIFEST,
+    }
+
+
 def ensure_extension_manifest(project_root: Path) -> dict[str, Any]:
     """Create the portable extension manifest if it does not exist."""
 
     path = manifest_path(project_root)
     if path.exists():
-        return load_extension_manifest(project_root)
+        migration = migrate_extension_manifest_file(project_root)
+        return migration["manifest"]
     path.parent.mkdir(parents=True, exist_ok=True)
     manifest = default_manifest()
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -104,10 +176,10 @@ def load_extension_manifest(project_root: Path) -> dict[str, Any]:
             **default_manifest(),
             "manifest_error": f"extension manifest must be an object: {path}",
         }
-    payload.setdefault("schema_version", MANIFEST_SCHEMA_VERSION)
-    payload.setdefault("plugins", [])
-    payload.setdefault("builtin_tools", list(BUILTIN_TOOL_PLUGINS))
-    return payload
+    migrated, migration = migrate_extension_manifest_payload(payload)
+    if migration is not None:
+        migrated["migration_required"] = True
+    return migrated
 
 
 def _string_tuple(value: Any) -> tuple[str, ...]:
@@ -212,10 +284,15 @@ def manifest_validation_errors(project_root: Path) -> list[str]:
     errors: list[str] = []
     if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
         errors.append(f"unsupported schema_version={manifest.get('schema_version')!r}")
+    if manifest.get("kind") not in (None, "thoth.extensions"):
+        errors.append(f"unsupported kind={manifest.get('kind')!r}")
     rows = manifest.get("plugins")
     if rows is not None and not isinstance(rows, list):
         errors.append("plugins must be a list")
         return errors
+    actions = manifest.get("actions")
+    if actions is not None and not isinstance(actions, list):
+        errors.append("actions must be a list")
     seen: set[str] = set()
     for index, row in enumerate(rows or []):
         if not isinstance(row, dict):
@@ -230,6 +307,9 @@ def manifest_validation_errors(project_root: Path) -> list[str]:
         seen.add(plugin_id)
         if not isinstance(row.get("config", {}), dict):
             errors.append(f"plugins[{index}].config must be an object")
+        source = str(row.get("source") or "").strip()
+        if source.startswith("/") or ".." in Path(source).parts:
+            errors.append(f"plugins[{index}].source must stay project-relative")
     return errors
 
 
@@ -241,6 +321,8 @@ def extension_summary(project_root: Path) -> dict[str, Any]:
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "manifest_path": EXTENSIONS_MANIFEST,
         "manifest_error": manifest.get("manifest_error"),
+        "migration_required": bool(manifest.get("migration_required")),
+        "last_migration": manifest.get("last_migration"),
         "validation_errors": validation_errors,
         "plugin_count": len(plugins),
         "enabled_plugin_count": len([plugin for plugin in plugins if plugin.enabled]),
@@ -260,4 +342,10 @@ def extension_summary(project_root: Path) -> dict[str, Any]:
         "tool_plugins": tool_plugins(project_root),
         "metrics_configured": bool(metrics_plugin_configs(project_root)),
         "system_configured": bool(system_plugin_configs(project_root)),
+        "debug": {
+            "manifest_schema_version": manifest.get("schema_version"),
+            "plugin_ids": [plugin.plugin_id for plugin in plugins],
+            "enabled_plugin_ids": [plugin.plugin_id for plugin in plugins if plugin.enabled],
+            "validation_error_count": len(validation_errors),
+        },
     }

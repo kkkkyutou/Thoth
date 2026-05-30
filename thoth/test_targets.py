@@ -110,6 +110,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
     "dashboard-runtime": TargetSpec(
         target_id="dashboard-runtime",
         selectors=(
+            "tests/unit/test_dashboard_manager.py",
             "tests/unit/test_dashboard_runtime_api.py",
             "tests/integration/test_dashboard_api.py",
         ),
@@ -130,7 +131,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
     ),
     "plugin-surface": TargetSpec(
         target_id="plugin-surface",
-        selectors=("tests/unit/test_plugin_surface.py",),
+        selectors=("tests/unit/test_plugin_surface.py", "tests/unit/test_observe_extensions_and_tui.py"),
         recommended_selftest_cases=(
             "surface.codex.init_sync",
             "surface.claude.init_sync",
@@ -144,6 +145,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
             "tests/unit/test_report.py",
             "tests/unit/test_data_loader.py",
             "tests/unit/test_runtime_loader.py",
+            "tests/unit/test_observe_extensions_and_tui.py",
         ),
         recommended_selftest_cases=("observe.dashboard", "observe.tui"),
         description="Status/report/read-model derivation logic.",
@@ -155,6 +157,11 @@ PATH_TARGET_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("thoth/observe/selftest/", ("selftest-core", "runtime-core", "surface-cli", "claude-bridge")),
     ("thoth/tui/", ("observe-read-model", "selftest-core", "surface-cli")),
     ("thoth/observe/extensions.py", ("observe-read-model", "dashboard-runtime", "plugin-surface")),
+    ("thoth/observe/actions.py", ("observe-read-model", "dashboard-runtime", "plugin-surface")),
+    ("thoth/observe/plugin_service.py", ("observe-read-model", "dashboard-runtime", "plugin-surface", "surface-cli")),
+    ("thoth/observe/invalidation.py", ("observe-read-model", "dashboard-runtime")),
+    ("thoth/observe/read_model_index.py", ("observe-read-model", "dashboard-runtime")),
+    ("thoth/observe/debug.py", ("observe-read-model", "dashboard-runtime")),
     ("thoth/observe/providers.py", ("observe-read-model", "dashboard-runtime", "selftest-core")),
     ("thoth/run/", ("runtime-core", "selftest-core")),
     ("thoth/surface/", ("surface-cli", "claude-bridge")),

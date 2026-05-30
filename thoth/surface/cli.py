@@ -10,7 +10,7 @@ from .handlers import handle_command
 
 def build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="thoth")
-    public_commands = "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui}"
+    public_commands = "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui,plugin}"
     sub = parser.add_subparsers(dest="command", required=True, metavar=public_commands)
 
     def add_internal_parser(name: str) -> argparse.ArgumentParser:
@@ -105,6 +105,25 @@ def build_cli_parser() -> argparse.ArgumentParser:
     tui.add_argument("--decimal-places", type=int)
     tui.add_argument("--no-python-plugins", action="store_true")
     tui.add_argument("--no-gpu", action="store_true")
+
+    plugin = sub.add_parser("plugin")
+    plugin_sub = plugin.add_subparsers(dest="plugin_action", required=True, metavar="{create,list,validate}")
+    plugin_create = plugin_sub.add_parser("create")
+    plugin_create.add_argument("plugin_id")
+    plugin_create.add_argument("--title")
+    plugin_create.add_argument("--version", default="0.1.0")
+    plugin_create.add_argument("--surface", dest="surfaces", default="dashboard,tui")
+    plugin_create.add_argument("--capability", dest="capabilities", default="tool")
+    plugin_create.add_argument("--source")
+    plugin_create.add_argument("--description", default="")
+    plugin_create.add_argument("--disabled", action="store_true")
+    plugin_create.add_argument("--trusted", action="store_true")
+    plugin_create.add_argument("--force", action="store_true")
+    plugin_list = plugin_sub.add_parser("list")
+    plugin_list.add_argument("--json", action="store_true")
+    plugin_validate = plugin_sub.add_parser("validate")
+    plugin_validate.add_argument("--fix", action="store_true")
+    plugin_validate.add_argument("--json", action="store_true")
 
     add_internal_parser("sync")
 

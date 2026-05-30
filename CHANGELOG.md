@@ -4,6 +4,26 @@
 
 No pending changes.
 
+## [0.4.0] - 2026-05-30
+
+### Added
+- Added public `$thoth plugin` / `/thoth:plugin` surfaces for creating, listing, validating, and migrating project-local Dashboard/TUI extension plugins with local action receipts.
+- Added extension manifest schema v2 with v1 migration, plugin debug metadata, trusted/frontend/TUI layout fields, and portable `.thoth/extensions/plugins/<id>/` scaffolding.
+- Added Dashboard delta/SSE invalidation endpoints, debug summary endpoint, and a lightweight SQLite read-model index with optional DuckDB mirror.
+- Added shared observe action receipts for dashboard triggers and TUI actions, local Dashboard action-token enforcement for write endpoints, plus a TUI command palette for refresh, attach, watch, stop, validate, sync, and health-check.
+- Added TUI Live Cockpit, logs tab, local preferences, action results, and v2 snapshot metadata while keeping ANSI-free JSON snapshots renderer-free.
+- Added Dashboard v2 frontend workbench sections for Cockpit, Runs, Work, Metrics, System, and Plugins using Reka UI, TanStack Query/Table/Virtual, Vue Flow, uPlot, CodeMirror, and the existing ECharts stack.
+
+### Changed
+- Reworked the Dashboard shell into a dense neon cockpit with active-run instrumentation, alerts, command palette, evidence rail, virtualized tables, DAG flow, metric compare, log/code viewers, and plugin diagnostics.
+- Dashboard frontend dev proxy now honors `THOTH_DASHBOARD_API_TARGET`, making local visual validation usable when the backend is not on port 8501.
+- Dashboard runtime now binds to `127.0.0.1` by default; remote access requires an explicit `DASHBOARD_HOST` override.
+- Dashboard trigger actions now record local audit receipts instead of returning anonymous command output only.
+- TUI defaults to the Live Cockpit tab and persists tab/filter/render preferences under ignored local state.
+
+### Fixed
+- Kept TUI keyboard actions provider-cache based while adding logs/actions so arrow, Enter, Esc, palette, and search interactions do not synchronously poll GPU or metrics.
+
 ## [0.3.2] - 2026-05-29
 
 ### Added

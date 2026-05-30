@@ -204,6 +204,18 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         scope_cannot=("Mutate .thoth authority", "Stop, resume, or edit training/runtime artifacts", "Guess metrics paths without an extension manifest"),
         lifecycle=("read", "render"),
     ),
+    CommandSpec(
+        command_id="plugin",
+        summary="Create, list, or validate project-local Dashboard/TUI extension plugins with local audit receipts.",
+        argument_hint="create <plugin_id> [--title <title>] [--surface dashboard,tui] [--capability tool|metrics_provider|system_provider|tui_python_plugin] | list | validate [--fix]",
+        route_class="mechanical_fast",
+        intelligence_tier="none",
+        packet_authority_mode="result_envelope",
+        acceptance="Extension manifest schema v2 is preserved, schema v1 manifests are migrated through managed plugin actions, and create/validate operations write local action receipts.",
+        scope_can=("Create a project-local extension plugin skeleton", "List extension manifest plugins", "Validate or migrate the extension manifest"),
+        scope_cannot=("Load untrusted Python plugin code", "Use dashboard actions as project authority", "Overwrite arbitrary files outside .thoth/extensions/plugins"),
+        lifecycle=("manifest-load", "validate", "write-receipt"),
+    ),
 )
 
 

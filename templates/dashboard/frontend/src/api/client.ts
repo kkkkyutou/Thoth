@@ -25,17 +25,42 @@ import type {
 } from '@/types'
 
 const BASE = '/api'
+const ACTION_TOKEN_HEADER = 'X-Thoth-Action-Token'
+
+let actionTokenPromise: Promise<string> | null = null
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(init?.headers as Record<string, string> | undefined),
+  }
   const response = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers,
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
     throw new Error(body.detail || body.error || `HTTP ${response.status}`)
   }
   return response.json() as Promise<T>
+}
+
+async function actionToken(): Promise<string> {
+  if (!actionTokenPromise) {
+    actionTokenPromise = request<{ token: string }>('/action-token').then((payload) => payload.token)
+  }
+  return actionTokenPromise
+}
+
+async function actionRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await actionToken()
+  return request<T>(path, {
+    ...init,
+    headers: {
+      ...(init?.headers as Record<string, string> | undefined),
+      [ACTION_TOKEN_HEADER]: token,
+    },
+  })
 }
 
 export const api = {
@@ -86,12 +111,12 @@ export const api = {
 
   getTodo: () => request<TodoProject[]>('/todo'),
   addTodoProject: (name: string) =>
-    request<{ id: number; name: string }>('/todo/projects', {
+    actionRequest<{ id: number; name: string }>('/todo/projects', {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
   addTodoTask: (projectId: number, description: string, dueDate?: string) =>
-    request<{ id: number; project_id: number; description: string }>(
+    actionRequest<{ id: number; project_id: number; description: string }>(
       '/todo/tasks',
       {
         method: 'POST',
@@ -106,17 +131,17 @@ export const api = {
     taskId: number,
     patch: { completed?: boolean; description?: string; due_date?: string },
   ) =>
-    request<{ id: number; updated: boolean }>(`/todo/tasks/${taskId}`, {
+    actionRequest<{ id: number; updated: boolean }>(`/todo/tasks/${taskId}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
 
   triggerValidate: () =>
-    request<Record<string, unknown>>('/trigger/validate', { method: 'POST' }),
+    actionRequest<Record<string, unknown>>('/trigger/validate', { method: 'POST' }),
   triggerSync: () =>
-    request<Record<string, unknown>>('/trigger/sync', { method: 'POST' }),
+    actionRequest<Record<string, unknown>>('/trigger/sync', { method: 'POST' }),
   triggerHealthCheck: () =>
-    request<Record<string, unknown>>('/trigger/health-check', {
+    actionRequest<Record<string, unknown>>('/trigger/health-check', {
       method: 'POST',
     }),
 }

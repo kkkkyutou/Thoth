@@ -1,24 +1,23 @@
 import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { test, expect } from '@playwright/test'
 
+const here = fileURLToPath(new URL('.', import.meta.url))
 const runId = process.env.THOTH_SELFTEST_RUN_ID ?? ''
 const taskId = process.env.THOTH_SELFTEST_TASK_ID ?? 'task-1'
-const projectRoot = process.env.THOTH_SELFTEST_PROJECT_ROOT ?? resolve(__dirname, '..', '..', '..')
-const sourceRoot = process.env.THOTH_SELFTEST_SOURCE_ROOT ?? resolve(__dirname, '..', '..', '..', '..', '..')
+const projectRoot = process.env.THOTH_SELFTEST_PROJECT_ROOT ?? resolve(here, '..', '..', '..')
+const sourceRoot = process.env.THOTH_SELFTEST_SOURCE_ROOT ?? resolve(here, '..', '..', '..', '..', '..')
 const pythonBin = process.env.THOTH_SELFTEST_PYTHON ?? 'python3'
 
 test('dashboard reflects live runtime state and stop transitions', async ({ page }) => {
   test.skip(!runId, 'THOTH_SELFTEST_RUN_ID is required')
 
-  await page.goto('/overview')
-  const runtimeSection = page.locator('article.card').filter({
-    has: page.getByRole('heading', { name: /运行态摘要|Runtime summary/ }),
-  })
-  await expect(runtimeSection).toContainText(taskId)
-  await expect(runtimeSection).toContainText('codex')
+  await page.goto('/runs')
+  await expect(page.locator('.runs-panel')).toContainText(runId)
+  await expect(page.locator('.runs-panel')).toContainText('codex')
 
-  await page.goto('/work-items')
+  await page.goto('/work')
   await page.getByText(taskId).first().click()
   const taskDetail = page.locator('.task-detail').first()
   await expect(taskDetail).toContainText(runId)

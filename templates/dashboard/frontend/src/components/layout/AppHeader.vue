@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import AlertsCenter from '@/components/v2/AlertsCenter.vue'
 import { locale } from '@/locales'
 import { useDashboardStore } from '@/stores/dashboard'
 
 const emit = defineEmits<{
   refresh: []
+  openPalette: []
 }>()
 
 const store = useDashboardStore()
@@ -54,6 +56,11 @@ const runtime = computed(() => store.overviewSummary?.runtime)
     </div>
 
     <div class="header__actions">
+      <AlertsCenter />
+      <button class="header__palette" @click="emit('openPalette')">
+        <span>⌘K</span>
+        Command
+      </button>
       <div class="header__freshness">
         <span>{{ locale.header.freshness }}</span>
         <strong>{{ freshness }}</strong>
@@ -158,6 +165,27 @@ const runtime = computed(() => store.overviewSummary?.runtime)
   box-shadow: 0 0 22px rgba(210, 31, 60, 0.16) inset;
 }
 
+.header__palette {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(88, 249, 255, 0.34);
+  border-radius: var(--radius);
+  background: rgba(88, 249, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.header__palette span {
+  padding: 2px 6px;
+  border: 1px solid rgba(247, 241, 232, 0.16);
+  border-radius: 5px;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
 @media (max-width: 1080px) {
   .header {
     flex-wrap: wrap;
@@ -168,6 +196,14 @@ const runtime = computed(() => store.overviewSummary?.runtime)
     width: 100%;
     justify-content: flex-start;
     overflow-x: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .header__actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
   }
 }
 </style>

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from thoth.projections import PLUGIN_VERSION
 from thoth.observe.dashboard import manage_dashboard
+from thoth.observe.plugin_service import create_plugin, list_plugins, validate_plugins
 from thoth.observe.report import generate_default_report, render_report_summary
 from thoth.observe.status import render_status
 from thoth.init.service import initialize_project, preview_project_migration
@@ -156,6 +157,68 @@ def handle_tui(args, parser, *, project_root: Path) -> int:
     if getattr(args, "no_gpu", False):
         argv.append("--no-gpu")
     return tui_main(argv)
+
+
+def handle_plugin(args, parser, *, project_root: Path) -> int:
+    action = getattr(args, "plugin_action", "")
+    if action == "create":
+        try:
+            result = create_plugin(
+                project_root,
+                plugin_id=args.plugin_id,
+                title=getattr(args, "title", None),
+                version=getattr(args, "version", "0.1.0"),
+                surfaces=getattr(args, "surfaces", None),
+                capabilities=getattr(args, "capabilities", None),
+                source=getattr(args, "source", None),
+                description=getattr(args, "description", ""),
+                enabled=not getattr(args, "disabled", False),
+                trusted=getattr(args, "trusted", False),
+                force=getattr(args, "force", False),
+            )
+        except ValueError as exc:
+            print_envelope(
+                command="plugin",
+                status="failed",
+                summary=str(exc),
+                body={"action": "create", "error": str(exc)},
+                checks=[{"name": "plugin_create", "ok": False, "detail": str(exc)}],
+            )
+            return 2
+        print_envelope(
+            command="plugin",
+            status="ok",
+            summary=f"Plugin {result['plugin']['id']} created.",
+            body=result,
+            refs=output_refs(project_root / ".thoth" / "extensions" / "manifest.json"),
+            checks=[{"name": "plugin_create", "ok": True, "detail": result["plugin"]["id"]}],
+        )
+        return 0
+    if action == "list":
+        summary = list_plugins(project_root)
+        print_envelope(
+            command="plugin",
+            status="ok",
+            summary=f"Loaded {summary.get('plugin_count', 0)} plugin(s).",
+            body={"plugins": summary},
+            refs=output_refs(project_root / ".thoth" / "extensions" / "manifest.json"),
+            checks=[{"name": "plugin_list", "ok": True, "detail": str(summary.get("plugin_count", 0))}],
+        )
+        return 0
+    if action == "validate":
+        result = validate_plugins(project_root, fix=getattr(args, "fix", False))
+        ok = result["status"] == "ok"
+        print_envelope(
+            command="plugin",
+            status=result["status"],
+            summary="Plugin manifest validation passed." if ok else "Plugin manifest validation failed.",
+            body={"validation": result},
+            refs=output_refs(project_root / ".thoth" / "extensions" / "manifest.json"),
+            checks=[{"name": "plugin_validate", "ok": ok, "detail": "; ".join(result.get("errors") or [])}],
+        )
+        return 0 if ok else 1
+    parser.error("plugin requires create, list, or validate")
+    return 2
 
 
 def handle_report(args, parser, *, project_root: Path) -> int:

@@ -19,10 +19,14 @@ from typing import Optional
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.requests import Request
+from thoth.observe.actions import ACTION_TOKEN_HEADER, ensure_action_token, validate_action_token
+from thoth.observe.debug import debug_summary
 from thoth.observe.extensions import extension_summary, tool_plugins
+from thoth.observe.invalidation import delta_since, sse_event
 from thoth.observe.providers import observe_snapshot
+from thoth.observe.read_model_index import build_read_model_index
 from thoth.observe.read_model import derive_gantt_rows, overview_summary_read_model
 
 from data_loader import (
@@ -114,6 +118,12 @@ def _frontend_index_response() -> HTMLResponse:
     if vue_index.exists():
         return HTMLResponse(content=vue_index.read_text(encoding="utf-8"), status_code=200)
     return HTMLResponse(content=f"<h1>{_PROJECT_NAME} Dashboard</h1><p>Run: npm run build in tools/dashboard/frontend/</p>")
+
+
+def _require_action_token(request: Request) -> None:
+    token = request.headers.get(ACTION_TOKEN_HEADER)
+    if not validate_action_token(PROJECT_ROOT, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing local dashboard action token")
 
 
 DIRECTION_LABELS = {
@@ -247,6 +257,20 @@ async def api_config():
         return _error_response(500, "InternalError", str(exc))
 
 
+@app.get("/api/action-token")
+async def api_action_token():
+    try:
+        return {
+            "schema_version": 1,
+            "header": ACTION_TOKEN_HEADER,
+            "token": ensure_action_token(PROJECT_ROOT),
+            "scope": "local-dashboard-actions",
+        }
+    except Exception as exc:
+        logger.error("Error in /api/action-token: %s", traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
 @app.get("/api/observe")
 async def api_observe():
     try:
@@ -256,12 +280,60 @@ async def api_observe():
         return _error_response(500, "InternalError", str(exc))
 
 
+@app.get("/api/delta")
+async def api_delta(cursor: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=1000)):
+    try:
+        return delta_since(PROJECT_ROOT, cursor=cursor, limit=limit)
+    except Exception as exc:
+        logger.error("Error in /api/delta: %s", traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.get("/api/invalidation/stream")
+async def api_invalidation_stream(
+    request: Request,
+    cursor: Optional[str] = Query(None),
+    poll_seconds: float = Query(2.0, ge=0.2, le=60.0),
+    once: bool = Query(False),
+):
+    async def events():
+        current = cursor
+        while True:
+            payload = delta_since(PROJECT_ROOT, cursor=current, limit=100)
+            current = payload.get("cursor")
+            yield sse_event(payload)
+            if once or await request.is_disconnected():
+                break
+            await asyncio.sleep(poll_seconds)
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
 @app.get("/api/plugins")
 async def api_plugins():
     try:
         return extension_summary(PROJECT_ROOT)
     except Exception as exc:
         logger.error("Error in /api/plugins: %s", traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.get("/api/debug/summary")
+async def api_debug_summary():
+    try:
+        return debug_summary(PROJECT_ROOT)
+    except Exception as exc:
+        logger.error("Error in /api/debug/summary: %s", traceback.format_exc())
+        return _error_response(500, "InternalError", str(exc))
+
+
+@app.post("/api/read-model/index")
+async def api_read_model_index(request: Request):
+    _require_action_token(request)
+    try:
+        return build_read_model_index(PROJECT_ROOT)
+    except Exception as exc:
+        logger.error("Error in /api/read-model/index: %s", traceback.format_exc())
         return _error_response(500, "InternalError", str(exc))
 
 
@@ -588,7 +660,8 @@ async def api_run_worker_logs(run_id: str, phase: Optional[str] = Query(None), t
 
 
 @app.post("/api/trigger/validate")
-async def trigger_validate():
+async def trigger_validate(request: Request):
+    _require_action_token(request)
     try:
         return await run_validate()
     except Exception as exc:
@@ -596,7 +669,8 @@ async def trigger_validate():
 
 
 @app.post("/api/trigger/sync")
-async def trigger_sync():
+async def trigger_sync(request: Request):
+    _require_action_token(request)
     try:
         return await run_sync()
     except Exception as exc:
@@ -604,7 +678,8 @@ async def trigger_sync():
 
 
 @app.post("/api/trigger/verify/{work_id}")
-async def trigger_verify(work_id: str):
+async def trigger_verify(work_id: str, request: Request):
+    _require_action_token(request)
     try:
         return await run_verify(work_id)
     except Exception as exc:
@@ -612,7 +687,8 @@ async def trigger_verify(work_id: str):
 
 
 @app.post("/api/trigger/health-check")
-async def trigger_health_check():
+async def trigger_health_check(request: Request):
+    _require_action_token(request)
     try:
         return await run_health_check()
     except Exception as exc:
@@ -620,7 +696,8 @@ async def trigger_health_check():
 
 
 @app.post("/api/research-events")
-async def api_add_research_event(body: dict):
+async def api_add_research_event(body: dict, request: Request):
+    _require_action_token(request)
     required = {"work_id", "work_title", "module", "direction", "verdict"}
     missing = required - set(body.keys())
     if missing:
@@ -658,7 +735,8 @@ async def api_todo_get():
 
 
 @app.post("/api/todo/projects")
-async def api_todo_add_project(body: dict):
+async def api_todo_add_project(body: dict, request: Request):
+    _require_action_token(request)
     name = (body.get("name") or "").strip()
     if not name:
         return _error_response(400, "MissingName", "Project name is required")
@@ -671,7 +749,8 @@ async def api_todo_add_project(body: dict):
 
 
 @app.post("/api/todo/tasks")
-async def api_todo_add_task(body: dict):
+async def api_todo_add_task(body: dict, request: Request):
+    _require_action_token(request)
     description = (body.get("description") or "").strip()
     project_id = body.get("project_id")
     if not description or not project_id:
@@ -688,7 +767,8 @@ async def api_todo_add_task(body: dict):
 
 
 @app.patch("/api/todo/tasks/{task_id}")
-async def api_todo_update(task_id: int, body: dict):
+async def api_todo_update(task_id: int, body: dict, request: Request):
+    _require_action_token(request)
     from datetime import datetime, timezone
     try:
         with get_conn() as conn:
@@ -745,6 +825,6 @@ if frontend_dist.exists():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("DASHBOARD_PORT", "8501"))
-    host = os.environ.get("DASHBOARD_HOST", "0.0.0.0")
+    host = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
     logger.info("Starting dashboard on %s:%d", host, port)
     uvicorn.run(app, host=host, port=port, log_level="info")

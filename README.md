@@ -15,14 +15,14 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.3.2" src="https://img.shields.io/badge/version-0.3.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.3.2 interactive TUI hotfix</strong> · fast keyboard navigation, loss detail charts, and trusted Python TUI plugins</p>
-  <img src="assets/thoth-dashboard-teaser-v3.png" width="100%" alt="Thoth plugin-aware dashboard cockpit" />
+  <p><strong>v0.4.0 Dashboard/TUI v2</strong> · live cockpit, plugin workbench, local action receipts, SSE invalidation, and low-latency TUI logs/actions</p>
+  <img src="assets/thoth-dashboard-teaser-v4.png" width="100%" alt="Thoth Dashboard v2 live cockpit" />
   <br />
-  <img src="assets/thoth-tui-teaser-v3.png" width="100%" alt="Thoth terminal dashboard snapshot" />
+  <img src="assets/thoth-tui-teaser-v4.png" width="100%" alt="Thoth TUI v2 live cockpit snapshot" />
 </div>
 
 ## Control Plane At A Glance
@@ -42,7 +42,7 @@
 | Layer 1. Host Surface                                                      |
 |                                                                            |
 |  init   discuss   run   loop   argue   auto   status                       |
-|  doctor dashboard tui                                                     |
+|  doctor dashboard tui plugin                                              |
 +----------------------------------------------------------------------------+
                                               |
                                               v
@@ -166,6 +166,8 @@ Portable authority is the Git state needed to continue work after a fresh clone.
 Runtime evidence is local by default. New projects get `.thoth/.gitignore` rules for `.thoth/runs/`, `.thoth/derived/`, `.thoth/docs/work-results/`, `.thoth/objects/run/`, `.thoth/objects/artifact/`, `.thoth/objects/controller/`, and `.thoth/objects/phase_result/`. These ledgers remain on disk for local audit, but a fresh machine should start a new run rather than attach to old PIDs, leases, workers, supervisors, or dashboard processes.
 
 Dashboard dependencies and cache are also local. Thoth writes idempotent ignore rules for `tools/dashboard/frontend/node_modules/`, `tools/dashboard/frontend/dist/`, Vite cache, backend Python cache, and the dashboard SQLite read model under `.thoth/derived/dashboard/`. If a team intentionally wants to carry a run to another machine, export a concise report with `thoth status --report` or archive the specific `.thoth/runs/<run_id>` evidence bundle explicitly; Thoth does not add every runtime ledger to Git by default.
+
+The dashboard binds to `127.0.0.1` by default. Local write actions such as trigger, sync, health-check, and todo updates require a per-project action token stored under `.thoth/local/dashboard/action-token`; read endpoints stay available without that token.
 
 `thoth init --sync` refreshes the managed dashboard scaffold when the installed plugin has newer runtime/read-model fixes. The previous scaffold is copied to ignored `.thoth/derived/dashboard-sync-backups/` before overwrite, so stale dashboard code can be recovered without making local backup files Git-visible. The portable `.thoth/extensions/manifest.json` and `.thoth/extensions/plugins/` tree are preserved; metrics and loss curves must be attached through an enabled extension provider rather than inferred by scanning arbitrary project folders.
 
@@ -291,6 +293,7 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by authority plus local `.thoth` ledgers |
 | `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | Open or snapshot the read-only terminal dashboard backed by shared providers. | Optional `--snapshot-json`, `--export-snapshots`, `--snapshot-dir`, `--no-gpu`, `--no-python-plugins`, loss detail and refresh controls | ANSI-free JSON or visual snapshots for authority, runs, metrics, plugins, tools, and system state |
+| `plugin` | `Claude: /thoth:plugin`<br>`Codex: $thoth plugin` | Create, list, or validate project-local Dashboard/TUI extension plugins. | `create <plugin_id>`, `list`, `validate [--fix]` plus manifest metadata flags | `.thoth/extensions/manifest.json`, `.thoth/extensions/plugins/<plugin_id>/`, and local action receipts |
 
 ## Why Trust It
 

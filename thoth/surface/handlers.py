@@ -6,7 +6,7 @@ from pathlib import Path
 
 from thoth.observe.status import status_snapshot
 from thoth.surface.envelope import print_envelope
-from thoth.surface.observe_commands import handle_dashboard, handle_doctor, handle_report, handle_status, handle_tui
+from thoth.surface.observe_commands import handle_dashboard, handle_doctor, handle_plugin, handle_report, handle_status, handle_tui
 from thoth.surface.plan_commands import handle_discuss, handle_record_discussion_authority
 from thoth.surface.project_commands import handle_extend, handle_hook, handle_init, handle_sync
 from thoth.surface.protocol_commands import (
@@ -29,6 +29,7 @@ COMMAND_HANDLERS = {
     "doctor": handle_doctor,
     "dashboard": handle_dashboard,
     "tui": handle_tui,
+    "plugin": handle_plugin,
     "report": handle_report,
     "discuss": handle_discuss,
     "record-discussion-authority": handle_record_discussion_authority,
