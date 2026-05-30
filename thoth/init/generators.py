@@ -148,7 +148,7 @@ def generate_dashboard(config: dict[str, Any], project_dir: Path, *, backup_exis
     src = TEMPLATES_DIR / "dashboard"
     dest = project_dir / "tools" / "dashboard"
     backup = _backup_dashboard_scaffold(project_dir, dest) if backup_existing else None
-    shutil.copytree(src, dest, dirs_exist_ok=True)
+    shutil.copytree(src, dest, dirs_exist_ok=True, ignore=_backup_ignore)
     _write_dashboard_locale_selection(config, project_dir)
     return {
         "path": str(dest.relative_to(project_dir)),

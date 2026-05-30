@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import thoth.init.generators as generators
 from thoth.init.audit import audit_repository_state
 from thoth.init.apply import build_init_preview
 from thoth.init.render import (
@@ -106,6 +107,29 @@ def test_generate_dashboard_writes_locale_selection(base_config, tmp_path):
     locale_file = tmp_path / "tools" / "dashboard" / "frontend" / "src" / "generated" / "locale.ts"
     assert locale_file.exists()
     assert "defaultLocale = 'en'" in locale_file.read_text(encoding="utf-8")
+
+
+def test_generate_dashboard_skips_regenerable_template_dependencies(base_config, tmp_path, monkeypatch):
+    template_root = tmp_path / "template-root"
+    dashboard_root = template_root / "dashboard"
+    (dashboard_root / "backend").mkdir(parents=True)
+    (dashboard_root / "backend" / "app.py").write_text("# dashboard\n", encoding="utf-8")
+    (dashboard_root / "frontend" / "node_modules" / ".bin").mkdir(parents=True)
+    (dashboard_root / "frontend" / "node_modules" / ".bin" / "vite").write_text("", encoding="utf-8")
+    (dashboard_root / "frontend" / "dist").mkdir(parents=True)
+    (dashboard_root / "frontend" / "dist" / "index.html").write_text("<div id='app'></div>\n", encoding="utf-8")
+    (dashboard_root / "frontend" / ".pytest_cache").mkdir(parents=True)
+    (dashboard_root / "backend" / "__pycache__").mkdir(parents=True)
+    monkeypatch.setattr(generators, "TEMPLATES_DIR", template_root)
+
+    generate_dashboard(base_config, tmp_path / "project")
+
+    copied = tmp_path / "project" / "tools" / "dashboard"
+    assert (copied / "backend" / "app.py").exists()
+    assert not (copied / "frontend" / "node_modules").exists()
+    assert not (copied / "frontend" / "dist").exists()
+    assert not (copied / "frontend" / ".pytest_cache").exists()
+    assert not (copied / "backend" / "__pycache__").exists()
 
 
 def test_generate_scripts(base_config, tmp_path):
