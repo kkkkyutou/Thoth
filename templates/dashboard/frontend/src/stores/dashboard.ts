@@ -1,6 +1,13 @@
 import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '@/api/client'
+import {
+  bootstrapQueryKeys,
+  dashboardQueryKeys,
+  invalidateDashboardQueries,
+  refetchQueries,
+} from '@/api/query'
 import type {
   ActivityEvent,
   DagData,
@@ -13,9 +20,9 @@ import type {
   ResearchConfig,
   SystemStatus,
   ToolPlugin,
-  WorkItem,
   TreeDirection,
   TreeModule,
+  WorkItem,
   WorkbenchTab,
 } from '@/types'
 
@@ -23,41 +30,135 @@ function stringifyError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function dataOr<T>(value: T | undefined, fallback: T): T {
+  return value ?? fallback
+}
+
 export const useDashboardStore = defineStore('dashboard', () => {
-  const config = ref<ResearchConfig | null>(null)
-  const tree = ref<TreeDirection[]>([])
-  const progress = ref<ProgressData | null>(null)
-  const overviewSummary = ref<OverviewSummary | null>(null)
-  const dag = ref<DagData | null>(null)
-  const gantt = ref<GanttRow[]>([])
-  const activity = ref<ActivityEvent[]>([])
-  const systemStatus = ref<SystemStatus | null>(null)
-  const observeSnapshot = ref<ObserveSnapshot | null>(null)
-  const pluginSummary = ref<PluginSummary | null>(null)
-  const toolPlugins = ref<ToolPlugin[]>([])
-  const metricsProvider = ref<MetricsProviderPayload | null>(null)
-  const workItems = ref<WorkItem[]>([])
+  const queryClient = useQueryClient()
 
-  const selectedWorkItem = ref<WorkItem | null>(null)
-  const selectedModuleId = ref<string | null>(null)
   const activeTab = ref<WorkbenchTab>('cockpit')
-  const lastUpdatedAt = ref<string | null>(null)
-  const lastError = ref<string | null>(null)
-
-  const loading = reactive({
-    bootstrap: false,
-    detail: false,
-    dag: false,
-    gantt: false,
-    activity: false,
-    system: false,
-  })
+  const selectedWorkItemId = ref<string | null>(null)
+  const selectedModuleId = ref<string | null>(null)
+  const sseConnected = ref(false)
+  const sseCursor = ref<string | null>(null)
+  const sseError = ref<string | null>(null)
 
   const filters = reactive({
     status: '',
     module: '',
     direction: '',
     search: '',
+  })
+
+  const configQuery = useQuery({
+    queryKey: dashboardQueryKeys.config,
+    queryFn: api.getConfig,
+    staleTime: 10_000,
+  })
+  const treeQuery = useQuery({
+    queryKey: dashboardQueryKeys.tree,
+    queryFn: api.getTree,
+    staleTime: 10_000,
+  })
+  const progressQuery = useQuery({
+    queryKey: dashboardQueryKeys.progress,
+    queryFn: api.getProgress,
+    staleTime: 5_000,
+  })
+  const overviewQuery = useQuery({
+    queryKey: dashboardQueryKeys.overviewSummary,
+    queryFn: api.getOverviewSummary,
+    staleTime: 5_000,
+  })
+  const systemQuery = useQuery({
+    queryKey: dashboardQueryKeys.systemStatus,
+    queryFn: api.getSystemStatus,
+    staleTime: 10_000,
+  })
+  const observeQuery = useQuery({
+    queryKey: dashboardQueryKeys.observe,
+    queryFn: api.getObserve,
+    staleTime: 5_000,
+  })
+  const pluginsQuery = useQuery({
+    queryKey: dashboardQueryKeys.plugins,
+    queryFn: api.getPlugins,
+    staleTime: 10_000,
+  })
+  const toolsQuery = useQuery({
+    queryKey: dashboardQueryKeys.tools,
+    queryFn: api.getTools,
+    staleTime: 10_000,
+  })
+  const metricsQuery = useQuery({
+    queryKey: dashboardQueryKeys.metrics,
+    queryFn: api.getMetrics,
+    staleTime: 5_000,
+  })
+  const workItemsQuery = useQuery({
+    queryKey: dashboardQueryKeys.workItems,
+    queryFn: () => api.getWorkItems({ limit: 1000 }),
+    staleTime: 5_000,
+  })
+  const dagQuery = useQuery({
+    queryKey: dashboardQueryKeys.dag,
+    queryFn: api.getDag,
+    staleTime: 10_000,
+  })
+  const ganttQuery = useQuery({
+    queryKey: dashboardQueryKeys.gantt,
+    queryFn: api.getGantt,
+    staleTime: 10_000,
+  })
+  const activityQuery = useQuery({
+    queryKey: dashboardQueryKeys.activity,
+    queryFn: () => api.getActivity(50),
+    staleTime: 10_000,
+  })
+  const selectedWorkItemQuery = useQuery({
+    queryKey: computed(() => dashboardQueryKeys.workItem(selectedWorkItemId.value ?? 'none')),
+    queryFn: () => api.getWorkItem(selectedWorkItemId.value ?? ''),
+    enabled: computed(() => Boolean(selectedWorkItemId.value)),
+    staleTime: 5_000,
+  })
+
+  const bootstrapQueries = [
+    configQuery,
+    treeQuery,
+    progressQuery,
+    overviewQuery,
+    systemQuery,
+    observeQuery,
+    pluginsQuery,
+    toolsQuery,
+    metricsQuery,
+    workItemsQuery,
+    dagQuery,
+    ganttQuery,
+  ]
+
+  const config = computed<ResearchConfig | null>(() => configQuery.data.value ?? null)
+  const tree = computed<TreeDirection[]>(() => dataOr(treeQuery.data.value, []))
+  const progress = computed<ProgressData | null>(() => progressQuery.data.value ?? null)
+  const overviewSummary = computed<OverviewSummary | null>(() => overviewQuery.data.value ?? null)
+  const systemStatus = computed<SystemStatus | null>(() => systemQuery.data.value ?? null)
+  const observeSnapshot = computed<ObserveSnapshot | null>(() => observeQuery.data.value ?? null)
+  const pluginSummary = computed<PluginSummary | null>(() => pluginsQuery.data.value ?? null)
+  const toolPlugins = computed<ToolPlugin[]>(() => dataOr(toolsQuery.data.value?.tools, []))
+  const metricsProvider = computed<MetricsProviderPayload | null>(() => metricsQuery.data.value ?? null)
+  const workItems = computed<WorkItem[]>(() => dataOr(workItemsQuery.data.value?.work_items, []))
+  const dag = computed<DagData | null>(() => dagQuery.data.value ?? null)
+  const gantt = computed<GanttRow[]>(() => dataOr(ganttQuery.data.value, []))
+  const activity = computed<ActivityEvent[]>(() => dataOr(activityQuery.data.value, []))
+
+  const selectedWorkItem = computed<WorkItem | null>(() => {
+    if (!selectedWorkItemId.value) return null
+    return (
+      selectedWorkItemQuery.data.value ??
+      workItems.value.find((item) => item.id === selectedWorkItemId.value) ??
+      null
+    )
   })
 
   const modules = computed<TreeModule[]>(() =>
@@ -120,152 +221,115 @@ export const useDashboardStore = defineStore('dashboard', () => {
       .filter((direction): direction is TreeDirection => Boolean(direction))
   })
 
+  const loading = computed(() => ({
+    bootstrap: bootstrapQueries.some((query) => query.isFetching.value),
+    detail: selectedWorkItemQuery.isFetching.value,
+    dag: dagQuery.isFetching.value,
+    gantt: ganttQuery.isFetching.value,
+    activity: activityQuery.isFetching.value,
+    system: systemQuery.isFetching.value,
+  }))
+
+  const lastUpdatedAt = computed(() => {
+    const stamp = Math.max(0, ...bootstrapQueries.map((query) => query.dataUpdatedAt.value))
+    return stamp > 0 ? new Date(stamp).toISOString() : null
+  })
+
+  const lastError = computed(() => {
+    const first = [
+      ['config', configQuery.error.value],
+      ['tree', treeQuery.error.value],
+      ['progress', progressQuery.error.value],
+      ['overview', overviewQuery.error.value],
+      ['system', systemQuery.error.value],
+      ['observe', observeQuery.error.value],
+      ['plugins', pluginsQuery.error.value],
+      ['tools', toolsQuery.error.value],
+      ['metrics', metricsQuery.error.value],
+      ['work items', workItemsQuery.error.value],
+      ['dag', dagQuery.error.value],
+      ['gantt', ganttQuery.error.value],
+      ['activity', activityQuery.error.value],
+      ['work item detail', selectedWorkItemQuery.error.value],
+    ].find(([, error]) => Boolean(error))
+    if (first) return `${first[0]}: ${stringifyError(first[1])}`
+    return sseError.value ? `sse: ${sseError.value}` : null
+  })
+
   async function fetchBootstrap() {
-    loading.bootstrap = true
-    const results = await Promise.allSettled([
-      api.getConfig(),
-      api.getTree(),
-      api.getProgress(),
-      api.getOverviewSummary(),
-      api.getSystemStatus(),
-      api.getObserve(),
-      api.getPlugins(),
-      api.getTools(),
-      api.getMetrics(),
-      api.getWorkItems({ limit: 1000 }),
-      api.getDag(),
-      api.getGantt(),
-    ])
-    if (results[0].status === 'fulfilled') config.value = results[0].value
-    else lastError.value = `config: ${stringifyError(results[0].reason)}`
-
-    if (results[1].status === 'fulfilled') tree.value = results[1].value
-    else lastError.value = `tree: ${stringifyError(results[1].reason)}`
-
-    if (results[2].status === 'fulfilled') progress.value = results[2].value
-    else lastError.value = `progress: ${stringifyError(results[2].reason)}`
-
-    if (results[3].status === 'fulfilled') overviewSummary.value = results[3].value
-    else lastError.value = `overview: ${stringifyError(results[3].reason)}`
-
-    if (results[4].status === 'fulfilled') systemStatus.value = results[4].value
-    else lastError.value = `system: ${stringifyError(results[4].reason)}`
-
-    if (results[5].status === 'fulfilled') observeSnapshot.value = results[5].value
-    else lastError.value = `observe: ${stringifyError(results[5].reason)}`
-
-    if (results[6].status === 'fulfilled') pluginSummary.value = results[6].value
-    else lastError.value = `plugins: ${stringifyError(results[6].reason)}`
-
-    if (results[7].status === 'fulfilled') toolPlugins.value = results[7].value.tools
-    else lastError.value = `tools: ${stringifyError(results[7].reason)}`
-
-    if (results[8].status === 'fulfilled') metricsProvider.value = results[8].value
-    else lastError.value = `metrics: ${stringifyError(results[8].reason)}`
-
-    if (results[9].status === 'fulfilled') workItems.value = results[9].value.work_items
-    else lastError.value = `work items: ${stringifyError(results[9].reason)}`
-
-    if (results[10].status === 'fulfilled') dag.value = results[10].value
-    else lastError.value = `dag: ${stringifyError(results[10].reason)}`
-
-    if (results[11].status === 'fulfilled') gantt.value = results[11].value
-    else lastError.value = `gantt: ${stringifyError(results[11].reason)}`
-
-    lastUpdatedAt.value = new Date().toISOString()
-    loading.bootstrap = false
+    await refetchQueries(bootstrapQueries)
   }
 
   async function fetchDag() {
-    loading.dag = true
-    try {
-      dag.value = await api.getDag()
-    } catch (error) {
-      lastError.value = `dag: ${stringifyError(error)}`
-    } finally {
-      loading.dag = false
-    }
+    await dagQuery.refetch()
   }
 
   async function fetchGantt() {
-    loading.gantt = true
-    try {
-      gantt.value = await api.getGantt()
-    } catch (error) {
-      lastError.value = `gantt: ${stringifyError(error)}`
-    } finally {
-      loading.gantt = false
-    }
+    await ganttQuery.refetch()
   }
 
   async function fetchActivity() {
-    loading.activity = true
-    try {
-      activity.value = await api.getActivity()
-    } catch (error) {
-      lastError.value = `activity: ${stringifyError(error)}`
-    } finally {
-      loading.activity = false
-    }
+    await activityQuery.refetch()
   }
 
   async function fetchSystemStatus() {
-    loading.system = true
-    try {
-      systemStatus.value = await api.getSystemStatus()
-    } catch (error) {
-      lastError.value = `system: ${stringifyError(error)}`
-    } finally {
-      loading.system = false
-    }
+    await systemQuery.refetch()
   }
 
   async function loadTabData(tab: WorkbenchTab) {
     if (tab === 'work') {
-      await fetchDag()
+      await refetchQueries([dagQuery, workItemsQuery])
     } else if (tab === 'runs') {
-      await fetchGantt()
-      await fetchActivity()
+      await refetchQueries([ganttQuery, activityQuery, observeQuery, progressQuery])
     } else if (tab === 'metrics') {
-      await fetchBootstrap()
+      await refetchQueries([metricsQuery, observeQuery])
     } else if (tab === 'plugins') {
-      await fetchActivity()
+      await refetchQueries([pluginsQuery, toolsQuery, activityQuery])
     } else if (tab === 'system') {
-      await fetchSystemStatus()
+      await refetchQueries([systemQuery, observeQuery, overviewQuery])
     }
   }
 
   async function refreshForActiveTab() {
-    await fetchBootstrap()
+    await invalidateDashboardQueries(queryClient, bootstrapQueryKeys)
     await loadTabData(activeTab.value)
   }
 
   async function selectWorkItem(workId: string) {
-    loading.detail = true
-    try {
-      selectedWorkItem.value = await api.getWorkItem(workId)
-      selectedModuleId.value = null
-      activeTab.value = 'work'
-    } catch (error) {
-      lastError.value = `work item ${workId}: ${stringifyError(error)}`
-    } finally {
-      loading.detail = false
-    }
+    selectedWorkItemId.value = workId
+    selectedModuleId.value = null
+    activeTab.value = 'work'
+    await queryClient.prefetchQuery({
+      queryKey: dashboardQueryKeys.workItem(workId),
+      queryFn: () => api.getWorkItem(workId),
+      staleTime: 5_000,
+    })
   }
 
   function selectModule(moduleId: string) {
     selectedModuleId.value = moduleId
-    selectedWorkItem.value = null
+    selectedWorkItemId.value = null
     activeTab.value = 'work'
   }
 
   function clearSelection() {
-    selectedWorkItem.value = null
+    selectedWorkItemId.value = null
     selectedModuleId.value = null
   }
 
   function setActiveTab(tab: WorkbenchTab) {
     activeTab.value = tab
+  }
+
+  function markSseConnected(cursor?: string | null) {
+    sseConnected.value = true
+    sseError.value = null
+    if (cursor) sseCursor.value = cursor
+  }
+
+  function markSseDisconnected(error?: string) {
+    sseConnected.value = false
+    sseError.value = error ?? null
   }
 
   return {
@@ -287,6 +351,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
     selectedModule,
     selectedModuleId,
     selectedWorkItem,
+    selectedWorkItemId,
+    sseConnected,
+    sseCursor,
     systemStatus,
     toolPlugins,
     metricsProvider,
@@ -299,6 +366,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     fetchGantt,
     fetchSystemStatus,
     loadTabData,
+    markSseConnected,
+    markSseDisconnected,
     refreshForActiveTab,
     selectModule,
     selectWorkItem,

@@ -453,7 +453,14 @@ def test_tui_action_layer_p95_under_30ms_without_provider_refresh(monkeypatch, t
     monkeypatch.setattr(app, "refresh_gpu", lambda: calls.__setitem__("gpu", calls["gpu"] + 1))
 
     samples = []
-    actions = (app.action_cursor_down, app.action_cursor_up, app.action_enter_detail, app.action_escape_detail)
+    actions = (
+        app.action_cursor_down,
+        app.action_cursor_up,
+        app.action_enter_detail,
+        app.action_escape_detail,
+        app.action_toggle_palette,
+        app.action_escape_detail,
+    )
     for index in range(400):
         started = time.perf_counter()
         actions[index % len(actions)]()

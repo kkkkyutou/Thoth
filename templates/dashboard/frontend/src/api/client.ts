@@ -23,6 +23,7 @@ import type {
   ToolPlugin,
   TreeDirection,
 } from '@/types'
+import type { DashboardDeltaPayload } from './invalidation'
 
 const BASE = '/api'
 const ACTION_TOKEN_HEADER = 'X-Thoth-Action-Token'
@@ -65,6 +66,12 @@ async function actionRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getConfig: () => request<ResearchConfig>('/config'),
+  getDelta: (cursor?: string | null, limit = 200) => {
+    const params = new URLSearchParams()
+    if (cursor) params.set('cursor', cursor)
+    params.set('limit', String(limit))
+    return request<DashboardDeltaPayload>(`/delta?${params.toString()}`)
+  },
   getTree: () => request<TreeDirection[]>('/tree'),
   getProgress: () => request<ProgressData>('/progress'),
   getOverviewSummary: () => request<OverviewSummary>('/overview-summary'),

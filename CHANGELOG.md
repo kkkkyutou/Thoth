@@ -4,6 +4,21 @@
 
 No pending changes.
 
+## [0.4.1] - 2026-05-30
+
+### Changed
+- Moved Dashboard server-state ownership to TanStack Query while keeping Pinia focused on UI selection, filters, palette/SSE state, and manual refresh controls.
+- Connected the Dashboard workbench to `/api/invalidation/stream` so `.thoth/runs`, `.thoth/objects`, and `.thoth/extensions` changes invalidate scoped query partitions instead of using a fixed full-snapshot polling loop.
+- Split the generated Dashboard backend into thin app assembly plus observe/read/action routers while preserving all 0.4.0 endpoint URLs and action-token behavior.
+- Split the TUI Textual shell from provider refresh, plugin runtime, state/preferences, and key-action code without changing keymaps, snapshot JSON, plugin audit notices, or local preferences.
+
+### Removed
+- Removed unreachable legacy Dashboard route views and their exclusive old components from the frontend template.
+- Removed unused `elkjs` frontend dependency because the current authority graph uses Vue Flow with Dagre layout.
+
+### Fixed
+- Kept TUI key actions memory-only under the existing p95 gate, with provider refresh, GPU/NVML probing, metrics tailing, and log scans isolated to explicit/background refresh paths.
+
 ## [0.4.0] - 2026-05-30
 
 ### Added

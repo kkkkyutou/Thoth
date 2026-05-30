@@ -112,6 +112,7 @@ TARGET_SPECS: dict[str, TargetSpec] = {
         selectors=(
             "tests/unit/test_dashboard_manager.py",
             "tests/unit/test_dashboard_runtime_api.py",
+            "tests/unit/test_dashboard_frontend_static.py",
             "tests/integration/test_dashboard_api.py",
         ),
         recommended_selftest_cases=("observe.dashboard", "observe.tui"),

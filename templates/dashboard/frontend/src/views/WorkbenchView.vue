@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
+import { applyDashboardDelta, type DashboardDeltaPayload } from '@/api/invalidation'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import MainPanel from '@/components/layout/MainPanel.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
@@ -11,9 +13,12 @@ import type { WorkbenchTab } from '@/types'
 
 const store = useDashboardStore()
 const route = useRoute()
+const queryClient = useQueryClient()
 const paletteOpen = ref(false)
 
-let timer: number | null = null
+let eventSource: EventSource | null = null
+let reconnectTimer: number | null = null
+let reconnectDelayMs = 1000
 
 async function syncRouteAndLoad() {
   const tab = (route.meta.tab as WorkbenchTab | undefined) ?? 'cockpit'
@@ -25,13 +30,56 @@ async function refreshAll() {
   await store.refreshForActiveTab()
 }
 
+function clearReconnectTimer() {
+  if (reconnectTimer != null) {
+    window.clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+}
+
+function scheduleSseReconnect() {
+  clearReconnectTimer()
+  reconnectTimer = window.setTimeout(() => {
+    connectSse()
+  }, reconnectDelayMs)
+  reconnectDelayMs = Math.min(reconnectDelayMs * 2, 30000)
+}
+
+function handleDelta(payload: DashboardDeltaPayload) {
+  store.markSseConnected(payload.cursor)
+  applyDashboardDelta(queryClient, payload)
+}
+
+function connectSse() {
+  eventSource?.close()
+  const params = new URLSearchParams()
+  if (store.sseCursor) params.set('cursor', store.sseCursor)
+  const suffix = params.toString() ? `?${params.toString()}` : ''
+  eventSource = new EventSource(`/api/invalidation/stream${suffix}`)
+  eventSource.addEventListener('open', () => {
+    reconnectDelayMs = 1000
+    store.markSseConnected(store.sseCursor)
+  })
+  eventSource.addEventListener('thoth.invalidate', (event) => {
+    try {
+      handleDelta(JSON.parse((event as MessageEvent).data) as DashboardDeltaPayload)
+    } catch (caught) {
+      store.markSseDisconnected(caught instanceof Error ? caught.message : String(caught))
+    }
+  })
+  eventSource.onerror = () => {
+    eventSource?.close()
+    eventSource = null
+    store.markSseDisconnected('stream disconnected; reconnect pending')
+    scheduleSseReconnect()
+  }
+}
+
 onMounted(async () => {
   await refreshAll()
   await syncRouteAndLoad()
   window.addEventListener('keydown', handleGlobalKeydown)
-  timer = window.setInterval(() => {
-    void refreshAll()
-  }, 20000)
+  connectSse()
 })
 
 watch(
@@ -43,9 +91,9 @@ watch(
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
-  if (timer != null) {
-    window.clearInterval(timer)
-  }
+  clearReconnectTimer()
+  eventSource?.close()
+  eventSource = null
 })
 
 function handleGlobalKeydown(event: KeyboardEvent) {
