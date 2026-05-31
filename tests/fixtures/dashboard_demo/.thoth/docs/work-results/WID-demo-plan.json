@@ -8,7 +8,7 @@
   "meets_goal": true,
   "failure_class": null,
   "reasons": [],
-  "conclusion": "Synthetic training authority is closed and demo-only boundaries are explicit.",
+  "conclusion": "Demo training authority is closed and demo-only boundaries are explicit.",
   "current_summary": "Authority plan validated.",
   "evidence_paths": [".thoth/objects/decision/DEC-demo-training.json"],
   "recent_evidence": [],
@@ -25,4 +25,3 @@
   "updated_at": "2026-05-28T09:20:00Z",
   "last_closure_at": "2026-05-28T09:20:00Z"
 }
-

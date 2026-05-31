@@ -7,7 +7,7 @@
   "usable": false,
   "meets_goal": false,
   "failure_class": "resource_limit",
-  "reasons": ["synthetic oversized batch exceeded the memory budget"],
+  "reasons": ["demo oversized batch exceeded the memory budget"],
   "conclusion": "The oversized batch experiment is rejected; smaller micro-batch accumulation remains the recommended route.",
   "current_summary": "Failed attempt captured.",
   "evidence_paths": [".thoth/runs/run-demo-failed/result.json"],

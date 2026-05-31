@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.4.1" src="https://img.shields.io/badge/version-0.4.1-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.4.2" src="https://img.shields.io/badge/version-0.4.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.4.1 Dashboard/TUI v2</strong> · Query 驱动 cockpit、分区 SSE invalidation、瘦身后的 backend/TUI 内核，以及保持不变的 v4 视觉</p>
+  <p><strong>v0.4.2 隐私热修</strong> · Dashboard/TUI teaser 只使用 demo 数据、插件隐私 lint、发布门禁防泄露扫描</p>
   <img src="assets/thoth-dashboard-teaser-v4.png" width="100%" alt="Thoth Dashboard v2 live cockpit" />
   <br />
   <img src="assets/thoth-tui-teaser-v4.png" width="100%" alt="Thoth TUI v2 live cockpit 快照" />
@@ -234,6 +234,8 @@ thoth tui
 ```
 
 `thoth tui` 是只读观察面。它读取和 dashboard 相同的 shared providers，因此 loss/metrics 必须通过启用的 `.thoth/extensions/manifest.json` provider 接入。交互键位包括 `Tab` / `Shift+Tab` 切换 tab、方向键选择、`Enter` 进入详情、`Esc` 返回、`/` 搜索、`s` 切换 EMA emphasis、`d` 切换小数位、`?` 帮助、`r` 刷新。Python TUI 扩展只有在 manifest 中启用、面向 `tui` surface、声明 `tui_python_plugin` 或 `tui_panel`，并显式设置 `trusted: true` 时才会加载；需要 renderer-free 安全启动时使用 `--no-python-plugins`。
+
+`thoth plugin validate` 会对 extension manifest 和 plugin 源文件执行隐私 lint。官方 teaser asset 只能由 `tests/fixtures/dashboard_demo` 生成；下游任务项目截图、真实路径和任务专属数据必须留在 tracked release assets 之外。
 
 ## 宿主安装与升级
 
