@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.4.1" src="https://img.shields.io/badge/version-0.4.1-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.4.2" src="https://img.shields.io/badge/version-0.4.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.4.1 Dashboard/TUI v2</strong> · Query-backed cockpit, scoped SSE invalidation, compact backend/TUI internals, and preserved v4 visuals</p>
+  <p><strong>v0.4.2 Privacy Hotfix</strong> · Demo-only Dashboard/TUI teaser assets, plugin privacy lint, and release-gate leak scanning</p>
   <img src="assets/thoth-dashboard-teaser-v4.png" width="100%" alt="Thoth Dashboard v2 live cockpit" />
   <br />
   <img src="assets/thoth-tui-teaser-v4.png" width="100%" alt="Thoth TUI v2 live cockpit snapshot" />
@@ -234,6 +234,8 @@ thoth tui
 ```
 
 `thoth tui` is read-only. It uses the same shared providers as the dashboard, so loss/metrics data must come from enabled `.thoth/extensions/manifest.json` providers. The interactive view supports `Tab` / `Shift+Tab`, arrow selection, `Enter` detail, `Esc` back, `/` search, `s` EMA emphasis, `d` decimal precision, `?` help, and `r` refresh. Python TUI extensions are loaded only when the manifest entry is enabled, targets the `tui` surface, declares `tui_python_plugin` or `tui_panel`, and explicitly sets `trusted: true`; use `--no-python-plugins` for a renderer-free safe launch.
+
+`thoth plugin validate` includes privacy lint for extension manifests and plugin source files. Official teaser assets are generated only from `tests/fixtures/dashboard_demo`; downstream project screenshots or task-specific paths must stay outside tracked release assets.
 
 ## Host Install And Upgrade
 

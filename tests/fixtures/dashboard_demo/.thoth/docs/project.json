@@ -2,7 +2,7 @@
   "schema_version": 3,
   "project": {
     "name": "Thoth Demo Project",
-    "description": "A generic Thoth demo project with synthetic LLM training metrics, authority objects, runs, tools, and GPU/system read models.",
+    "description": "A generic Thoth demo project with LLM training metrics, authority objects, runs, tools, and GPU/system read models.",
     "language": "en",
     "directions": [
       {
@@ -66,4 +66,3 @@
     "sync_policy": "preserve"
   }
 }
-

@@ -132,7 +132,11 @@ TARGET_SPECS: dict[str, TargetSpec] = {
     ),
     "plugin-surface": TargetSpec(
         target_id="plugin-surface",
-        selectors=("tests/unit/test_plugin_surface.py", "tests/unit/test_observe_extensions_and_tui.py"),
+        selectors=(
+            "tests/unit/test_plugin_surface.py",
+            "tests/unit/test_observe_extensions_and_tui.py",
+            "tests/unit/test_privacy.py",
+        ),
         recommended_selftest_cases=(
             "surface.codex.init_sync",
             "surface.claude.init_sync",
@@ -160,6 +164,8 @@ PATH_TARGET_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("thoth/observe/extensions.py", ("observe-read-model", "dashboard-runtime", "plugin-surface")),
     ("thoth/observe/actions.py", ("observe-read-model", "dashboard-runtime", "plugin-surface")),
     ("thoth/observe/plugin_service.py", ("observe-read-model", "dashboard-runtime", "plugin-surface", "surface-cli")),
+    ("thoth/privacy.py", ("plugin-surface",)),
+    ("scripts/privacy_scan.py", ("plugin-surface",)),
     ("thoth/observe/invalidation.py", ("observe-read-model", "dashboard-runtime")),
     ("thoth/observe/read_model_index.py", ("observe-read-model", "dashboard-runtime")),
     ("thoth/observe/debug.py", ("observe-read-model", "dashboard-runtime")),

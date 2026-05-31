@@ -4,6 +4,16 @@
 
 No pending changes.
 
+## [0.4.2] - 2026-05-31
+
+### Fixed
+- Replaced the v4 Dashboard and TUI teaser assets with demo-fixture-only screenshots and added provenance metadata so README visuals cannot be sourced from downstream task projects.
+- Rewrote public branch history to remove previously published downstream project identifiers, workspace paths, and private metric counts from reachable `dev` / `main` history.
+
+### Added
+- Added a repo privacy scanner and wired plugin validation to fail on private downstream project names, workspace paths, user-local paths, and task-specific metric counts.
+- Added focused privacy tests covering repository scanning and project plugin validation.
+
 ## [0.4.1] - 2026-05-30
 
 ### Changed
@@ -61,7 +71,7 @@ No pending changes.
 - Added first-class `$thoth tui` / `/thoth:tui` public surfaces with ANSI-free snapshot JSON and mechanical PNG snapshot export.
 - Added shared observe providers for project, authority, work items, runs, metrics, plugins, tools, and system/GPU data so Dashboard and TUI read the same source model.
 - Added portable `.thoth/extensions/manifest.json` support for project plugins, metrics/loss providers, system snapshots, and isolated dashboard tool plugins.
-- Added synthetic `tests/fixtures/dashboard_demo/` data with LLM training metrics, authority objects, runs, artifacts, plugin metadata, tools, and deterministic system/GPU fixture data.
+- Added demo `tests/fixtures/dashboard_demo/` data with LLM training metrics, authority objects, runs, artifacts, plugin metadata, tools, and deterministic system/GPU fixture data.
 - Added v3 README teaser assets for the redesigned dashboard and TUI.
 
 ### Changed

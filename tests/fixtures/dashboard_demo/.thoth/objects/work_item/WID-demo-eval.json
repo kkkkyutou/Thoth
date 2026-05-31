@@ -16,12 +16,12 @@
     }
   ],
   "payload": {
-    "goal": "Run a held-out synthetic eval sweep after the training run reaches acceptance evidence.",
+    "goal": "Run a held-out demo eval sweep after the training run reaches acceptance evidence.",
     "context": "model-training",
     "constraints": ["wait-for-training-validation"],
     "acceptance_spec": {
       "kind": "metric",
-      "description": "Eval accuracy is at least 0.40 on the synthetic held-out set.",
+      "description": "Eval accuracy is at least 0.40 on the demo held-out set.",
       "metric": {
         "name": "eval.eval_accuracy",
         "direction": "gte",

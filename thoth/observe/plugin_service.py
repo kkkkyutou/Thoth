@@ -15,6 +15,7 @@ from thoth.observe.extensions import (
     manifest_path,
     manifest_validation_errors,
 )
+from thoth.privacy import finding_messages, scan_plugin_tree
 
 
 PLUGIN_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$")
@@ -121,6 +122,8 @@ def validate_plugins(project_root: Path, *, fix: bool = False) -> dict[str, Any]
     else:
         _manifest(project_root)
     errors = manifest_validation_errors(project_root)
+    privacy_findings = scan_plugin_tree(project_root)
+    errors.extend(f"privacy: {message}" for message in finding_messages(privacy_findings))
     summary = extension_summary(project_root)
     status = "ok" if not errors else "failed"
     receipt = record_action_receipt(
@@ -129,7 +132,12 @@ def validate_plugins(project_root: Path, *, fix: bool = False) -> dict[str, Any]
         status=status,
         summary="Plugin manifest validation passed." if not errors else "Plugin manifest validation failed.",
         request={"fix": fix},
-        result={"errors": errors, "migration": migration, "summary": summary},
+        result={
+            "errors": errors,
+            "migration": migration,
+            "privacy_findings": finding_messages(privacy_findings),
+            "summary": summary,
+        },
         artifacts=[EXTENSIONS_MANIFEST],
     )
     return {
@@ -137,5 +145,6 @@ def validate_plugins(project_root: Path, *, fix: bool = False) -> dict[str, Any]
         "errors": errors,
         "summary": summary,
         "migration": migration,
+        "privacy_findings": finding_messages(privacy_findings),
         "receipt": receipt,
     }

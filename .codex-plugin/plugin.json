@@ -1,6 +1,6 @@
 {
   "name": "thoth",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Official Codex-native public surface for the Thoth authority runtime.",
   "author": {
     "name": "SeeleAI",

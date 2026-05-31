@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "source": "demo-fixture",
-  "host_label": "synthetic-training-node",
+  "host_label": "demo-training-node",
   "cpu": {
     "logical_cores": 64,
     "load_pct": 42

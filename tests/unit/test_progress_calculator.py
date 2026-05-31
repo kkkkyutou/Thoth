@@ -23,7 +23,7 @@ from thoth.observe.read_model import task_progress_pct, task_runtime_status
 
 
 # ---------------------------------------------------------------------------
-# Helper: Build synthetic task dicts
+# Helper: Build demo task dicts
 # ---------------------------------------------------------------------------
 
 def _make_task(task_id, survey="pending", method_design="pending",
