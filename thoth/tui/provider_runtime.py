@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import threading
 import time
-from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from thoth.observe.extensions import metrics_plugin_configs
+from thoth.observe.experiments import ExperimentFilters, experiment_provider, metrics_for_experiment
 from thoth.observe.logs import logs_provider
 from thoth.observe.providers import (
     authority_provider,
@@ -19,8 +18,6 @@ from thoth.observe.providers import (
     tools_provider,
     work_items_provider,
 )
-
-from .metrics import MetricFileState, summarize_metrics
 
 ProviderBuilder = Callable[[], dict[str, Any]]
 
@@ -101,83 +98,25 @@ class TuiProviderRuntimeMixin:
 
     def _build_metrics_provider(self) -> dict[str, Any]:
         started = time.perf_counter()
-        configs = metrics_plugin_configs(self.project_root)
-        if not configs:
-            return self._stamp_duration(
-                stamp_provider(
-                    {
-                        "schema_version": 1,
-                        "kind": "metrics",
-                        "configured": False,
-                        "metrics": [],
-                        "message": "No metrics provider configured. Add a metrics-capable plugin in .thoth/extensions/manifest.json.",
-                    },
-                    refresh_seconds=self.metrics_refresh_seconds,
-                ),
-                started,
-            )
-        records = []
-        bad_lines = 0
-        source_files: list[str] = []
-        provider_errors: list[str] = []
-        run_name = None
-        active_paths: set[Path] = set()
-        for config in configs:
-            if run_name is None and isinstance(config.get("run_name"), str):
-                run_name = str(config.get("run_name"))
-            files = config.get("metrics_files")
-            if isinstance(files, str):
-                files = [files]
-            if not isinstance(files, list):
-                provider_errors.append(f"{config.get('plugin_id', 'plugin')}: config.metrics_files must be a list or string")
-                continue
-            for item in files:
-                if not isinstance(item, str) or not item.strip():
-                    continue
-                path = Path(item)
-                if not path.is_absolute():
-                    path = self.project_root / path
-                path = path.resolve()
-                active_paths.add(path)
-                source_files.append(str(path))
-                if not path.exists():
-                    provider_errors.append(f"missing metrics file: {path}")
-                    continue
-                state = self._metric_states.get(path)
-                if state is None:
-                    state = MetricFileState(path)
-                    self._metric_states[path] = state
-                records.extend(state.tail(max_records=self.metrics_max_records))
-                bad_lines += state.bad_lines
-                if state.last_error:
-                    provider_errors.append(state.last_error)
-        for stale_path in set(self._metric_states) - active_paths:
-            self._metric_states.pop(stale_path, None)
-        payload = summarize_metrics(
-            records,
-            run_name=run_name,
+        payload = metrics_for_experiment(
+            self.project_root,
+            max_records=self.metrics_max_records,
             decimal_places=self.decimal_places,
             local_window_steps=self.local_window_steps,
             global_max_points=self.global_max_points,
-        )
-        payload.update(
-            {
-                "configured": True,
-                "configs": configs,
-                "source_files": source_files,
-                "bad_lines": bad_lines,
-                "provider_errors": provider_errors,
-                "message": "Metrics providers are configured through project extensions.",
-            }
         )
         return self._stamp_duration(
             stamp_provider(
                 payload,
                 refresh_seconds=self.metrics_refresh_seconds,
-                last_error="; ".join(provider_errors) if provider_errors else None,
+                last_error="; ".join(payload.get("provider_errors") or []) if payload.get("provider_errors") else None,
             ),
             started,
         )
+
+    def _build_experiments_provider(self) -> dict[str, Any]:
+        started = time.perf_counter()
+        return self._stamp_duration(experiment_provider(self.project_root, ExperimentFilters(limit=200, offset=0)), started)
 
     def _build_tools_provider(self) -> dict[str, Any]:
         started = time.perf_counter()
@@ -198,6 +137,7 @@ class TuiProviderRuntimeMixin:
             ("work_items", self._build_work_items_provider),
             ("runs", self._build_runs_provider),
             ("logs", self._build_logs_provider),
+            ("experiments", self._build_experiments_provider),
             ("metrics", self._build_metrics_provider),
             ("plugins", self._build_plugins_provider),
             ("tools", self._build_tools_provider),
@@ -257,6 +197,9 @@ class TuiProviderRuntimeMixin:
 
     def refresh_metrics(self) -> None:
         self._refresh_provider_async("metrics", self._build_metrics_provider)
+
+    def refresh_experiments(self) -> None:
+        self._refresh_provider_async("experiments", self._build_experiments_provider)
 
     def refresh_runs(self) -> None:
         self._refresh_provider_async("runs", self._build_runs_provider)

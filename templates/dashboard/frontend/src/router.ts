@@ -11,8 +11,14 @@ interface RouteMetaShape {
 const routes: Array<RouteRecordRaw & { meta: RouteMetaShape }> = [
   {
     path: '/',
-    redirect: '/cockpit',
-    meta: { tab: 'cockpit' },
+    redirect: '/experiments',
+    meta: { tab: 'experiments' },
+  },
+  {
+    path: '/experiments',
+    name: 'experiments',
+    component: WorkbenchView,
+    meta: { tab: 'experiments' },
   },
   {
     path: '/cockpit',
@@ -45,10 +51,10 @@ const routes: Array<RouteRecordRaw & { meta: RouteMetaShape }> = [
     meta: { tab: 'system' },
   },
   {
-    path: '/plugins',
-    name: 'plugins',
+    path: '/extensions',
+    name: 'extensions',
     component: WorkbenchView,
-    meta: { tab: 'plugins' },
+    meta: { tab: 'extensions' },
   },
   {
     path: '/overview',
@@ -72,8 +78,13 @@ const routes: Array<RouteRecordRaw & { meta: RouteMetaShape }> = [
   },
   {
     path: '/todo',
-    redirect: '/plugins',
-    meta: { tab: 'plugins' },
+    redirect: '/extensions',
+    meta: { tab: 'extensions' },
+  },
+  {
+    path: '/plugins',
+    redirect: '/extensions',
+    meta: { tab: 'extensions' },
   },
   {
     path: '/activity',

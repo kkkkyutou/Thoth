@@ -22,6 +22,7 @@ from dashboard_context import (
 from data_loader import invalidate_cache
 from database import init_db
 from routes_actions import router as actions_router
+from routes_experiments import router as experiments_router
 from routes_observe import router as observe_router
 from routes_read import router as read_router
 
@@ -37,6 +38,7 @@ SPA_ENTRY_ROUTES = (
     "/runs",
     "/work",
     "/metrics",
+    "/extensions",
     "/plugins",
     "/overview",
     "/work-items",
@@ -58,6 +60,7 @@ for _spa_route in SPA_ENTRY_ROUTES:
     app.add_api_route(_spa_route, index, methods=["GET"], response_class=HTMLResponse)
 
 app.include_router(observe_router)
+app.include_router(experiments_router)
 app.include_router(read_router)
 app.include_router(actions_router)
 

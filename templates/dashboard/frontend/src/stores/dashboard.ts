@@ -13,6 +13,9 @@ import type {
   DagData,
   GanttRow,
   MetricsProviderPayload,
+  ExperimentDetailResponse,
+  ExperimentListResponse,
+  ExperimentSummary,
   ObserveSnapshot,
   OverviewSummary,
   PluginSummary,
@@ -37,8 +40,9 @@ function dataOr<T>(value: T | undefined, fallback: T): T {
 export const useDashboardStore = defineStore('dashboard', () => {
   const queryClient = useQueryClient()
 
-  const activeTab = ref<WorkbenchTab>('cockpit')
+  const activeTab = ref<WorkbenchTab>('experiments')
   const selectedWorkItemId = ref<string | null>(null)
+  const selectedExperimentId = ref<string | null>(null)
   const selectedModuleId = ref<string | null>(null)
   const sseConnected = ref(false)
   const sseCursor = ref<string | null>(null)
@@ -81,6 +85,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
     queryFn: api.getObserve,
     staleTime: 5_000,
   })
+  const experimentsQuery = useQuery({
+    queryKey: dashboardQueryKeys.experiments,
+    queryFn: () => api.getExperiments({ limit: 250 }),
+    staleTime: 5_000,
+  })
   const pluginsQuery = useQuery({
     queryKey: dashboardQueryKeys.plugins,
     queryFn: api.getPlugins,
@@ -96,6 +105,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
     queryFn: api.getMetrics,
     staleTime: 5_000,
   })
+  const effectiveSelectedExperimentId = computed(
+    () =>
+      selectedExperimentId.value ??
+      experimentsQuery.data.value?.selected_experiment_id ??
+      experimentsQuery.data.value?.effective_experiment_id ??
+      experimentsQuery.data.value?.experiments[0]?.experiment_id ??
+      null,
+  )
   const workItemsQuery = useQuery({
     queryKey: dashboardQueryKeys.workItems,
     queryFn: () => api.getWorkItems({ limit: 1000 }),
@@ -122,6 +139,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
     enabled: computed(() => Boolean(selectedWorkItemId.value)),
     staleTime: 5_000,
   })
+  const selectedExperimentQuery = useQuery({
+    queryKey: computed(() => dashboardQueryKeys.experiment(effectiveSelectedExperimentId.value ?? 'none')),
+    queryFn: () => api.getExperiment(effectiveSelectedExperimentId.value ?? ''),
+    enabled: computed(() => Boolean(effectiveSelectedExperimentId.value)),
+    staleTime: 5_000,
+  })
 
   const bootstrapQueries = [
     configQuery,
@@ -130,6 +153,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     overviewQuery,
     systemQuery,
     observeQuery,
+    experimentsQuery,
     pluginsQuery,
     toolsQuery,
     metricsQuery,
@@ -144,6 +168,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const overviewSummary = computed<OverviewSummary | null>(() => overviewQuery.data.value ?? null)
   const systemStatus = computed<SystemStatus | null>(() => systemQuery.data.value ?? null)
   const observeSnapshot = computed<ObserveSnapshot | null>(() => observeQuery.data.value ?? null)
+  const experiments = computed<ExperimentListResponse | null>(() => experimentsQuery.data.value ?? null)
   const pluginSummary = computed<PluginSummary | null>(() => pluginsQuery.data.value ?? null)
   const toolPlugins = computed<ToolPlugin[]>(() => dataOr(toolsQuery.data.value?.tools, []))
   const metricsProvider = computed<MetricsProviderPayload | null>(() => metricsQuery.data.value ?? null)
@@ -151,6 +176,16 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const dag = computed<DagData | null>(() => dagQuery.data.value ?? null)
   const gantt = computed<GanttRow[]>(() => dataOr(ganttQuery.data.value, []))
   const activity = computed<ActivityEvent[]>(() => dataOr(activityQuery.data.value, []))
+  const selectedExperiment = computed<ExperimentSummary | null>(() => {
+    const selectedId = effectiveSelectedExperimentId.value
+    if (!selectedId) return null
+    return (
+      selectedExperimentQuery.data.value?.experiment ??
+      experiments.value?.experiments.find((item) => item.experiment_id === selectedId) ??
+      null
+    )
+  })
+  const selectedExperimentDetail = computed<ExperimentDetailResponse | null>(() => selectedExperimentQuery.data.value ?? null)
 
   const selectedWorkItem = computed<WorkItem | null>(() => {
     if (!selectedWorkItemId.value) return null
@@ -243,6 +278,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       ['overview', overviewQuery.error.value],
       ['system', systemQuery.error.value],
       ['observe', observeQuery.error.value],
+      ['experiments', experimentsQuery.error.value],
       ['plugins', pluginsQuery.error.value],
       ['tools', toolsQuery.error.value],
       ['metrics', metricsQuery.error.value],
@@ -283,7 +319,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
       await refetchQueries([ganttQuery, activityQuery, observeQuery, progressQuery])
     } else if (tab === 'metrics') {
       await refetchQueries([metricsQuery, observeQuery])
-    } else if (tab === 'plugins') {
+    } else if (tab === 'experiments') {
+      await refetchQueries([experimentsQuery, metricsQuery, observeQuery])
+    } else if (tab === 'extensions') {
       await refetchQueries([pluginsQuery, toolsQuery, activityQuery])
     } else if (tab === 'system') {
       await refetchQueries([systemQuery, observeQuery, overviewQuery])
@@ -317,6 +355,18 @@ export const useDashboardStore = defineStore('dashboard', () => {
     selectedModuleId.value = null
   }
 
+  async function selectExperiment(experimentId: string) {
+    selectedExperimentId.value = experimentId
+    activeTab.value = 'experiments'
+    await api.selectExperiment(experimentId)
+    await refetchQueries([experimentsQuery, metricsQuery, observeQuery, selectedExperimentQuery])
+  }
+
+  async function archiveExperiment(experimentId: string) {
+    await api.updateExperiment(experimentId, { status: 'archived' })
+    await refetchQueries([experimentsQuery, metricsQuery, observeQuery])
+  }
+
   function setActiveTab(tab: WorkbenchTab) {
     activeTab.value = tab
   }
@@ -337,6 +387,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     activeTab,
     config,
     dag,
+    experiments,
     filteredTree,
     filters,
     gantt,
@@ -348,6 +399,10 @@ export const useDashboardStore = defineStore('dashboard', () => {
     observeSnapshot,
     pluginSummary,
     progress,
+    selectedExperiment,
+    selectedExperimentDetail,
+    effectiveSelectedExperimentId,
+    selectedExperimentId,
     selectedModule,
     selectedModuleId,
     selectedWorkItem,
@@ -370,6 +425,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     markSseDisconnected,
     refreshForActiveTab,
     selectModule,
+    selectExperiment,
+    archiveExperiment,
     selectWorkItem,
     setActiveTab,
   }

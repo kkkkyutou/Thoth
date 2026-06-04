@@ -4,6 +4,22 @@
 
 No pending changes.
 
+## [0.4.3] - 2026-06-04
+
+### Added
+- Added canonical experiment registry objects under `.thoth/objects/experiment/` plus `thoth extension experiment register|update|attach-source|detach-source|list|show|select|validate|discover`.
+- Added Dashboard experiment APIs and the Experiment Workbench projection for registered experiments, channels, artifacts, alerts, and 2-4 experiment metric compare.
+- Added TUI `surface_version=3` experiment/channel metadata and default registry selection for latest running or latest created experiments.
+
+### Changed
+- Renamed the public project extension command surface to `thoth extension`; generated Claude/Codex public projections no longer expose the removed legacy command.
+- Reworked the TUI state source into a controlled viewport: Left/Right switch top-level views, Tab switches panes/sources, and Enter consistently opens Loss/Metrics local/global detail.
+- Metrics/loss projection now reads the selected or effective registered experiment instead of directly projecting legacy manifest metric files.
+
+### Fixed
+- Kept TUI key actions memory-only by removing experiment-selection provider refresh from the Enter path.
+- Updated demo fixture data to include a registry-backed training experiment without downstream project content.
+
 ## [0.4.2] - 2026-05-31
 
 ### Fixed
@@ -11,8 +27,8 @@ No pending changes.
 - Rewrote public branch history to remove previously published downstream project identifiers, workspace paths, and private metric counts from reachable `dev` / `main` history.
 
 ### Added
-- Added a repo privacy scanner and wired plugin validation to fail on private downstream project names, workspace paths, user-local paths, and task-specific metric counts.
-- Added focused privacy tests covering repository scanning and project plugin validation.
+- Added a repo privacy scanner and wired extension validation to fail on private downstream project names, workspace paths, user-local paths, and task-specific metric counts.
+- Added focused privacy tests covering repository scanning and project extension validation.
 
 ## [0.4.1] - 2026-05-30
 
@@ -32,8 +48,8 @@ No pending changes.
 ## [0.4.0] - 2026-05-30
 
 ### Added
-- Added public `$thoth plugin` / `/thoth:plugin` surfaces for creating, listing, validating, and migrating project-local Dashboard/TUI extension plugins with local action receipts.
-- Added extension manifest schema v2 with v1 migration, plugin debug metadata, trusted/frontend/TUI layout fields, and portable `.thoth/extensions/plugins/<id>/` scaffolding.
+- Added project-local Dashboard/TUI extension scaffolding, validation, and migration support with local action receipts.
+- Added extension manifest schema v2 with v1 migration, extension debug metadata, trusted/frontend/TUI layout fields, and portable `.thoth/extensions/plugins/<id>/` scaffolding.
 - Added Dashboard delta/SSE invalidation endpoints, debug summary endpoint, and a lightweight SQLite read-model index with optional DuckDB mirror.
 - Added shared observe action receipts for dashboard triggers and TUI actions, local Dashboard action-token enforcement for write endpoints, plus a TUI command palette for refresh, attach, watch, stop, validate, sync, and health-check.
 - Added TUI Live Cockpit, logs tab, local preferences, action results, and v2 snapshot metadata while keeping ANSI-free JSON snapshots renderer-free.

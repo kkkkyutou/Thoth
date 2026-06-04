@@ -11,13 +11,13 @@ const store = useDashboardStore()
   <section class="plugins-panel">
     <article class="v2-card plugins-panel__hero">
       <div>
-        <span>Plugins Workbench</span>
+        <span>Extensions Workbench</span>
         <h2>Provider and Tool Debug</h2>
-        <p>Read-only provider state stays separate from tool plugins and local todo helpers.</p>
+        <p>Read-only provider state stays separate from tool extensions and local todo helpers.</p>
       </div>
       <div class="plugins-panel__stats">
         <article>
-          <span>plugins</span>
+          <span>extensions</span>
           <strong>{{ store.pluginSummary?.plugin_count ?? 0 }}</strong>
         </article>
         <article>
@@ -37,7 +37,7 @@ const store = useDashboardStore()
       </article>
       <article class="v2-card plugins-panel__tools">
         <header>
-          <span>Tool Plugins</span>
+          <span>Tool Extensions</span>
           <strong>isolated actions</strong>
         </header>
         <ToolPluginPanel :tools="store.toolPlugins" />

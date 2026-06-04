@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import CockpitPanel from '@/components/panels/CockpitPanel.vue'
+import ExperimentsPanel from '@/components/panels/ExperimentsPanel.vue'
 import MetricsPanel from '@/components/panels/MetricsPanel.vue'
 import PluginsPanel from '@/components/panels/PluginsPanel.vue'
 import RunsPanel from '@/components/panels/RunsPanel.vue'
@@ -14,21 +15,23 @@ const router = useRouter()
 const store = useDashboardStore()
 
 const tabs = computed<Array<{ key: WorkbenchTab; label: string }>>(() => [
+  { key: 'experiments', label: 'Experiments' },
   { key: 'cockpit', label: 'Cockpit' },
   { key: 'runs', label: 'Runs' },
   { key: 'work', label: 'Work' },
   { key: 'metrics', label: 'Metrics' },
   { key: 'system', label: 'System' },
-  { key: 'plugins', label: 'Plugins' },
+  { key: 'extensions', label: 'Extensions' },
 ])
 
 const tabRoute: Record<WorkbenchTab, string> = {
+  experiments: '/experiments',
   cockpit: '/cockpit',
   runs: '/runs',
   work: '/work',
   metrics: '/metrics',
   system: '/system',
-  plugins: '/plugins',
+  extensions: '/extensions',
 }
 
 function activateTab(tab: WorkbenchTab) {
@@ -53,12 +56,13 @@ function activateTab(tab: WorkbenchTab) {
 
     <div class="main-panel__content">
       <Transition name="fade" mode="out-in">
-        <CockpitPanel v-if="store.activeTab === 'cockpit'" key="cockpit" />
+        <ExperimentsPanel v-if="store.activeTab === 'experiments'" key="experiments" />
+        <CockpitPanel v-else-if="store.activeTab === 'cockpit'" key="cockpit" />
         <RunsPanel v-else-if="store.activeTab === 'runs'" key="runs" />
         <WorkPanel v-else-if="store.activeTab === 'work'" key="work" />
         <MetricsPanel v-else-if="store.activeTab === 'metrics'" key="metrics" />
         <SystemPanel v-else-if="store.activeTab === 'system'" key="system" />
-        <PluginsPanel v-else key="plugins" />
+        <PluginsPanel v-else key="extensions" />
       </Transition>
     </div>
   </main>

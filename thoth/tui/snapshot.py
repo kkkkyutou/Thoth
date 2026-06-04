@@ -52,7 +52,7 @@ def build_snapshot(
         "gpu": stamp_provider(gpu_payload, refresh_seconds=None),
         "tui": {
             "schema_version": 1,
-            "surface_version": 2,
+            "surface_version": 3,
             "no_python_plugins": no_python_plugins,
             "local_window_steps": local_window_steps,
             "global_max_points": global_max_points,

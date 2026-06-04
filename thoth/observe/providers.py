@@ -9,12 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from thoth.objects import summarize_object_graph
-from thoth.observe.extensions import extension_summary, metrics_plugin_configs, system_plugin_configs, tool_plugins
+from thoth.observe.experiments import ExperimentFilters, experiment_provider, metrics_for_experiment
+from thoth.observe.extensions import extension_summary, system_plugin_configs, tool_plugins
 from thoth.observe.read_model import active_auto_controllers, load_config, load_tasks, overview_summary_read_model
 from thoth.run.io import _read_json
 from thoth.run.service import list_active_runs
 from thoth.tui.gpu import snapshot_gpu
-from thoth.tui.metrics import DEFAULT_GLOBAL_MAX_POINTS, DEFAULT_LOCAL_WINDOW_STEPS, read_metric_file, summarize_metrics
+from thoth.tui.metrics import DEFAULT_GLOBAL_MAX_POINTS, DEFAULT_LOCAL_WINDOW_STEPS
 
 
 def utc_now() -> str:
@@ -165,64 +166,21 @@ def metrics_provider(
     global_max_points: int = DEFAULT_GLOBAL_MAX_POINTS,
     decimal_places: int = 5,
 ) -> dict[str, Any]:
-    configs = metrics_plugin_configs(project_root)
-    if not configs:
-        return stamp_provider(
-            {
-                "schema_version": 1,
-                "kind": "metrics",
-                "configured": False,
-                "metrics": [],
-                "message": "No metrics provider configured. Add a metrics-capable plugin in .thoth/extensions/manifest.json.",
-            }
-        )
-    records = []
-    bad_lines = 0
-    source_files: list[str] = []
-    provider_errors: list[str] = []
-    run_name = None
-    for config in configs:
-        if run_name is None and isinstance(config.get("run_name"), str):
-            run_name = str(config.get("run_name"))
-        files = config.get("metrics_files")
-        if isinstance(files, str):
-            files = [files]
-        if not isinstance(files, list):
-            provider_errors.append(f"{config.get('plugin_id', 'plugin')}: config.metrics_files must be a list or string")
-            continue
-        for item in files:
-            if not isinstance(item, str) or not item.strip():
-                continue
-            path = Path(item)
-            if not path.is_absolute():
-                path = project_root / path
-            next_records, next_bad = read_metric_file(path, max_records=max_records)
-            records.extend(next_records)
-            bad_lines += next_bad
-            source_files.append(str(path))
-            if not path.exists():
-                provider_errors.append(f"missing metrics file: {path}")
-    payload = summarize_metrics(
-        records,
-        run_name=run_name,
-        decimal_places=decimal_places,
+    payload = metrics_for_experiment(
+        project_root,
+        max_records=max_records,
         local_window_steps=local_window_steps,
         global_max_points=global_max_points,
-    )
-    payload.update(
-        {
-            "configured": True,
-            "configs": configs,
-            "source_files": source_files,
-            "bad_lines": bad_lines,
-            "provider_errors": provider_errors,
-            "message": "Metrics providers are configured through project extensions.",
-        }
+        decimal_places=decimal_places,
     )
     return stamp_provider(
         payload,
-        last_error="; ".join(provider_errors) if provider_errors else None,
+        last_error="; ".join(payload.get("provider_errors") or []) if payload.get("provider_errors") else None,
     )
+
+
+def experiments_provider(project_root: Path) -> dict[str, Any]:
+    return stamp_provider(experiment_provider(project_root, ExperimentFilters(limit=100, offset=0)))
 
 
 def plugins_provider(project_root: Path) -> dict[str, Any]:
@@ -324,6 +282,7 @@ def observe_snapshot(
         "authority": authority_provider(project_root),
         "work_items": work_items_provider(project_root),
         "runs": runs_provider(project_root),
+        "experiments": experiments_provider(project_root),
         "metrics": metrics_provider(
             project_root,
             max_records=metrics_max_records,

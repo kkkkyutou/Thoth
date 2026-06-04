@@ -11,7 +11,7 @@ from typing import Any
 
 EXTENSIONS_DIR = ".thoth/extensions"
 EXTENSIONS_MANIFEST = f"{EXTENSIONS_DIR}/manifest.json"
-MANIFEST_SCHEMA_VERSION = 2
+MANIFEST_SCHEMA_VERSION = 3
 
 
 BUILTIN_TOOL_PLUGINS: tuple[dict[str, Any], ...] = (
@@ -64,6 +64,10 @@ class ExtensionPlugin:
     def has_system(self) -> bool:
         return "system_provider" in self.capabilities or "gpu_provider" in self.capabilities
 
+    @property
+    def has_experiments(self) -> bool:
+        return "experiments_provider" in self.capabilities or "experiment_provider" in self.capabilities
+
 
 def extensions_dir(project_root: Path) -> Path:
     return project_root / EXTENSIONS_DIR
@@ -82,7 +86,7 @@ def _utc_iso() -> str:
 
 
 def migrate_extension_manifest_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """Return a schema v2 manifest while preserving schema v1 plugin rows."""
+    """Return a schema v3 manifest while preserving earlier plugin rows."""
 
     original_version = payload.get("schema_version")
     if original_version == MANIFEST_SCHEMA_VERSION:
@@ -92,6 +96,20 @@ def migrate_extension_manifest_payload(payload: dict[str, Any]) -> tuple[dict[st
         migrated.setdefault("actions", [])
         migrated.setdefault("builtin_tools", list(BUILTIN_TOOL_PLUGINS))
         return migrated, None
+    if original_version == 2:
+        migrated = dict(payload)
+        migrated["schema_version"] = MANIFEST_SCHEMA_VERSION
+        migrated.setdefault("kind", "thoth.extensions")
+        migrated.setdefault("plugins", [])
+        migrated.setdefault("actions", [])
+        migrated.setdefault("builtin_tools", list(BUILTIN_TOOL_PLUGINS))
+        migration = {
+            "from_schema_version": 2,
+            "to_schema_version": MANIFEST_SCHEMA_VERSION,
+            "migrated_at": _utc_iso(),
+        }
+        migrated["last_migration"] = migration
+        return migrated, migration
     if original_version not in (None, 1):
         migrated = dict(payload)
         migrated.setdefault("plugins", [])
@@ -118,7 +136,7 @@ def migrate_extension_manifest_payload(payload: dict[str, Any]) -> tuple[dict[st
 
 
 def migrate_extension_manifest_file(project_root: Path) -> dict[str, Any]:
-    """Upgrade an existing v1 manifest to schema v2 on disk when needed."""
+    """Upgrade an existing extension manifest to schema v3 on disk when needed."""
 
     path = manifest_path(project_root)
     if not path.exists():
@@ -132,7 +150,7 @@ def migrate_extension_manifest_file(project_root: Path) -> dict[str, Any]:
     migrated, migration = migrate_extension_manifest_payload(payload)
     if migration is None:
         return {"changed": False, "manifest": migrated, "migration": None}
-    backup = path.with_suffix(path.suffix + ".v1.bak")
+    backup = path.with_suffix(path.suffix + f".v{migration['from_schema_version']}.bak")
     if not backup.exists():
         backup.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     path.write_text(json.dumps(migrated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -238,6 +256,19 @@ def metrics_plugin_configs(project_root: Path) -> list[dict[str, Any]]:
     return configs
 
 
+def experiment_plugin_configs(project_root: Path) -> list[dict[str, Any]]:
+    configs: list[dict[str, Any]] = []
+    for plugin in enabled_extension_plugins(project_root):
+        if not plugin.has_experiments:
+            continue
+        config = dict(plugin.config)
+        config.setdefault("extension_id", plugin.plugin_id)
+        config.setdefault("plugin_id", plugin.plugin_id)
+        config.setdefault("source", plugin.source)
+        configs.append(config)
+    return configs
+
+
 def system_plugin_configs(project_root: Path) -> list[dict[str, Any]]:
     configs: list[dict[str, Any]] = []
     for plugin in enabled_extension_plugins(project_root):
@@ -303,7 +334,7 @@ def manifest_validation_errors(project_root: Path) -> list[str]:
             errors.append(f"plugins[{index}].id is required")
             continue
         if plugin_id in seen:
-            errors.append(f"duplicate plugin id: {plugin_id}")
+            errors.append(f"duplicate extension id: {plugin_id}")
         seen.add(plugin_id)
         if not isinstance(row.get("config", {}), dict):
             errors.append(f"plugins[{index}].config must be an object")
@@ -341,6 +372,7 @@ def extension_summary(project_root: Path) -> dict[str, Any]:
         ],
         "tool_plugins": tool_plugins(project_root),
         "metrics_configured": bool(metrics_plugin_configs(project_root)),
+        "experiments_configured": bool(experiment_plugin_configs(project_root)),
         "system_configured": bool(system_plugin_configs(project_root)),
         "debug": {
             "manifest_schema_version": manifest.get("schema_version"),

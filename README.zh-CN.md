@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.4.2" src="https://img.shields.io/badge/version-0.4.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.4.3" src="https://img.shields.io/badge/version-0.4.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 最新动态</h2>
-  <p><strong>v0.4.2 隐私热修</strong> · Dashboard/TUI teaser 只使用 demo 数据、插件隐私 lint、发布门禁防泄露扫描</p>
+  <p><strong>v0.4.3 Experiment Workbench</strong> · 实验 registry、extension 命令、Dashboard compare 与受控 TUI viewport</p>
   <img src="assets/thoth-dashboard-teaser-v4.png" width="100%" alt="Thoth Dashboard v2 live cockpit" />
   <br />
   <img src="assets/thoth-tui-teaser-v4.png" width="100%" alt="Thoth TUI v2 live cockpit 快照" />
@@ -42,7 +42,7 @@
 | Layer 1. Host Surface                                                      |
 |                                                                            |
 |  init   discuss   run   loop   argue   auto   status                       |
-|  doctor dashboard tui plugin                                              |
+|  doctor dashboard tui extension                                           |
 +----------------------------------------------------------------------------+
                                               |
                                               v
@@ -233,9 +233,9 @@ cd /path/to/your/project
 thoth tui
 ```
 
-`thoth tui` 是只读观察面。它读取和 dashboard 相同的 shared providers，因此 loss/metrics 必须通过启用的 `.thoth/extensions/manifest.json` provider 接入。交互键位包括 `Tab` / `Shift+Tab` 切换 tab、方向键选择、`Enter` 进入详情、`Esc` 返回、`/` 搜索、`s` 切换 EMA emphasis、`d` 切换小数位、`?` 帮助、`r` 刷新。Python TUI 扩展只有在 manifest 中启用、面向 `tui` surface、声明 `tui_python_plugin` 或 `tui_panel`，并显式设置 `trusted: true` 时才会加载；需要 renderer-free 安全启动时使用 `--no-python-plugins`。
+`thoth tui` 是只读观察面。它读取和 dashboard 相同的 shared providers，因此 loss/metrics 必须来自已注册实验和启用的 `.thoth/extensions/manifest.json` provider。交互键位包括 `Left` / `Right` 切换顶层 view、`Tab` / `Shift+Tab` 在当前 view 内切换 pane 或 metric source、方向键选择、`Enter` 进入详情、`Esc` 返回、`/` 搜索、`s` 切换 EMA emphasis、`d` 切换小数位、`?` 帮助、`r` 刷新。Python TUI 扩展只有在 manifest 中启用、面向 `tui` surface、声明 `tui_python_plugin` 或 `tui_panel`，并显式设置 `trusted: true` 时才会加载；需要 renderer-free 安全启动时使用 `--no-python-plugins`。
 
-`thoth plugin validate` 会对 extension manifest 和 plugin 源文件执行隐私 lint。官方 teaser asset 只能由 `tests/fixtures/dashboard_demo` 生成；下游任务项目截图、真实路径和任务专属数据必须留在 tracked release assets 之外。
+`thoth extension validate` 会对 extension manifest 和 extension 源文件执行隐私 lint。官方 teaser asset 只能由 `tests/fixtures/dashboard_demo` 生成；下游任务项目截图、真实路径和任务专属数据必须留在 tracked release assets 之外。
 
 ## 宿主安装与升级
 
@@ -294,8 +294,8 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | 展示项目健康、活动 runs、doctor、report 或 dashboard 读面。 | 可选 `--json`、`--doctor`、`--report` 或 `--dashboard` | 基于 authority 和本机 registry 派生出的共享状态快照与读面 |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | `status --doctor` 的别名；严格审计健康状态和 runtime shape。 | 可选 `--quick` 或 `--json` | 含验证结论的健康报告 |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | `status --dashboard` 的别名；管理本地 dashboard runtime。 | 可选动作：`start`、`stop` 或 `rebuild` | 由 authority 与本机 `.thoth` ledgers 驱动的本地 dashboard 进程和读接口 |
-| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | 打开或导出基于 shared providers 的只读终端 dashboard。 | 可选 `--snapshot-json`、`--export-snapshots`、`--snapshot-dir`、`--no-gpu`、`--no-python-plugins`、loss 详情与刷新控制 | 覆盖 authority、runs、metrics、plugins、tools 和 system state 的无 ANSI JSON 或视觉快照 |
-| `plugin` | `Claude: /thoth:plugin`<br>`Codex: $thoth plugin` | 创建、列出或验证项目本地 Dashboard/TUI extension plugin。 | `create <plugin_id>`、`list`、`validate [--fix]` 以及 manifest metadata flags | `.thoth/extensions/manifest.json`、`.thoth/extensions/plugins/<plugin_id>/` 和本地 action receipts |
+| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | 打开或导出基于 shared providers 的只读终端 dashboard。 | 可选 `--snapshot-json`、`--export-snapshots`、`--snapshot-dir`、`--no-gpu`、`--no-python-plugins`、loss 详情与刷新控制 | 覆盖 authority、runs、experiments、metrics、extensions、tools 和 system state 的无 ANSI JSON 或视觉快照 |
+| `extension` | `Claude: /thoth:extension`<br>`Codex: $thoth extension` | 创建、列出、验证并管理项目本地 Dashboard/TUI extensions 与实验 registry 对象。 | `create <extension_id>`、`list`、`validate [--fix]`，以及 `experiment register|update|attach-source|detach-source|list|show|select|validate|discover` | `.thoth/extensions/manifest.json`、`.thoth/extensions/plugins/<extension_id>/`、`.thoth/objects/experiment/<experiment_id>.json` 和本地 action receipts |
 
 ## 为什么值得信任
 

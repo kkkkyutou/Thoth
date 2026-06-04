@@ -1,10 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "plugins": [
     {
       "id": "demo-llm-metrics",
       "title": "Demo LLM Metrics",
-      "version": "0.3.0",
+      "version": "0.4.3",
       "enabled": true,
       "surfaces": ["dashboard", "tui"],
       "capabilities": ["metrics_provider", "loss_provider"],
@@ -19,7 +19,7 @@
     {
       "id": "demo-readonly-eval",
       "title": "Demo Eval Summary",
-      "version": "0.3.0",
+      "version": "0.4.3",
       "enabled": true,
       "surfaces": ["dashboard", "tui"],
       "capabilities": ["readonly_provider"],
@@ -31,7 +31,7 @@
     {
       "id": "demo-system",
       "title": "Demo System Snapshot",
-      "version": "0.3.0",
+      "version": "0.4.3",
       "enabled": true,
       "surfaces": ["dashboard", "tui"],
       "capabilities": ["system_provider", "gpu_provider"],

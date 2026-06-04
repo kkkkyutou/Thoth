@@ -15,7 +15,8 @@ from thoth.observe.extensions import (
     metrics_plugin_configs,
 )
 from thoth.observe.actions import action_catalog, ensure_action_token, run_observe_action, validate_action_token
-from thoth.observe.plugin_service import create_plugin, validate_plugins
+from thoth.observe.experiments import attach_source, register_experiment, select_experiment, validate_experiments
+from thoth.observe.extension_service import create_extension, validate_extensions
 from thoth.observe.providers import observe_snapshot
 from thoth.tui.app import ThothTuiApp
 from thoth.tui.chart import render_connected_chart
@@ -32,7 +33,7 @@ DEMO = ROOT / "tests" / "fixtures" / "dashboard_demo"
 def test_extension_manifest_default_is_portable(tmp_path):
     manifest = ensure_extension_manifest(tmp_path)
 
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert manifest["kind"] == "thoth.extensions"
     assert manifest["actions"] == []
     assert (tmp_path / ".thoth" / "extensions" / "manifest.json").exists()
@@ -68,7 +69,7 @@ def test_extension_manifest_v1_is_migrated_by_managed_entrypoint(tmp_path):
 
     manifest = ensure_extension_manifest(tmp_path)
 
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert manifest["plugins"][0]["id"] == "metrics-demo"
     assert manifest["last_migration"]["from_schema_version"] == 1
     assert manifest_path.with_suffix(".json.v1.bak").exists()
@@ -80,7 +81,7 @@ def test_extension_manifest_reports_duplicate_plugin_ids(tmp_path):
     manifest_path.write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "plugins": [
                     {"id": "dup", "version": "1", "enabled": True, "surfaces": [], "capabilities": [], "source": "a", "config": {}},
                     {"id": "dup", "version": "2", "enabled": True, "surfaces": [], "capabilities": [], "source": "b", "config": {}},
@@ -93,12 +94,12 @@ def test_extension_manifest_reports_duplicate_plugin_ids(tmp_path):
         encoding="utf-8",
     )
 
-    assert "duplicate plugin id: dup" in manifest_validation_errors(tmp_path)
+    assert "duplicate extension id: dup" in manifest_validation_errors(tmp_path)
     assert extension_summary(tmp_path)["plugin_count"] == 1
 
 
-def test_plugin_create_and_validate_write_local_receipts(tmp_path):
-    result = create_plugin(
+def test_extension_create_and_validate_write_local_receipts(tmp_path):
+    result = create_extension(
         tmp_path,
         plugin_id="demo-tool",
         title="Demo Tool",
@@ -106,11 +107,11 @@ def test_plugin_create_and_validate_write_local_receipts(tmp_path):
         capabilities="tool,metrics_provider",
     )
 
-    assert result["plugin"]["id"] == "demo-tool"
+    assert result["extension"]["id"] == "demo-tool"
     assert (tmp_path / ".thoth" / "extensions" / "plugins" / "demo-tool" / "README.md").exists()
     assert result["receipt"]["path"].startswith(".thoth/local/actions/")
 
-    validation = validate_plugins(tmp_path)
+    validation = validate_extensions(tmp_path)
 
     assert validation["status"] == "ok"
     assert validation["errors"] == []
@@ -118,6 +119,33 @@ def test_plugin_create_and_validate_write_local_receipts(tmp_path):
     summary = extension_summary(tmp_path)
     assert summary["enabled_plugin_count"] == 1
     assert summary["debug"]["plugin_ids"] == ["demo-tool"]
+
+
+def test_experiment_registry_register_attach_select_and_validate(tmp_path):
+    (tmp_path / "metrics.jsonl").write_text(
+        json.dumps({"step": 1, "metrics": {"loss": 2.0}}) + "\n"
+        + json.dumps({"step": 2, "metrics": {"loss": 1.0}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = register_experiment(
+        tmp_path,
+        {"experiment_id": "exp-demo", "title": "Demo", "status": "running", "work_id": "optional-work"},
+        actor="unit-agent",
+    )
+    assert result["experiment"]["experiment_id"] == "exp-demo"
+    attached = attach_source(
+        tmp_path,
+        "exp-demo",
+        {"id": "train-jsonl", "channel": "metrics", "type": "jsonl", "path": "metrics.jsonl", "series": "train"},
+        actor="unit-agent",
+    )
+    assert attached["source"]["id"] == "train-jsonl"
+    selected = select_experiment(tmp_path, "exp-demo")
+    assert selected["selected"]["experiment_id"] == "exp-demo"
+    validation = validate_experiments(tmp_path)
+    assert validation["status"] == "ok"
+    assert validation["errors"] == []
 
 
 def test_observe_action_catalog_includes_shared_low_risk_actions(tmp_path):
@@ -485,14 +513,17 @@ async def _run_textual_tui_keymap_smoke(tmp_path):
     )
     async with app.run_test(size=(120, 36)) as pilot:
         await pilot.pause()
-        assert app.active_tab == "cockpit"
+        assert app.active_tab == "experiments"
+        await pilot.press("right")
+        await pilot.pause()
+        assert app.active_tab == "loss"
         await pilot.press("tab")
         await pilot.pause()
         assert app.active_tab == "loss"
-        await pilot.press("shift+tab")
+        await pilot.press("left")
         await pilot.pause()
-        assert app.active_tab == "cockpit"
-        await pilot.press("tab")
+        assert app.active_tab == "experiments"
+        await pilot.press("right")
         await pilot.pause()
         assert app.active_tab == "loss"
         await pilot.press("down")
@@ -510,6 +541,14 @@ async def _run_textual_tui_keymap_smoke(tmp_path):
         await pilot.pause()
         assert app.show_help is True
         await pilot.press("escape")
+        await pilot.pause()
+        assert app.show_help is False
+        await pilot.press("left")
+        await pilot.press("down")
+        await pilot.press("up")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.active_tab == "experiments"
         await pilot.pause()
         assert app.show_help is False
 

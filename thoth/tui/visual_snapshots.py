@@ -308,7 +308,7 @@ def export_visual_snapshots(snapshot_dir: str | Path, *, project_root: str | Pat
     }
     empty_metrics.setdefault("providers", {})["metrics"] = empty_metrics["metrics"]
     plugin_error = copy.deepcopy(snapshot)
-    plugin_error.setdefault("providers", {}).setdefault("plugins", {})["validation_errors"] = ["duplicate plugin id: demo"]
+    plugin_error.setdefault("providers", {}).setdefault("plugins", {})["validation_errors"] = ["duplicate extension id: demo"]
     specs = [
         ("tui-wide", snapshot, 1440, 980),
         ("tui-narrow", snapshot, 760, 1180),

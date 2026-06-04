@@ -11,6 +11,8 @@ import type {
   RunSummary,
   SystemStatus,
   TimelineItem,
+  ExperimentDetailResponse,
+  ExperimentListResponse,
   WorkItem,
   WorkItemFilters,
   WorkItemListResponse,
@@ -80,6 +82,53 @@ export const api = {
   getPlugins: () => request<PluginSummary>('/plugins'),
   getTools: () => request<{ schema_version: number; tool_count: number; tools: ToolPlugin[] }>('/tools'),
   getMetrics: () => request<MetricsProviderPayload>('/metrics'),
+  getExperiments: (filters?: {
+    search?: string
+    status?: string
+    tag?: string
+    provider?: string
+    limit?: number
+    offset?: number
+  }) => {
+    const params = new URLSearchParams()
+    if (filters?.search) params.set('search', filters.search)
+    if (filters?.status) params.set('status', filters.status)
+    if (filters?.tag) params.set('tag', filters.tag)
+    if (filters?.provider) params.set('provider', filters.provider)
+    params.set('limit', String(filters?.limit ?? 100))
+    params.set('offset', String(filters?.offset ?? 0))
+    return request<ExperimentListResponse>(`/experiments?${params.toString()}`)
+  },
+  getExperiment: (experimentId: string) =>
+    request<ExperimentDetailResponse>(`/experiments/${experimentId}`),
+  getExperimentChannel: (experimentId: string, channel: string) =>
+    request<Record<string, unknown>>(`/experiments/${experimentId}/channels/${channel}`),
+  registerExperiment: (body: Record<string, unknown>) =>
+    actionRequest<Record<string, unknown>>('/experiments', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateExperiment: (experimentId: string, body: Record<string, unknown>) =>
+    actionRequest<Record<string, unknown>>(`/experiments/${experimentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  attachExperimentSource: (experimentId: string, body: Record<string, unknown>) =>
+    actionRequest<Record<string, unknown>>(`/experiments/${experimentId}/sources`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  detachExperimentSource: (experimentId: string, sourceId: string) =>
+    actionRequest<Record<string, unknown>>(
+      `/experiments/${experimentId}/sources/${sourceId}`,
+      { method: 'DELETE' },
+    ),
+  selectExperiment: (experimentId: string, series?: string | null) => {
+    const suffix = series ? `?series=${encodeURIComponent(series)}` : ''
+    return actionRequest<Record<string, unknown>>(`/experiments/${experimentId}/select${suffix}`, {
+      method: 'POST',
+    })
+  },
 
   getWorkItems: (filters?: WorkItemFilters) => {
     const params = new URLSearchParams()

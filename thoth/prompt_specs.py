@@ -163,21 +163,22 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
         result_style="brief TUI launch or snapshot receipt",
         validator_policy="tui is read-only over shared observe providers",
     ),
-    "plugin": CommandPromptSpec(
-        command_id="plugin",
+    "extension": CommandPromptSpec(
+        command_id="extension",
         route_class="mechanical_fast",
         intelligence_tier="none",
         packet_authority_mode="result_envelope",
-        objective="Create, list, or validate project-local Dashboard/TUI extension plugins while preserving manifest schema v2 and local audit receipts.",
+        objective="Create, list, validate, and manage project-local Dashboard/TUI extensions and experiment registry objects while preserving manifest schema v3 and local audit receipts.",
         hard_stops=(
-            "Do not execute extension Python code while creating, listing, or validating plugins.",
-            "Do not write plugin sources outside .thoth/extensions/plugins unless an explicit project-relative source was provided.",
+            "Do not execute extension Python code while creating, listing, validating, or managing experiments.",
+            "Do not write extension sources outside .thoth/extensions/plugins unless an explicit project-relative source was provided.",
             "Do not treat local action receipts as portable project authority.",
-            "Do not invent plugin capabilities beyond the CLI arguments and manifest contents.",
+            "Do not persist absolute downstream paths into portable experiment registry objects.",
+            "Do not invent extension capabilities beyond the CLI arguments and manifest contents.",
         ),
         reply_budget_utf8=72,
-        result_style="brief plugin manifest receipt",
-        validator_policy="manifest schema validation plus local action receipt decide completion",
+        result_style="brief extension or experiment registry receipt",
+        validator_policy="manifest schema validation, experiment registry validation, and local action receipts decide completion",
     ),
     "orchestration": CommandPromptSpec(
         command_id="orchestration",
@@ -286,7 +287,7 @@ COMMAND_PROMPT_SPECS: dict[str, CommandPromptSpec] = {
 
 
 PUBLIC_COMMAND_PROMPT_IDS = frozenset(
-    {"init", "discuss", "run", "loop", "argue", "auto", "status", "doctor", "dashboard", "tui", "plugin"}
+    {"init", "discuss", "run", "loop", "argue", "auto", "status", "doctor", "dashboard", "tui", "extension"}
 )
 INTERNAL_COMMAND_PROMPT_IDS = frozenset(COMMAND_PROMPT_SPECS) - PUBLIC_COMMAND_PROMPT_IDS
 

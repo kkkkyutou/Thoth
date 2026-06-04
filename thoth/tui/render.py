@@ -29,7 +29,7 @@ THEME = {
     "bg": "#080607",
 }
 
-TABS = ("cockpit", "loss", "runs", "logs", "authority", "gpu", "plugins")
+TABS = ("experiments", "loss", "runs", "logs", "authority", "gpu", "extensions")
 
 
 def fmt(value: Any, places: int = 5) -> str:
@@ -69,6 +69,11 @@ def _metric_payload(snapshot: Mapping[str, Any]) -> Mapping[str, Any]:
     return metrics if isinstance(metrics, Mapping) else {}
 
 
+def _experiments_payload(snapshot: Mapping[str, Any]) -> Mapping[str, Any]:
+    experiments = _providers(snapshot).get("experiments")
+    return experiments if isinstance(experiments, Mapping) else {}
+
+
 def _status_bar(snapshot: Mapping[str, Any], active_tab: str = "loss") -> Panel:
     project = (_providers(snapshot).get("project") or {}).get("project") if isinstance(_providers(snapshot).get("project"), Mapping) else {}
     metrics = _metric_payload(snapshot)
@@ -78,8 +83,12 @@ def _status_bar(snapshot: Mapping[str, Any], active_tab: str = "loss") -> Panel:
     generated = snapshot.get("generated_at") or ""
     line = Text()
     line.append(" THOTH TUI ", style=f"bold {THEME['red_hot']} on {THEME['bg']}")
-    line.append(" v2", style=THEME["cyan"])
-    line.append(f" tab={active_tab}", style=THEME["white"])
+    tui = snapshot.get("tui") if isinstance(snapshot.get("tui"), Mapping) else {}
+    experiments = _experiments_payload(snapshot)
+    selected_experiment = experiments.get("selected_experiment_id") or experiments.get("effective_experiment_id") or metrics.get("experiment_id") or "-"
+    line.append(f" v{tui.get('surface_version', 3)}", style=THEME["cyan"])
+    line.append(f" view={active_tab}", style=THEME["white"])
+    line.append(f" exp={selected_experiment}", style=THEME["cyan"])
     line.append(f" step={metrics.get('latest_step')}", style=THEME["white"])
     line.append(f" records={metrics.get('record_count', 0)}", style=THEME["muted"])
     line.append(f" active_runs={runs.get('active_count', 0)}", style=THEME["white"])
@@ -109,6 +118,35 @@ def _overview_panel(snapshot: Mapping[str, Any]) -> Panel:
     problems = authority.get("problems") if isinstance(authority.get("problems"), list) else []
     table.add_row("authority problems", str(len(problems)), "layout", str((snapshot.get("tui") or {}).get("layout", "auto")))
     return frame(table, "Live Cockpit", subtitle="read-only authority, runs, logs")
+
+
+def _experiments_panel(snapshot: Mapping[str, Any], *, selected: int = 0, max_rows: int = 14) -> Panel:
+    payload = _experiments_payload(snapshot)
+    rows = payload.get("experiments") if isinstance(payload.get("experiments"), list) else []
+    discovered = payload.get("discovered") if isinstance(payload.get("discovered"), list) else []
+    table = Table(box=box.SIMPLE, expand=True)
+    table.add_column("Experiment", style=THEME["white"])
+    table.add_column("Status", style=THEME["amber"])
+    table.add_column("Sources", justify="right", style=THEME["cyan"])
+    table.add_column("Updated", style=THEME["muted"])
+    table.add_column("Refs", style=THEME["muted"])
+    if not rows:
+        table.add_row("no registered experiments", "-", "0", "-", "use thoth extension experiment register")
+    start = max(0, min(selected, max(0, len(rows) - max_rows)))
+    for index, row in enumerate(rows[start : start + max_rows], start=start):
+        style = f"bold {THEME['red_hot']}" if index == selected else THEME["white"]
+        refs = row.get("refs") if isinstance(row.get("refs"), Mapping) else {}
+        ref_text = " ".join(f"{key}={value}" for key, value in refs.items()) or "-"
+        table.add_row(
+            f"[{style}]{escape(str(row.get('experiment_id') or row.get('id') or ''))}[/]\n[{THEME['muted']}]{escape(str(row.get('title') or ''))}[/]",
+            str(row.get("status") or "-"),
+            str(row.get("source_count", 0)),
+            str(row.get("updated_at") or row.get("created_at") or "-"),
+            ref_text,
+        )
+    selected_id = payload.get("selected_experiment_id") or payload.get("effective_experiment_id") or "none"
+    subtitle = f"selected={selected_id}  registered={payload.get('total', len(rows))}  discovered={len(discovered)}"
+    return frame(_provider_error_wrap(table, payload), "Experiment Cockpit", subtitle=subtitle)
 
 
 def _authority_panel(snapshot: Mapping[str, Any]) -> Panel:
@@ -273,7 +311,9 @@ def _loss_table_panel(snapshot: Mapping[str, Any], *, selected: int = 0, places:
             str(row.get("sparkline") or ""),
         )
     source_files = metrics.get("source_files") if isinstance(metrics.get("source_files"), list) else []
-    subtitle = str(source_files[0]) if source_files else str(metrics.get("run_name") or "extension metrics")
+    series = metrics.get("series") if isinstance(metrics.get("series"), list) else []
+    source_label = ", ".join(str(item.get("series") or item.get("id")) for item in series[:2] if isinstance(item, Mapping)) or (str(source_files[0]) if source_files else "no source")
+    subtitle = f"experiment={metrics.get('experiment_id') or '-'}  source={source_label}"
     return frame(_provider_error_wrap(table, metrics), f"Loss / Metrics ({metrics.get('record_count', 0)} records)", subtitle=subtitle)
 
 
@@ -366,7 +406,7 @@ def _plugins_panel(snapshot: Mapping[str, Any], *, plugin_renderables: Sequence[
     body: Any = table
     if plugin_renderables:
         body = Group(table, *plugin_renderables)
-    return frame(body, "Plugins / Tools / Errors", subtitle=f"python_panels={len(plugin_renderables)}")
+    return frame(body, "Extensions / Tools / Errors", subtitle=f"python_panels={len(plugin_renderables)}")
 
 
 def _action_result_panel(action_result: Mapping[str, Any] | None) -> Panel:
@@ -421,10 +461,11 @@ def _help_panel() -> Panel:
     keys.add_column(ratio=1)
     keys.add_column(ratio=3)
     for key, action in [
-        ("Tab / Shift+Tab", "switch tab"),
-        ("1..7", "jump to tab"),
+        ("Left / Right", "switch top-level view"),
+        ("Tab", "switch pane or series inside the current view"),
+        ("1..7", "jump to view"),
         ("Up / Down", "select row"),
-        ("Enter", "open metric or run detail"),
+        ("Enter", "open experiment, metric, or run detail"),
         ("Esc", "return to overview / hide search / close help"),
         ("/", "focus search"),
         ("p / Ctrl+P", "command palette with confirmation"),
@@ -442,7 +483,7 @@ def _help_panel() -> Panel:
 
 def _footer() -> Panel:
     return Panel(
-        Align.left(" Tab switch  ↑↓ select  Enter detail  p palette  / search  f follow  v phase  r refresh  ? help  q quit "),
+        Align.left(" ←→ view  Tab pane/source  ↑↓ select  Enter detail  Esc back  / search  p palette  r refresh  ? help  q quit "),
         border_style=THEME["red"],
         box=box.SQUARE,
     )
@@ -450,7 +491,8 @@ def _footer() -> Panel:
 
 def dashboard_renderable(snapshot: dict[str, Any]) -> Group:
     return Group(
-        _status_bar(snapshot, "cockpit"),
+        _status_bar(snapshot, "experiments"),
+        _experiments_panel(snapshot),
         _overview_panel(snapshot),
         Columns([_authority_panel(snapshot), _gpu_panel(snapshot)], equal=True, expand=True),
         _loss_table_panel(snapshot),
@@ -497,11 +539,12 @@ def tab_renderable(
         )
     if show_help:
         return Group(header, _help_panel(), _footer())
-    if tab_id == "cockpit":
+    if tab_id == "experiments":
         if layout_mode == "compact":
-            return Group(header, _overview_panel(snapshot), _runs_overview_panel(snapshot, selected=selected_run_index, max_rows=6), _logs_panel(snapshot, max_rows=8), _action_result_panel(action_result), _footer())
+            return Group(header, _experiments_panel(snapshot, selected=selected_work_index), _overview_panel(snapshot), _runs_overview_panel(snapshot, selected=selected_run_index, max_rows=6), _action_result_panel(action_result), _footer())
         return Group(
             header,
+            _experiments_panel(snapshot, selected=selected_work_index),
             Columns([_overview_panel(snapshot), _authority_panel(snapshot), _gpu_panel(snapshot)], equal=True, expand=True),
             Columns([_runs_overview_panel(snapshot, selected=selected_run_index, max_rows=8), _logs_panel(snapshot, max_rows=8)], equal=True, expand=True),
             _action_result_panel(action_result),
@@ -519,6 +562,6 @@ def tab_renderable(
         return Group(header, _authority_panel(snapshot), _work_items_panel(snapshot, selected=selected_work_index), _footer())
     if tab_id == "gpu":
         return Group(header, _gpu_panel(snapshot), _footer())
-    if tab_id == "plugins":
+    if tab_id == "extensions":
         return Group(header, _plugins_panel(snapshot, plugin_renderables=plugin_renderables), _footer())
     return dashboard_renderable(snapshot)

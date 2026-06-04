@@ -11,11 +11,11 @@ const props = defineProps<{
     <article v-for="tool in props.tools" :key="tool.id" class="tool-plugin-panel__tool">
       <div>
         <strong>{{ tool.title || tool.id }}</strong>
-        <p>{{ tool.description || 'Dashboard tool plugin' }}</p>
+        <p>{{ tool.description || 'Dashboard tool extension' }}</p>
       </div>
       <span>{{ (tool.capabilities || []).join(' / ') || 'tool' }}</span>
     </article>
-    <p v-if="!props.tools.length" class="tool-plugin-panel__empty">No tool plugins enabled.</p>
+    <p v-if="!props.tools.length" class="tool-plugin-panel__empty">No tool extensions enabled.</p>
   </div>
 </template>
 

@@ -113,7 +113,7 @@ function openWorkItem(workId: string) {
         <strong>{{ summary?.runtime.stale_run_count ?? 0 }}</strong>
       </article>
       <article>
-        <span>plugins</span>
+        <span>extensions</span>
         <strong>{{ store.pluginSummary?.enabled_plugin_count ?? 0 }}</strong>
       </article>
       <article>
@@ -217,7 +217,7 @@ function openWorkItem(workId: string) {
 
       <article class="cockpit-card">
         <header>
-          <span>Tool Plugins</span>
+          <span>Tool Extensions</span>
           <strong>isolated</strong>
         </header>
         <ToolPluginPanel :tools="store.toolPlugins" />

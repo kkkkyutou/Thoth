@@ -33,7 +33,7 @@ const alerts = computed(() => {
     }
   }
   for (const error of store.pluginSummary?.validation_errors ?? []) {
-    items.push({ tone: 'danger', title: 'Plugin manifest', body: error })
+    items.push({ tone: 'danger', title: 'Extension manifest', body: error })
   }
   for (const error of store.metricsProvider?.provider_errors ?? []) {
     items.push({ tone: 'warn', title: 'Metrics provider', body: error })

@@ -159,7 +159,7 @@ def load_tui_python_plugins(
                 _notice(
                     plugin.plugin_id,
                     "error",
-                    "Python TUI plugin source must be .thoth/extensions/plugins/<plugin_id>.",
+                    "Python TUI extension source must be .thoth/extensions/plugins/<extension_id>.",
                     source=str(source_root),
                     expected=str(allowed_root),
                 )
@@ -170,7 +170,7 @@ def load_tui_python_plugins(
             notices.append(_notice(plugin.plugin_id, "error", "Python TUI plugin config.entrypoint is required."))
             continue
         if not _is_relative_to(entrypoint, source_root):
-            notices.append(_notice(plugin.plugin_id, "error", "Python TUI plugin entrypoint escapes plugin source root."))
+            notices.append(_notice(plugin.plugin_id, "error", "Python TUI extension entrypoint escapes extension source root."))
             continue
         if not entrypoint.exists():
             notices.append(_notice(plugin.plugin_id, "error", f"Python TUI plugin entrypoint not found: {entrypoint}"))

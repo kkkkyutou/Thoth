@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from textual.widgets import Input
 
 from thoth.observe.actions import action_catalog, run_observe_action
+from thoth.observe.experiments import select_experiment
 from thoth.observe.logs import PHASES
 
 
@@ -100,6 +101,7 @@ class TuiActionsMixin:
         self._set_active_tab(tab_id)
         self.detail = False
         self.run_detail = False
+        self.experiment_detail = False
         self.show_help = False
         self.palette_open = False
         self.pending_action_id = None
@@ -114,16 +116,34 @@ class TuiActionsMixin:
         index = self.TABS.index(self.active_tab) if self.active_tab in self.TABS else 0
         self.action_show_tab(self.TABS[(index - 1) % len(self.TABS)])
 
+    def action_next_pane(self) -> None:
+        if self.active_tab == "loss":
+            series = (self.providers.get("metrics", {}) or {}).get("series") or []
+            if series:
+                self.selected_series_index = (self.selected_series_index + 1) % len(series)
+        self._save_preferences()
+        self.request_render()
+
+    def action_prev_pane(self) -> None:
+        if self.active_tab == "loss":
+            series = (self.providers.get("metrics", {}) or {}).get("series") or []
+            if series:
+                self.selected_series_index = (self.selected_series_index - 1) % len(series)
+        self._save_preferences()
+        self.request_render()
+
     def action_cursor_up(self) -> None:
         if self.palette_open:
             self.palette_selected_index = max(0, self.palette_selected_index - 1)
             self.request_render()
             return
-        if self.active_tab == "runs":
+        if self.active_tab == "experiments":
+            self.selected_experiment_index = max(0, self.selected_experiment_index - 1)
+        elif self.active_tab == "runs":
             self.selected_run_index = max(0, self.selected_run_index - 1)
         elif self.active_tab == "authority":
             self.selected_work_index = max(0, self.selected_work_index - 1)
-        else:
+        elif self.active_tab == "loss":
             self.selected_metric_index = max(0, self.selected_metric_index - 1)
         self.request_render()
 
@@ -133,13 +153,16 @@ class TuiActionsMixin:
             self.palette_selected_index = min(max(0, len(actions) - 1), self.palette_selected_index + 1)
             self.request_render()
             return
-        if self.active_tab == "runs":
+        if self.active_tab == "experiments":
+            rows = (self.providers.get("experiments", {}) or {}).get("experiments") or []
+            self.selected_experiment_index = min(max(0, len(rows) - 1), self.selected_experiment_index + 1)
+        elif self.active_tab == "runs":
             rows = (self.providers.get("runs", {}) or {}).get("runs") or []
             self.selected_run_index = min(max(0, len(rows) - 1), self.selected_run_index + 1)
         elif self.active_tab == "authority":
             rows = (self.providers.get("work_items", {}) or {}).get("work_items") or []
             self.selected_work_index = min(max(0, len(rows) - 1), self.selected_work_index + 1)
-        else:
+        elif self.active_tab == "loss":
             rows = (self.providers.get("metrics", {}) or {}).get("metrics") or []
             self.selected_metric_index = min(max(0, len(rows) - 1), self.selected_metric_index + 1)
         self.request_render()
@@ -161,7 +184,37 @@ class TuiActionsMixin:
                 return
             self._run_action_async(action_id, self._action_target_id(action))
             return
-        if self.active_tab == "loss":
+        if self.active_tab == "experiments":
+            rows = (self.providers.get("experiments", {}) or {}).get("experiments") or []
+            if rows:
+                index = max(0, min(len(rows) - 1, self.selected_experiment_index))
+                experiment_id = rows[index].get("experiment_id")
+                if experiment_id:
+                    try:
+                        select_experiment(self.project_root, str(experiment_id))
+                    except Exception as exc:  # pragma: no cover - surfaced as action result.
+                        self.action_result = {
+                            "schema_version": 1,
+                            "action_id": "experiment.select",
+                            "status": "error",
+                            "summary": f"{type(exc).__name__}: {exc}",
+                            "target_id": str(experiment_id),
+                            "body": {},
+                        }
+                    else:
+                        experiments = self.providers.get("experiments", {}) if isinstance(self.providers.get("experiments"), dict) else {}
+                        if experiments:
+                            experiments["selected_experiment_id"] = str(experiment_id)
+                            experiments["effective_experiment_id"] = str(experiment_id)
+                        self.action_result = {
+                            "schema_version": 1,
+                            "action_id": "experiment.select",
+                            "status": "ok",
+                            "summary": f"Selected experiment {experiment_id}. Press r to refresh providers if needed.",
+                            "target_id": str(experiment_id),
+                            "body": {},
+                        }
+        elif self.active_tab == "loss":
             self.detail = True
         elif self.active_tab == "runs":
             self.run_detail = True

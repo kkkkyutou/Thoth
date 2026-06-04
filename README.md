@@ -15,11 +15,11 @@
     <img alt="Claude Code Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=0284C7" />
     <img alt="Codex Plugin" src="https://img.shields.io/badge/Codex-plugin-4B5563?style=flat-square&labelColor=3F3F46&color=65A30D" />
     <img alt="Ready Work --work-id" src="https://img.shields.io/badge/work-strict%20--work--id-4B5563?style=flat-square&labelColor=3F3F46&color=7C3AED" />
-    <img alt="Version 0.4.2" src="https://img.shields.io/badge/version-0.4.2-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
+    <img alt="Version 0.4.3" src="https://img.shields.io/badge/version-0.4.3-4B5563?style=flat-square&labelColor=3F3F46&color=0369A1" />
     <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-4B5563?style=flat-square&labelColor=3F3F46&color=84CC16" />
   </p>
   <h2>🚀 What's New</h2>
-  <p><strong>v0.4.2 Privacy Hotfix</strong> · Demo-only Dashboard/TUI teaser assets, plugin privacy lint, and release-gate leak scanning</p>
+  <p><strong>v0.4.3 Experiment Workbench</strong> · Registry-backed experiments, extension commands, Dashboard compare, and a controlled TUI viewport</p>
   <img src="assets/thoth-dashboard-teaser-v4.png" width="100%" alt="Thoth Dashboard v2 live cockpit" />
   <br />
   <img src="assets/thoth-tui-teaser-v4.png" width="100%" alt="Thoth TUI v2 live cockpit snapshot" />
@@ -42,7 +42,7 @@
 | Layer 1. Host Surface                                                      |
 |                                                                            |
 |  init   discuss   run   loop   argue   auto   status                       |
-|  doctor dashboard tui plugin                                              |
+|  doctor dashboard tui extension                                           |
 +----------------------------------------------------------------------------+
                                               |
                                               v
@@ -233,9 +233,9 @@ cd /path/to/your/project
 thoth tui
 ```
 
-`thoth tui` is read-only. It uses the same shared providers as the dashboard, so loss/metrics data must come from enabled `.thoth/extensions/manifest.json` providers. The interactive view supports `Tab` / `Shift+Tab`, arrow selection, `Enter` detail, `Esc` back, `/` search, `s` EMA emphasis, `d` decimal precision, `?` help, and `r` refresh. Python TUI extensions are loaded only when the manifest entry is enabled, targets the `tui` surface, declares `tui_python_plugin` or `tui_panel`, and explicitly sets `trusted: true`; use `--no-python-plugins` for a renderer-free safe launch.
+`thoth tui` is read-only. It uses the same shared providers as the dashboard, so loss/metrics data must come from registered experiments and enabled `.thoth/extensions/manifest.json` providers. The interactive view supports `Left` / `Right` to switch top-level views, `Tab` / `Shift+Tab` to switch panes or metric sources inside the current view, arrow selection, `Enter` detail, `Esc` back, `/` search, `s` EMA emphasis, `d` decimal precision, `?` help, and `r` refresh. Python TUI extensions are loaded only when the manifest entry is enabled, targets the `tui` surface, declares `tui_python_plugin` or `tui_panel`, and explicitly sets `trusted: true`; use `--no-python-plugins` for a renderer-free safe launch.
 
-`thoth plugin validate` includes privacy lint for extension manifests and plugin source files. Official teaser assets are generated only from `tests/fixtures/dashboard_demo`; downstream project screenshots or task-specific paths must stay outside tracked release assets.
+`thoth extension validate` includes privacy lint for extension manifests and extension source files. Official teaser assets are generated only from `tests/fixtures/dashboard_demo`; downstream project screenshots or task-specific paths must stay outside tracked release assets.
 
 ## Host Install And Upgrade
 
@@ -294,8 +294,8 @@ python scripts/recommend_tests.py thoth/observe/selftest/runner.py tests/conftes
 | `status` | `Claude: /thoth:status`<br>`Codex: $thoth status` | Show project health, active durable runs, doctor, report, or dashboard views. | Optional `--json`, `--doctor`, `--report`, or `--dashboard` | Shared status snapshot and read-only derived views |
 | `doctor` | `Claude: /thoth:doctor`<br>`Codex: $thoth doctor` | Alias for `status --doctor`; strictly audit health and runtime shape. | Optional `--quick` or `--json` | Health report with validation findings |
 | `dashboard` | `Claude: /thoth:dashboard`<br>`Codex: $thoth dashboard` | Alias for `status --dashboard`; manage the local dashboard runtime. | Optional action: `start`, `stop`, or `rebuild` | Local dashboard process and read endpoints backed by authority plus local `.thoth` ledgers |
-| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | Open or snapshot the read-only terminal dashboard backed by shared providers. | Optional `--snapshot-json`, `--export-snapshots`, `--snapshot-dir`, `--no-gpu`, `--no-python-plugins`, loss detail and refresh controls | ANSI-free JSON or visual snapshots for authority, runs, metrics, plugins, tools, and system state |
-| `plugin` | `Claude: /thoth:plugin`<br>`Codex: $thoth plugin` | Create, list, or validate project-local Dashboard/TUI extension plugins. | `create <plugin_id>`, `list`, `validate [--fix]` plus manifest metadata flags | `.thoth/extensions/manifest.json`, `.thoth/extensions/plugins/<plugin_id>/`, and local action receipts |
+| `tui` | `Claude: /thoth:tui`<br>`Codex: $thoth tui` | Open or snapshot the read-only terminal dashboard backed by shared providers. | Optional `--snapshot-json`, `--export-snapshots`, `--snapshot-dir`, `--no-gpu`, `--no-python-plugins`, loss detail and refresh controls | ANSI-free JSON or visual snapshots for authority, runs, experiments, metrics, extensions, tools, and system state |
+| `extension` | `Claude: /thoth:extension`<br>`Codex: $thoth extension` | Create, list, validate, and manage project-local Dashboard/TUI extensions and experiment registry objects. | `create <extension_id>`, `list`, `validate [--fix]`, and `experiment register|update|attach-source|detach-source|list|show|select|validate|discover` | `.thoth/extensions/manifest.json`, `.thoth/extensions/plugins/<extension_id>/`, `.thoth/objects/experiment/<experiment_id>.json`, and local action receipts |
 
 ## Why Trust It
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from thoth.objects import Store
 from thoth.observe.actions import record_action_receipt
+from thoth.observe.experiments import register_experiment
 from thoth.plan.store import upsert_work_item, upsert_decision, upsert_work_result
 
 ROOT = Path(__file__).parent.parent.parent
@@ -255,6 +256,26 @@ def test_observe_plugin_tool_and_metrics_endpoints(monkeypatch, tmp_path):
         '{"step":2,"split":"train","metrics":{"loss_total":2.5}}\n',
         encoding="utf-8",
     )
+    register_experiment(
+        tmp_path,
+        {
+            "experiment_id": "unit-demo",
+            "title": "Unit Demo",
+            "status": "running",
+            "sources": [
+                {
+                    "id": "metrics-demo-jsonl",
+                    "channel": "metrics",
+                    "type": "jsonl",
+                    "path": ".thoth/extensions/plugins/metrics-demo/metrics.jsonl",
+                    "series": "train",
+                }
+            ],
+        },
+        actor="test",
+        source="test",
+        surface="unit",
+    )
     dashboard_app.invalidate_cache()
     client = TestClient(dashboard_app.app)
 
@@ -271,6 +292,34 @@ def test_observe_plugin_tool_and_metrics_endpoints(monkeypatch, tmp_path):
     assert {tool["id"] for tool in tools.json()["tools"]} >= {"todo", "thoth-triggers"}
     assert metrics.status_code == 200
     assert metrics.json()["metrics"][0]["name"] == "train.loss_total"
+    assert metrics.json()["experiment_id"] == "unit-demo"
+
+    experiments = client.get("/api/experiments")
+    assert experiments.status_code == 200
+    assert experiments.json()["effective_experiment_id"] == "unit-demo"
+    assert experiments.json()["experiments"][0]["experiment_id"] == "unit-demo"
+
+    channel = client.get("/api/experiments/unit-demo/channels/metrics")
+    assert channel.status_code == 200
+    assert channel.json()["record_count"] == 2
+
+    rejected_register = client.post("/api/experiments", json={"experiment_id": "blocked"})
+    assert rejected_register.status_code == 403
+
+    token = client.get("/api/action-token").json()["token"]
+    registered = client.post(
+        "/api/experiments",
+        headers={"X-Thoth-Action-Token": token},
+        json={
+            "experiment_id": "dashboard-demo",
+            "title": "Dashboard Demo",
+            "status": "planned",
+            "actor": {"actor": "dashboard-test", "source": "test", "surface": "dashboard"},
+            "sources": [],
+        },
+    )
+    assert registered.status_code == 200
+    assert registered.json()["experiment"]["experiment_id"] == "dashboard-demo"
 
 
 def test_delta_sse_index_and_debug_endpoints(monkeypatch, tmp_path):

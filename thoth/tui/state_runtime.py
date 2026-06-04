@@ -5,8 +5,6 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from textual.widgets import TabbedContent
-
 from thoth.observe.actions import action_catalog
 from thoth.observe.providers import stamp_provider, utc_now
 
@@ -29,6 +27,8 @@ class TuiStateMixin:
     def _current_preferences(self) -> dict[str, Any]:
         return {
             "active_tab": self.active_tab,
+            "selected_experiment_index": getattr(self, "selected_experiment_index", 0),
+            "selected_series_index": getattr(self, "selected_series_index", 0),
             "decimal_places": self.decimal_places,
             "show_smooth": self.show_smooth,
             "log_phase": self.log_phase,
@@ -68,7 +68,7 @@ class TuiStateMixin:
             "gpu": self.gpu,
             "tui": {
                 "schema_version": 1,
-                "surface_version": 2,
+                "surface_version": 3,
                 "layout": self._layout_mode(),
                 "no_python_plugins": self.no_python_plugins,
                 "local_window_steps": self.local_window_steps,
@@ -105,7 +105,3 @@ class TuiStateMixin:
         if tab_id not in TABS:
             return
         self.active_tab = tab_id
-        try:
-            self.query_one(TabbedContent).active = tab_id
-        except Exception:
-            pass

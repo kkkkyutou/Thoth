@@ -22,6 +22,7 @@ OBJECT_KINDS = {
     "decision",
     "work_item",
     "controller",
+    "experiment",
     "run",
     "phase_result",
     "artifact",
@@ -51,6 +52,7 @@ PHASE_RESULT_STATUSES = {"pending", "completed", "failed"}
 ARTIFACT_STATUSES = {"available", "missing", "superseded"}
 DOC_VIEW_STATUSES = {"generated", "stale"}
 PROJECT_STATUSES = {"active", "archived"}
+EXPERIMENT_STATUSES = {"planned", "running", "paused", "completed", "failed", "archived"}
 
 STATUS_BY_KIND = {
     "project": PROJECT_STATUSES,
@@ -58,6 +60,7 @@ STATUS_BY_KIND = {
     "decision": DECISION_STATUSES,
     "work_item": WORK_ITEM_STATUSES,
     "controller": CONTROLLER_STATUSES,
+    "experiment": EXPERIMENT_STATUSES,
     "run": RUN_STATUSES,
     "phase_result": PHASE_RESULT_STATUSES,
     "artifact": ARTIFACT_STATUSES,
@@ -612,6 +615,7 @@ class Store:
             "decision": "superseded",
             "discussion": "blocked_by_active_execution",
             "controller": "stopped",
+            "experiment": "archived",
             "run": "stopped",
             "artifact": "superseded",
             "doc_view": "stale",

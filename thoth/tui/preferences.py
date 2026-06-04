@@ -13,7 +13,9 @@ PREFERENCE_PATH = ".thoth/local/tui/preferences.json"
 
 DEFAULT_PREFERENCES: dict[str, Any] = {
     "schema_version": PREFERENCE_SCHEMA_VERSION,
-    "active_tab": "cockpit",
+    "active_tab": "experiments",
+    "selected_experiment_index": 0,
+    "selected_series_index": 0,
     "decimal_places": 5,
     "show_smooth": True,
     "log_phase": None,

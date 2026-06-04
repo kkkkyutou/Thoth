@@ -10,7 +10,7 @@ defineProps<{
 <template>
   <article class="plugin-debug">
     <header>
-      <span>Plugin Debug Panel</span>
+      <span>Extension Debug Panel</span>
       <strong>{{ summary?.enabled_plugin_count ?? 0 }}/{{ summary?.plugin_count ?? 0 }} enabled</strong>
     </header>
 

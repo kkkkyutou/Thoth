@@ -205,17 +205,18 @@ def test_cli_init_config_json_with_intent_preserves_config_and_raw_discussion(tm
 def test_cli_help_shows_minimal_public_commands(tmp_path):
     result = _run_cli(tmp_path, "--help")
     assert result.returncode == 0
-    assert "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui,plugin}" in result.stdout
+    assert "{init,discuss,run,loop,argue,auto,status,doctor,dashboard,tui,extension}" in result.stdout
+    assert "plugin" not in result.stdout
     for hidden in (" sync", " report", " extend", " orchestration"):
         assert hidden not in result.stdout
 
 
-def test_cli_plugin_create_list_validate_writes_receipts(tmp_path):
+def test_cli_extension_create_list_validate_writes_receipts(tmp_path):
     assert _run_cli(tmp_path, "init").returncode == 0
 
     create = _run_cli(
         tmp_path,
-        "plugin",
+        "extension",
         "create",
         "demo-tool",
         "--title",
@@ -225,20 +226,86 @@ def test_cli_plugin_create_list_validate_writes_receipts(tmp_path):
     )
     assert create.returncode == 0, create.stderr
     create_payload = _extract_envelope(create.stdout)
-    assert create_payload["body"]["plugin"]["id"] == "demo-tool"
-    assert create_payload["body"]["receipt"]["path"].startswith(".thoth/local/actions/")
+    assert create_payload["body"]["extension"]["extension"]["id"] == "demo-tool"
+    assert create_payload["body"]["extension"]["receipt"]["path"].startswith(".thoth/local/actions/")
 
-    listed = _run_cli(tmp_path, "plugin", "list")
+    listed = _run_cli(tmp_path, "extension", "list")
     assert listed.returncode == 0, listed.stderr
     listed_payload = _extract_envelope(listed.stdout)
-    assert listed_payload["body"]["plugins"]["plugin_count"] == 1
-    assert listed_payload["body"]["plugins"]["plugins"][0]["id"] == "demo-tool"
+    assert listed_payload["body"]["extensions"]["plugin_count"] == 1
+    assert listed_payload["body"]["extensions"]["plugins"][0]["id"] == "demo-tool"
 
-    validated = _run_cli(tmp_path, "plugin", "validate")
+    validated = _run_cli(tmp_path, "extension", "validate")
     assert validated.returncode == 0, validated.stderr
     validated_payload = _extract_envelope(validated.stdout)
     assert validated_payload["body"]["validation"]["errors"] == []
     assert len(list((tmp_path / ".thoth" / "local" / "actions").glob("act-*.json"))) >= 2
+
+
+def test_cli_plugin_public_command_is_removed(tmp_path):
+    result = _run_cli(tmp_path, "plugin", "list")
+    assert result.returncode == 2
+    assert "invalid choice" in result.stderr
+
+
+def test_cli_extension_experiment_register_attach_select_projects_metrics(tmp_path):
+    assert _run_cli(tmp_path, "init").returncode == 0
+    (tmp_path / "metrics.jsonl").write_text(
+        json.dumps({"step": 1, "metrics": {"loss": 2.0}}) + "\n"
+        + json.dumps({"step": 2, "metrics": {"loss": 1.0}}) + "\n",
+        encoding="utf-8",
+    )
+
+    registered = _run_cli(
+        tmp_path,
+        "extension",
+        "experiment",
+        "register",
+        "exp-demo",
+        "--title",
+        "Demo Experiment",
+        "--status",
+        "running",
+        "--actor",
+        "unit-agent",
+        "--work-id",
+        "optional-work",
+    )
+    assert registered.returncode == 0, registered.stderr
+    assert (tmp_path / ".thoth" / "objects" / "experiment" / "exp-demo.json").exists()
+
+    duplicate = _run_cli(tmp_path, "extension", "experiment", "register", "exp-demo", "--actor", "unit-agent")
+    assert duplicate.returncode == 2
+
+    attached = _run_cli(
+        tmp_path,
+        "extension",
+        "experiment",
+        "attach-source",
+        "exp-demo",
+        "--id",
+        "train-jsonl",
+        "--channel",
+        "metrics",
+        "--type",
+        "jsonl",
+        "--path",
+        "metrics.jsonl",
+        "--series",
+        "train",
+        "--actor",
+        "unit-agent",
+    )
+    assert attached.returncode == 0, attached.stderr
+
+    selected = _run_cli(tmp_path, "extension", "experiment", "select", "exp-demo")
+    assert selected.returncode == 0, selected.stderr
+
+    snapshot = _run_cli(tmp_path, "tui", "--snapshot-json", "--no-gpu", "--no-python-plugins")
+    payload = json.loads(snapshot.stdout)
+    assert payload["tui"]["surface_version"] == 3
+    assert payload["metrics"]["experiment_id"] == "exp-demo"
+    assert payload["metrics"]["record_count"] == 2
 
 
 def test_cli_tui_snapshot_json_is_launch_safe(tmp_path):
@@ -261,6 +328,7 @@ def test_cli_tui_snapshot_json_is_launch_safe(tmp_path):
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["schema_version"] == 1
+    assert payload["tui"]["surface_version"] == 3
     assert payload["project_root"] == str(tmp_path)
     assert payload["gpu"]["reason"] == "disabled"
     assert payload["metrics"]["configured"] is False

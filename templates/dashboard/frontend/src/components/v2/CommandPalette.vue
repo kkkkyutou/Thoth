@@ -31,7 +31,8 @@ const zones: Array<{ tab: WorkbenchTab; label: string; route: string; hint: stri
   { tab: 'work', label: 'Work', route: '/work', hint: 'Work items and DAG' },
   { tab: 'metrics', label: 'Metrics', route: '/metrics', hint: 'Metric compare and curves' },
   { tab: 'system', label: 'System', route: '/system', hint: 'Runtime and provider health' },
-  { tab: 'plugins', label: 'Plugins', route: '/plugins', hint: 'Tools and plugin debug' },
+  { tab: 'experiments', label: 'Experiments', route: '/experiments', hint: 'Registry and channels' },
+  { tab: 'extensions', label: 'Extensions', route: '/extensions', hint: 'Tools and extension debug' },
 ]
 
 const actions = computed(() => {

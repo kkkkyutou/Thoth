@@ -8,7 +8,21 @@ from pathlib import Path
 
 from thoth.projections import PLUGIN_VERSION
 from thoth.observe.dashboard import manage_dashboard
-from thoth.observe.plugin_service import create_plugin, list_plugins, validate_plugins
+from thoth.observe.experiments import (
+    ExperimentError,
+    ExperimentFilters,
+    attach_source,
+    detach_source,
+    discover_experiments,
+    experiment_detail,
+    list_experiments,
+    read_experiment,
+    register_experiment,
+    select_experiment,
+    update_experiment,
+    validate_experiments,
+)
+from thoth.observe.extension_service import create_extension, list_extensions, validate_extensions
 from thoth.observe.report import generate_default_report, render_report_summary
 from thoth.observe.status import render_status
 from thoth.init.service import initialize_project, preview_project_migration
@@ -159,13 +173,63 @@ def handle_tui(args, parser, *, project_root: Path) -> int:
     return tui_main(argv)
 
 
-def handle_plugin(args, parser, *, project_root: Path) -> int:
-    action = getattr(args, "plugin_action", "")
+def _load_json_file(path: str | None) -> dict:
+    if not path:
+        return {}
+    payload = __import__("json").loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("spec file must contain a JSON object")
+    return payload
+
+
+def _experiment_spec_from_args(args) -> dict:
+    payload = _load_json_file(getattr(args, "spec", None))
+    experiment_id = getattr(args, "experiment_id", None)
+    if experiment_id:
+        payload["experiment_id"] = experiment_id
+    for attr, key in (
+        ("title", "title"),
+        ("description", "description"),
+        ("status", "status"),
+        ("work_id", "work_id"),
+        ("run_id", "run_id"),
+        ("controller_id", "controller_id"),
+    ):
+        value = getattr(args, attr, None)
+        if value not in (None, "", []):
+            payload[key] = value
+    tags = getattr(args, "tags", None)
+    if tags is not None:
+        payload["tags"] = tags
+    return payload
+
+
+def _source_spec_from_args(args) -> dict:
+    payload = _load_json_file(getattr(args, "spec", None))
+    source_id = getattr(args, "source_id", None)
+    if source_id:
+        payload["id"] = source_id
+    for attr, key in (
+        ("channel", "channel"),
+        ("source_type", "type"),
+        ("path", "path"),
+        ("glob", "glob"),
+        ("series", "series"),
+        ("title", "title"),
+    ):
+        value = getattr(args, attr, None)
+        if value not in (None, "", []):
+            payload[key] = value
+    return payload
+
+
+def handle_extension(args, parser, *, project_root: Path) -> int:
+    action = getattr(args, "extension_action", "")
     if action == "create":
         try:
-            result = create_plugin(
+            result = create_extension(
                 project_root,
-                plugin_id=args.plugin_id,
+                plugin_id=args.extension_id,
                 title=getattr(args, "title", None),
                 version=getattr(args, "version", "0.1.0"),
                 surfaces=getattr(args, "surfaces", None),
@@ -178,46 +242,127 @@ def handle_plugin(args, parser, *, project_root: Path) -> int:
             )
         except ValueError as exc:
             print_envelope(
-                command="plugin",
+                command="extension",
                 status="failed",
                 summary=str(exc),
                 body={"action": "create", "error": str(exc)},
-                checks=[{"name": "plugin_create", "ok": False, "detail": str(exc)}],
+                checks=[{"name": "extension_create", "ok": False, "detail": str(exc)}],
             )
             return 2
         print_envelope(
-            command="plugin",
+            command="extension",
             status="ok",
-            summary=f"Plugin {result['plugin']['id']} created.",
-            body=result,
+            summary=f"Extension {result['extension']['id']} created.",
+            body={"extension": result},
             refs=output_refs(project_root / ".thoth" / "extensions" / "manifest.json"),
-            checks=[{"name": "plugin_create", "ok": True, "detail": result["plugin"]["id"]}],
+            checks=[{"name": "extension_create", "ok": True, "detail": result["extension"]["id"]}],
         )
         return 0
     if action == "list":
-        summary = list_plugins(project_root)
+        summary = list_extensions(project_root)
         print_envelope(
-            command="plugin",
+            command="extension",
             status="ok",
-            summary=f"Loaded {summary.get('plugin_count', 0)} plugin(s).",
-            body={"plugins": summary},
+            summary=f"Loaded {summary.get('plugin_count', 0)} extension(s).",
+            body={"extensions": summary},
             refs=output_refs(project_root / ".thoth" / "extensions" / "manifest.json"),
-            checks=[{"name": "plugin_list", "ok": True, "detail": str(summary.get("plugin_count", 0))}],
+            checks=[{"name": "extension_list", "ok": True, "detail": str(summary.get("plugin_count", 0))}],
         )
         return 0
     if action == "validate":
-        result = validate_plugins(project_root, fix=getattr(args, "fix", False))
+        result = validate_extensions(project_root, fix=getattr(args, "fix", False))
         ok = result["status"] == "ok"
         print_envelope(
-            command="plugin",
+            command="extension",
             status=result["status"],
-            summary="Plugin manifest validation passed." if ok else "Plugin manifest validation failed.",
+            summary="Extension manifest validation passed." if ok else "Extension manifest validation failed.",
             body={"validation": result},
             refs=output_refs(project_root / ".thoth" / "extensions" / "manifest.json"),
-            checks=[{"name": "plugin_validate", "ok": ok, "detail": "; ".join(result.get("errors") or [])}],
+            checks=[{"name": "extension_validate", "ok": ok, "detail": "; ".join(result.get("errors") or [])}],
         )
         return 0 if ok else 1
-    parser.error("plugin requires create, list, or validate")
+    if action == "experiment":
+        return handle_extension_experiment(args, parser, project_root=project_root)
+    parser.error("extension requires create, list, validate, or experiment")
+    return 2
+
+
+def handle_extension_experiment(args, parser, *, project_root: Path) -> int:
+    action = getattr(args, "experiment_action", "")
+    try:
+        if action == "register":
+            spec = _experiment_spec_from_args(args)
+            result = register_experiment(
+                project_root,
+                spec,
+                actor=getattr(args, "actor", ""),
+                source=getattr(args, "source", "cli"),
+                surface=getattr(args, "surface", "cli"),
+                upsert=getattr(args, "upsert", False),
+            )
+            print_envelope(
+                command="extension experiment register",
+                status="ok",
+                summary=f"Experiment {result['experiment']['experiment_id']} registered.",
+                body=result,
+                refs=output_refs(project_root / ".thoth" / "objects" / "experiment" / f"{result['experiment']['experiment_id']}.json"),
+                checks=[{"name": "experiment_register", "ok": True, "detail": result["experiment"]["experiment_id"]}],
+            )
+            return 0
+        if action == "update":
+            updates = _experiment_spec_from_args(args)
+            result = update_experiment(project_root, args.experiment_id, updates, actor=getattr(args, "actor", ""))
+            print_envelope(command="extension experiment update", status="ok", summary=f"Experiment {args.experiment_id} updated.", body=result, checks=[{"name": "experiment_update", "ok": True, "detail": args.experiment_id}])
+            return 0
+        if action == "attach-source":
+            result = attach_source(project_root, args.experiment_id, _source_spec_from_args(args), actor=getattr(args, "actor", ""))
+            print_envelope(command="extension experiment attach-source", status="ok", summary=f"Source attached to {args.experiment_id}.", body=result, checks=[{"name": "experiment_attach_source", "ok": True, "detail": args.experiment_id}])
+            return 0
+        if action == "detach-source":
+            result = detach_source(project_root, args.experiment_id, args.source_id, actor=getattr(args, "actor", ""))
+            print_envelope(command="extension experiment detach-source", status="ok", summary=f"Source detached from {args.experiment_id}.", body=result, checks=[{"name": "experiment_detach_source", "ok": True, "detail": args.experiment_id}])
+            return 0
+        if action == "list":
+            result = list_experiments(
+                project_root,
+                ExperimentFilters(
+                    search=getattr(args, "search", ""),
+                    status=getattr(args, "status", ""),
+                    tag=getattr(args, "tag", ""),
+                    provider=getattr(args, "provider", ""),
+                    limit=getattr(args, "limit", 100),
+                    offset=getattr(args, "offset", 0),
+                ),
+            )
+            print_envelope(command="extension experiment list", status="ok", summary=f"Loaded {result['total']} experiment(s).", body={"experiments": result}, checks=[{"name": "experiment_list", "ok": True, "detail": str(result["total"])}])
+            return 0
+        if action == "show":
+            result = experiment_detail(project_root, args.experiment_id)
+            print_envelope(command="extension experiment show", status="ok", summary=f"Loaded experiment {args.experiment_id}.", body=result, checks=[{"name": "experiment_show", "ok": True, "detail": args.experiment_id}])
+            return 0
+        if action == "select":
+            result = select_experiment(project_root, args.experiment_id, series_id=getattr(args, "series", None))
+            print_envelope(command="extension experiment select", status="ok", summary=f"Selected experiment {args.experiment_id}.", body=result, refs=output_refs(project_root / ".thoth" / "local" / "experiments" / "selection.json"), checks=[{"name": "experiment_select", "ok": True, "detail": args.experiment_id}])
+            return 0
+        if action == "validate":
+            result = validate_experiments(project_root)
+            ok = result["status"] == "ok"
+            print_envelope(command="extension experiment validate", status=result["status"], summary="Experiment registry validation passed." if ok else "Experiment registry validation failed.", body={"validation": result}, checks=[{"name": "experiment_validate", "ok": ok, "detail": "; ".join(result.get("errors") or [])}])
+            return 0 if ok else 1
+        if action == "discover":
+            result = discover_experiments(project_root)
+            print_envelope(command="extension experiment discover", status="ok", summary=f"Discovered {len(result.get('candidates', []))} unregistered experiment candidate(s).", body={"discovery": result}, checks=[{"name": "experiment_discover", "ok": True, "detail": str(len(result.get("candidates", [])))}])
+            return 0
+    except (ExperimentError, ValueError, FileNotFoundError) as exc:
+        print_envelope(
+            command=f"extension experiment {action}",
+            status="failed",
+            summary=str(exc),
+            body={"error": str(exc), "action": action},
+            checks=[{"name": f"experiment_{action.replace('-', '_')}", "ok": False, "detail": str(exc)}],
+        )
+        return 2
+    parser.error("extension experiment requires a supported action")
     return 2
 
 

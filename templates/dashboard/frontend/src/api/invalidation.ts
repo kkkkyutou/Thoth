@@ -43,22 +43,27 @@ export function queryKeysForChangedPath(path: string): QueryKey[] {
     ]
   }
   if (path.startsWith('.thoth/objects/')) {
-    return [
+    const keys = [
       dashboardQueryKeys.config,
       dashboardQueryKeys.tree,
       dashboardQueryKeys.progress,
       dashboardQueryKeys.overviewSummary,
       dashboardQueryKeys.observe,
+      dashboardQueryKeys.experiments,
+      dashboardQueryKeys.experimentPrefix,
+      dashboardQueryKeys.metrics,
       dashboardQueryKeys.workItems,
       dashboardQueryKeys.workItemPrefix,
       dashboardQueryKeys.dag,
       dashboardQueryKeys.gantt,
       dashboardQueryKeys.activity,
     ]
+    return keys
   }
   if (path.startsWith('.thoth/extensions/')) {
     return [
       dashboardQueryKeys.observe,
+      dashboardQueryKeys.experiments,
       dashboardQueryKeys.plugins,
       dashboardQueryKeys.tools,
       dashboardQueryKeys.metrics,

@@ -8,12 +8,13 @@ export type WorkItemStatus =
   | 'failed'
 
 export type WorkbenchTab =
+  | 'experiments'
   | 'cockpit'
   | 'runs'
   | 'work'
   | 'metrics'
   | 'system'
-  | 'plugins'
+  | 'extensions'
 
 export interface Dependency {
   work_id: string
@@ -490,6 +491,7 @@ export interface ObserveSnapshot {
     authority?: ProviderEnvelope
     work_items?: ProviderEnvelope
     runs?: ProviderEnvelope
+    experiments?: ProviderEnvelope
     metrics?: ProviderEnvelope
     plugins?: ProviderEnvelope
     tools?: ProviderEnvelope
@@ -519,6 +521,58 @@ export interface PluginSummary {
   tool_plugins: ToolPlugin[]
 }
 
+export interface ExperimentSource {
+  id: string
+  channel: string
+  type: string
+  title?: string
+  series?: string
+  path?: string
+  glob?: string
+  source_count?: number
+}
+
+export interface ExperimentSummary {
+  schema_version?: number
+  kind?: string
+  experiment_id: string
+  object_id?: string
+  title: string
+  description?: string
+  status: string
+  revision?: number
+  created_at?: string
+  updated_at?: string
+  tags?: string[]
+  actor?: Record<string, string>
+  refs?: Record<string, string>
+  sources?: ExperimentSource[]
+  channels?: Record<string, ExperimentSource[]>
+  source_count?: number
+  channel_count?: number
+}
+
+export interface ExperimentListResponse {
+  schema_version: number
+  kind: string
+  registry_path: string
+  total: number
+  offset: number
+  limit: number
+  selected_experiment_id?: string | null
+  effective_experiment_id?: string | null
+  experiments: ExperimentSummary[]
+  discovered?: ExperimentSummary[]
+  validation_errors?: string[]
+  validation_warnings?: string[]
+}
+
+export interface ExperimentDetailResponse {
+  schema_version: number
+  experiment: ExperimentSummary
+  channels: Record<string, Record<string, unknown>>
+}
+
 export interface ToolPlugin {
   id: string
   title?: string
@@ -536,6 +590,9 @@ export interface MetricsProviderPayload {
   record_count?: number
   latest_step?: number | null
   run_name?: string | null
+  experiment_id?: string | null
+  experiment?: ExperimentSummary
+  series?: Array<Record<string, unknown>>
   metrics?: Array<Record<string, unknown>>
   source_files?: string[]
   bad_lines?: number

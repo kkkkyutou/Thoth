@@ -9,18 +9,20 @@ const store = useDashboardStore()
 const router = useRouter()
 
 const zones: Array<{ tab: WorkbenchTab; label: string; route: string; glyph: string; meta: string }> = [
+  { tab: 'experiments', label: 'Experiments', route: '/experiments', glyph: 'EX', meta: 'registry, channels, alerts' },
   { tab: 'cockpit', label: 'Cockpit', route: '/cockpit', glyph: 'CK', meta: 'active command deck' },
   { tab: 'runs', label: 'Runs', route: '/runs', glyph: 'RN', meta: 'ledgers, phases, logs' },
   { tab: 'work', label: 'Work', route: '/work', glyph: 'WK', meta: 'authority graph and table' },
   { tab: 'metrics', label: 'Metrics', route: '/metrics', glyph: 'MX', meta: 'loss and metric compare' },
   { tab: 'system', label: 'System', route: '/system', glyph: 'SY', meta: 'runtime telemetry' },
-  { tab: 'plugins', label: 'Plugins', route: '/plugins', glyph: 'PG', meta: 'tool and provider debug' },
+  { tab: 'extensions', label: 'Extensions', route: '/extensions', glyph: 'EX', meta: 'adapters and provider debug' },
 ]
 
 const navStats = computed(() => ({
   work: store.workItems.length,
   runs: store.progress?.runtime.active_run_count ?? 0,
-  plugins: store.pluginSummary?.enabled_plugin_count ?? 0,
+  experiments: store.experiments?.total ?? 0,
+  extensions: store.pluginSummary?.enabled_plugin_count ?? 0,
 }))
 
 const runs = computed<RunSummary[]>(() => store.progress?.runtime.active_runs ?? [])
@@ -57,8 +59,8 @@ function activate(zone: { tab: WorkbenchTab; route: string }) {
         <strong>{{ navStats.runs }}</strong>
       </article>
       <article>
-        <span>plugins</span>
-        <strong>{{ navStats.plugins }}</strong>
+        <span>experiments</span>
+        <strong>{{ navStats.experiments }}</strong>
       </article>
     </div>
     <ActiveRunInstrument class="sidebar__instrument" :runs="runs" />

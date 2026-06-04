@@ -138,16 +138,17 @@ def test_codex_skill_lists_single_public_entry():
         assert f"$thoth {internal}" not in content
 
 
-def test_plugin_surface_is_generated_from_shared_specs():
-    spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "plugin")
+def test_extension_surface_is_generated_from_shared_specs():
+    spec = next(spec for spec in COMMAND_SPECS if spec.command_id == "extension")
     rendered = render_claude_command(spec)
     content = render_codex_skill()
 
-    assert "name: thoth:plugin" in rendered
-    assert "create <plugin_id>" in rendered
-    assert "local audit receipts" in rendered
-    assert "$thoth plugin" in content
-    assert "plugin` -> `mechanical_fast` / `none` / `result_envelope" in content
+    assert "name: thoth:extension" in rendered
+    assert "experiment register" in rendered
+    assert "manifest schema v3" in rendered
+    assert "$thoth extension" in content
+    assert "$thoth plugin" not in content
+    assert "extension` -> `mechanical_fast` / `none` / `result_envelope" in content
 
 
 def test_codex_runtime_shell_command_uses_installed_plugin_cache_without_checkout_fallback():

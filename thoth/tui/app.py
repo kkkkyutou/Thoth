@@ -9,7 +9,7 @@ from typing import Any
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
-from textual.widgets import Footer, Header, Input, Static, TabPane, TabbedContent
+from textual.widgets import Footer, Header, Input, Static
 
 from thoth.observe.logs import PHASES
 
@@ -62,8 +62,10 @@ class ThothTuiApp(
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
-        Binding("tab", "next_tab", "Next", priority=True),
-        Binding("shift+tab", "prev_tab", "Prev", priority=True),
+        Binding("right", "next_tab", "Next View", priority=True),
+        Binding("left", "prev_tab", "Prev View", priority=True),
+        Binding("tab", "next_pane", "Next Pane", priority=True),
+        Binding("shift+tab", "prev_pane", "Prev Pane", priority=True),
         Binding("up", "cursor_up", "Up", priority=True),
         Binding("down", "cursor_down", "Down", priority=True),
         Binding("enter", "enter_detail", "Detail", priority=True),
@@ -76,13 +78,13 @@ class ThothTuiApp(
         Binding("ctrl+p", "toggle_palette", "Palette", priority=True),
         Binding("f", "toggle_log_follow", "Follow", priority=True),
         Binding("v", "cycle_log_phase", "Phase", priority=True),
-        Binding("1", "show_tab('cockpit')", "Cockpit"),
+        Binding("1", "show_tab('experiments')", "Experiments"),
         Binding("2", "show_tab('loss')", "Loss"),
         Binding("3", "show_tab('runs')", "Runs"),
         Binding("4", "show_tab('logs')", "Logs"),
         Binding("5", "show_tab('authority')", "Authority"),
         Binding("6", "show_tab('gpu')", "GPU"),
-        Binding("7", "show_tab('plugins')", "Plugins"),
+        Binding("7", "show_tab('extensions')", "Extensions"),
     ]
 
     def __init__(
@@ -116,13 +118,20 @@ class ThothTuiApp(
         self.decimal_places = decimal_places
         self.preferences = load_preferences(self.project_root)
 
-        preferred_tab = str(self.preferences.get("active_tab") or "cockpit")
-        self.active_tab = preferred_tab if preferred_tab in TABS else "cockpit"
+        preferred_tab = str(self.preferences.get("active_tab") or "experiments")
+        if preferred_tab == "cockpit":
+            preferred_tab = "experiments"
+        if preferred_tab == "plugins":
+            preferred_tab = "extensions"
+        self.active_tab = preferred_tab if preferred_tab in TABS else "experiments"
+        self.selected_experiment_index = int(self.preferences.get("selected_experiment_index") or 0) if isinstance(self.preferences.get("selected_experiment_index"), int) else 0
+        self.selected_series_index = int(self.preferences.get("selected_series_index") or 0) if isinstance(self.preferences.get("selected_series_index"), int) else 0
         self.selected_metric_index = 0
         self.selected_run_index = 0
         self.selected_work_index = 0
         self.detail = False
         self.run_detail = False
+        self.experiment_detail = False
         self.show_smooth = bool(self.preferences.get("show_smooth", True))
         self.show_help = False
         self.search = ""
@@ -159,21 +168,7 @@ class ThothTuiApp(
         yield Header(show_clock=True)
         yield Input(placeholder="filter runs/logs by id/work/status/phase/message", id="search")
         with Container(id="root"):
-            with TabbedContent(initial=self.active_tab):
-                with TabPane("Live Cockpit", id="cockpit"):
-                    yield Static(id="cockpit-view", classes="thoth-pane")
-                with TabPane("Loss / Metrics", id="loss"):
-                    yield Static(id="loss-view", classes="thoth-pane")
-                with TabPane("Runs", id="runs"):
-                    yield Static(id="runs-view", classes="thoth-pane")
-                with TabPane("Logs", id="logs"):
-                    yield Static(id="logs-view", classes="thoth-pane")
-                with TabPane("Authority / Work", id="authority"):
-                    yield Static(id="authority-view", classes="thoth-pane")
-                with TabPane("GPU", id="gpu"):
-                    yield Static(id="gpu-view", classes="thoth-pane")
-                with TabPane("Plugins / Errors", id="plugins"):
-                    yield Static(id="plugins-view", classes="thoth-pane")
+            yield Static(id="view", classes="thoth-pane")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -206,7 +201,7 @@ class ThothTuiApp(
         if not self.snapshot:
             return
         self.rebuild_snapshot()
-        plugin_renderables = self._render_plugin_panels() if self.active_tab == "plugins" else []
+        plugin_renderables = self._render_plugin_panels() if self.active_tab == "extensions" else []
         common = {
             "palette_open": self.palette_open,
             "palette_selected_index": self.palette_selected_index,
@@ -215,72 +210,17 @@ class ThothTuiApp(
             "layout_mode": self._layout_mode(),
             "selected_run_id": self._selected_run_id(),
         }
-        self.query_one("#cockpit-view", Static).update(
+        selected_work_or_experiment = self.selected_experiment_index if self.active_tab == "experiments" else self.selected_work_index
+        self.query_one("#view", Static).update(
             tab_renderable(
                 self.snapshot,
-                "cockpit",
-                selected_run_index=self.selected_run_index,
-                show_help=self.show_help and self.active_tab == "cockpit",
-                decimal_places=self.decimal_places,
-                **common,
-            )
-        )
-        self.query_one("#loss-view", Static).update(
-            tab_renderable(
-                self.snapshot,
-                "loss",
+                self.active_tab,
                 selected_metric_index=self.selected_metric_index,
-                detail=self.detail,
-                show_smooth=self.show_smooth,
-                show_help=self.show_help and self.active_tab == "loss",
-                decimal_places=self.decimal_places,
-                **common,
-            )
-        )
-        self.query_one("#runs-view", Static).update(
-            tab_renderable(
-                self.snapshot,
-                "runs",
                 selected_run_index=self.selected_run_index,
+                selected_work_index=selected_work_or_experiment,
+                detail=self.detail,
                 run_detail=self.run_detail,
-                show_help=self.show_help and self.active_tab == "runs",
-                decimal_places=self.decimal_places,
-                **common,
-            )
-        )
-        self.query_one("#logs-view", Static).update(
-            tab_renderable(
-                self.snapshot,
-                "logs",
-                show_help=self.show_help and self.active_tab == "logs",
-                decimal_places=self.decimal_places,
-                **common,
-            )
-        )
-        self.query_one("#authority-view", Static).update(
-            tab_renderable(
-                self.snapshot,
-                "authority",
-                selected_work_index=self.selected_work_index,
-                show_help=self.show_help and self.active_tab == "authority",
-                decimal_places=self.decimal_places,
-                **common,
-            )
-        )
-        self.query_one("#gpu-view", Static).update(
-            tab_renderable(
-                self.snapshot,
-                "gpu",
-                show_help=self.show_help and self.active_tab == "gpu",
-                decimal_places=self.decimal_places,
-                **common,
-            )
-        )
-        self.query_one("#plugins-view", Static).update(
-            tab_renderable(
-                self.snapshot,
-                "plugins",
-                show_help=self.show_help and self.active_tab == "plugins",
+                show_help=self.show_help,
                 decimal_places=self.decimal_places,
                 plugin_renderables=plugin_renderables,
                 **common,

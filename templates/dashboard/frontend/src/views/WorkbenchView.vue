@@ -21,7 +21,7 @@ let reconnectTimer: number | null = null
 let reconnectDelayMs = 1000
 
 async function syncRouteAndLoad() {
-  const tab = (route.meta.tab as WorkbenchTab | undefined) ?? 'cockpit'
+  const tab = (route.meta.tab as WorkbenchTab | undefined) ?? 'experiments'
   store.setActiveTab(tab)
   await store.loadTabData(tab)
 }

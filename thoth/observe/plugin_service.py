@@ -1,4 +1,8 @@
-"""CLI-facing extension plugin management helpers."""
+"""CLI-facing project extension management helpers.
+
+The manifest still stores entries under ``plugins`` for schema compatibility,
+but public receipts and errors use the extension terminology.
+"""
 
 from __future__ import annotations
 
@@ -39,14 +43,14 @@ def _split_csv(value: str | None, *, default: tuple[str, ...]) -> list[str]:
 
 def _validate_plugin_id(plugin_id: str) -> None:
     if not PLUGIN_ID_RE.match(plugin_id):
-        raise ValueError("plugin id must match [a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}")
+        raise ValueError("extension id must match [a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}")
 
 
 def _safe_source(project_root: Path, plugin_id: str, source: str | None) -> str:
     rel = source or f".thoth/extensions/plugins/{plugin_id}"
     path = Path(rel)
     if path.is_absolute() or ".." in path.parts:
-        raise ValueError("plugin source must be project-relative and cannot contain '..'")
+        raise ValueError("extension source must be project-relative and cannot contain '..'")
     return str(path)
 
 
@@ -72,7 +76,7 @@ def create_plugin(
         manifest["plugins"] = rows
     existing = [row for row in rows if isinstance(row, dict) and row.get("id") == plugin_id]
     if existing and not force:
-        raise ValueError(f"plugin already exists: {plugin_id}")
+        raise ValueError(f"extension already exists: {plugin_id}")
     plugin_source = _safe_source(project_root, plugin_id, source)
     plugin = {
         "id": plugin_id,
@@ -95,17 +99,17 @@ def create_plugin(
     source_dir.mkdir(parents=True, exist_ok=True)
     readme = source_dir / "README.md"
     if not readme.exists():
-        readme.write_text(f"# {plugin['title']}\n\nLocal Thoth extension plugin `{plugin_id}`.\n", encoding="utf-8")
+        readme.write_text(f"# {plugin['title']}\n\nLocal Thoth extension `{plugin_id}`.\n", encoding="utf-8")
     receipt = record_action_receipt(
         project_root,
-        action="plugin.create",
+        action="extension.create",
         status="ok",
-        summary=f"Plugin {plugin_id} created.",
+        summary=f"Extension {plugin_id} created.",
         request={"plugin_id": plugin_id, "force": force},
-        result={"plugin": plugin, "manifest_path": EXTENSIONS_MANIFEST},
+        result={"extension": plugin, "manifest_path": EXTENSIONS_MANIFEST},
         artifacts=[EXTENSIONS_MANIFEST, plugin_source],
     )
-    return {"plugin": plugin, "manifest_path": EXTENSIONS_MANIFEST, "receipt": receipt}
+    return {"extension": plugin, "manifest_path": EXTENSIONS_MANIFEST, "receipt": receipt}
 
 
 def list_plugins(project_root: Path) -> dict[str, Any]:
@@ -128,9 +132,9 @@ def validate_plugins(project_root: Path, *, fix: bool = False) -> dict[str, Any]
     status = "ok" if not errors else "failed"
     receipt = record_action_receipt(
         project_root,
-        action="plugin.validate",
+        action="extension.validate",
         status=status,
-        summary="Plugin manifest validation passed." if not errors else "Plugin manifest validation failed.",
+        summary="Extension manifest validation passed." if not errors else "Extension manifest validation failed.",
         request={"fix": fix},
         result={
             "errors": errors,
