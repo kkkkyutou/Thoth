@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import subprocess
@@ -121,12 +120,33 @@ def _controller_local_dir(project_root: Path, controller_id: str) -> Path:
 def _controller_lock(project_root: Path, controller_id: str):
     lock_path = _controller_local_dir(project_root, controller_id) / "worker.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import fcntl
+
+        def _lock(h):
+            fcntl.flock(h, fcntl.LOCK_EX)
+
+        def _unlock(h):
+            fcntl.flock(h, fcntl.LOCK_UN)
+
+    except ImportError:
+        import msvcrt
+
+        def _lock(h):
+            msvcrt.locking(h.fileno(), msvcrt.LK_LOCK, 1)
+
+        def _unlock(h):
+            msvcrt.locking(h.fileno(), msvcrt.LK_UNLCK, 1)
+
     with lock_path.open("w", encoding="utf-8") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+        _lock(handle)
         try:
             yield
         finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+            try:
+                _unlock(handle)
+            except OSError:
+                pass
 
 
 def _controller_supervisor_path(project_root: Path, controller_id: str) -> Path:
