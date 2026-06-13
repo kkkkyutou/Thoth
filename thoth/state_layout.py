@@ -32,6 +32,10 @@ ROOT_GITIGNORE_RULES = (
     "/research.db",
     "/research.db-*",
     "/.pytest_cache/",
+    "/.pre-commit-config.yaml",
+    "/scripts/",
+    "/tests/test_structure.py",
+    "/tools/dashboard/",
     "__pycache__/",
     "*.py[cod]",
 )
