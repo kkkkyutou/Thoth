@@ -63,8 +63,14 @@ def dashboard_static_contract_warnings(dashboard_dir: Path) -> list[dict[str, An
 
     warnings: list[dict[str, Any]] = []
     backend_app = dashboard_dir / "backend" / "app.py"
+    backend_routes = sorted((dashboard_dir / "backend").glob("routes_*.py"))
     frontend_types = dashboard_dir / "frontend" / "src" / "types" / "index.ts"
-    backend_text = backend_app.read_text(encoding="utf-8") if backend_app.exists() else ""
+    backend_parts: list[str] = []
+    if backend_app.exists():
+        backend_parts.append(backend_app.read_text(encoding="utf-8"))
+    for route_file in backend_routes:
+        backend_parts.append(route_file.read_text(encoding="utf-8"))
+    backend_text = "\n".join(backend_parts)
     types_text = frontend_types.read_text(encoding="utf-8") if frontend_types.exists() else ""
 
     for route in ("/api/config", "/api/work-items", "/api/status"):
