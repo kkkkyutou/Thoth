@@ -296,7 +296,11 @@ def test_initialize_project_appends_gitignore_rules_idempotently(base_config, tm
     assert "custom.log" in root_ignore
     assert root_lines.count("/research.db") == 1
     assert thoth_lines.count("/runs/") == 1
+    assert thoth_lines.count("/docs/object-graph-summary.json") == 1
+    assert thoth_lines.count("/docs/legacy-audit.json") == 1
+    assert thoth_lines.count("/docs/conversations.jsonl") == 1
     assert thoth_lines.count("/objects/run/") == 1
+    assert thoth_lines.count("/migrations/") == 1
     assert frontend_lines.count("node_modules/") == 1
     assert frontend_lines.count("dist/") == 1
 

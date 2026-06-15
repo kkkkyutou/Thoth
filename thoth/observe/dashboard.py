@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import socket
+import shutil
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
+
+import psutil
 
 from thoth.observe.actions import action_token_path, ensure_action_token
 from thoth.observe.dashboard_contract import dashboard_static_contract_warnings
@@ -95,12 +97,18 @@ def _process_alive(pid: int | None) -> bool:
     if pid is None or pid <= 0:
         return False
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        return psutil.pid_exists(pid)
+    except Exception:
         return False
-    except PermissionError:
-        return True
-    return True
+
+
+def _safe_process(pid: int | None) -> psutil.Process | None:
+    if pid is None or pid <= 0:
+        return None
+    try:
+        return psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, ValueError):
+        return None
 
 
 def _port_available(port: int) -> bool:
@@ -131,10 +139,25 @@ def _write_status(project_root: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _unlink_with_retry(path: Path, *, attempts: int = 10, delay: float = 0.05) -> None:
+    last_error: PermissionError | None = None
+    for _ in range(attempts):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except FileNotFoundError:
+            return
+        except PermissionError as exc:
+            last_error = exc
+            time.sleep(delay)
+    if last_error is not None:
+        raise last_error
+
+
 def _cleanup_dashboard_metadata(project_root: Path) -> None:
-    _pid_file(project_root).unlink(missing_ok=True)
-    _status_file(project_root).unlink(missing_ok=True)
-    _port_file(project_root).unlink(missing_ok=True)
+    _unlink_with_retry(_pid_file(project_root))
+    _unlink_with_retry(_status_file(project_root))
+    _unlink_with_retry(_port_file(project_root))
 
 
 def _probe_dashboard_status(port: int, *, timeout: float = 3.0) -> dict[str, Any]:
@@ -196,84 +219,64 @@ def _pid_from_log(project_root: Path) -> int | None:
 
 
 def _pid_matches_dashboard(project_root: Path, pid: int | None) -> bool:
-    if pid is None or pid <= 0:
+    process = _safe_process(pid)
+    if process is None:
         return False
-    proc_dir = Path("/proc") / str(pid)
     try:
-        cmdline = (proc_dir / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="ignore")
-    except OSError:
+        cmdline = " ".join(process.cmdline())
+    except (psutil.Error, OSError, RuntimeError, TypeError, ValueError):
         return False
     if "uvicorn" not in cmdline or "app:app" not in cmdline:
         return False
     try:
-        cwd = (proc_dir / "cwd").resolve()
-    except OSError:
+        cwd = Path(process.cwd()).resolve()
+    except (psutil.Error, OSError, RuntimeError, TypeError, ValueError):
         return False
     return cwd == _backend_dir(project_root).resolve()
 
 
 def _dashboard_project_root_for_pid(pid: int) -> Path | None:
-    proc_dir = Path("/proc") / str(pid)
+    process = _safe_process(pid)
+    if process is None:
+        return None
     try:
-        cmdline = (proc_dir / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="ignore")
-    except OSError:
+        cmdline = " ".join(process.cmdline())
+    except (psutil.Error, OSError, RuntimeError, TypeError, ValueError):
         return None
     if "uvicorn" not in cmdline or "app:app" not in cmdline:
         return None
     try:
-        cwd = (proc_dir / "cwd").resolve()
-    except OSError:
+        cwd = Path(process.cwd()).resolve()
+    except (psutil.Error, OSError, RuntimeError, TypeError, ValueError):
         return None
     if cwd.name != "backend" or cwd.parent.name != "dashboard" or cwd.parent.parent.name != "tools":
         return None
     return cwd.parent.parent.parent
 
 
-def _listening_inodes_for_port(port: int) -> set[str]:
-    inodes: set[str] = set()
-    for table in (Path("/proc/net/tcp"), Path("/proc/net/tcp6")):
-        try:
-            lines = table.read_text(encoding="utf-8").splitlines()[1:]
-        except OSError:
-            continue
-        for line in lines:
-            parts = line.split()
-            if len(parts) < 10:
-                continue
-            local_address = parts[1]
-            state = parts[3]
-            inode = parts[9]
-            try:
-                local_port = int(local_address.rsplit(":", 1)[1], 16)
-            except (IndexError, ValueError):
-                continue
-            if local_port == port and state == "0A" and inode != "0":
-                inodes.add(inode)
-    return inodes
-
-
 def _pids_for_listening_port(port: int) -> list[int]:
-    inodes = _listening_inodes_for_port(port)
-    if not inodes:
+    pids: set[int] = set()
+    try:
+        connections = psutil.net_connections(kind="inet")
+    except Exception:
         return []
-    pids: list[int] = []
-    for proc_dir in Path("/proc").iterdir():
-        if not proc_dir.name.isdigit():
-            continue
-        fd_dir = proc_dir / "fd"
+    for conn in connections:
         try:
-            fds = list(fd_dir.iterdir())
-        except OSError:
-            continue
-        for fd in fds:
-            try:
-                target = os.readlink(fd)
-            except OSError:
+            local = conn.laddr
+            if not local:
                 continue
-            if target.startswith("socket:[") and target[8:-1] in inodes:
-                pids.append(int(proc_dir.name))
-                break
-    return sorted(set(pids))
+            local_port = getattr(local, "port", None)
+            status = getattr(conn, "status", None)
+            pid = getattr(conn, "pid", None)
+        except Exception:
+            continue
+        if local_port != port:
+            continue
+        if status != psutil.CONN_LISTEN:
+            continue
+        if isinstance(pid, int) and pid > 0:
+            pids.add(pid)
+    return sorted(pids)
 
 
 def _dashboard_port_owner(project_root: Path, port: int) -> dict[str, Any]:
@@ -390,12 +393,23 @@ def _frontend_dependencies_ready(frontend_dir: Path) -> bool:
 
 
 def _run_frontend_command(frontend_dir: Path, args: list[str]) -> None:
+    resolved_args = list(args)
+    original_command = resolved_args[0] if resolved_args else ""
+    if os.name == "nt" and resolved_args and resolved_args[0] == "npm":
+        resolved_args[0] = shutil.which("npm.cmd") or shutil.which("npm") or "npm.cmd"
     try:
-        subprocess.run(args, cwd=str(frontend_dir), check=True)
+        subprocess.run(resolved_args, cwd=str(frontend_dir), check=True)
     except FileNotFoundError as exc:
-        raise RuntimeError("Dashboard frontend requires npm, but npm was not found on PATH.") from exc
+        if original_command == "npm":
+            raise RuntimeError(
+                "Dashboard frontend requires npm, but the npm launcher could not be executed. "
+                "Check that Node.js/npm is installed and available to Python subprocesses on PATH."
+            ) from exc
+        raise RuntimeError(
+            f"Dashboard frontend command launcher was not found: {resolved_args[0]!r}."
+        ) from exc
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"Dashboard frontend command failed: {' '.join(args)}") from exc
+        raise RuntimeError(f"Dashboard frontend command failed: {' '.join(resolved_args)}") from exc
 
 
 def _ensure_frontend_ready(project_root: Path, *, force_build: bool) -> dict[str, Any]:
@@ -543,12 +557,18 @@ def stop_dashboard(project_root: Path) -> dict[str, Any]:
         _cleanup_dashboard_metadata(project_root)
         return {"status": "ok", "action": "stop", "summary": "Dashboard is not running.", "pid": None}
 
-    os.kill(pid, signal.SIGTERM)
-    deadline = time.time() + 5.0
-    while time.time() < deadline and _process_alive(pid):
-        time.sleep(0.25)
-    if _process_alive(pid):
-        os.kill(pid, signal.SIGKILL)
+    process = _safe_process(pid)
+    if process is None:
+        _cleanup_dashboard_metadata(project_root)
+        return {"status": "ok", "action": "stop", "summary": "Dashboard is not running.", "pid": None}
+    try:
+        process.terminate()
+        process.wait(timeout=5.0)
+    except psutil.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5.0)
+    except (psutil.NoSuchProcess, psutil.ZombieProcess):
+        pass
     _cleanup_dashboard_metadata(project_root)
     return {"status": "ok", "action": "stop", "summary": f"Dashboard stopped (PID: {pid})", "pid": pid}
 

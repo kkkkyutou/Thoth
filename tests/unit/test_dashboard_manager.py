@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from thoth.observe import dashboard
 
@@ -42,6 +43,43 @@ def test_frontend_ready_installs_dependencies_and_builds(monkeypatch, tmp_path):
     assert result["status"] == "ok"
     assert result["built"] is True
     assert calls == [["npm", "ci", "--legacy-peer-deps"], ["npm", "run", "build"]]
+
+
+def test_run_frontend_command_uses_npm_cmd_on_windows(monkeypatch, tmp_path):
+    _make_dashboard_tree(tmp_path)
+    frontend = tmp_path / "tools" / "dashboard" / "frontend"
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(list(args))
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(dashboard.os, "name", "nt", raising=False)
+    expected = str(tmp_path / "fake-bin" / "npm.cmd")
+    monkeypatch.setattr(dashboard.shutil, "which", lambda name: expected if name == "npm.cmd" else None)
+    monkeypatch.setattr(dashboard.subprocess, "run", fake_run)
+
+    dashboard._run_frontend_command(frontend, ["npm", "run", "build"])
+
+    assert calls == [[expected, "run", "build"]]
+
+
+def test_run_frontend_command_reports_npm_launcher_failure_clearly(monkeypatch, tmp_path):
+    _make_dashboard_tree(tmp_path)
+    frontend = tmp_path / "tools" / "dashboard" / "frontend"
+
+    def fake_run(_args, **_kwargs):
+        raise FileNotFoundError(2, "not found")
+
+    monkeypatch.setattr(dashboard.subprocess, "run", fake_run)
+
+    try:
+        dashboard._run_frontend_command(frontend, ["npm", "run", "build"])
+    except RuntimeError as exc:
+        assert "npm launcher could not be executed" in str(exc)
+        assert "available to Python subprocesses on PATH" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError when npm launcher cannot be executed")
 
 
 def test_select_dashboard_port_skips_foreign_occupied_port(monkeypatch, tmp_path):
@@ -142,6 +180,58 @@ def test_start_dashboard_reuses_same_workspace_dashboard_without_metadata(monkey
     assert result["action_token_path"] == ".thoth/local/dashboard/action-token"
     assert "warnings" in result
     assert (tmp_path / ".thoth" / "derived" / "dashboard.pid").read_text(encoding="utf-8").strip() == "4321"
+
+
+def test_pid_matches_dashboard_uses_cross_platform_process_metadata(monkeypatch, tmp_path):
+    _make_dashboard_tree(tmp_path)
+    backend_dir = tmp_path / "tools" / "dashboard" / "backend"
+
+    class FakeProcess:
+        def cmdline(self):
+            return ["python", "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8501"]
+
+        def cwd(self):
+            return str(backend_dir)
+
+    monkeypatch.setattr(dashboard, "_safe_process", lambda pid: FakeProcess() if pid == 1234 else None)
+
+    assert dashboard._pid_matches_dashboard(tmp_path, 1234) is True
+    assert dashboard._dashboard_project_root_for_pid(1234) == tmp_path
+
+
+def test_stop_dashboard_terminates_process_cross_platform(monkeypatch, tmp_path):
+    _make_dashboard_tree(tmp_path)
+    derived = tmp_path / ".thoth" / "derived"
+    derived.mkdir(parents=True, exist_ok=True)
+    (derived / "dashboard.pid").write_text("1234\n", encoding="utf-8")
+    (derived / "dashboard.status.json").write_text("{}\n", encoding="utf-8")
+    (derived / "dashboard.port").write_text("8501\n", encoding="utf-8")
+
+    calls: list[str] = []
+
+    class FakeProcess:
+        def terminate(self):
+            calls.append("terminate")
+
+        def wait(self, timeout=None):
+            calls.append(f"wait:{timeout}")
+            return 0
+
+        def kill(self):
+            calls.append("kill")
+
+    monkeypatch.setattr(dashboard, "_process_alive", lambda pid: pid == 1234)
+    monkeypatch.setattr(dashboard, "_pid_matches_dashboard", lambda root, pid: pid == 1234)
+    monkeypatch.setattr(dashboard, "_safe_process", lambda pid: FakeProcess() if pid == 1234 else None)
+
+    result = dashboard.stop_dashboard(tmp_path)
+
+    assert result["status"] == "ok"
+    assert result["pid"] == 1234
+    assert calls == ["terminate", "wait:5.0"]
+    assert not (derived / "dashboard.pid").exists()
+    assert not (derived / "dashboard.status.json").exists()
+    assert not (derived / "dashboard.port").exists()
 
 
 def test_dashboard_rebuild_documents_not_scaffold_sync(monkeypatch, tmp_path):

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from thoth.observe.dashboard_contract import dashboard_static_contract_warnings
+
 
 ROOT = Path(__file__).parent.parent.parent
 FRONTEND = ROOT / "templates" / "dashboard" / "frontend" / "src"
+TEMPLATE_DASHBOARD = ROOT / "templates" / "dashboard"
 
 
 def test_workbench_uses_sse_without_fixed_full_refresh_timer():
@@ -46,3 +49,10 @@ def test_legacy_dashboard_views_and_exclusive_components_are_removed():
     ]
 
     assert all(not (FRONTEND / path).exists() for path in removed)
+
+
+def test_dashboard_static_contract_reads_router_modules_for_api_routes():
+    warnings = dashboard_static_contract_warnings(TEMPLATE_DASHBOARD)
+
+    route_warnings = [warning for warning in warnings if warning["id"] == "dashboard-api-route-contract"]
+    assert route_warnings == []
