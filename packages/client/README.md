@@ -1,13 +1,12 @@
 # @thoth/client
 
-Shared client SDK package for New Thoth.
+Thoth's JavaScript/TypeScript client package.
 
-Intended responsibilities:
+## Stability
 
-1. Local daemon transport.
-2. Relay E2EE transport.
-3. Reconnect and cursor catch-up.
-4. Typed request helpers.
-5. Timeline, task, action, approval, report and provider-health subscriptions.
+This package is public so Thoth's published packages can depend on it cleanly.
+It is not a stable public SDK yet.
 
-Current status: skeleton only. No implementation exists in this package yet.
+APIs, exports, runtime behavior, and types may change or disappear in any
+release without advance notice. Use it outside Thoth at your own risk until the
+package is explicitly documented as stable.

@@ -2,7 +2,7 @@
 
 ## Current Architecture State
 
-Current state is a skeleton, not an implementation.
+Current state is promoted source substrate, not a runnable implementation.
 
 1. Root package manager: `npm workspaces`.
 2. Runtime language direction: TypeScript / Node.
@@ -19,8 +19,9 @@ Current state is a skeleton, not an implementation.
    - `packages/desktop`
    - `packages/relay`
    - `packages/cli`
-6. Formal `src/` directories do not contain business implementation.
-7. `_paseo/` directories may contain non-runnable implementation seed material that is not wired into package exports.
+6. Formal package source trees contain promoted upstream-derived implementation substrate.
+7. No tracked `_paseo/` directories should remain after `NTH-MS-008`.
+8. The promoted source is expected broken until dependency and compile triage.
 
 ## Workstreams
 
@@ -125,3 +126,18 @@ Acceptance:
 3. Voice, audio, speech and dictation material is excluded.
 4. Root workspaces and scripts are not widened to match upstream.
 5. Seed code is documented as expected-broken until future migration tasks digest it.
+
+### `NTH-MS-008` Promote Seed To Formal Source
+
+State: `done`
+
+Goal: Move tracked `_paseo` implementation seed material into formal package source trees, delete `_paseo`, and preserve Thoth package identity without claiming runtime readiness.
+
+Acceptance:
+
+1. No tracked `_paseo` paths remain.
+2. Formal `packages/*` source trees contain the promoted implementation substrate.
+3. Root workspace boundary remains `packages/*` with exactly 10 formal packages.
+4. Formal packages keep `@thoth/*`, `private: true`, `AGPL-3.0-or-later` and version `0.0.0`.
+5. `packages/app/highlight` remains nested and does not become an 11th workspace package.
+6. Expected broken compile state is documented.

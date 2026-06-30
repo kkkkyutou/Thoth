@@ -2,15 +2,15 @@
 
 Thoth 正在被重建为一个 local-first 的 AI 任务控制平面。
 
-旧的 Claude Code / Codex plugin runtime 已经归档，当前分支不再维护旧 plugin 形态。本仓库现在只包含 New Thoth 的设计 authority 和 TypeScript / Node monorepo skeleton。当前 checkout 还没有可运行的 CLI、daemon、TUI、桌面 app、手机 app、relay 或 harness driver。
+旧的 Claude Code / Codex plugin runtime 已经归档，当前分支不再维护旧 plugin 形态。本仓库现在包含 New Thoth 的设计 authority 和已经提升到正式包源码树中的 TypeScript / Node implementation substrate。当前 checkout 还没有可运行的 CLI、daemon、TUI、桌面 app、手机 app、relay 或 harness driver。
 
 ## 当前状态
 
 - 当前分支重点：New Thoth reset 和 MVP 架构。
-- 当前实现状态：`packages/` 下的 `npm workspaces` 骨架，以及尚未接入 runtime 的 implementation seed。
+- 当前实现状态：正式 `packages/*` 源码树中的 upstream-derived implementation substrate，预期暂时 broken。
 - 当前 license：`AGPL-3.0-or-later`。
 - 当前版权主体：`SeeleAI`。
-- 当前 public surface：文档、包边界和不可运行的 implementation seed 目录。
+- 当前 public surface：文档、包边界和不可运行的 promoted source substrate。
 - 旧 plugin 归档 release：<https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
 - 旧 plugin 归档分支：`archive/main-20260627`
 
@@ -42,7 +42,7 @@ packages/
   cli/        高级脚本化 client
 ```
 
-正式 `src/` 目录仍然是占位骨架。部分 package 可能包含 `_paseo/` implementation seed 目录；这些目录是为后续迁移准备的参考代码，允许暂时存在 broken imports 或 type errors，直到后续实现任务逐步消化。
+正式 package source tree 现在已经包含 promoted implementation substrate。当前刻意不声称是可运行产品：imports、scripts、dependency wiring 和 runtime behavior 可能暂时 broken，直到后续 dependency / compile triage 记录通过证据。
 
 ## 设计 authority
 

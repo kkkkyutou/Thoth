@@ -1,14 +1,12 @@
 # @thoth/protocol
 
-Shared protocol package for New Thoth.
+Shared Thoth protocol schemas, codecs, and wire types.
 
-Intended responsibilities:
+## Stability
 
-1. Message envelopes.
-2. Request and response contracts.
-3. Event and timeline contracts.
-4. Permission, approval, task and report wire shapes.
-5. Task mode, clarification strength and loop strength wire shapes.
-6. Direct and relay transport frame metadata.
+This package is public so Thoth's published packages can depend on it cleanly.
+It is not a stable public API yet.
 
-Current status: skeleton only. No implementation exists in this package yet.
+Schemas, exports, wire helpers, and types may change or disappear in any release
+without advance notice. Use it outside Thoth at your own risk until the package
+is explicitly documented as stable.

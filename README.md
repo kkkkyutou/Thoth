@@ -2,15 +2,15 @@
 
 Thoth is being rebuilt as a local-first task control plane for AI work.
 
-The old Claude Code / Codex plugin runtime has been archived and is no longer maintained on this branch. This repository now contains the New Thoth design authority and a TypeScript / Node monorepo skeleton only. There is no runnable CLI, daemon, TUI, desktop app, mobile app, relay, or harness driver in the current checkout yet.
+The old Claude Code / Codex plugin runtime has been archived and is no longer maintained on this branch. This repository now contains the New Thoth design authority and promoted TypeScript / Node implementation substrate. There is no runnable CLI, daemon, TUI, desktop app, mobile app, relay, or harness driver in the current checkout yet.
 
 ## Current Status
 
 - Current branch focus: New Thoth reset and MVP architecture.
-- Current implementation: `npm workspaces` skeleton under `packages/`, plus imported implementation seeds that are not wired into runtime yet.
+- Current implementation: promoted upstream-derived implementation substrate under the formal `packages/*` source trees, expected to be temporarily broken.
 - Current license: `AGPL-3.0-or-later`.
 - Copyright holder: `SeeleAI`.
-- Current public surface: documentation, package boundaries, and non-runnable implementation seed directories only.
+- Current public surface: documentation, package boundaries, and non-runnable promoted source substrate only.
 - Old plugin archive release: <https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
 - Old plugin archive branch: `archive/main-20260627`
 
@@ -42,7 +42,7 @@ packages/
   cli/        scriptable advanced client
 ```
 
-The formal `src/` directories are still placeholders. Some packages may contain `_paseo/` implementation seed directories. Those seed directories are imported reference material for future migration; they are expected to contain broken imports or types until a later implementation task digests them.
+The formal package source trees now contain promoted implementation substrate. This is intentionally not a working product yet: imports, scripts, dependency wiring and runtime behavior may be broken until the dependency and compile triage milestone records passing evidence.
 
 ## Design Authority
 

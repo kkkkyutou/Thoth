@@ -1,6 +1,6 @@
 # Upstream Transplant Ledger
 
-本文件记录 New Thoth 当前 implementation seed 的来源、边界和预期状态。它是迁移账本，不是产品设计文档。
+本文件记录 New Thoth 当前 upstream-derived implementation substrate 的来源、边界和预期状态。它是迁移账本，不是产品设计文档。
 
 ## Current Import
 
@@ -24,73 +24,73 @@
 
 ## Exclusion Policy
 
-Excluded from raw cache and tracked seed:
+Excluded from raw cache and tracked source:
 
 1. Any path matching `audio`, `speech`, `voice` or `dictation`.
 2. Obvious TTS/STT/PCM/WAV implementation files even when their paths do not contain the full words above.
 3. Audio/media files: `*.wav`, `*.webm`, `*.mp3`, `*.m4a`, `*.ogg`.
 4. `.git`, `node_modules`, `dist`, `build`, `.expo`, `.next`, `.wrangler`, `coverage`, caches, logs, environment files, tokens, private keys and generated secrets.
 
-Voice-related upstream features are not part of the current Thoth MVP line.
-Because broad UI/protocol files can still contain stale references after feature-file exclusion, those references are treated as expected-broken seed residue and must be removed before any code is migrated into formal `src`.
+Voice-related upstream features are not part of the current Thoth MVP line. Because broad UI/protocol files can still contain stale references after feature-file exclusion, those references are treated as expected-broken promoted-source residue and must be removed during dependency and compile triage before any voice-related capability is exposed.
 
-## Tracked Seed Map
+## Promoted Source Map
 
-The tracked seed is expected to be non-runnable and temporarily broken until future migration tasks digest it.
+Tracked `_paseo` seed directories have been promoted into formal source trees and deleted. The promoted substrate is expected to be non-runnable and temporarily broken until future migration tasks digest it.
 
-1. `packages/protocol/_paseo/`
+1. `packages/protocol/`
    - Source: upstream `packages/protocol`
-   - Purpose: protocol messages, fixtures, tests and package metadata reference.
-2. `packages/client/_paseo/`
+   - Purpose: protocol messages, fixtures, tests and package metadata substrate.
+2. `packages/client/`
    - Source: upstream `packages/client`
-   - Purpose: daemon client, WebSocket transport and relay E2EE client reference.
-3. `packages/relay/_paseo/`
+   - Purpose: daemon client, WebSocket transport and relay E2EE client substrate.
+3. `packages/relay/`
    - Source: upstream `packages/relay`
-   - Purpose: Cloudflare Worker relay and WebSocket relay reference.
-4. `packages/cli/_paseo/`
+   - Purpose: Cloudflare Worker relay and WebSocket relay substrate.
+4. `packages/cli/`
    - Source: upstream `packages/cli`
-   - Purpose: CLI command shape and tests reference.
-5. `packages/app/_paseo/app/`
+   - Purpose: CLI command shape and tests substrate.
+5. `packages/app/`
    - Source: upstream `packages/app`
-   - Purpose: shared app shell, UI state and client surface reference.
-6. `packages/app/_paseo/highlight/`
+   - Purpose: shared app shell, UI state and client surface substrate.
+6. `packages/app/highlight/`
    - Source: upstream `packages/highlight`
-   - Purpose: UI highlighting/reference surface because Thoth has no independent highlight package.
-7. `packages/desktop/_paseo/`
+   - Purpose: nested UI highlighting substrate; not a root workspace package.
+7. `packages/desktop/`
    - Source: upstream `packages/desktop`
-   - Purpose: Electron shell, builder config and desktop lifecycle reference.
-8. `packages/drivers/_paseo/agent/`
+   - Purpose: Electron shell, builder config and desktop lifecycle substrate.
+8. `packages/drivers/src/agent/`
    - Source: upstream `packages/server/src/server/agent`
-   - Purpose: provider registry, Claude, Codex app-server, ACP, OpenCode, session, history, permission and question handling reference.
-9. `packages/daemon/_paseo/server/`
+   - Purpose: provider registry, Claude, Codex app-server, ACP, OpenCode, session, history, permission and question handling substrate.
+9. `packages/daemon/`
    - Source: upstream `packages/server`
-   - Purpose: daemon/server shell, WebSocket, managed process, workspace, worktree, persistence and session runtime reference.
-   - Note: `src/server/agent` is excluded here because it is copied to `packages/drivers/_paseo/agent/`.
-10. `packages/core/_paseo/server-core/`
+   - Purpose: daemon/server shell, WebSocket, managed process, workspace, worktree, persistence and session runtime substrate.
+   - Note: the upstream agent subtree is not duplicated here because it is promoted to `packages/drivers/src/agent/`.
+10. `packages/core/src/`
     - Source: selected upstream `packages/server/src` non-provider helper areas when clearly reusable.
-    - Purpose: storage/projection/context/runtime utility references that may later move into `core` or remain daemon-owned.
-    - Note: ambiguous server material should stay in daemon seed until a later boundary split.
+    - Purpose: storage/projection/context/runtime utility substrate that may later move or be narrowed during compile triage.
 
 ## Rename Policy
 
 1. Raw cache keeps upstream text and names.
-2. Tracked seed uses aggressive semantic renaming where practical:
+2. Promoted source uses aggressive semantic renaming where practical:
    - `@getpaseo` -> `@thoth`
    - `getpaseo` -> `thoth`
    - `PASEO` -> `THOTH`
    - `Paseo` -> `Thoth`
    - `paseo` -> `thoth`
-3. Provenance files may still mention the upstream project name when needed for license and source attribution.
+3. Formal package identity is normalized to `@thoth/*`, `private: true`, `AGPL-3.0-or-later`, version `0.0.0` and root `workspaces: ["packages/*"]`.
+4. Provenance files may still mention the upstream project name when needed for license and source attribution.
 
 ## Expected Broken State
 
-1. `_paseo/` imports may point at packages or files that do not exist in the New Thoth monorepo yet.
-2. `_paseo/` tests may not run.
-3. `_paseo/` package metadata may reference scripts or dependencies that are not merged into the root workspace.
-4. This is intentional. Seed directories are raw implementation substrate for future migration, not a completed product feature.
+1. Imports may point at packages or files that do not exist in the New Thoth monorepo yet.
+2. Tests may not run.
+3. Scripts may reference build outputs, missing dependencies or source paths that are not reconciled yet.
+4. Some broad source files may still contain broken voice/audio/speech/dictation references, but those features are not product scope.
+5. This is intentional. Promoted source is raw implementation substrate for future migration, not a completed product feature.
 
 ## Follow-Up
 
-1. Create a migration TODO per seed area before moving code from `_paseo/` into formal `src/`.
-2. Do not make root scripts or dependencies match upstream wholesale.
+1. Run dependency and compile triage before claiming any package is buildable.
+2. Keep root workspaces constrained to `packages/*` and do not create a root `packages/highlight` workspace.
 3. Keep Thoth as a control plane: no direct hidden LLM API calls outside configured harness/provider sessions.

@@ -2,15 +2,13 @@
 
 Local authority daemon package for New Thoth.
 
-Intended responsibilities:
+This package now contains promoted upstream-derived server implementation material. It is intentionally expected to be temporarily broken while the New Thoth authority model, provider drivers, task lifecycle and app protocol are reconciled.
 
-1. Local authority server.
-2. SQLite persistence.
-3. Workspace registry.
-4. Task and action registry.
-5. Queue and write-concurrency control.
-6. Provider-backed Router orchestration.
-7. Role runtime orchestration.
-8. Git baseline, diff and commit management.
+Current boundaries:
 
-Current status: skeleton only. No implementation exists in this package yet.
+1. This package is the formal `@thoth/daemon` package, not the upstream server package identity.
+2. Realtime microphone features are not part of the current MVP line.
+3. The daemon must remain a Thoth control-plane runtime and must not become a hidden direct LLM API wrapper.
+4. Provider execution must flow through configured harness/provider sessions, ACP adapters, app-server sessions, official harness SDK/control surfaces or local harness CLIs.
+
+Do not treat this package as runnable until the dependency and compile triage milestone records passing evidence.

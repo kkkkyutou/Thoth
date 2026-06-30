@@ -3,11 +3,11 @@
 ## Current Truth
 
 1. Objective: `NTH-OBJ-001`
-2. Top next action: `NTH-TD-009`
+2. Top next action: `NTH-TD-010`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-006`
 4. Active blockers: None
 5. Current branch: `port/from-old-thoth-plugin`
-6. Current implementation state: New Thoth monorepo skeleton plus non-runnable imported implementation seeds
+6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees; expected broken and not runnable
 
 ## Objective Summary
 
@@ -19,11 +19,11 @@
 2. `NTH-WS-002` `[active]`: Establish the TypeScript / Node monorepo skeleton.
 3. `NTH-WS-003` `[active]`: Design the clarify-to-task and aggressive loop runtime before implementation.
 4. `NTH-WS-004` `[active]`: Keep harness, relay, mobile, desktop, TUI and ACP references current enough for implementation.
-5. `NTH-WS-006` `[active]`: Import upstream implementation seed material while preserving Thoth authority, license provenance and non-runnable boundaries.
+5. `NTH-WS-006` `[active]`: Preserve upstream provenance while converting imported material into New Thoth formal source.
 
 ## Top Next Action
 
-`NTH-TD-009` `[ready]`: Digest imported `_paseo/` seeds into the first real New Thoth implementation migration map, choosing what moves into formal `src` first without widening root workspaces or scripts.
+`NTH-TD-010` `[ready]`: Run dependency and compile triage on the promoted source substrate without changing New Thoth product goals.
 
 ## Active Blockers
 
@@ -41,6 +41,8 @@ None.
 8. `NTH-CD-015`: User updated the business flow: `Quick + Don't Bother Me` is provider passthrough; `Loop` is read-only Clarify -> frozen contract -> one PlanExec provider session using provider-native plan mode when available -> independent Review. PlanExec clarification questions after freeze are auto-answered from the contract or first recommendation, but permission requests still follow permission policy. User-facing labels are `Don't Bother Me`, `One Plan, One Do` and `Run Until Stopped`.
 9. `NTH-CD-017`: User selected AGPL for New Thoth, upstream implementation seed import from the latest GitHub source, no Multica source copy, ignored raw cache under `.agent-os/upstreams/`, tracked broken `_paseo/` seeds and no voice/audio/speech/dictation material.
 10. `NTH-EV-002`: AGPL and upstream seed import verification passed for metadata, ignored raw cache, seed directories, path exclusions, large-file hygiene, secret-like scan, package-lock refresh and `git diff --check`.
+11. `NTH-CD-018`: User approved promoting all tracked `_paseo` implementation seeds into formal package source trees, deleting `_paseo`, preserving the 10 package boundary, keeping `packages/app/highlight` nested, refreshing the lockfile, and accepting expected broken compile.
+12. `NTH-EV-003`: `_paseo` promotion verification passed for structure, metadata, lockfile refresh, ignored raw cache, package/config voice-residue scan, generated/cache scan, package-boundary scan, secret-like scan and `git diff --check`.
 
 ## Read Next
 

@@ -16,9 +16,9 @@
 
 ## Ready
 
-1. `NTH-TD-009` `[ready]`: Digest imported `_paseo/` seeds into the first real New Thoth implementation migration map.
-   - Scope: map seed directories to formal `src` migration order, choose the smallest protocol/client/daemon/provider slice, keep compile failures isolated in seed, and define acceptance checks before moving code.
-   - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-MS-007`, `NTH-REQ-011`, `NTH-REQ-015`
+1. `NTH-TD-010` `[ready]`: Run dependency and compile triage on the promoted source substrate.
+   - Scope: resolve package-lock/dependency inconsistencies, remove or quarantine remaining broad-source voice references, decide first buildable package order, and record exact compile blockers without claiming runtime readiness.
+   - Related: `NTH-MS-008`, `NTH-REQ-011`, `NTH-REQ-015`
 2. `NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
    - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`
 
@@ -38,6 +38,9 @@ None.
 2. `NTH-TD-008` `[done]`: Adopt AGPL policy and import upstream implementation seed material into ignored raw cache plus tracked `_paseo/` seed directories.
    - Related: `NTH-MS-007`, `NTH-REQ-015`, `NTH-CD-017`
    - Verification: See `NTH-EV-002`.
+3. `NTH-TD-009` `[done]`: Promote tracked `_paseo` implementation seeds into formal package source trees and delete `_paseo`.
+   - Related: `NTH-MS-008`, `NTH-CD-018`
+   - Verification: See `NTH-EV-003`.
 
 ## Verified
 

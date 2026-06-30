@@ -31,14 +31,14 @@
 
 1. 当前项目名：New Thoth。
 2. 当前分支：`port/from-old-thoth-plugin`。
-3. 当前实现状态：monorepo skeleton、设计文档和不可运行 implementation seed；没有可运行 CLI、daemon、TUI、desktop、mobile、relay 或 harness driver。
+3. 当前实现状态：设计文档和已提升到正式 `packages/*` 源码树中的不可运行 implementation substrate；没有可运行 CLI、daemon、TUI、desktop、mobile、relay 或 harness driver。
 4. 当前技术方向：TypeScript / Node，`npm workspaces`，`packages/` monorepo。
 5. 当前 license：`AGPL-3.0-or-later`。
 6. 旧 plugin archive：
    - Release: `https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive`
    - Branch: `archive/main-20260627`
 7. 旧 plugin 源码如需追溯，应从 archive release 或 archive branch 获取，不在当前 working tree 内保留 legacy runtime 代码。
-8. 当前 checkout 允许存在 `_paseo/` implementation seed 目录；这些目录是上游实现参考和迁移原料，不是已接入的 Thoth runtime。
+8. 当前 checkout 不再保留 tracked `_paseo/` seed 目录；上游实现材料已经提升到正式 package source tree，但仍是 expected-broken substrate。
 9. `.agent-os/upstreams/` 是 ignored local raw cache，不是 git authority，不得 staged 或 committed。
 
 ## 4. 文档职责
@@ -74,8 +74,8 @@
 7. 项目状态文档主语言为中文；代码注释与脚本输出使用英文。
 8. 不允许重新引入旧 Python runtime、旧 Claude/Codex plugin projection、旧 dashboard template 或旧 Textual TUI 作为新版主实现。
 9. `packages/tui` 必须以 OpenTUI 为 TUI 框架；Node/Bun 运行时细节留给后续 TUI spike。
-10. 当前 skeleton 不应包含虚假的 build/test/typecheck 脚本，不应让读者误以为 MVP 已实现。
-11. `_paseo/` seed 中的 broken imports、broken types、缺失 workspace wiring 是预期状态；不得仅因为暂时不可编译就清理或删除 seed。
+10. 当前 promoted source 不代表 MVP 已实现；不得让读者误以为 CLI、daemon、TUI、desktop、mobile、relay 或 provider runtime 已可运行。
+11. Promoted source 中的 broken imports、broken types、缺失 dependency wiring 和失败脚本是预期状态；不得仅因为暂时不可编译就删除大块代码。
 12. Multica 源码禁止 copy 到当前仓库。Multica 只可作为设计参考，必要时用重新实现或设计 notes 表达思想。
 
 ## 6. Monorepo 边界
@@ -97,11 +97,11 @@
 
 ## 6.1 Upstream Implementation Seed Policy
 
-1. 本仓库可保留从上游项目导入的 implementation seed，但必须记录 provenance、license、commit SHA、source path、target path 和 expected broken state。
+1. 本仓库可保留从上游项目导入并提升到正式 source tree 的 implementation substrate，但必须记录 provenance、license、commit SHA、source path、target path 和 expected broken state。
 2. Raw upstream cache 固定放在 `.agent-os/upstreams/` 下，并由 `.gitignore` 忽略；它只用于本机核验和迁移，不是当前项目事实来源。
-3. Tracked seed 固定放在 package 内部的 `_paseo/` 或后续明确命名的 seed 目录，不接正式 `src` export，不接 root scripts，不改变 root workspace 列表。
-4. Seed 目录可以暂时不编译，但任何从 seed 迁入正式 `src` 的代码必须经过后续 TODO、测试和 acceptance evidence。
-5. Voice、speech、dictation、audio 相关上游材料不进入 raw cache 或 tracked seed；当前 MVP 不做语音。
+3. Tracked `_paseo/` seed 目录已被提升并删除；后续不得重新引入 `_paseo` 作为长期源码形态。
+4. Promoted source 可以暂时不编译，但任何声称 runnable 的能力必须经过后续 TODO、测试和 acceptance evidence。
+5. Voice、speech、dictation、audio 相关上游材料不进入产品能力；当前 MVP 不做语音，残留 broad-source references 应在 compile triage 中逐步清理。
 6. Commit subject 和 body 不写上游产品名；来源细节写在 tracked provenance 文档里。
 
 ## 7. 升级给用户的条件
