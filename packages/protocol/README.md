@@ -8,6 +8,7 @@ Intended responsibilities:
 2. Request and response contracts.
 3. Event and timeline contracts.
 4. Permission, approval, task and report wire shapes.
-5. Direct and relay transport frame metadata.
+5. Task mode, clarification strength and loop strength wire shapes.
+6. Direct and relay transport frame metadata.
 
 Current status: skeleton only. No implementation exists in this package yet.

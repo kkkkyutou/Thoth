@@ -4,7 +4,7 @@
   "private": true,
   "description": "New Thoth task control-plane monorepo skeleton",
   "author": "SeeleAI",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-or-later",
   "packageManager": "npm@11.9.0",
   "type": "module",
   "workspaces": [

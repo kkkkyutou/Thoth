@@ -7,10 +7,10 @@ Thoth 正在被重建为一个 local-first 的 AI 任务控制平面。
 ## 当前状态
 
 - 当前分支重点：New Thoth reset 和 MVP 架构。
-- 当前实现状态：`packages/` 下的 `npm workspaces` 空骨架。
-- 当前 license：`GPL-3.0-only`。
+- 当前实现状态：`packages/` 下的 `npm workspaces` 骨架，以及尚未接入 runtime 的 implementation seed。
+- 当前 license：`AGPL-3.0-or-later`。
 - 当前版权主体：`SeeleAI`。
-- 当前 public surface：文档和包边界。
+- 当前 public surface：文档、包边界和不可运行的 implementation seed 目录。
 - 旧 plugin 归档 release：<https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
 - 旧 plugin 归档分支：`archive/main-20260627`
 
@@ -42,7 +42,7 @@ packages/
   cli/        高级脚本化 client
 ```
 
-所有 package 目录都是占位骨架，当前刻意不包含业务实现。
+正式 `src/` 目录仍然是占位骨架。部分 package 可能包含 `_paseo/` implementation seed 目录；这些目录是为后续迁移准备的参考代码，允许暂时存在 broken imports 或 type errors，直到后续实现任务逐步消化。
 
 ## 设计 authority
 
@@ -61,3 +61,5 @@ packages/
 当前 checkout 不是可运行产品。不要把它当作旧 plugin runtime 安装，也不要期待当前分支提供 `thoth`、`/thoth:*` 或 `$thoth` 命令。
 
 后续实现应以 `.agent-os/project-index.md`、`.agent-os/todo.md` 和上面的 canonical 设计文档为准。
+
+License 和 upstream seed provenance 见 [`NOTICE`](NOTICE) 与 [`.agent-os/upstream-transplant.md`](.agent-os/upstream-transplant.md)。

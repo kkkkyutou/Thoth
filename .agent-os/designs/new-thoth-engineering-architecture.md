@@ -2,7 +2,7 @@
 
 ## Status
 
-1. 日期：`2026-06-28`
+1. 日期：`2026-06-29`
 2. 性质：全新版本 Thoth 的工程架构文档
 3. 范围：工程结构、运行拓扑、协议、daemon、authority、driver、ACP、多端打包、relay、git 模型、角色运行模型、参考项目映射
 4. 边界：不重复 high-level 产品论证，不写用户点击教程，不放完整长 prompt
@@ -31,6 +31,13 @@ Engineering inputs fixed for MVP:
 12. Claude Code main path: Agent SDK / direct provider.
 13. Codex main path: app-server provider.
 14. ACP: first-version full adapter path with capability contract and conformance tests.
+15. Thoth is a control plane, not a harness or hidden LLM API wrapper.
+16. All AI execution runs through provider sessions: ACP, harness runtime, app-server, official harness SDK/control surface or local harness CLI.
+17. Core and daemon must not call general model inference APIs directly as a substitute for harness/provider sessions.
+18. Provider-visible output must stream through Thoth timeline in real time for Clarify, Quick, Plan+Exec and Review.
+19. `Quick + dont_bother_me` is a provider passthrough path and should stay behaviorally close to a raw Paseo-style provider session.
+20. Formal `loop` attempts run PlanExec inside one provider session using provider-native plan mode when available.
+21. Clarify and Review are independent provider sessions.
 
 The system has six primary layers:
 
@@ -54,7 +61,7 @@ Responsibilities:
 3. Event schema.
 4. Timeline item schema.
 5. Permission and approval card schema.
-6. Input route and routing override schema.
+6. Composer task mode and strength schema.
 7. Action summary and report summary schema.
 8. Task summary and report summary schema.
 9. E2EE transport frame metadata.
@@ -179,7 +186,7 @@ Responsibilities:
 
 Rules:
 
-1. Global chat can bind a workspace by explicit reference or high-confidence context resolution.
+1. Global chat can bind a workspace by explicit reference or provider-backed high-confidence context resolution.
 2. Mobile cannot add local folders.
 3. Offline mobile cannot send instructions or approvals.
 
@@ -228,7 +235,7 @@ Responsibilities:
 2. Workspace attach helper.
 3. Pairing helper.
 4. Diagnostics.
-5. Scriptable `answer`, `direct_action` and `formal_task` commands.
+5. Scriptable `quick` and `loop` commands.
 6. Scriptable read-only task/status/report commands.
 
 Rules:
@@ -279,14 +286,14 @@ Protocol categories:
 1. Session handshake.
 2. Workspace registry.
 3. Conversation messages.
-4. Route decision and routing override.
-5. Direct action execution.
-6. Formal task creation.
+4. Route decision, mode recommendation and routing override.
+5. Quick request handling.
+6. Loop task creation.
 7. Clarification cards.
 8. Contract freeze cards.
-9. Permission cards.
+9. Permission and provider-question cards.
 10. Queue operations.
-11. Timeline stream.
+11. Provider stream and timeline stream.
 12. Action detail.
 13. Task detail.
 14. Artifact summary.
@@ -303,6 +310,8 @@ Required protocol invariants:
 5. UI optimistic messages are never authoritative.
 6. Direct and relay transports expose the same logical client API.
 7. Mobile cached state is read-only when disconnected.
+8. Provider stream events are appended to daemon-owned timeline before broadcast.
+9. Provider question events and permission events share the approval-card transport but have different policies.
 
 ## 5. Daemon And Authority Store
 
@@ -362,8 +371,8 @@ Execution concurrency:
 
 1. One workspace can have multiple task drafts in clarification.
 2. One workspace can have multiple planning or review activities.
-3. One workspace can have only one write Execute at a time.
-4. Write execute tasks run through a FIFO queue.
+3. One workspace can have only one write PlanExec at a time.
+4. Write PlanExec tasks run through a FIFO queue.
 5. User can reorder the queue manually.
 
 Dirty state handling:
@@ -376,54 +385,71 @@ Dirty state handling:
 
 Commit policy:
 
-1. `formal_task` write execution defaults to a Thoth-created branch or worktree.
+1. `loop` write execution defaults to a Thoth-created branch or worktree.
 2. Review passed triggers daemon commit by default.
 3. Commit happens on the task branch or task worktree.
 4. No auto push.
-5. Git push is a high-risk direct action that requires approval unless full access is enabled.
+5. Git push is a high-risk quick action that requires approval unless full access is enabled.
 6. Commit message is generated from task goal, acceptance and evidence.
 7. Failed or blocked task does not auto commit.
 
 ## 7. Task Lifecycle Runtime
 
-Input routes:
+Input modes:
 
-1. `answer`
-2. `direct_action`
-3. `formal_task`
+1. `quick`
+2. `loop`
 
-Routing modes:
+Composer policy controls:
 
-1. `auto`
-2. `force_answer`
-3. `force_direct_action`
-4. `force_formal_task`
+1. `provider_settings`
+2. `task_mode`
+3. `clarification_strength`
+4. `loop_strength`
 
 Minimal route types:
 
-1. `InputRoute = answer | direct_action | formal_task`
-2. `RoutingMode = auto | force_answer | force_direct_action | force_formal_task`
-3. `PermissionMode = normal_approval | full_access`
+1. `TaskMode = quick | loop`
+2. `QuickOutcome = answer_result | action_result | suggest_loop`
+3. `ClarificationStrength = auto | dont_bother_me | light | balanced | deep`
+4. `LoopStrength = auto | one_plan_one_do | light | balanced | run_until_stopped`
+5. `PermissionMode = read_only | ask | full_access`
 
-`answer` behavior:
+Composer control rules:
 
-1. Handles status explanation, concept explanation, existing information queries and simple summaries.
-2. May cite workspace reports, task state, memory, external sources or provider diagnostics.
-3. Does not create an action or formal task unless the response includes a user-approved follow-up.
-4. Must keep trivial conversational inputs on the fast path; `hi`-level inputs should return in under `10s` from the user's perspective.
+1. `+` supports only image attachment and file upload under `10MB` in MVP.
+2. Scope has no separate button; users use `@` references.
+3. Provider settings include provider profile, model id, provider-native thinking strength, permission mode and fast mode.
+4. Clarification strength applies to both `quick` and `loop`.
+5. Loop strength applies only to `loop`; it is disabled/greyed out for `quick`.
+6. `run_until_stopped` is red, high-cost, and continues until the user manually stops it, while still respecting safety and permission boundaries.
+7. UI labels show `Don't Bother Me`, `Balanced`, `One Plan, One Do` and `Run Until Stopped`; protocol enums use `dont_bother_me`, `balanced`, `one_plan_one_do` and `run_until_stopped`.
 
-Direct action behavior:
+Semantic routing rule:
 
-1. Runs for clear, short, low-clarification operations.
-2. Can be read-only or controlled write.
-3. Supports examples such as weekly report drafting, web news search, small copy edits and git push.
-4. Uses permission preflight for high-risk operations.
-5. Skips approval cards when `PermissionMode = full_access`.
-6. Records an `ActionRecord`.
-7. Does not create Draft Task.
-8. Does not run contract freeze.
-9. Does not enter the formal task attempt lifecycle.
-10. Does not auto commit.
+1. MVP must not use local deterministic heuristics to classify natural-language intent.
+2. If the user selects `task_mode`, daemon honors that explicit control.
+3. If a future UI adds recommended mode selection, the recommendation must be produced by a provider-backed Router session.
+4. Local code may validate the selected mode, enforce permission policy, gather mechanical evidence and maintain authority state.
+5. Local code must not infer `quick` or `loop` from prompt text.
+
+`quick` behavior:
+
+1. Covers question answering and fast bounded actions.
+2. Handles status explanation, concept explanation, existing information queries, simple summaries, small edits, git commit/git push and one-shot commands.
+3. May cite workspace reports, task state, memory, external sources or provider diagnostics.
+4. Can be read-only or controlled write.
+5. Uses permission preflight for high-risk operations according to provider settings.
+6. When `clarification_strength = dont_bother_me`, runs as provider passthrough with no Thoth Clarify role.
+7. When clarification is enabled, may run a short read-only Clarify session before the quick provider turn.
+8. Streams provider-visible output to timeline in real time.
+9. Records an `ActionRecord` only when an action is proposed or executed.
+10. Does not create Draft Task.
+11. Does not run contract freeze.
+12. Does not enter Plan+Exec or Review.
+13. Does not enter loop.
+14. Does not auto commit.
+15. Must keep trivial conversational inputs on the fast path; `hi`-level inputs should return in under `10s` from the user's perspective.
 
 ActionRecord minimal fields:
 
@@ -435,25 +461,28 @@ ActionRecord minimal fields:
 6. Final status.
 7. Upgrade suggestion if failed.
 
-Formal task lifecycle:
+Loop lifecycle:
 
 1. User input creates Draft Task.
-2. Clarify role collects goal, constraints and acceptance.
-3. Contract freeze card requires user confirmation.
-4. Each execution attempt contains Plan -> Execute -> Review.
-5. Plan role creates execution plan from frozen task.
-6. Execute role performs implementation or operation.
-7. Review role checks evidence against frozen task.
-8. Passed review commits and reports.
-9. Failed review creates the next attempt only when the retry policy allows a non-repeating strategy.
-10. After the default 3 failed attempts, task blocks and reports.
+2. Clarify role runs as an independent read-only provider session.
+3. Clarify collects user discussion, assumptions, decisions, goal, constraints and acceptance.
+4. Clarify writes a structured handoff packet.
+5. Contract freeze card requires user confirmation.
+6. Each execution attempt contains Plan+Exec -> Review.
+7. Plan+Exec runs in one provider session and uses provider-native plan mode when available.
+8. Review role runs as an independent provider session.
+9. Passed review commits and reports.
+10. Failed review creates the next attempt only when the retry policy allows a non-repeating strategy.
+11. Under `balanced`, after the default 3 failed attempts, task blocks and reports; under `run_until_stopped`, normal attempt-count exhaustion is disabled until user stop or a hard stop.
 
-Formal task boundary:
+Loop boundary:
 
-1. Only `formal_task` enters Clarify -> Contract Freeze -> Attempt.
-2. Each Attempt internally runs Plan -> Execute -> Review.
-3. Direct action may suggest upgrade to formal task when failure requires multi-round diagnosis, validation matrix, broad writes or unclear acceptance.
-4. Forced routing can override the automatic classification, but permission policy still applies.
+1. Only `loop` enters Clarify -> Contract Freeze -> Attempt.
+2. Each Attempt internally runs Plan+Exec -> Review.
+3. Quick may suggest upgrade to Loop when failure requires multi-round diagnosis, validation matrix, broad writes or unclear acceptance.
+4. A provider-backed session may recommend changing the selected task mode, but the user must see and accept the switch unless policy explicitly allows it.
+5. After contract freeze, provider clarification questions raised inside Plan+Exec are auto-answered from the frozen contract or the first recommended option.
+6. Provider permission requests inside Plan+Exec are never auto-approved by the provider-question rule.
 
 Stop behavior:
 
@@ -464,27 +493,36 @@ Stop behavior:
 
 ## 8. Router
 
-The Router is internal. It implements the private-secretary routing judgment without becoming a visible agent, squad, leader or team UI.
+The Router is a provider-backed role contract when semantic judgment is needed. It implements private-secretary routing judgment without becoming a visible agent, squad, leader or team UI.
+
+Local Router boundary:
+
+1. Local code may honor an explicit `task_mode`.
+2. Local code may bind the current workspace when the user is already inside a workspace page.
+3. Local code may parse explicit `@workspace` mentions.
+4. Local code may validate schema, provider availability, permission mode and workspace safety.
+5. Local code must not classify natural-language intent by heuristic rules.
+6. Local code must not perform zero-shot workspace/context inference.
 
 Responsibilities:
 
-1. Intent classification.
-2. Workspace and context resolution.
-3. Routing override handling.
+1. Provider-backed intent classification when no explicit mode is accepted.
+2. Provider-backed workspace and context resolution when not explicit.
+3. Explicit mode handling.
 4. Provider and driver capability selection.
 5. Permission preflight.
 6. Evidence and report condensation.
-7. Upgrade recommendation from direct action to formal task.
+7. Upgrade recommendation from `quick` to `loop`.
 
 Context resolution:
 
 1. Explicit workspace mention wins.
 2. Workspace chat is bound to its current workspace.
-3. Global chat uses recent conversation, active projects, workspace state, user habits and task history.
+3. Global chat context resolution uses provider-backed judgment over recent conversation, active projects, workspace state, user habits and task history.
 4. A single high-confidence candidate can be selected without asking.
 5. Multiple plausible candidates require one golden question.
 6. Low-confidence routing must not write to a workspace.
-7. The system should trust high-confidence agent judgment instead of asking defensive confirmation questions by default.
+7. The system should trust high-confidence provider-backed judgment instead of asking defensive confirmation questions by default.
 
 Multica comparison:
 
@@ -498,9 +536,14 @@ Multica comparison:
 Internal roles:
 
 1. `Clarify`
-2. `Plan`
-3. `Execute`
-4. `Review`
+2. `PlanExec`
+3. `Review`
+
+Logical sub-phases:
+
+1. `PlanExec` may expose provider-native plan and execution sub-phases.
+2. Those sub-phases stay in the same native provider session.
+3. They are not separate Thoth role sessions in MVP.
 
 Runtime rules:
 
@@ -511,13 +554,14 @@ Runtime rules:
 5. Different roles do not share full chat history by default.
 6. Inter-role handoff uses structured context packets and artifacts.
 7. User sees One Thoth, not separate roles.
+8. Clarify and Review are always independent role sessions.
+9. PlanExec is one role session even when the provider UI shows separate plan and implementation moments.
 
 Role responsibilities:
 
 1. `Clarify`: compile user intent into goal, constraints, acceptance and risk.
-2. `Plan`: create a concrete plan without rewriting frozen authority.
-3. `Execute`: perform changes and produce evidence, without declaring final success.
-4. `Review`: check evidence adversarially, without modifying code.
+2. `PlanExec`: use provider-native plan mode when available, create a concrete plan, perform changes and produce evidence without redefining frozen authority.
+3. `Review`: check evidence adversarially, without modifying code.
 
 ## 10. Prompt Contracts
 
@@ -537,21 +581,23 @@ Every role prompt contract must define:
 
 Purpose:
 
-1. Classify input into `answer`, `direct_action` or `formal_task`.
-2. Resolve conversation scope and workspace context.
-3. Respect routing overrides.
+1. Recommend or validate `quick` or `loop` when semantic judgment is needed.
+2. Resolve conversation scope and workspace context when not explicit.
+3. Respect explicit user-selected `task_mode`.
 4. Select provider/driver capability without exposing provider choice in normal chat.
-5. Run permission preflight before direct action or formal task execution.
+5. Run permission preflight before quick action or loop execution.
 
 Input packet:
 
 1. User message.
 2. Conversation scope.
-3. Routing mode.
+3. User-selected task mode if present.
 4. Recent conversation summary.
 5. Workspace candidates and confidence signals.
 6. Provider capability summary.
 7. Permission mode.
+8. Clarification strength.
+9. Loop strength.
 
 Output packet:
 
@@ -561,23 +607,25 @@ Output packet:
 4. Required golden question if ambiguous.
 5. Suggested driver family.
 6. Permission preflight result.
-7. Upgrade note if direct action should become formal task.
+7. Upgrade note if `quick` should become `loop`.
+8. Mode mismatch warning if the selected mode appears unsafe or inefficient.
 
 Hard stops:
 
 1. Do not write to a low-confidence workspace.
 2. Do not expose internal agent/squad/leader choices.
-3. Do not route a clearly short direct action into formal task just to simplify implementation.
+3. Do not recommend `loop` for a clearly short quick action merely to simplify implementation.
 4. Do not skip permission policy unless `PermissionMode = full_access`.
+5. Do not pretend to be a local deterministic classifier; this contract runs only inside a provider session.
 
 ### 10.2 `Clarify` Contract
 
 Purpose:
 
-1. Convert natural-language intent into a task-ready contract.
-2. Identify assumptions and human-decision blockers.
-3. Produce clarification cards and final contract freeze card.
-4. Run only for `formal_task`.
+1. Convert natural-language intent into the minimum necessary clarification output for the selected mode.
+2. For `quick`, identify the one material question, permission gap or safe default needed before answering or acting.
+3. For `loop`, identify assumptions and human-decision blockers.
+4. For `loop`, produce clarification cards and final contract freeze card.
 
 Input packet:
 
@@ -586,6 +634,8 @@ Input packet:
 3. Workspace summary if bound.
 4. Relevant memory summary.
 5. Existing draft task state.
+6. Selected task mode.
+7. Clarification strength.
 
 Output packet:
 
@@ -595,74 +645,199 @@ Output packet:
 4. Assumptions.
 5. Questions.
 6. Contract freeze proposal.
+7. Quick clarification result when selected mode is `quick`.
+8. User decisions and default choices made during clarification.
+9. Read-only evidence and sources used to resolve ambiguity.
+10. PlanExec handoff packet for `loop`.
 
 Hard stops:
 
 1. Do not invent missing high-impact user decisions.
 2. Do not mark a task ready with unresolved blocking acceptance.
 3. Do not push agent-discoverable facts back to the user.
-4. Do not run for `answer` or `direct_action`.
+4. Do not create a `loop` task from `quick` without an accepted mode switch.
+5. Do not show a contract freeze card for `quick`.
+6. Do not modify files.
+7. Do not install dependencies.
+8. Do not commit, push, delete, move or rewrite workspace content.
+9. Do not run commands whose purpose is to mutate the workspace.
 
-### 10.3 `Plan` Contract
+### 10.2.1 Clarify Decision-Tree Runtime
+
+Clarify is a decision-tree walk, not a questionnaire.
+
+Runtime principles:
+
+1. Clarify must not dump all possible questions at the start.
+2. Clarify first performs read-only investigation to remove facts that the agent can discover without bothering the user.
+3. Clarify then identifies the root decision that most changes downstream execution, risk, acceptance, permission or cost.
+4. Clarify exposes only the current highest-leverage human decision as a card.
+5. Sibling and child questions are deferred until the parent decision is answered, defaulted or blocked.
+6. A question is allowed only when its answer changes execution direction, risk boundary, acceptance, permission or cost.
+7. Missing information is not enough to ask the user; only missing high-impact human judgment justifies a question.
+8. If several small questions are really one higher-level decision, Clarify must collapse them into that parent decision.
+9. Clarify levels control tree depth, not permission to ask low-value questions.
+10. `deep` may walk more levels of the tree, but each level must still be the current highest-leverage question.
+
+Clarify tree records:
+
+1. Root decision.
+2. Active node.
+3. Active path.
+4. Deferred nodes.
+5. Nodes resolved by investigation.
+6. Nodes skipped because they are low impact.
+7. Nodes defaulted with explicit risk.
+8. User decisions.
+9. Default choices.
+10. Blocking unresolved decisions.
+
+Clarification card fields:
+
+1. Card id.
+2. Clarify session id.
+3. Tree node id.
+4. Decision dimension.
+5. Title.
+6. Question.
+7. Why this question is being asked now.
+8. The decision this answer changes.
+9. Downstream branches affected by the answer.
+10. Options.
+11. Recommended option if any.
+12. Freeform allowance.
+13. Default if skipped.
+14. Risk if defaulted or assumed.
+15. Severity.
+
+Hard quality rule:
+
+1. If a question cannot explain the decision it changes, it must not be rendered to the user.
+2. If the provider emits multiple unrelated questions at the same tree level, Thoth should ask the provider to collapse them into the current root or branch decision.
+3. If the provider asks for facts it could inspect from workspace, memory, documents, git state or web research, Thoth should treat that as a Clarify quality failure and request repair or block the Clarify session.
+
+### 10.2.2 Clarify Streaming And Card Validation
+
+Clarify uses two separate runtime channels:
+
+1. Visible provider stream.
+2. Structured interaction candidates.
+
+Visible provider stream:
+
+1. Provider-visible text deltas are appended to the daemon timeline in real time.
+2. Visible text deltas are streamed to desktop, mobile and TUI clients immediately.
+3. Visible stream is allowed to show the provider's normal explanation and investigation progress.
+4. Visible stream must not show card JSON envelopes, validation errors or format-repair prompts.
+
+Structured interaction candidates:
+
+1. Provider questions, native provider question events and Clarify-generated golden questions are normalized into `ClarificationCardCandidate`.
+2. A card candidate is not user-visible authority.
+3. A card candidate must pass validation before becoming a renderable `ClarificationCard`.
+4. Desktop, mobile and TUI must render only validated `ClarificationCard` records from daemon state.
+5. Invalid candidates are recorded as hidden timeline/debug evidence, not as user-facing messages.
+
+Validation boundary:
+
+1. `packages/protocol` owns the card schema and validation error shape.
+2. `packages/daemon` runs the canonical validator and controls provider repair.
+3. `packages/app`, `packages/tui` and `packages/desktop` run lightweight defensive render validation so malformed cards cannot break UI.
+4. Client-side validation is not the authority for repair loops.
+5. The daemon remains the authority because Clarify may continue while no UI client is connected.
+
+Minimal card validation:
+
+1. Candidate parses as structured data.
+2. `kind` and `schemaVersion` are recognized.
+3. Required fields are present.
+4. Text fields needed for rendering are non-empty.
+5. Options are a bounded array.
+6. Option ids are stable and unique within the card.
+7. At most one option is recommended.
+8. Severity is a known enum.
+9. `treeNodeId` matches the active Clarify tree node.
+10. The card contains `decisionItChanges`.
+11. The card contains `riskIfAssumed` when it uses a default or recommendation.
+12. Text length fits expected card rendering bounds.
+13. The candidate does not contain executable UI instructions or command injection fields.
+
+Invalid card repair:
+
+1. When validation fails, the daemon creates a hidden `InvalidCardReport`.
+2. The invalid report includes field paths, error codes, expected shape, received shape and a concise repair instruction.
+3. The daemon sends the repair instruction back into the same Clarify provider session.
+4. The repair instruction must require the provider to repair the same card and the same tree node.
+5. The provider must not change the question, change branches or ask a new question during format repair.
+6. Format repair is a protocol repair loop, not a business task loop.
+7. The default repair budget should be small, for example 2 or 3 attempts per card.
+8. If the provider still cannot emit a valid card, Clarify stops with `clarify_format_failed` and preserves hidden evidence.
+9. The user sees a calm Clarify failure or retry state, not JSON parse details or schema diagnostics.
+
+Timeline event split:
+
+1. `provider_text_delta`: visible.
+2. `card_candidate_received`: hidden.
+3. `card_validation_failed`: hidden.
+4. `card_repair_prompt_sent`: hidden.
+5. `clarification_card_ready`: visible.
+6. `clarification_answer_recorded`: visible.
+7. `clarify_format_failed`: visible summary plus hidden diagnostics.
+
+Provider prompt contract requirement:
+
+1. When the provider needs a user decision, it should briefly explain the current decision point in natural language if useful.
+2. It must then emit exactly one structured clarification card candidate for the active tree node.
+3. If Thoth reports a format repair, the provider must repair only the same candidate.
+4. The provider must not reveal card validation errors, JSON issues or repair mechanics to the user.
+5. The provider must not apologize to the user for internal schema failures.
+
+### 10.3 `PlanExec` Contract
 
 Purpose:
 
-1. Convert frozen task into a concrete execution plan.
-2. Identify execution risks and required evidence.
-3. Preserve frozen goal, constraints and acceptance.
+1. Convert frozen task and Clarify handoff into a concrete execution plan.
+2. Execute the plan in the same provider session.
+3. Use provider-native plan mode when available.
+4. Identify execution risks and required evidence.
+5. Preserve frozen goal, constraints and acceptance.
+6. Produce diff, logs, receipts and other artifacts.
 
 Input packet:
 
 1. Frozen task.
 2. Acceptance spec.
-3. Workspace facts.
-4. Prior review findings if retry.
+3. Clarify handoff packet.
+4. Workspace facts.
+5. Permission policy.
+6. Workspace baseline.
+7. Prior review findings if retry.
+8. Failure focus if retry.
 
 Output packet:
 
 1. Execution plan.
-2. Validation plan.
-3. Risk notes.
-4. Required artifacts.
+2. Execution report.
+3. Validation plan.
+4. Changed files summary.
+5. Evidence artifacts.
+6. Validator receipts if run.
+7. Known risks.
+8. Provider question auto-answer log.
 
 Hard stops:
 
 1. Do not change goal.
 2. Do not change acceptance.
-3. Return `needs_input` if frozen authority is insufficient.
+3. Do not declare final success.
+4. Do not exceed permission policy.
+5. Do not modify outside workspace without approval.
+6. Do not overwrite user dirty changes.
+7. If provider asks a clarification question after contract freeze, answer from frozen contract or the first recommended option and record it.
+8. Do not auto-approve provider permission requests.
+9. If frozen authority is truly insufficient, stop with a blocked status instead of inventing a new product decision.
 
-### 10.4 `Execute` Contract
-
-Purpose:
-
-1. Execute the plan.
-2. Produce diff, logs, receipts and other artifacts.
-3. Report what was done and what evidence exists.
-
-Input packet:
-
-1. Frozen task.
-2. Plan.
-3. Workspace baseline.
-4. Permission policy.
-5. Prior retry hints if present.
-
-Output packet:
-
-1. Execution report.
-2. Changed files summary.
-3. Evidence artifacts.
-4. Validator receipts if run.
-5. Known risks.
-
-Hard stops:
-
-1. Do not declare final success.
-2. Do not exceed permission policy.
-3. Do not modify outside workspace without approval.
-4. Do not overwrite user dirty changes.
-
-### 10.5 `Review` Contract
+### 10.4 `Review` Contract
 
 Purpose:
 
@@ -674,11 +849,12 @@ Input packet:
 
 1. Frozen task.
 2. Acceptance spec.
-3. Plan.
-4. Execution report.
+3. Clarify handoff packet.
+4. PlanExec report.
 5. Diff summary.
 6. Logs and receipts.
 7. Artifact summaries.
+8. Provider question auto-answer log.
 
 Output packet:
 
@@ -705,13 +881,14 @@ Unified driver interface should expose:
 4. `streamEvents`
 5. `streamHistory`
 6. `respondPermission`
-7. `interrupt`
-8. `close`
-9. `fetchCatalog`
-10. `describeCapabilities`
-11. `materializeSkills`
-12. `materializeMcp`
-13. `materializeSystemContext`
+7. `respondQuestion`
+8. `interrupt`
+9. `close`
+10. `fetchCatalog`
+11. `describeCapabilities`
+12. `materializeSkills`
+13. `materializeMcp`
+14. `materializeSystemContext`
 
 Capability matrix:
 
@@ -726,10 +903,12 @@ Capability matrix:
 9. `supports_import_sessions`
 10. `supports_background_safe`
 11. `supports_structured_output`
-12. `requires_file_context`
-13. `skill_path_strategy`
-14. `mcp_injection_strategy`
-15. `permission_model`
+12. `supports_native_plan_mode`
+13. `supports_question_events`
+14. `requires_file_context`
+15. `skill_path_strategy`
+16. `mcp_injection_strategy`
+17. `permission_model`
 
 Driver rules:
 
@@ -741,6 +920,22 @@ Driver rules:
 6. Drivers do not own route decisions.
 7. Provider settings come from App settings and workspace policy.
 8. Provider capability differences surface through diagnostics/settings, not normal chat.
+9. Drivers may start, resume and observe provider sessions through provider-supported harness interfaces.
+10. Drivers must not implement raw OpenAI, Anthropic or other model API execution as a replacement for a provider session.
+11. Drivers stream provider-visible text, tool calls, question events, permission events and completion events to the daemon as they happen.
+12. Drivers must distinguish provider question events from provider permission events.
+13. Drivers must expose native plan mode when the provider supports it.
+
+Execution boundary:
+
+1. Thoth is not the harness.
+2. The driver layer is the only boundary where Thoth touches AI execution.
+3. Allowed execution surfaces are ACP adapter sessions, harness runtime sessions, app-server sessions, official harness SDK/control surface sessions and local harness CLI sessions.
+4. Forbidden shortcuts include calling general model inference APIs directly from `packages/core` or `packages/daemon` to replace a missing provider.
+5. A raw LLM completion cannot be treated as a Thoth role session unless it is mediated by an approved harness/provider adapter.
+6. Provider-native conversation state cannot become task authority.
+7. Thoth may pass structured prompt contracts, context packets, role instructions, acceptance criteria and permission decisions into provider sessions.
+8. Provider owns AI execution; Thoth owns task truth, lifecycle state, evidence and handoff records.
 
 ## 12. ACP Support
 
@@ -778,7 +973,9 @@ Main path:
 2. Preserve native session handle.
 3. Stream model output, tool calls, permission requests and completion events.
 4. Map Claude permission requests into Thoth permission cards.
-5. Support role-specific session creation and resume.
+5. Map Claude `AskUserQuestion` into Thoth provider-question cards.
+6. Support role-specific session creation and resume.
+7. Support provider-native plan mode for PlanExec when available.
 
 Materialization:
 
@@ -793,6 +990,8 @@ Driver must expose:
 3. Permission support.
 4. MCP support.
 5. Catalog or availability status.
+6. Question event support.
+7. Native plan mode support when available.
 
 ## 14. Codex Driver
 
@@ -803,6 +1002,7 @@ Main path:
 3. Stream app-server notifications into Thoth timeline events.
 4. Map Codex questions and permission events into Thoth cards.
 5. Support role-specific session creation and resume.
+6. Support Codex plan mode for PlanExec when available.
 
 Materialization:
 
@@ -819,8 +1019,25 @@ Driver must expose:
 4. Structured event support.
 5. Permission support.
 6. Known timeout diagnostics.
+7. Question event support.
+8. Native plan mode support when available.
 
 ## 15. Permission And Approval System
+
+Provider question sources:
+
+1. Codex `request_user_input`.
+2. Claude `AskUserQuestion`.
+3. ACP or provider-native question events.
+4. Clarify role generated golden questions.
+
+Provider question policy:
+
+1. During Clarify, provider questions become user-facing clarification cards.
+2. During Quick passthrough, provider questions are forwarded like the native provider would ask them.
+3. During PlanExec after contract freeze, provider clarification questions are auto-answered from the frozen contract or the first recommended option.
+4. Auto-answered questions are recorded in timeline and attempt evidence.
+5. Provider questions do not grant permission to run risky tools.
 
 Permission sources:
 
@@ -869,20 +1086,20 @@ MVP rule:
 
 ## 16. Review And Attempt Control
 
-Formal task shape:
+Loop task shape:
 
-1. Applies only to `formal_task`.
+1. Applies only to `loop`.
 2. Clarify creates the task-ready contract.
 3. Contract freeze confirms the task before execution.
-4. Each Attempt runs Plan -> Execute -> Review.
+4. Each Attempt runs PlanExec -> Review.
 5. Passed Review commits and reports.
 6. Failed Review creates another attempt or blocks.
 
 Review policy:
 
 1. Review uses same provider by default but independent role runtime.
-2. Review is adversarial against Execute.
-3. Review may inspect execution report, diff, logs, receipts and artifacts.
+2. Review is adversarial against PlanExec.
+3. Review may inspect PlanExec report, diff, logs, receipts and artifacts.
 4. Review does not modify files.
 5. Review returns verdict and retry hint.
 
@@ -903,10 +1120,13 @@ Retry policy:
 
 Attempt exhaustion:
 
-1. Default max failed attempts: 3.
-2. After exhaustion, task becomes blocked.
-3. Daemon preserves diff, evidence and state.
-4. Report includes failure cause, repeated blockers, preserved evidence and next options.
+1. `one_plan_one_do` allows no retry after the first failed attempt.
+2. `light` allows only small, bounded retry behavior.
+3. `balanced` defaults to max 3 failed attempts.
+4. `run_until_stopped` has no normal attempt-count exhaustion and continues until user stop, while still respecting permission, safety, resource, provider availability and non-repeating-strategy hard stops.
+5. After exhaustion or hard stop, task becomes blocked.
+6. Daemon preserves diff, evidence and state.
+7. Report includes failure cause, repeated blockers, preserved evidence and next options.
 
 ## 17. Memory And Context Packets
 
@@ -931,6 +1151,9 @@ Context packet rules:
 3. Context packet is the minimum sufficient input for the role.
 4. Context packet includes forbidden assumptions.
 5. Context packet links to artifacts rather than pasting all logs.
+6. Clarify handoff packet is the authoritative input to PlanExec after contract freeze.
+7. PlanExec should not recover missing product decisions by asking the user again after contract freeze.
+8. Review receives both Clarify handoff and PlanExec evidence.
 
 Example packet fields:
 
@@ -944,6 +1167,10 @@ Example packet fields:
 8. `forbidden_assumptions`
 9. `required_evidence`
 10. `artifact_refs`
+11. `clarify_discussion_summary`
+12. `user_decisions`
+13. `auto_answer_policy`
+14. `provider_question_auto_answers`
 
 ## 18. Multi-Device Sync
 
@@ -984,13 +1211,13 @@ CLI:
 
 1. Advanced local entry.
 2. Uses the same daemon protocol.
-3. Can force routing mode when explicitly requested.
+3. Can pass explicit task mode when requested.
 
 Claude/Codex/ACP:
 
 1. Host surfaces call the same daemon authority.
 2. Host surfaces do not own lifecycle semantics.
-3. Host surfaces can create `answer`, `direct_action` or `formal_task` inputs through the same route layer.
+3. Host surfaces can create `quick` or `loop` inputs through the same route layer.
 
 ## 19. E2EE WebSocket Relay
 
@@ -1129,16 +1356,16 @@ Reference files and extracted lessons:
     - New Thoth should avoid over-expanding this in MVP and keep one local directory as one workspace.
 14. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/service/task.go`
     - Shows quick-create task context, enqueue, completion and failure inbox handling.
-    - New Thoth should absorb the idea that short natural-language work can be queued and recorded without creating a full formal issue/task.
+    - New Thoth should absorb the idea that short natural-language work can be queued and recorded without creating a full loop task.
 15. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/handler/issue.go`
     - Shows quick-create request validation, actor resolution and immediate 202 response.
-    - New Thoth should keep server-side trust boundaries for direct action, but should not require the user to pick an actor.
+    - New Thoth should keep server-side trust boundaries for quick actions, but should not require the user to pick an actor.
 16. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/handler/squad_briefing.go`
     - Shows squad leader briefing, routing protocol and no-action evaluation.
     - New Thoth should translate this into an internal private-secretary Router, not a visible squad UI.
 17. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/daemon/execenv/context.go`
     - Shows distinct context rendering for normal task, quick-create and run-only autopilot.
-    - New Thoth should keep `answer`, `direct_action` and `formal_task` packets distinct.
+    - New Thoth should keep `quick` requests and `loop` tasks distinct, while allowing `QuickOutcome` to separate answer results, action results and loop suggestions internally.
 18. `/mnt/cfs/5vr0p6/yzy/harness/multica/docs/product-overview.md`
     - Shows the product distinction between issue-backed work and run-only background work.
     - New Thoth should use user-facing words such as 直接处理 and 正式任务, not Multica's internal mode names.
@@ -1216,25 +1443,30 @@ Reference files and extracted lessons:
 2. Define protocol schemas and SQLite authority store.
 3. Implement daemon bootstrap.
 4. Implement workspace registry plus global/workspace conversations.
-5. Implement Router and context resolution.
-6. Implement `answer`, `direct_action` and `formal_task` route inputs.
-7. Implement fast-path `answer` latency guard.
-8. Implement formal task draft, confirmation and queue.
-9. Implement Clarify role quality gate and golden-question card path.
-10. Implement Attempt plus Plan/Execute/Review role runtime.
-11. Implement `failure_focus` and aggressive attempt policy.
-12. Implement ActionRecord and direct action execution path.
-13. Implement evidence artifacts, approval requests and full access mode.
-14. Implement task branch/worktree dirty baseline and Thoth-generated diff commit policy.
-15. Implement desktop app daemon lifecycle management.
-16. Implement TUI single-workspace shell.
-17. Implement CLI advanced entry.
-18. Implement Claude direct driver.
-19. Implement Codex app-server driver.
-20. Implement E2EE relay prototype.
-21. Implement mobile pairing and read/write online flows.
-22. Implement ACP full adapter and conformance tests.
-23. Implement report view and memory candidate write after Review.
+5. Implement provider-backed Router and context resolution.
+6. Implement `quick` and `loop` route inputs.
+7. Implement provider stream timeline plumbing before hiding any provider output behind summaries.
+8. Implement fast-path `quick + dont_bother_me` provider passthrough and latency guard for `hi`-level inputs.
+9. Implement optional quick Clarify path.
+10. Implement loop task draft, confirmation and queue.
+11. Implement read-only Clarify role quality gate and golden-question card path.
+12. Implement Clarify handoff packet and contract freeze.
+13. Implement PlanExec role runtime with provider-native plan mode.
+14. Implement Review role runtime.
+15. Implement provider question auto-answer policy for PlanExec after contract freeze.
+16. Implement `failure_focus` and aggressive attempt policy.
+17. Implement ActionRecord and quick action execution path.
+18. Implement evidence artifacts, approval requests and full access mode.
+19. Implement task branch/worktree dirty baseline and Thoth-generated diff commit policy.
+20. Implement desktop app daemon lifecycle management.
+21. Implement TUI single-workspace shell.
+22. Implement CLI advanced entry.
+23. Implement Claude direct driver.
+24. Implement Codex app-server driver.
+25. Implement E2EE relay prototype.
+26. Implement mobile pairing and read/write online flows.
+27. Implement ACP full adapter and conformance tests.
+28. Implement report view and memory candidate write after Review.
 
 MVP priority note:
 
@@ -1257,20 +1489,24 @@ Protocol tests:
 Daemon tests:
 
 1. Workspace add/list/remove.
-2. Global chat high-confidence workspace resolution.
+2. Global chat provider-backed high-confidence workspace resolution.
 3. Global chat ambiguous workspace golden question.
 4. High-confidence workspace resolution proceeds without defensive confirmation.
-5. `answer` route does not create action or `formal_task`.
-6. `answer` route returns `hi`-level inputs within `10s`.
-7. `direct_action` route creates ActionRecord.
-8. Direct action failure can suggest `formal_task` upgrade.
-9. Draft Task creation.
-8. Clarification card lifecycle.
-9. Contract freeze confirmation.
-10. Queue ordering.
-11. Single write Execute lock per workspace.
-12. Stop task preserves state.
-13. Timeline cursor catch-up.
+5. `quick` answer result does not create an ActionRecord or task.
+6. `quick + dont_bother_me` behaves as provider passthrough and does not run Clarify.
+7. `quick` returns `hi`-level inputs within `10s` using a provider-backed session when semantic response is needed.
+8. `quick` action result creates ActionRecord when an action is proposed or executed.
+9. `quick` action failure can suggest `loop` upgrade.
+10. Draft Task creation from `loop`.
+11. Clarification card lifecycle.
+12. Clarify read-only guard blocks file mutations.
+13. Clarify handoff packet is persisted.
+14. Contract freeze confirmation.
+15. Queue ordering.
+16. Single write PlanExec lock per workspace.
+17. Stop task preserves state.
+18. Timeline cursor catch-up.
+19. Provider stream events are appended before broadcast.
 
 Driver tests:
 
@@ -1282,6 +1518,11 @@ Driver tests:
 6. ACP permission mapping.
 7. Capability matrix snapshots.
 8. Provider error normalization.
+9. Claude `AskUserQuestion` maps to provider-question event.
+10. Codex `request_user_input` maps to provider-question event.
+11. PlanExec provider-question auto-answer returns the first recommended option.
+12. Permission requests are not auto-approved by question auto-answer policy.
+13. Native plan mode is enabled for PlanExec when the provider supports it.
 
 Git tests:
 
@@ -1290,9 +1531,9 @@ Git tests:
 3. Commit only Thoth-generated diff.
 4. Overlap with user dirty hunk blocks and asks.
 5. No auto push.
-6. `formal_task` writes happen on task branch or worktree.
-7. Git push direct action requires approval in normal mode.
-8. Git push direct action skips approval but records evidence in full access mode.
+6. `loop` writes happen on task branch or worktree.
+7. Git push quick action requires approval in normal mode.
+8. Git push quick action skips approval but records evidence in full access mode.
 
 Review tests:
 
@@ -1300,21 +1541,23 @@ Review tests:
 2. Review passes with sufficient evidence.
 3. Review fails with missing validator or artifact.
 4. Failed Review creates the next Attempt when strategy changes.
-5. 3 failed attempts block and report.
+5. `balanced` default 3 failed attempts block and report.
 6. Reviewer cannot mutate files.
 7. Failed Review records `failure_focus`.
 8. Empty strategy change blocks instead of retrying.
 9. Repeating the same failed action blocks instead of manufacturing progress.
+10. `one_plan_one_do` blocks after one failed Review.
+11. `run_until_stopped` continues until user stop or hard stop.
 
 UI tests:
 
 1. Desktop starts daemon when missing.
 2. Desktop global chat can bind explicit workspace.
-3. Desktop global chat can bind one high-confidence implicit workspace.
+3. Desktop global chat can bind one provider-backed high-confidence implicit workspace.
 4. Desktop global chat asks one golden question for ambiguous workspace.
 5. TUI has no global home.
 6. TUI adopts current directory after confirmation.
-7. Mobile online can create direct action or `formal_task` for existing workspace.
+7. Mobile online can create `quick` or `loop` for existing workspace.
 8. Mobile offline is read-only.
 9. Pending cards render consistently across desktop, mobile and TUI.
 10. CLI, Claude, Codex and ACP surface the same action/task status.

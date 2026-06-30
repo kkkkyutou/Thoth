@@ -8,7 +8,7 @@ Intended responsibilities:
 2. Workspace attach helper.
 3. Pairing helper.
 4. Diagnostics.
-5. Scriptable answer, direct-action and formal-task entrypoints.
+5. Scriptable quick and loop entrypoints.
 6. Scriptable read-only task, status and report commands.
 
 Current status: skeleton only. No implementation exists in this package yet.

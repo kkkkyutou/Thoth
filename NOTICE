@@ -1,0 +1,36 @@
+New Thoth
+Copyright (C) SeeleAI
+
+## License
+
+New Thoth is licensed under the GNU Affero General Public License version 3
+or later: AGPL-3.0-or-later.
+
+The active repository is a new implementation line. The old Thoth plugin
+runtime is archived and is not maintained on this branch.
+
+## Upstream Implementation Seeds
+
+This repository contains tracked implementation seed material derived from:
+
+- Project: Paseo
+- Repository: https://github.com/getpaseo/paseo
+- Upstream commit: 5fc53c576ef0d4dee55455ccc95660703f71b892
+- Upstream license: AGPL-3.0
+- Upstream copyright: upstream contributors as recorded in that project
+
+The seed material is imported as implementation reference and migration
+substrate for New Thoth. It is intentionally allowed to be incomplete,
+unwired and temporarily non-compiling until future migration tasks digest it.
+
+The raw upstream cache is local-only and ignored at:
+
+    .agent-os/upstreams/paseo/
+
+It is not part of the tracked source tree and is not project authority.
+
+## Excluded Material
+
+Voice, speech, dictation and audio-specific upstream material is excluded from
+the active raw cache and from tracked implementation seeds. New Thoth does not
+target voice features in the current MVP line.

@@ -21,15 +21,18 @@
 
 ```text
 Purpose:
-- Classify user input as answer, direct_action, or formal_task.
-- Resolve workspace context with private-secretary judgment.
+- Recommend or validate quick or loop when semantic judgment is needed.
+- Resolve workspace context with private-secretary judgment when it is not explicit.
 - Ask one golden question only when ambiguity materially affects scope, risk, or authority.
 - Select provider capability without exposing provider choice in ordinary chat.
+- Respect explicit user-selected task_mode.
 
 Input packet:
 - user_message
 - conversation_scope
-- routing_mode
+- user_selected_task_mode
+- clarification_strength
+- loop_strength
 - recent_context_summary
 - workspace_candidates
 - memory_summary
@@ -44,22 +47,25 @@ Output packet:
 - action_or_task_recommendation
 - permission_preflight
 - evidence_plan_summary
+- mode_mismatch_warning
 
 Hard stops:
 - Do not write to a low-confidence workspace.
 - Do not expose internal agent, squad, provider, or role choices as user work.
-- Do not turn a clear short action into a formal task merely to simplify implementation.
+- Do not turn a clear quick request into loop merely to simplify implementation.
 - Do not ask the user to provide facts Thoth can safely discover.
+- Do not pretend to be a local deterministic classifier; this contract only runs inside a provider-backed session.
 
 Evidence requirements:
 - Record why the route was chosen.
 - Record unresolved ambiguity when asking.
 - Record context signals used for high-confidence implicit workspace resolution.
+- Record whether the decision came from explicit user mode or provider recommendation.
 
 Forbidden behavior:
 - Defensive confirmation loops for obvious context.
 - Guessing workspace on low confidence.
-- Treating every prompt as a task.
+- Treating every prompt as a loop task.
 ```
 
 ## 3. Clarify Contract Seed
@@ -68,7 +74,9 @@ Forbidden behavior:
 Purpose:
 - Compile vague intent into goal, non-goals, constraints, assumptions, risks, and acceptance.
 - Ask only material golden questions.
-- Prepare a contract freeze proposal for formal_task only.
+- Apply the selected clarification strength to both quick and loop.
+- For quick, produce at most the material question, safe default, permission gap, or proceed decision needed before answering or acting.
+- For loop, prepare a contract freeze proposal.
 
 Input packet:
 - user_message
@@ -76,6 +84,8 @@ Input packet:
 - workspace_summary
 - relevant_memory
 - draft_task_state
+- selected_task_mode
+- clarification_strength
 - known_constraints
 - known_acceptance_signals
 
@@ -88,12 +98,15 @@ Output packet:
 - acceptance_spec
 - clarification_cards
 - contract_freeze_proposal
+- quick_clarification_result
 
 Hard stops:
 - Do not invent high-impact user decisions.
 - Do not mark a task ready when acceptance is unresolved.
 - Do not ask exhaustive boundary questions.
 - Do not push agent-discoverable facts back to the user.
+- Do not create a loop task from quick without an accepted mode switch.
+- Do not show a contract freeze card for quick.
 
 Evidence requirements:
 - Each question must name the decision it changes.
@@ -242,7 +255,10 @@ Purpose:
 - Ensure every new attempt aggressively solves the previous unresolved problem.
 
 Rules:
-- Default maximum failed attempts: 3.
+- `no_loop` allows no retry after the first failed attempt.
+- `light` allows only small, bounded retry behavior.
+- `balanced` defaults to maximum 3 failed attempts.
+- `endless` has no normal attempt-count exhaustion and runs until user stop, while still obeying permission, safety, resource, provider availability, and non-repeating-strategy hard stops.
 - A new attempt is allowed only when it has a non-repeating failure_focus.
 - If the same failure repeats without a changed strategy, block and report.
 - If review fails because evidence is missing, the next attempt prioritizes evidence production or concrete root cause capture.

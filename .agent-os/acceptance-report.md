@@ -10,7 +10,7 @@ Scope:
 
 1. Old runtime path deletion.
 2. New package skeleton creation.
-3. Root metadata and license reset.
+3. Root metadata and original reset license verification.
 4. Recovery document rewrite.
 5. Local commit creation.
 
@@ -39,6 +39,36 @@ Evidence:
 Current result:
 
 The reset structure and metadata checks passed. Full commit evidence is recorded in `run-log.md`.
+
+Note:
+
+`NTH-AC-003` was later superseded from `GPL-3.0-only` to `AGPL-3.0-or-later` by `NTH-CD-017`. See `NTH-EV-002` for the active license/import evidence.
+
+### `NTH-EV-002` AGPL And Upstream Seed Import Verification
+
+Status: `in_progress`
+
+Scope:
+
+1. License switch to `AGPL-3.0-or-later`.
+2. Upstream source verification and raw cache exclusion.
+3. Tracked implementation seed import.
+4. Git hygiene and package metadata checks.
+
+Required evidence:
+
+1. Remote HEAD check for the upstream source.
+2. Raw cache path ignored by git.
+3. Voice/audio/speech/dictation exclusion checks.
+4. Node JSON parse and license metadata checks for root and package `package.json` files.
+5. `npm install --package-lock-only --ignore-scripts`.
+6. Tracked seed directory existence checks.
+7. Large file and secret/path hygiene checks.
+8. `git diff --check`.
+
+Current result:
+
+In progress. Do not treat implementation seeds as runnable product behavior.
 
 ## Failed Or Not-Yet-Passed Checks
 

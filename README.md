@@ -7,10 +7,10 @@ The old Claude Code / Codex plugin runtime has been archived and is no longer ma
 ## Current Status
 
 - Current branch focus: New Thoth reset and MVP architecture.
-- Current implementation: `npm workspaces` skeleton under `packages/`.
-- Current license: `GPL-3.0-only`.
+- Current implementation: `npm workspaces` skeleton under `packages/`, plus imported implementation seeds that are not wired into runtime yet.
+- Current license: `AGPL-3.0-or-later`.
 - Copyright holder: `SeeleAI`.
-- Current public surface: documentation and package boundaries only.
+- Current public surface: documentation, package boundaries, and non-runnable implementation seed directories only.
 - Old plugin archive release: <https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
 - Old plugin archive branch: `archive/main-20260627`
 
@@ -42,7 +42,7 @@ packages/
   cli/        scriptable advanced client
 ```
 
-All package directories are placeholders. They intentionally contain no business implementation yet.
+The formal `src/` directories are still placeholders. Some packages may contain `_paseo/` implementation seed directories. Those seed directories are imported reference material for future migration; they are expected to contain broken imports or types until a later implementation task digests them.
 
 ## Design Authority
 
@@ -61,3 +61,5 @@ The old long-form migration note remains available at `.agent-os/designs/new-tho
 This checkout is not a working product. Do not install it as the old plugin runtime. Do not expect `thoth`, `/thoth:*`, or `$thoth` commands to exist from this branch.
 
 Future implementation should follow `.agent-os/project-index.md`, `.agent-os/todo.md`, and the canonical design documents above.
+
+See [`NOTICE`](NOTICE) and [`.agent-os/upstream-transplant.md`](.agent-os/upstream-transplant.md) for license and upstream seed provenance.

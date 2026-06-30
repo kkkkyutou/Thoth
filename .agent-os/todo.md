@@ -10,15 +10,20 @@
    - Related: `NTH-MS-005`, `NTH-REQ-007`
 4. `NTH-TD-006` `[backlog]`: Design E2EE relay deployment path for Cloudflare prototype and seeles.ai hosted/self-hosted service.
    - Related: `NTH-MS-005`, `NTH-REQ-006`
+5. `NTH-TD-007` `[backlog]`: Design the Paseo-like release and packaging pipeline for New Thoth.
+   - Scope: tag-triggered GitHub Actions, desktop installer builds for macOS/Linux/Windows, Android APK builds through Expo/EAS, GitHub Release upload behavior, web/app deploy target, relay deploy target, signing/secrets requirements and iOS TestFlight/App Store distribution policy.
+   - Related: `NTH-MS-006`, `NTH-REQ-010`, `NTH-CD-011`
 
 ## Ready
 
-1. `NTH-TD-002` `[ready]`: Design the first implementation slice for Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
+1. `NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
    - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`
 
 ## Doing
 
-None.
+1. `NTH-TD-008` `[doing]`: Adopt AGPL policy and import upstream implementation seed material into ignored raw cache plus tracked `_paseo/` seed directories.
+   - Scope: license metadata, NOTICE, upstream provenance ledger, ignored raw cache, tracked package-local seed directories, no Multica source, no voice/audio/speech/dictation material, no runtime wiring.
+   - Related: `NTH-MS-007`, `NTH-REQ-015`, `NTH-CD-017`
 
 ## Blocked
 
