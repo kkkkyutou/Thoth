@@ -26,9 +26,9 @@ describe("path equivalence", () => {
   });
 
   test("checks Windows root containment case-insensitively", () => {
-    expect(
-      isPathInsideRoot("C:\\Thoth\\node_modules", "c:/thoth/node_modules/@thoth/daemon"),
-    ).toBe(true);
+    expect(isPathInsideRoot("C:\\Thoth\\node_modules", "c:/thoth/node_modules/@thoth/daemon")).toBe(
+      true,
+    );
     expect(isPathInsideRoot("C:\\Thoth\\node_modules", "C:\\Thoth\\node_modules-other")).toBe(
       false,
     );

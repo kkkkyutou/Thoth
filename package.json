@@ -3,11 +3,49 @@
   "version": "0.0.0",
   "private": true,
   "description": "New Thoth task control-plane monorepo skeleton",
-  "author": "SeeleAI",
   "license": "AGPL-3.0-or-later",
-  "packageManager": "npm@11.9.0",
-  "type": "module",
+  "author": "SeeleAI",
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "type": "module",
+  "scripts": {
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "lint:foundation": "oxlint packages/app/highlight/src packages/relay/src packages/protocol/src packages/client/src",
+    "build:highlight": "npm --prefix packages/app/highlight run build",
+    "build:relay": "npm run build --workspace=@thoth/relay",
+    "build:protocol": "npm run build --workspace=@thoth/protocol",
+    "build:client": "npm run build:relay && npm run build:protocol && npm run build --workspace=@thoth/client",
+    "build:foundation": "npm run build:highlight && npm run build:relay && npm run build:protocol && npm run build:client",
+    "typecheck:highlight": "npm --prefix packages/app/highlight run typecheck",
+    "typecheck:relay": "npm run typecheck --workspace=@thoth/relay",
+    "typecheck:protocol": "npm run typecheck --workspace=@thoth/protocol",
+    "typecheck:client": "npm run typecheck --workspace=@thoth/client",
+    "typecheck:foundation": "npm run typecheck:highlight && npm run typecheck:relay && npm run typecheck:protocol && npm run typecheck:client",
+    "test:highlight": "npm --prefix packages/app/highlight run test",
+    "test:relay": "npm run test --workspace=@thoth/relay",
+    "test:protocol": "npm run test --workspace=@thoth/protocol",
+    "test:client": "npm run test --workspace=@thoth/client",
+    "test:foundation": "npm run test:highlight && npm run test:relay && npm run test:protocol && npm run test:client",
+    "validate:repo": "node scripts/validate-repo.mjs",
+    "check:foundation": "npm run validate:repo && npm run format:check && npm run lint:foundation && npm run build:foundation && npm run typecheck:foundation && npm run test:foundation",
+    "doctor:android": "node scripts/doctor-android.mjs",
+    "setup:android-toolchain": "node scripts/setup-android-toolchain.mjs",
+    "package:android:debug-apk": "node scripts/package-android-debug-apk.mjs",
+    "package:ios:prebuild": "node scripts/package-ios-build.mjs --prebuild",
+    "package:ios:build": "node scripts/package-ios-build.mjs --build",
+    "package:local": "npm run package:android:debug-apk"
+  },
+  "devDependencies": {
+    "@types/node": "24.6.0",
+    "@types/ws": "^8.5.14",
+    "oxfmt": "0.46.0",
+    "oxlint": "1.61.0",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.6"
+  },
+  "packageManager": "npm@11.9.0"
 }

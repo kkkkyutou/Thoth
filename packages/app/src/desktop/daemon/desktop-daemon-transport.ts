@@ -1,7 +1,4 @@
-import type {
-  DaemonTransport,
-  DaemonTransportFactory,
-} from "@thoth/client/internal/daemon-client";
+import type { DaemonTransport, DaemonTransportFactory } from "@thoth/client/internal/daemon-client";
 import type { LocalTransportTarget } from "./desktop-daemon";
 import {
   defaultLocalDaemonTransportRpc,

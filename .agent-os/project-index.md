@@ -3,11 +3,11 @@
 ## Current Truth
 
 1. Objective: `NTH-OBJ-001`
-2. Top next action: `NTH-TD-010`
-3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-006`
+2. Top next action: `NTH-TD-002`
+3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
 4. Active blockers: None
 5. Current branch: `port/from-old-thoth-plugin`
-6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees; expected broken and not runnable
+6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; foundation gate and Android Debug APK packaging pass, but New Thoth product behavior is not implemented
 
 ## Objective Summary
 
@@ -19,11 +19,12 @@
 2. `NTH-WS-002` `[active]`: Establish the TypeScript / Node monorepo skeleton.
 3. `NTH-WS-003` `[active]`: Design the clarify-to-task and aggressive loop runtime before implementation.
 4. `NTH-WS-004` `[active]`: Keep harness, relay, mobile, desktop, TUI and ACP references current enough for implementation.
-5. `NTH-WS-006` `[active]`: Preserve upstream provenance while converting imported material into New Thoth formal source.
+5. `NTH-WS-005` `[active]`: Maintain packaging and release infrastructure without publishing.
+6. `NTH-WS-006` `[active]`: Preserve upstream provenance while converting imported material into New Thoth formal source.
 
 ## Top Next Action
 
-`NTH-TD-010` `[ready]`: Run dependency and compile triage on the promoted source substrate without changing New Thoth product goals.
+`NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
 
 ## Active Blockers
 
@@ -43,6 +44,8 @@ None.
 10. `NTH-EV-002`: AGPL and upstream seed import verification passed for metadata, ignored raw cache, seed directories, path exclusions, large-file hygiene, secret-like scan, package-lock refresh and `git diff --check`.
 11. `NTH-CD-018`: User approved promoting all tracked `_paseo` implementation seeds into formal package source trees, deleting `_paseo`, preserving the 10 package boundary, keeping `packages/app/highlight` nested, refreshing the lockfile, and accepting expected broken compile.
 12. `NTH-EV-003`: `_paseo` promotion verification passed for structure, metadata, lockfile refresh, ignored raw cache, package/config voice-residue scan, generated/cache scan, package-boundary scan, secret-like scan and `git diff --check`.
+13. `NTH-CD-019`: First-day development infrastructure is locked: Node `24.14.0`, npm `11.9.0`, root-script gates, `oxfmt`/`oxlint`, foundation packages, stable install policy, local Android Debug APK, Linux-safe iOS scripts, package AGENTS contracts and no push/publish/GitHub Actions in this round.
+14. `NTH-EV-004`: First-day development infrastructure verification passed: `npm install`, `npm run check:foundation`, Android doctor/toolchain/APK, iOS Linux behavior, AGENTS symlink coverage, generated path hygiene and `git diff --check`.
 
 ## Read Next
 

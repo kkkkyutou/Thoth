@@ -178,10 +178,7 @@ import {
   type TerminalProfileInput,
 } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import {
-  getTerminalProfileIcon,
-  resolveTerminalProfiles,
-} from "@thoth/protocol/terminal-profiles";
+import { getTerminalProfileIcon, resolveTerminalProfiles } from "@thoth/protocol/terminal-profiles";
 import { getProviderIcon } from "@/components/provider-icons";
 import {
   createWorkspaceFileTabTarget,

@@ -78,10 +78,7 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 import type { Theme } from "@/styles/theme";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import {
-  getTerminalProfileIcon,
-  resolveTerminalProfiles,
-} from "@thoth/protocol/terminal-profiles";
+import { getTerminalProfileIcon, resolveTerminalProfiles } from "@thoth/protocol/terminal-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import type { TerminalProfileInput } from "@/screens/workspace/terminals/use-workspace-terminals";
 import { ProfileIcon, usePinnedLaunchers } from "@/workspace-pins/launch";

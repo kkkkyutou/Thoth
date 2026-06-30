@@ -1,6 +1,8 @@
 {
   "name": "@thoth/highlight",
   "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
   "files": [
     "dist",
     "!dist/**/*.map"
@@ -19,12 +21,12 @@
     "access": "public"
   },
   "scripts": {
-    "clean": "node ../../scripts/clean-package-dist.mjs",
+    "clean": "node ../../../scripts/clean-package-dist.mjs",
     "build": "tsc -p tsconfig.json --incremental false",
     "build:clean": "npm run clean && npm run build",
     "prepack": "npm run build:clean",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@codemirror/language": "^6.12.3",
@@ -50,7 +52,5 @@
   "devDependencies": {
     "typescript": "^5.9.2",
     "vitest": "^4.1.6"
-  },
-  "private": true,
-  "license": "AGPL-3.0-or-later"
+  }
 }

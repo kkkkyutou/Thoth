@@ -1,7 +1,4 @@
-import {
-  normalizeHostPort,
-  normalizeLoopbackToLocalhost,
-} from "@thoth/protocol/daemon-endpoints";
+import { normalizeHostPort, normalizeLoopbackToLocalhost } from "@thoth/protocol/daemon-endpoints";
 import {
   DirectTcpHostConnectionSchema,
   type DirectTcpHostConnection,

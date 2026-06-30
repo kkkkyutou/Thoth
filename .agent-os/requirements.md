@@ -21,6 +21,7 @@
 13. `NTH-REQ-013`: Use the locked chatbox composer controls: `+`, Provider, Mode, Clarify and Loop. Provider owns model/runtime/permission/fast settings; Clarify has five levels: `auto`, `Don't Bother Me`, `light`, `Balanced`, `deep`; Loop has five levels: `auto`, `One Plan, One Do`, `light`, `balanced`, `Run Until Stopped`; `Run Until Stopped` must be visually high-risk, high-cost and manually stopped.
 14. `NTH-REQ-014`: Use provider-native sessions for the business flow. `Quick + Don't Bother Me` is a provider passthrough path. `Loop` uses read-only Clarify, frozen contract, one PlanExec provider session with provider-native plan mode when available, and independent Review. Visible provider output must stream to clients in real time. PlanExec clarification questions after contract freeze are auto-answered from the frozen contract or first recommended option, while provider permission requests still obey permission policy.
 15. `NTH-REQ-015`: Use `AGPL-3.0-or-later` for New Thoth and allow upstream-derived implementation seed material only when provenance, license, commit SHA, exclusion policy and expected broken state are recorded. Multica source code must not be copied into this repository.
+16. `NTH-REQ-016`: Maintain first-day development infrastructure before feature work: stable npm install, root-script validation gates, foundation build/typecheck/test coverage, local Android Debug APK packaging, Linux-safe iOS script behavior, package-level agent contracts and executable development/testing/packaging/release docs.
 
 ## Acceptance Criteria
 
@@ -31,6 +32,9 @@
 5. `NTH-AC-005`: The canonical design set is present under `.agent-os/designs/`.
 6. `NTH-AC-006`: The old plugin archive release and branch are documented for traceability.
 7. `NTH-AC-007`: No document claims the current checkout provides a runnable Thoth product.
+8. `NTH-AC-008`: `npm run check:foundation` passes through repo validation, formatting, foundation lint, foundation build, foundation typecheck and foundation tests.
+9. `NTH-AC-009`: `npm run package:android:debug-apk` produces a real local Debug APK and records its absolute path, sha256 and byte size without committing the APK or generated native project.
+10. `NTH-AC-010`: Root plus all 10 packages have local `AGENTS.md` files, and every `CLAUDE.md` is a symlink to the matching `AGENTS.md`.
 
 ## Hard Constraints
 
@@ -51,6 +55,8 @@
 15. Do not stage or commit `.agent-os/upstreams/` raw upstream cache.
 16. Do not delete tracked `_paseo/` implementation seed material merely because imports, types or tests are temporarily broken.
 17. Do not include voice, audio, speech or dictation upstream material in the current MVP implementation seed.
+18. Do not rely on npm install lifecycle scripts for required toolchain setup; use explicit root scripts for native packaging/toolchain work.
+19. Do not stage or commit `.dev/`, `.agent-os/artifacts/`, generated Android/iOS native folders or APK artifacts.
 
 ## Non-Goals
 
@@ -59,3 +65,4 @@
 3. Porting old plugin commands.
 4. Preserving old 0.4.x changelog as the active product history.
 5. Maintaining the old Python package for compatibility.
+6. Creating GitHub Actions, pushing commits, publishing packages, uploading releases, running EAS cloud builds or producing a real iOS build on Linux.

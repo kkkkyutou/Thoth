@@ -2,7 +2,7 @@
 
 ## Current Architecture State
 
-Current state is promoted source substrate, not a runnable implementation.
+Current state is promoted source substrate with first-day foundation infrastructure. It is still not a runnable New Thoth product.
 
 1. Root package manager: `npm workspaces`.
 2. Runtime language direction: TypeScript / Node.
@@ -21,7 +21,9 @@ Current state is promoted source substrate, not a runnable implementation.
    - `packages/cli`
 6. Formal package source trees contain promoted upstream-derived implementation substrate.
 7. No tracked `_paseo/` directories should remain after `NTH-MS-008`.
-8. The promoted source is expected broken until dependency and compile triage.
+8. Foundation packages now have a required green gate: `packages/app/highlight`, `packages/relay`, `packages/protocol` and `packages/client`.
+9. Android Debug APK packaging is available as a local infrastructure artifact through root scripts.
+10. Daemon, broader app, desktop, CLI and drivers may still be expected-broken until their dedicated migration milestones.
 
 ## Workstreams
 
@@ -141,3 +143,19 @@ Acceptance:
 4. Formal packages keep `@thoth/*`, `private: true`, `AGPL-3.0-or-later` and version `0.0.0`.
 5. `packages/app/highlight` remains nested and does not become an 11th workspace package.
 6. Expected broken compile state is documented.
+
+### `NTH-MS-009` Development Infrastructure Gate
+
+State: `done`
+
+Goal: Establish the first-day development infrastructure that lets future agents develop from stable commands, package contracts, docs and local packaging evidence.
+
+Acceptance:
+
+1. Root `npm install` is stable under the project install policy.
+2. Root validation scripts cover package boundaries, package metadata, AGENTS/CLAUDE links, docs, install policy, generated/raw path hygiene, voice/audio config residue and secret-like content.
+3. `npm run check:foundation` passes.
+4. Android local toolchain is installed under ignored `.dev/` and `npm run package:android:debug-apk` produces a real Debug APK.
+5. iOS scripts behave truthfully on Linux by reporting the macOS/Xcode requirement.
+6. Root and all 10 packages have local agent contracts.
+7. Development, testing, packaging and release docs exist under `docs/`.

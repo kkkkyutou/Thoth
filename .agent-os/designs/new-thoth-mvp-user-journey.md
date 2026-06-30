@@ -134,8 +134,10 @@
 8. 不设置单独 Scope 按钮；用户通过 `@workspace`、`@file` 或其他 `@` 引用表达作用域。
 9. Provider 控件打开 provider/runtime 设置，包括 provider、model id、thinking strength、permission mode 和 fast mode。
 10. Mode 只有两种：
-   - `Quick`: 回答和快速动作，不进入合同冻结、Plan+Exec、Review 或 Loop。
-   - `Loop`: 正式任务，进入澄清、合同冻结、异步执行、审查和 loop。
+
+- `Quick`: 回答和快速动作，不进入合同冻结、Plan+Exec、Review 或 Loop。
+- `Loop`: 正式任务，进入澄清、合同冻结、异步执行、审查和 loop。
+
 11. Clarify 控制澄清强度，对 `Quick` 和 `Loop` 都生效。
 12. Loop 控制循环强度，只在 Mode = `Loop` 时生效；Mode = `Quick` 时灰色不可用。
 13. 如果用户不确定该选哪个模式，后续可以提供“推荐模式”能力；推荐必须来自 provider session，而不是本地规则猜测。
@@ -185,25 +187,25 @@
 9. 如果缺少关键来源，只问一个问题，例如“这周周报以哪个 workspace 为主？”。
 10. 用户输入：
 
-   ```text
-   帮我去网上搜一下关于某个技术方向的最新新闻
-   ```
+```text
+帮我去网上搜一下关于某个技术方向的最新新闻
+```
 
 11. Thoth 直接搜索、引用来源、标明日期、给出摘要和不确定性，不创建正式任务。
 12. 用户输入：
 
-   ```text
-   帮我 git push 一下
-   ```
+```text
+帮我 git push 一下
+```
 
 13. Thoth 先检查当前 workspace、branch、remote、dirty state、待 push commit 和目标远端。
 14. 如果不是 full access / 信任模式，Thoth 弹出权限卡请求批准。
 15. 如果是 full access / 信任模式，Thoth 直接执行，但仍记录检查结果和 push 证据。
 16. 用户输入：
 
-   ```text
-   把这个小文案改顺一点
-   ```
+```text
+把这个小文案改顺一点
+```
 
 17. Thoth 可以做小范围编辑并展示 diff 或修改摘要，不进入正式任务循环。
 18. 如果短动作失败原因变复杂，Thoth 不假装还在忙，而是建议切换为 `Loop`。
@@ -227,11 +229,13 @@
 9. `Quick` 不进入合同冻结流程，但 Clarify 仍然影响它是否先问一个必要问题。
 10. 澄清卡的目标不是穷举边界，而是让 Thoth 提出少量真正影响方向、风险或验收的黄金问题。
 11. Clarify 选项：
-   - `auto`: 由 provider-backed session 根据输入、workspace、风险和用户历史偏好选择澄清力度。
-   - `Don't Bother Me`: 不主动追问，尽量使用可验证默认值；遇到无法安全默认的高影响缺口时必须停下汇报。
-   - `light`: 少问，只问会明显改变方向、权限或验收的问题。
-   - `Balanced`: 平衡模式，问少数黄金问题。
-   - `deep`: 深度澄清，适合高成本、高风险、验收复杂或用户想先设计清楚的任务。
+
+- `auto`: 由 provider-backed session 根据输入、workspace、风险和用户历史偏好选择澄清力度。
+- `Don't Bother Me`: 不主动追问，尽量使用可验证默认值；遇到无法安全默认的高影响缺口时必须停下汇报。
+- `light`: 少问，只问会明显改变方向、权限或验收的问题。
+- `Balanced`: 平衡模式，问少数黄金问题。
+- `deep`: 深度澄清，适合高成本、高风险、验收复杂或用户想先设计清楚的任务。
+
 12. Clarify 对 `Quick` 和 `Loop` 都生效。
 13. Clarify 只影响 Thoth 如何组织 provider session，不是模型或 thinking strength 选择。
 14. Clarify provider session 的权限是只读。
@@ -277,11 +281,13 @@
 11. 用户可以随时打开任务详情查看当前状态。
 12. Loop 强度只在 Mode = `Loop` 时生效；Mode = `Quick` 时显示为灰色不可用。
 13. Loop 选项：
-   - `auto`: 由 provider-backed session 根据任务风险、失败模式和成本判断 loop 策略。
-   - `One Plan, One Do`: 只做一次 Plan+Exec 和一次 Review，失败后直接阻塞并汇报。
-   - `light`: 少量自动推进，更快阻塞并汇报，减少自动消耗。
-   - `balanced`: 默认有限重试，要求每轮解决上一轮未解决的问题。
-   - `Run Until Stopped`: 红色高消耗模式，会持续推进直到用户手动停止。
+
+- `auto`: 由 provider-backed session 根据任务风险、失败模式和成本判断 loop 策略。
+- `One Plan, One Do`: 只做一次 Plan+Exec 和一次 Review，失败后直接阻塞并汇报。
+- `light`: 少量自动推进，更快阻塞并汇报，减少自动消耗。
+- `balanced`: 默认有限重试，要求每轮解决上一轮未解决的问题。
+- `Run Until Stopped`: 红色高消耗模式，会持续推进直到用户手动停止。
+
 14. `Run Until Stopped` 不是无限放权；它仍受 provider availability、权限策略、安全硬停、资源上限和用户手动停止控制。
 15. 无论 loop 强度如何，每轮 loop 都必须说明上一轮没有解决什么，以及本轮如何针对该问题推进。
 
@@ -384,11 +390,12 @@
 9. 如果 `balanced` 默认 3 轮后仍未通过，Thoth 停止自动修正循环。
 10. 任务进入阻塞状态。
 11. Thoth 向用户汇报：
-   - 目标是否部分完成
-   - 未通过的具体原因
-   - 已保留的 diff 和证据
-   - 建议下一步
-   - 是否需要用户继续授权
+
+- 目标是否部分完成
+- 未通过的具体原因
+- 已保留的 diff 和证据
+- 建议下一步
+- 是否需要用户继续授权
 
 ## 18. 没有自动验收器时的人工验收体验
 

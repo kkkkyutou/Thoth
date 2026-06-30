@@ -2,10 +2,7 @@ import { useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Globe, SquarePen, SquareTerminal } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
-import {
-  getTerminalProfileIcon,
-  resolveTerminalProfiles,
-} from "@thoth/protocol/terminal-profiles";
+import { getTerminalProfileIcon, resolveTerminalProfiles } from "@thoth/protocol/terminal-profiles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import type { Theme } from "@/styles/theme";

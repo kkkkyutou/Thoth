@@ -1,10 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 
-import type {
-  ProjectCheckoutLitePayload,
-  ProjectPlacementPayload,
-} from "@thoth/protocol/messages";
+import type { ProjectCheckoutLitePayload, ProjectPlacementPayload } from "@thoth/protocol/messages";
 import { parseGitRevParsePath } from "../utils/git-rev-parse-path.js";
 import type { PersistedWorkspaceRecord } from "./workspace-registry.js";
 

@@ -8,15 +8,9 @@ const sshRemote = "git@github.com:thoth/thoth.git";
 describe("normalizeGithubRemote", () => {
   it.each([
     ["https://github.com/thoth/thoth", { owner: "thoth", repo: "thoth", host: "github.com" }],
-    [
-      "https://github.com/thoth/thoth.git",
-      { owner: "thoth", repo: "thoth", host: "github.com" },
-    ],
+    ["https://github.com/thoth/thoth.git", { owner: "thoth", repo: "thoth", host: "github.com" }],
     ["git@github.com:thoth/thoth.git", { owner: "thoth", repo: "thoth", host: "github.com" }],
-    [
-      "ssh://git@github.com/thoth/thoth.git",
-      { owner: "thoth", repo: "thoth", host: "github.com" },
-    ],
+    ["ssh://git@github.com/thoth/thoth.git", { owner: "thoth", repo: "thoth", host: "github.com" }],
   ])("extracts GitHub identity from %s", (remoteUrl, expected) => {
     expect(normalizeGithubRemote(remoteUrl)).toEqual(expected);
   });
@@ -71,10 +65,7 @@ describe("parseGithubRef", () => {
 
   it("returns null for non-GitHub remotes and empty text", () => {
     expect(
-      parseGithubRef(
-        "https://github.com/thoth/thoth/pull/994",
-        "git@gitlab.com:thoth/thoth.git",
-      ),
+      parseGithubRef("https://github.com/thoth/thoth/pull/994", "git@gitlab.com:thoth/thoth.git"),
     ).toBeNull();
     expect(parseGithubRef("", httpsRemote)).toBeNull();
     expect(parseGithubRef("https://github.com/thoth/thoth/pull/994", null)).toBeNull();
@@ -82,10 +73,7 @@ describe("parseGithubRef", () => {
 
   it("finds URLs embedded in text and markdown links", () => {
     expect(
-      parseGithubRef(
-        "See:\n[the PR](https://github.com/thoth/thoth/pull/994/files).",
-        httpsRemote,
-      ),
+      parseGithubRef("See:\n[the PR](https://github.com/thoth/thoth/pull/994/files).", httpsRemote),
     ).toEqual({
       kind: "pull",
       number: 994,

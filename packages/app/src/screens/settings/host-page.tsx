@@ -17,10 +17,7 @@ import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import type { TerminalProfile } from "@thoth/protocol/messages";
-import {
-  getTerminalProfileIcon,
-  resolveTerminalProfiles,
-} from "@thoth/protocol/terminal-profiles";
+import { getTerminalProfileIcon, resolveTerminalProfiles } from "@thoth/protocol/terminal-profiles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";

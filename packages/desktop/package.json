@@ -13,6 +13,7 @@
     "type": "git",
     "url": "https://github.com/thoth/thoth.git"
   },
+  "type": "module",
   "main": "dist/main.js",
   "scripts": {
     "build": "npm --prefix ../.. run build:server:clean && npm run build:main && electron-builder --config electron-builder.yml",
@@ -24,11 +25,11 @@
   },
   "dependencies": {
     "@thoth/cli": "file:../cli",
+    "@thoth/daemon": "file:../daemon",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
     "ws": "^8.14.2",
-    "zod": "^4.4.3",
-    "@thoth/daemon": "file:../daemon"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "24.6.0",
@@ -39,6 +40,5 @@
     "unzip-crx-3": "^0.2.0",
     "vitest": "^4.1.6",
     "wait-on": "8.0.5"
-  },
-  "type": "module"
+  }
 }

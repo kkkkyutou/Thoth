@@ -82,13 +82,7 @@ export default {
       softwareKeyboardLayoutMode: "resize",
       // Allow HTTP connections for local network hosts (required for release builds)
       usesCleartextTraffic: true,
-      permissions: [
-        "RECORD_AUDIO",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "CAMERA",
-        "android.permission.CAMERA",
-      ],
+      permissions: ["CAMERA", "android.permission.CAMERA"],
       package: variant.packageId,
       ...(variant.googleServicesFile ? { googleServicesFile: variant.googleServicesFile } : {}),
     },

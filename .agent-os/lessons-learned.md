@@ -35,3 +35,39 @@ Extract prompt value into `.agent-os/designs/new-thoth-prompt-contract-seeds.md`
 Retry condition:
 
 When implementing Router, Clarify, Plan, Execute or Review prompts, use the seed document and current product principles instead of importing old Python code.
+
+## `NTH-EXP-003` Keep Install Side Effects Out Of First-Day Setup
+
+Motivation:
+
+The first-day infrastructure must let future agents run `npm install` reliably before doing any real feature work.
+
+Observed result:
+
+Plain `npm install` initially hung inside the optional native `dtrace-provider@0.8.8` lifecycle path pulled by `eas-cli -> @expo/logger -> bunyan`. The package was not required for local Android Debug APK packaging or Linux-safe iOS scripts in this round.
+
+Conclusion:
+
+Do not make npm install lifecycle scripts part of required setup. Root `.npmrc` sets `ignore-scripts=true`, `audit=false` and `fund=false`, and local native/toolchain work is owned by explicit root scripts. The unused local `eas-cli` devDependency was removed; future EAS release automation should be introduced deliberately in the release pipeline milestone.
+
+Retry condition:
+
+Only reintroduce EAS tooling when `NTH-MS-006` release automation is actively implemented, and isolate its install/build behavior so `npm install` remains stable.
+
+## `NTH-EXP-004` Java And Gradle Need Explicit Proxy Mapping
+
+Motivation:
+
+Android Debug APK packaging must work on the current Linux host using the project-local toolchain under `.dev/`.
+
+Observed result:
+
+Shell `http_proxy`/`https_proxy` helped `curl` and npm, but the Gradle wrapper did not automatically use those variables. The first Gradle distribution download failed with a 10 second connect timeout until the packaging script mapped proxy variables into `GRADLE_OPTS`.
+
+Conclusion:
+
+Android packaging scripts should translate proxy environment variables into Java system properties for Gradle and keep `GRADLE_USER_HOME` under `.dev/gradle`.
+
+Retry condition:
+
+If future Android packaging fails on dependency downloads, first check `.dev/gradle`, proxy env, Gradle JVM options and partially downloaded Maven metadata before changing app code.

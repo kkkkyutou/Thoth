@@ -16,11 +16,11 @@
 
 ## Ready
 
-1. `NTH-TD-010` `[ready]`: Run dependency and compile triage on the promoted source substrate.
+1. `NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
+   - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`
+2. `NTH-TD-010` `[ready]`: Run remaining dependency and compile triage on the non-foundation promoted source substrate.
    - Scope: resolve package-lock/dependency inconsistencies, remove or quarantine remaining broad-source voice references, decide first buildable package order, and record exact compile blockers without claiming runtime readiness.
    - Related: `NTH-MS-008`, `NTH-REQ-011`, `NTH-REQ-015`
-2. `NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
-   - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`
 
 ## Doing
 
@@ -44,7 +44,10 @@ None.
 
 ## Verified
 
-None yet.
+1. `NTH-TD-011` `[verified]`: Add first-day development infrastructure for long-running agent development.
+   - Scope: root validation scripts, foundation build/typecheck/test gate, `oxfmt`/`oxlint`, stable npm install policy, package AGENTS contracts, docs, local Android Debug APK packaging, iOS Linux-safe scripts and `.agent-os` bookkeeping.
+   - Related: `NTH-MS-009`, `NTH-CD-019`, `NTH-REQ-016`
+   - Verification: See `NTH-EV-004`.
 
 ## Abandoned
 
