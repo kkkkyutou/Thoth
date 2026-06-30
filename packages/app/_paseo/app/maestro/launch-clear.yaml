@@ -1,0 +1,5 @@
+appId: sh.thoth
+---
+- launchApp:
+    clearState: true
+- runFlow: flows/dev-client.yaml

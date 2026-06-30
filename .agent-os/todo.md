@@ -16,14 +16,15 @@
 
 ## Ready
 
-1. `NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
+1. `NTH-TD-009` `[ready]`: Digest imported `_paseo/` seeds into the first real New Thoth implementation migration map.
+   - Scope: map seed directories to formal `src` migration order, choose the smallest protocol/client/daemon/provider slice, keep compile failures isolated in seed, and define acceptance checks before moving code.
+   - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-MS-007`, `NTH-REQ-011`, `NTH-REQ-015`
+2. `NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
    - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`
 
 ## Doing
 
-1. `NTH-TD-008` `[doing]`: Adopt AGPL policy and import upstream implementation seed material into ignored raw cache plus tracked `_paseo/` seed directories.
-   - Scope: license metadata, NOTICE, upstream provenance ledger, ignored raw cache, tracked package-local seed directories, no Multica source, no voice/audio/speech/dictation material, no runtime wiring.
-   - Related: `NTH-MS-007`, `NTH-REQ-015`, `NTH-CD-017`
+None.
 
 ## Blocked
 
@@ -34,6 +35,9 @@ None.
 1. `NTH-TD-001` `[done]`: Reset the active working tree from old plugin runtime to New Thoth monorepo skeleton.
    - Related: `NTH-MS-001`
    - Verification: See `NTH-EV-001` after reset checks.
+2. `NTH-TD-008` `[done]`: Adopt AGPL policy and import upstream implementation seed material into ignored raw cache plus tracked `_paseo/` seed directories.
+   - Related: `NTH-MS-007`, `NTH-REQ-015`, `NTH-CD-017`
+   - Verification: See `NTH-EV-002`.
 
 ## Verified
 

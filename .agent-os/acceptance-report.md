@@ -46,7 +46,7 @@ Note:
 
 ### `NTH-EV-002` AGPL And Upstream Seed Import Verification
 
-Status: `in_progress`
+Status: `passed`
 
 Scope:
 
@@ -66,9 +66,24 @@ Required evidence:
 7. Large file and secret/path hygiene checks.
 8. `git diff --check`.
 
+Evidence:
+
+1. Remote upstream `main` checked through `git ls-remote` with proxy: `5fc53c576ef0d4dee55455ccc95660703f71b892`.
+2. Raw cache path checked ignored by git: `.gitignore:25:.agent-os/upstreams/`.
+3. Seed directory check passed for all nine planned targets under `packages/*/_paseo`.
+4. Root package metadata check passed: `packages=10`, `workspaces=packages/*`, active package licenses `AGPL-3.0-or-later`.
+5. All package JSON files under `packages/` parsed successfully: `count=19`.
+6. Path-level exclusion checks returned no seed or raw cache paths matching voice/audio/speech/dictation/TTS/STT/PCM/WAV patterns.
+7. Generated/cache path check returned no seed paths matching `.git`, `node_modules`, `dist`, `build`, `.expo`, `.next`, `.wrangler` or `coverage`.
+8. Large file check returned no tracked seed files over `5MB`.
+9. Seed content naming scan found no `@getpaseo`, `getpaseo`, `PASEO`, `Paseo` or `paseo` content matches inside tracked seed.
+10. Refined secret-like scan found no `ghp_`, real-looking `sk-...` token or private-key block in tracked seed/provenance files.
+11. `npm install --package-lock-only --ignore-scripts` completed with `found 0 vulnerabilities`.
+12. `git diff --check` passed.
+
 Current result:
 
-In progress. Do not treat implementation seeds as runnable product behavior.
+The AGPL policy and implementation seed import are verified as a non-runnable migration substrate. No CLI, daemon, TUI, desktop app, mobile app, relay or provider behavior is implemented by this evidence.
 
 ## Failed Or Not-Yet-Passed Checks
 

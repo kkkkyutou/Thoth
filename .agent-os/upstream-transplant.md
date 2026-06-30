@@ -27,10 +27,12 @@
 Excluded from raw cache and tracked seed:
 
 1. Any path matching `audio`, `speech`, `voice` or `dictation`.
-2. Audio/media files: `*.wav`, `*.webm`, `*.mp3`, `*.m4a`, `*.ogg`.
-3. `.git`, `node_modules`, `dist`, `build`, `.expo`, `.next`, `.wrangler`, `coverage`, caches, logs, environment files, tokens, private keys and generated secrets.
+2. Obvious TTS/STT/PCM/WAV implementation files even when their paths do not contain the full words above.
+3. Audio/media files: `*.wav`, `*.webm`, `*.mp3`, `*.m4a`, `*.ogg`.
+4. `.git`, `node_modules`, `dist`, `build`, `.expo`, `.next`, `.wrangler`, `coverage`, caches, logs, environment files, tokens, private keys and generated secrets.
 
 Voice-related upstream features are not part of the current Thoth MVP line.
+Because broad UI/protocol files can still contain stale references after feature-file exclusion, those references are treated as expected-broken seed residue and must be removed before any code is migrated into formal `src`.
 
 ## Tracked Seed Map
 

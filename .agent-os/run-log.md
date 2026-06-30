@@ -59,10 +59,11 @@
 - Evidence produced: Targeted scan confirmed the engineering architecture document now contains `Clarify Decision-Tree Runtime`, `Clarify Streaming And Card Validation`, `Invalid card repair` and `Timeline event split`. `git diff --check` passed after the documentation update.
 - Next likely action: `NTH-TD-002` - design the first implementation slice around provider streaming, Clarify card validation, read-only provider sessions, authority persistence and task lifecycle.
 
-## 2026-06-30 [AGPL policy and upstream seed import started]
+## 2026-06-30 [AGPL policy and upstream seed import completed]
 
 - Worked on: `NTH-OBJ-001`, `NTH-WS-006`, `NTH-MS-007`, `NTH-TD-008`
-- State changes: Recorded `NTH-CD-017`, `NTH-REQ-015`, `NTH-MS-007`, `NTH-TD-008` and `NTH-EV-002` for the AGPL license switch and upstream implementation seed import.
+- State changes: Recorded `NTH-CD-017`, `NTH-REQ-015`, `NTH-MS-007`, `NTH-TD-008`, `NTH-TD-009` and `NTH-EV-002` for the AGPL license switch, upstream implementation seed import and next seed digestion step.
 - State changes: Added `.agent-os/upstreams/` to `.gitignore`, created local raw cache under `.agent-os/upstreams/paseo/`, replaced root `LICENSE` with AGPL v3 text, changed package metadata license fields to `AGPL-3.0-or-later`, added `NOTICE`, and added `.agent-os/upstream-transplant.md`.
-- Evidence produced: Remote upstream `main` was verified through `git ls-remote` with proxy as `5fc53c576ef0d4dee55455ccc95660703f71b892`. Raw cache was created from the exact GitHub archive tarball after direct clone/index-pack was unreliable. Voice/audio/speech/dictation exclusion checks returned no matches in the raw cache after cleanup.
-- Next likely action: complete tracked `_paseo/` seed copy, run hygiene checks, commit the seed import, then return top next action to the first real implementation slice.
+- State changes: Copied non-runnable tracked seed material into `packages/protocol/_paseo`, `packages/client/_paseo`, `packages/relay/_paseo`, `packages/cli/_paseo`, `packages/app/_paseo`, `packages/desktop/_paseo`, `packages/drivers/_paseo`, `packages/daemon/_paseo` and `packages/core/_paseo`.
+- Evidence produced: Remote upstream `main` was verified through `git ls-remote` with proxy as `5fc53c576ef0d4dee55455ccc95660703f71b892`. Raw cache was created from the exact GitHub archive tarball after direct clone/index-pack was unreliable. Voice/audio/speech/dictation/TTS/STT/PCM/WAV path exclusion checks returned no matches in raw cache or tracked seed after cleanup. Seed content naming scan found no upstream product naming matches. Root metadata check reported `packages=10` and `workspaces=packages/*`; all package JSON parse check reported `count=19`; large file check found no seed files over `5MB`; refined secret-like scan returned no real-looking tokens or private-key blocks; `npm install --package-lock-only --ignore-scripts` completed with `found 0 vulnerabilities`; `git diff --check` passed.
+- Next likely action: `NTH-TD-009` - digest imported `_paseo/` seeds into the first real New Thoth implementation migration map before moving any code into formal `src`.

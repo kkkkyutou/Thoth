@@ -3,11 +3,11 @@
 ## Current Truth
 
 1. Objective: `NTH-OBJ-001`
-2. Top next action: `NTH-TD-008`
+2. Top next action: `NTH-TD-009`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-006`
 4. Active blockers: None
 5. Current branch: `port/from-old-thoth-plugin`
-6. Current implementation state: New Thoth monorepo skeleton plus non-runnable upstream implementation seeds in progress
+6. Current implementation state: New Thoth monorepo skeleton plus non-runnable imported implementation seeds
 
 ## Objective Summary
 
@@ -23,7 +23,7 @@
 
 ## Top Next Action
 
-`NTH-TD-008` `[doing]`: Adopt AGPL policy and import upstream implementation seed material into ignored raw cache plus tracked `_paseo/` seed directories without wiring runtime behavior.
+`NTH-TD-009` `[ready]`: Digest imported `_paseo/` seeds into the first real New Thoth implementation migration map, choosing what moves into formal `src` first without widening root workspaces or scripts.
 
 ## Active Blockers
 
@@ -40,6 +40,7 @@ None.
 7. `NTH-CD-014`: User locked the chatbox controls as `+`, Provider, Mode, Clarify and Loop.
 8. `NTH-CD-015`: User updated the business flow: `Quick + Don't Bother Me` is provider passthrough; `Loop` is read-only Clarify -> frozen contract -> one PlanExec provider session using provider-native plan mode when available -> independent Review. PlanExec clarification questions after freeze are auto-answered from the contract or first recommendation, but permission requests still follow permission policy. User-facing labels are `Don't Bother Me`, `One Plan, One Do` and `Run Until Stopped`.
 9. `NTH-CD-017`: User selected AGPL for New Thoth, upstream implementation seed import from the latest GitHub source, no Multica source copy, ignored raw cache under `.agent-os/upstreams/`, tracked broken `_paseo/` seeds and no voice/audio/speech/dictation material.
+10. `NTH-EV-002`: AGPL and upstream seed import verification passed for metadata, ignored raw cache, seed directories, path exclusions, large-file hygiene, secret-like scan, package-lock refresh and `git diff --check`.
 
 ## Read Next
 

@@ -114,7 +114,7 @@ Acceptance:
 
 ### `NTH-MS-007` Upstream Implementation Seed Import
 
-State: `doing`
+State: `done`
 
 Goal: Import broad upstream implementation seed material into tracked package-local `_paseo/` directories while keeping raw cache ignored, provenance explicit and runtime behavior unwired.
 
