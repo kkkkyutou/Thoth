@@ -1,8 +1,11 @@
 import type { Logger } from "pino";
 
-import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
+import { DEFAULT_APP_BASE_URL, DEFAULT_RELAY_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
+
+import { createConnectionOfferV3, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { renderPairingQr } from "./pairing-qr.js";
+import { loadOrCreateRelayCredentials, type RelayCredentialsManager } from "./relay-credentials.js";
 import { getOrCreateServerId } from "./server-id.js";
 
 export interface LocalPairingOffer {
@@ -20,6 +23,7 @@ export async function generateLocalPairingOffer(args: {
   relayPublicUseTls?: boolean;
   appBaseUrl?: string;
   includeQr?: boolean;
+  relayCredentials?: RelayCredentialsManager;
   logger?: Logger;
 }): Promise<LocalPairingOffer> {
   const relayEnabled = args.relayEnabled ?? true;
@@ -31,17 +35,22 @@ export async function generateLocalPairingOffer(args: {
     };
   }
 
-  const relayEndpoint = args.relayEndpoint ?? "relay.thoth.sh:443";
+  const relayEndpoint = args.relayEndpoint ?? DEFAULT_RELAY_ENDPOINT;
   const relayPublicEndpoint = args.relayPublicEndpoint ?? relayEndpoint;
-  const relayUseTls = args.relayUseTls ?? relayEndpoint === "relay.thoth.sh:443";
+  const relayUseTls = args.relayUseTls ?? relayEndpoint === DEFAULT_RELAY_ENDPOINT;
   const relayPublicUseTls = args.relayPublicUseTls ?? relayUseTls;
-  const appBaseUrl = args.appBaseUrl ?? "https://app.thoth.sh";
+  const appBaseUrl = args.appBaseUrl ?? DEFAULT_APP_BASE_URL;
   const serverId = getOrCreateServerId(args.thothHome, { logger: args.logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(args.thothHome, args.logger);
-  const offer = await createConnectionOfferV2({
+  const relayCredentials =
+    args.relayCredentials ?? loadOrCreateRelayCredentials(args.thothHome, args.logger);
+  const pairing = relayCredentials.createPairingTicket();
+  const offer = await createConnectionOfferV3({
     serverId,
     daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
     relay: { endpoint: relayPublicEndpoint, useTls: relayPublicUseTls },
+    pairingToken: pairing.token,
+    pairingExpiresAt: pairing.expiresAt,
   });
   const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });
 

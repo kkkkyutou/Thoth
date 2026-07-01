@@ -199,6 +199,47 @@ Current result:
 
 The first-day development infrastructure is verified. This evidence proves the foundation gate and local packaging infrastructure, not any New Thoth MVP product behavior.
 
+### `NTH-EV-005` Relay V3 Security And Local Preview Verification
+
+Status: `partial`
+
+Scope:
+
+1. Replace unauthenticated relay behavior with v3-only room registration and role-scoped token authorization.
+2. Update protocol, client, daemon and app pairing paths for v3 connection offers, pairing tokens and device tokens.
+3. Replace old relay/app defaults with `seeles.ai` domains.
+4. Build and serve the real web app preview locally.
+5. Prepare Code4Agent mirror export for hosted relay deployment.
+6. Validate relay behavior through tests, local E2E and local load test.
+7. Attempt hosted Code4Agent preview deployment or record exact blocker.
+
+Evidence:
+
+1. `npm run build:web` passed and exported `packages/app/dist` through the real Expo app build. Local static preview is served at `http://127.0.0.1:4173`; `curl http://127.0.0.1:4173/` returned HTTP `200` and HTML title `Thoth`.
+2. `packages/app/dist` size check reported `12M`.
+3. Domain cleanup scan returned no matches for `relay.thoth.sh`, `app.thoth.sh`, `relay.paseo`, `app.paseo` or `paseo.sh` outside ignored upstreams and generated web dist.
+4. `npm run test:relay` passed: 4 files, 29 tests.
+5. `npm run typecheck:relay` passed.
+6. `npm run build:relay` passed.
+7. `npm run test:protocol` passed: 32 files, 286 tests.
+8. `npm run typecheck:protocol` passed.
+9. `npm run build:protocol` passed.
+10. `npm run typecheck:client` passed.
+11. `npm run build:client` passed.
+12. `npm run test:client` passed: 4 files, 110 tests.
+13. `npm --workspace=@thoth/relay run test:e2e` passed after updating the e2e tests to v3: 1 file, 3 tests.
+14. Local relay load smoke passed with 5 clients / 5 seconds / 1 second interval: 25 attempted pings, 25 pongs, error rate `0`, p95 `4ms`; receipt `/mnt/cfs/5vr0p6/yzy/thoth/.dev/relay-load-test-1782889165157.json`.
+15. Local relay load test passed with 200 clients / 10 minutes / 5 second interval: 24000 attempted pings, 24000 pongs, failures `0`, error rate `0`, p50 `18ms`, p95 `24ms`, p99 `31ms`; receipt `/mnt/cfs/5vr0p6/yzy/thoth/.dev/relay-load-test-1782889793822.json`.
+16. `npm run sync:code4agent-relay -- .dev/code4agent-thoth-relay-export` generated a Code4Agent-style `apps/thoth-relay` mirror under ignored `.dev/`.
+17. Code4Agent dry-run using current remote `packages/config/apps.yml` and `.github/workflows/_deploy-isolated.yml` showed the mirror script can add `thoth-relay` to app registry and emits `CODE4AGENT_WORKFLOW_REQUIRED.md` because `_deploy-isolated.yml` hard-codes per-app jobs.
+18. `npm --silent run gh -- api user --jq .login` reported `Royalvice`.
+19. `npm --silent run gh -- repo view SeeleAI/Code4Agent --json nameWithOwner,defaultBranchRef,isPrivate,viewerPermission,url` reported private repo access, default branch `master` and `viewerPermission=WRITE`.
+20. Code4Agent ruleset query reported active `protected-paths` push ruleset restricting `.github/**/*`, `scripts/**/*`, `docs/**/*`, `AGENTS.md`, `**/AGENTS.md`, `packages/presets/**/*` and `**/*/wrangler.jsonc`.
+
+Current result:
+
+Relay security and local validation are verified. Hosted Code4Agent preview deployment is blocked before push by repository governance: adding `apps/thoth-relay/wrangler.jsonc` and updating `.github/workflows/_deploy-isolated.yml` both hit active protected paths. No `.seele.chat`, `relay.test.thoth.seeles.ai` or production relay deployment is claimed by this evidence.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.
@@ -206,3 +247,4 @@ The first-day development infrastructure is verified. This evidence proves the f
 3. Some old `.tmp_pytest` fixture entries could not be unlinked promptly on NFS and were moved under ignored `.agent-os/.trash/tmp_pytest-nfs-stale-20260628`; this is not part of the committed source tree.
 4. Android build currently emits upstream Expo/React Native/Gradle deprecation warnings; the Debug APK is still produced successfully.
 5. Real iOS build was not run because the current environment is Linux and lacks macOS/Xcode.
+6. Code4Agent hosted relay preview was not deployed because protected paths block the required `wrangler.jsonc` and workflow changes for Royalvice. Retry requires Bot/admin or an allowed actor.

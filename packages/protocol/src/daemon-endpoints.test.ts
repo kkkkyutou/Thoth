@@ -1,9 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  buildRelayWebSocketProtocols,
   buildDaemonWebSocketUrl,
   buildRelayWebSocketUrl,
   CURRENT_RELAY_PROTOCOL_VERSION,
+  DEFAULT_RELAY_ENDPOINT,
+  extractRelayTokenFromProtocols,
   extractHostPortFromWebSocketUrl,
   normalizeRelayProtocolVersion,
   parseConnectionUri,
@@ -97,10 +100,10 @@ describe("daemon websocket URLs", () => {
 });
 
 describe("relay websocket URL versioning", () => {
-  test("defaults relay URLs to v2", () => {
+  test("defaults relay URLs to v3", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.thoth.sh:443",
+        endpoint: DEFAULT_RELAY_ENDPOINT,
         useTls: true,
         serverId: "srv_test",
         role: "client",
@@ -114,7 +117,7 @@ describe("relay websocket URL versioning", () => {
   test("includes connectionId when provided (server data sockets)", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.thoth.sh:443",
+        endpoint: DEFAULT_RELAY_ENDPOINT,
         useTls: true,
         serverId: "srv_test",
         role: "server",
@@ -125,27 +128,14 @@ describe("relay websocket URL versioning", () => {
     expect(url.searchParams.get("connectionId")).toBe("conn_abc123");
   });
 
-  test("allows explicitly requesting v1 relay URLs", () => {
-    const url = new URL(
-      buildRelayWebSocketUrl({
-        endpoint: "relay.thoth.sh:443",
-        useTls: true,
-        serverId: "srv_test",
-        role: "server",
-        version: "1",
-      }),
-    );
-
-    expect(url.searchParams.get("v")).toBe("1");
-  });
-
-  test("normalizes numeric relay versions", () => {
-    expect(normalizeRelayProtocolVersion(2)).toBe("2");
-    expect(normalizeRelayProtocolVersion(1)).toBe("1");
+  test("normalizes only the current relay version", () => {
+    expect(normalizeRelayProtocolVersion(3)).toBe("3");
+    expect(normalizeRelayProtocolVersion("3")).toBe("3");
   });
 
   test("rejects unsupported relay versions", () => {
-    expect(() => normalizeRelayProtocolVersion("3")).toThrow('Relay version must be "1" or "2"');
+    expect(() => normalizeRelayProtocolVersion("2")).toThrow('Relay version must be "3"');
+    expect(() => normalizeRelayProtocolVersion("1")).toThrow('Relay version must be "3"');
   });
 });
 
@@ -153,7 +143,7 @@ describe("relay websocket URLs", () => {
   test("uses ws for port 443 when TLS is disabled", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.thoth.sh:443",
+        endpoint: DEFAULT_RELAY_ENDPOINT,
         useTls: false,
         serverId: "srv_test",
         role: "client",
@@ -166,7 +156,7 @@ describe("relay websocket URLs", () => {
   test("uses wss for non-443 ports when TLS is enabled", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.thoth.sh:6767",
+        endpoint: "relay.thoth.seeles.ai:6767",
         useTls: true,
         serverId: "srv_test",
         role: "client",
@@ -192,15 +182,12 @@ describe("relay websocket URLs", () => {
 
 describe("shouldUseTlsForDefaultHostedRelay", () => {
   test("returns true for the hosted Thoth relay on port 443", () => {
-    expect(shouldUseTlsForDefaultHostedRelay("relay.thoth.sh:443")).toBe(true);
+    expect(shouldUseTlsForDefaultHostedRelay("relay.thoth.seeles.ai:443")).toBe(true);
   });
 
-  test("returns true for any self-hosted relay on port 443", () => {
-    expect(shouldUseTlsForDefaultHostedRelay("relay.example.com:443")).toBe(true);
-  });
-
-  test("returns true for an IPv6 relay on port 443", () => {
-    expect(shouldUseTlsForDefaultHostedRelay("[::1]:443")).toBe(true);
+  test("returns false for non-seeles relays even on port 443", () => {
+    expect(shouldUseTlsForDefaultHostedRelay("relay.example.com:443")).toBe(false);
+    expect(shouldUseTlsForDefaultHostedRelay("[::1]:443")).toBe(false);
   });
 
   test("returns false for a relay on a non-443 port", () => {
@@ -209,5 +196,28 @@ describe("shouldUseTlsForDefaultHostedRelay", () => {
 
   test("returns false for malformed endpoints", () => {
     expect(shouldUseTlsForDefaultHostedRelay("not-an-endpoint")).toBe(false);
+  });
+});
+
+describe("relay websocket protocols", () => {
+  test("encodes relay token into WebSocket subprotocols", () => {
+    expect(buildRelayWebSocketProtocols("rt_abcdefghijklmnopqrstuvwxyz123456")).toEqual([
+      "thoth.relay.v3",
+      "thoth.relay.token.rt_abcdefghijklmnopqrstuvwxyz123456",
+    ]);
+  });
+
+  test("extracts relay token from string or array headers", () => {
+    expect(
+      extractRelayTokenFromProtocols(
+        "thoth.relay.v3, thoth.relay.token.rt_abcdefghijklmnopqrstuvwxyz123456",
+      ),
+    ).toBe("rt_abcdefghijklmnopqrstuvwxyz123456");
+    expect(
+      extractRelayTokenFromProtocols([
+        "thoth.relay.v3",
+        "thoth.relay.token.rt_abcdefghijklmnopqrstuvwxyz123456",
+      ]),
+    ).toBe("rt_abcdefghijklmnopqrstuvwxyz123456");
   });
 });

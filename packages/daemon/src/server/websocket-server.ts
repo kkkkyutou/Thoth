@@ -69,6 +69,7 @@ import {
   CLIENT_SHUTDOWN_RPC_REASON,
   normalizeClientRestartRpcReason,
 } from "./lifecycle-reasons.js";
+import type { RelayCredentialsManager } from "./relay-credentials.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -437,6 +438,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeSpeechReadiness: (() => void) | null = null;
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
   private readonly providerUsageService: ProviderUsageService;
+  private readonly relayCredentials: RelayCredentialsManager | null;
   private unsubscribeTerminalActivity: (() => void) | null = null;
 
   constructor(
@@ -491,6 +493,7 @@ export class VoiceAssistantWebSocketServer {
       };
     },
     serviceProxyPublicBaseUrl?: string | null,
+    relayCredentials?: RelayCredentialsManager | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -566,6 +569,7 @@ export class VoiceAssistantWebSocketServer {
     this.providerUsageService = new ProviderUsageService({
       logger: this.logger,
     });
+    this.relayCredentials = relayCredentials ?? null;
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
     this.startRuntimeMetricsInterval();
@@ -1037,6 +1041,7 @@ export class VoiceAssistantWebSocketServer {
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
       getWebSocketRuntimeMetrics: () => this.lastRuntimeMetricsSnapshot,
+      relayCredentials: this.relayCredentials ?? undefined,
     });
 
     connection = {

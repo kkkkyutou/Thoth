@@ -18,13 +18,12 @@ import type {
 } from "./agent/provider-launch-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import { AgentProviderSchema } from "@thoth/protocol/provider-manifest";
+import { DEFAULT_APP_BASE_URL, DEFAULT_RELAY_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
 import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 
 const DEFAULT_PORT = 6767;
-const DEFAULT_RELAY_ENDPOINT = "relay.thoth.sh:443";
-const DEFAULT_APP_BASE_URL = "https://app.thoth.sh";
 const DEFAULT_TRUSTED_PROXIES = ["loopback"];
 
 export function resolveBundledWebUiDistDir(moduleUrl: string | URL = import.meta.url): string {

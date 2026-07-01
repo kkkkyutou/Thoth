@@ -75,7 +75,7 @@ describe("bootstrap provider availability", () => {
       agentClients: {},
       agentStoragePath,
       relayEnabled: false,
-      appBaseUrl: "https://app.thoth.sh",
+      appBaseUrl: "https://app.thoth.seeles.ai",
       openai: undefined,
       speech: undefined,
     };

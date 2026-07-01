@@ -154,7 +154,7 @@ describe("thoth daemon bootstrap", () => {
       agentClients: createTestAgentClients(),
       agentStoragePath: path.join(thothHome, "agents"),
       relayEnabled: false,
-      appBaseUrl: "https://app.thoth.sh",
+      appBaseUrl: "https://app.thoth.seeles.ai",
       openai: undefined,
       speech: undefined,
       serviceProxy: {
@@ -274,7 +274,7 @@ describe("thoth daemon bootstrap", () => {
       agentClients: createTestAgentClients(),
       agentStoragePath: path.join(thothHome, "agents"),
       relayEnabled: false,
-      appBaseUrl: "https://app.thoth.sh",
+      appBaseUrl: "https://app.thoth.seeles.ai",
       openai: undefined,
       speech: undefined,
       serviceProxy: { standaloneListen: `127.0.0.1:${standalonePort}` },
@@ -356,7 +356,7 @@ describe("thoth daemon bootstrap", () => {
       agentClients: createTestAgentClients(),
       agentStoragePath: path.join(thothHome, "agents"),
       relayEnabled: false,
-      appBaseUrl: "https://app.thoth.sh",
+      appBaseUrl: "https://app.thoth.seeles.ai",
       openai: undefined,
       speech: {
         providers: {
@@ -494,7 +494,7 @@ describe("thoth daemon bootstrap", () => {
         relayEnabled: true,
         relayEndpoint: "127.0.0.1:9",
         relayPublicEndpoint: "127.0.0.1:9",
-        appBaseUrl: "https://app.thoth.sh",
+        appBaseUrl: "https://app.thoth.seeles.ai",
         openai: undefined,
         speech: undefined,
       };
@@ -508,11 +508,11 @@ describe("thoth daemon bootstrap", () => {
           relayEnabled: true,
           relayEndpoint: "127.0.0.1:9",
           relayPublicEndpoint: "127.0.0.1:9",
-          appBaseUrl: "https://app.thoth.sh",
+          appBaseUrl: "https://app.thoth.seeles.ai",
           includeQr: false,
         });
         expect(pairing.relayEnabled).toBe(true);
-        expect(pairing.url?.startsWith("https://app.thoth.sh/#offer=")).toBe(true);
+        expect(pairing.url?.startsWith("https://app.thoth.seeles.ai/#offer=")).toBe(true);
       } finally {
         await daemon.stop().catch(() => undefined);
         await daemon.agentManager.flush().catch(() => undefined);

@@ -159,3 +159,23 @@ Acceptance:
 5. iOS scripts behave truthfully on Linux by reporting the macOS/Xcode requirement.
 6. Root and all 10 packages have local agent contracts.
 7. Development, testing, packaging and release docs exist under `docs/`.
+
+### `NTH-MS-010` Relay Security V3 And Preview Path
+
+State: `partial`
+
+Goal: Replace the upstream-style unauthenticated relay with Thoth v3 security, validate local relay behavior under load, produce a real web preview build and prepare the Code4Agent hosted deployment path.
+
+Acceptance:
+
+1. Relay accepts only v3 sockets with role-scoped capability tokens in `Sec-WebSocket-Protocol`.
+2. Relay rejects v1/v2, missing token, token-in-query, malformed IDs and disallowed browser origins.
+3. Relay stores only token hashes, expiry and connection metadata and remains zero-knowledge for task/message content.
+4. Daemon/app/client/protocol paths understand v3 connection offers, pairing token and device token metadata.
+5. Web app can be exported and served locally through the real product UI.
+6. Local relay E2E and 200-client / 10-minute load test pass.
+7. Code4Agent hosted preview deploy is attempted or blocked with exact governance evidence.
+
+Current result:
+
+Items 1-6 are verified by `NTH-EV-005`. Item 7 is blocked by `NTH-TD-013` because Code4Agent protected paths prevent Royalvice from pushing the required `wrangler.jsonc` and workflow changes.

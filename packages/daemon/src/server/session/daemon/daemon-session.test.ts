@@ -136,8 +136,8 @@ describe("DaemonSession", () => {
         listen: "127.0.0.1:6767",
         relay: {
           enabled: false,
-          endpoint: "relay.thoth.sh:443",
-          publicEndpoint: "relay.thoth.sh:443",
+          endpoint: "relay.thoth.seeles.ai:443",
+          publicEndpoint: "relay.thoth.seeles.ai:443",
           useTls: true,
           publicUseTls: true,
         },

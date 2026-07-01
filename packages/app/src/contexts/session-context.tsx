@@ -35,8 +35,11 @@ import type { AgentSessionConfig } from "@thoth/protocol/agent-types";
 import type { GitSetupOptions } from "@thoth/protocol/messages";
 import type { AgentPermissionResponse } from "@thoth/protocol/agent-types";
 import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
-import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
+import {
+  useVoiceAudioEngineOptional,
+  useVoiceRuntimeOptional,
+  type DisabledAudioPlaybackSource,
+} from "@/contexts/disabled-voice-context";
 import {
   useSessionStore,
   type Agent,
@@ -174,7 +177,7 @@ function decodeBase64Chunk(base64: string): Uint8Array {
   return Buffer.from(base64, "base64");
 }
 
-function buildAudioPlaybackSource(chunks: BufferedAudioChunk[]): AudioPlaybackSource {
+function buildAudioPlaybackSource(chunks: BufferedAudioChunk[]): DisabledAudioPlaybackSource {
   const decodedChunks = chunks.map((chunk) => decodeBase64Chunk(chunk.audio));
   const totalSize = decodedChunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const output = new Uint8Array(totalSize);

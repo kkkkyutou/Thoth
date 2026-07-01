@@ -128,7 +128,7 @@ export default function PairScanScreen() {
     source?: string;
   }>();
   const source = typeof params.source === "string" ? params.source : "settings";
-  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
+  const { upsertRelayConnection } = useHostMutations();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
@@ -181,13 +181,27 @@ export default function PairScanScreen() {
             type: "relay",
             relayEndpoint: normalizeHostPort(offer.relay.endpoint),
             useTls: offer.relay.useTls,
+            relayProtocolVersion: 3,
+            relayToken: offer.pairingToken,
+            relayTokenExpiresAt: offer.pairingExpiresAt,
+            pairingExpiresAt: offer.pairingExpiresAt,
             daemonPublicKeyB64: offer.daemonPublicKeyB64,
           },
           { serverId: offer.serverId },
         );
+        const issued = await client.issueRelayDeviceToken().catch(() => null);
         await client.close().catch(() => undefined);
 
-        const profile = await upsertDaemonFromOfferUrl(offerUrl, hostname ?? undefined);
+        const profile = await upsertRelayConnection({
+          serverId: offer.serverId,
+          relayEndpoint: offer.relay.endpoint,
+          useTls: offer.relay.useTls,
+          daemonPublicKeyB64: offer.daemonPublicKeyB64,
+          relayToken: issued?.relayToken ?? offer.pairingToken,
+          relayTokenExpiresAt: issued?.relayTokenExpiresAt ?? offer.pairingExpiresAt,
+          pairingExpiresAt: offer.pairingExpiresAt,
+          label: hostname ?? undefined,
+        });
 
         navigateToPairedHost(profile.serverId);
       } catch (error) {
@@ -198,7 +212,7 @@ export default function PairScanScreen() {
         setIsPairing(false);
       }
     },
-    [isPairing, navigateToPairedHost, t, upsertDaemonFromOfferUrl],
+    [isPairing, navigateToPairedHost, t, upsertRelayConnection],
   );
 
   const handleRouterBack = useCallback(() => router.back(), [router]);

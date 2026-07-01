@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { WebSocket } from "ws";
 import net from "node:net";
+import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { Buffer } from "node:buffer";
 import {
   generateKeyPair,
@@ -15,9 +17,33 @@ import {
 
 const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
 const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
-const wranglerCliPath = createRequire(import.meta.url).resolve("wrangler/bin/wrangler.js");
+const require = createRequire(import.meta.url);
+const wranglerPackagePath = require.resolve("wrangler/package.json");
+const wranglerPackage = require(wranglerPackagePath) as { bin?: { wrangler?: string } };
+const wranglerCliPath = join(
+  dirname(wranglerPackagePath),
+  wranglerPackage.bin?.wrangler ?? "./bin/wrangler.js",
+);
 const STARTUP_HOOK_TIMEOUT_MS = 90_000;
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const serverToken = "rst_abcdefghijklmnopqrstuvwxyz123456";
+const pairingToken = "rpt_abcdefghijklmnopqrstuvwxyz123456";
+const deviceToken = "rdt_abcdefghijklmnopqrstuvwxyz123456";
+
+const tokenProtocols = (token: string) => ["thoth.relay.v3", `thoth.relay.token.${token}`];
+const sha256 = (token: string) => createHash("sha256").update(token, "utf8").digest("hex");
+const futureIso = () => new Date(Date.now() + 60_000).toISOString();
+const relayUrl = (
+  port: number,
+  params: { serverId: string; role: "server" | "client"; connectionId?: string },
+) => {
+  const url = new URL(`ws://127.0.0.1:${port}/ws`);
+  url.searchParams.set("serverId", params.serverId);
+  url.searchParams.set("role", params.role);
+  url.searchParams.set("v", "3");
+  if (params.connectionId) url.searchParams.set("connectionId", params.connectionId);
+  return url.toString();
+};
 
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -110,10 +136,10 @@ async function waitForServer(
 }
 
 function probeRelayWebSocket(port: number): Promise<boolean> {
-  const serverId = `probe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  const probeUrl = `ws://127.0.0.1:${port}/ws?serverId=${serverId}&role=server&v=2`;
+  const serverId = `srv_probe_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+  const probeUrl = relayUrl(port, { serverId, role: "server" });
   return new Promise<boolean>((resolve) => {
-    const ws = new WebSocket(probeUrl);
+    const ws = new WebSocket(probeUrl, tokenProtocols(serverToken));
     let settled = false;
     const settle = (value: boolean) => {
       if (settled) return;
@@ -134,6 +160,26 @@ function probeRelayWebSocket(port: number): Promise<boolean> {
       settle(false);
     });
   });
+}
+
+async function waitOpen(ws: WebSocket): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    ws.on("open", resolve);
+    ws.on("error", reject);
+  });
+}
+
+async function registerRelayRoom(ws: WebSocket): Promise<void> {
+  ws.send(
+    JSON.stringify({
+      type: "register",
+      serverTokenHash: sha256(serverToken),
+      pairingTokenHash: sha256(pairingToken),
+      pairingExpiresAt: futureIso(),
+      deviceTokenHashes: [sha256(deviceToken)],
+    }),
+  );
+  await sleep(50);
 }
 
 async function waitForRelayWebSocketReady(
@@ -229,7 +275,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
       timeout: 90_000,
     },
     async () => {
-      const serverId = "test-session-" + Date.now();
+      const serverId = "srv_test_" + Date.now();
       const connectionId = "clt_test_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
       // === DAEMON SIDE ===
@@ -241,13 +287,12 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
 
       // Daemon connects to relay as "server" control role
       const daemonControlWs = new WebSocket(
-        `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&v=2`,
+        relayUrl(relayPort, { serverId, role: "server" }),
+        tokenProtocols(serverToken),
       );
 
-      await new Promise<void>((resolve, reject) => {
-        daemonControlWs.on("open", resolve);
-        daemonControlWs.on("error", reject);
-      });
+      await waitOpen(daemonControlWs);
+      await registerRelayRoom(daemonControlWs);
 
       // === CLIENT SIDE ===
       // Client scans QR, gets daemon's public key and session ID
@@ -292,23 +337,19 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
 
       // Client connects to relay as "client" role (must include connectionId)
       const clientWs = new WebSocket(
-        `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`,
+        relayUrl(relayPort, { serverId, role: "client", connectionId }),
+        tokenProtocols(pairingToken),
       );
 
-      await new Promise<void>((resolve, reject) => {
-        clientWs.on("open", resolve);
-        clientWs.on("error", reject);
-      });
+      await waitOpen(clientWs);
 
       await waitForClientSeen;
 
       const daemonWs = new WebSocket(
-        `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`,
+        relayUrl(relayPort, { serverId, role: "server", connectionId }),
+        tokenProtocols(serverToken),
       );
-      await new Promise<void>((resolve, reject) => {
-        daemonWs.on("open", resolve);
-        daemonWs.on("error", reject);
-      });
+      await waitOpen(daemonWs);
 
       // Client sends hello with its public key (this message is NOT encrypted - it's the handshake)
       const helloMsg = JSON.stringify({ type: "hello", key: clientPubKeyB64 });
@@ -390,7 +431,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
   );
 
   it("relay only sees opaque bytes after handshake", { timeout: 90_000 }, async () => {
-    const serverId = "opaque-test-" + Date.now();
+    const serverId = "srv_opaque_" + Date.now();
     const connectionId = "clt_opaque_" + Date.now() + "_" + Math.random().toString(36).slice(2);
 
     // Setup keys
@@ -407,9 +448,11 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     const clientSharedKey = deriveSharedKey(clientKeyPair.secretKey, daemonPubKey);
 
     const daemonControlWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&v=2`,
+      relayUrl(relayPort, { serverId, role: "server" }),
+      tokenProtocols(serverToken),
     );
-    await new Promise<void>((r) => daemonControlWs.on("open", r));
+    await waitOpen(daemonControlWs);
+    await registerRelayRoom(daemonControlWs);
 
     const waitForClientSeen = new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("timed out waiting for connected")), 5000);
@@ -440,15 +483,17 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
     });
 
     const clientWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=client&connectionId=${connectionId}&v=2`,
+      relayUrl(relayPort, { serverId, role: "client", connectionId }),
+      tokenProtocols(pairingToken),
     );
-    await new Promise<void>((r) => clientWs.on("open", r));
+    await waitOpen(clientWs);
     await waitForClientSeen;
 
     const daemonWs = new WebSocket(
-      `ws://127.0.0.1:${relayPort}/ws?serverId=${serverId}&role=server&connectionId=${connectionId}&v=2`,
+      relayUrl(relayPort, { serverId, role: "server", connectionId }),
+      tokenProtocols(serverToken),
     );
-    await new Promise<void>((r) => daemonWs.on("open", r));
+    await waitOpen(daemonWs);
 
     // Handshake (not encrypted)
     clientWs.send(JSON.stringify({ type: "hello", key: clientPubKeyB64 }));

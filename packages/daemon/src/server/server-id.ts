@@ -21,8 +21,8 @@ function getServerIdPath(thothHome: string): string {
 }
 
 function generateServerId(): string {
-  // 9 bytes -> 12 base64url chars; keep it short + URL-safe.
-  const rand = randomBytes(9).toString("base64url");
+  // 16 bytes -> 128 bits of URL-safe room entropy.
+  const rand = randomBytes(16).toString("base64url");
   return `srv_${rand}`;
 }
 

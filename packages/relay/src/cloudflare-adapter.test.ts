@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import relayWorker, { RelayDurableObject } from "./cloudflare-adapter.js";
 
 type DurableObjectStateArg = ConstructorParameters<typeof RelayDurableObject>[0];
@@ -25,8 +26,15 @@ function createMockSocket(attachment: unknown = null): MockSocket {
 
 function createMockState() {
   const socketsByTag = new Map<string, WebSocket[]>();
+  const storageData = new Map<string, unknown>();
   const state = {
-    acceptWebSocket: vi.fn(),
+    acceptWebSocket: vi.fn((ws: WebSocket, tags?: string[]) => {
+      for (const tag of tags ?? []) {
+        const sockets = socketsByTag.get(tag) ?? [];
+        sockets.push(ws);
+        socketsByTag.set(tag, sockets);
+      }
+    }),
     getWebSockets: vi.fn((tag?: string): WebSocket[] => {
       if (!tag) {
         const out: WebSocket[] = [];
@@ -35,12 +43,22 @@ function createMockState() {
       }
       return socketsByTag.get(tag) ?? [];
     }),
+    storage: {
+      get: vi.fn(async (key: string) => storageData.get(key)),
+      put: vi.fn(async (key: string, value: unknown) => {
+        storageData.set(key, value);
+      }),
+      delete: vi.fn(async (key: string) => storageData.delete(key)),
+    },
   };
 
   return {
     state,
     setTagSockets: (tag: string, sockets: WebSocket[]) => {
       socketsByTag.set(tag, sockets);
+    },
+    setStorage: (key: string, value: unknown) => {
+      storageData.set(key, value);
     },
   };
 }
@@ -72,28 +90,89 @@ async function withMockWebSocketPair(
 }
 
 const swallow = () => undefined;
+const serverToken = "rst_abcdefghijklmnopqrstuvwxyz123456";
+const pairingToken = "rpt_abcdefghijklmnopqrstuvwxyz123456";
+const deviceToken = "rdt_abcdefghijklmnopqrstuvwxyz123456";
+const tokenProtocols = (token: string) => `thoth.relay.v3, thoth.relay.token.${token}`;
+const sha256 = (token: string) => createHash("sha256").update(token, "utf8").digest("hex");
+const futureIso = () => new Date(Date.now() + 60_000).toISOString();
 
 describe("RelayDurableObject versioning", () => {
-  it("accepts legacy v1 client sockets without connectionId", async () => {
+  it("rejects legacy v1 and v2 sockets", async () => {
     const { state } = createMockState();
-    await withMockWebSocketPair(async () => {
-      const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-      const req = new Request("https://relay.test/ws?role=client&serverId=srv_test&v=1", {
-        headers: {
-          Upgrade: "websocket",
-        },
-      });
-      await relay.fetch(req).catch(swallow);
-      expect(state.acceptWebSocket).toHaveBeenCalled();
-    });
+    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
+
+    for (const version of ["1", "2"]) {
+      const response = await relay.fetch(
+        new Request(`https://relay.test/ws?role=client&serverId=srv_test&v=${version}`, {
+          headers: {
+            Upgrade: "websocket",
+            "Sec-WebSocket-Protocol": tokenProtocols(pairingToken),
+          },
+        }),
+      );
+      expect(response.status).toBe(400);
+      await expect(response.text()).resolves.toBe("Invalid v parameter (expected 3)");
+    }
+    expect(state.acceptWebSocket).not.toHaveBeenCalled();
   });
 
-  it("assigns a connectionId when v2 client connects without one", async () => {
+  it("accepts first daemon control socket and stores registration hashes", async () => {
     const { state } = createMockState();
     await withMockWebSocketPair(async ({ serverWs }) => {
       const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-      const req = new Request("https://relay.test/ws?role=client&serverId=srv_test&v=2", {
-        headers: { Upgrade: "websocket" },
+      await relay
+        .fetch(
+          new Request("https://relay.test/ws?role=server&serverId=srv_test&v=3", {
+            headers: {
+              Upgrade: "websocket",
+              "Sec-WebSocket-Protocol": tokenProtocols(serverToken),
+            },
+          }),
+        )
+        .catch(swallow);
+
+      expect(state.acceptWebSocket).toHaveBeenCalled();
+      await relay.webSocketMessage(
+        serverWs as unknown as WebSocket,
+        JSON.stringify({
+          type: "register",
+          serverTokenHash: sha256(serverToken),
+          pairingTokenHash: sha256(pairingToken),
+          pairingExpiresAt: futureIso(),
+          deviceTokenHashes: [sha256(deviceToken)],
+        }),
+      );
+      expect(state.storage.put).toHaveBeenCalledWith(
+        "room:v3",
+        expect.objectContaining({
+          v: 3,
+          serverTokenHash: sha256(serverToken),
+          pairingTokenHash: sha256(pairingToken),
+          deviceTokenHashes: [sha256(deviceToken)],
+        }),
+      );
+    });
+  });
+
+  it("assigns a connectionId when a v3 client presents a fresh pairing token", async () => {
+    const { state, setStorage } = createMockState();
+    setStorage("room:v3", {
+      v: 3,
+      serverTokenHash: sha256(serverToken),
+      pairingTokenHash: sha256(pairingToken),
+      pairingExpiresAt: futureIso(),
+      deviceTokenHashes: [],
+      updatedAt: new Date().toISOString(),
+    });
+
+    await withMockWebSocketPair(async ({ serverWs }) => {
+      const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
+      const req = new Request("https://relay.test/ws?role=client&serverId=srv_test&v=3", {
+        headers: {
+          Upgrade: "websocket",
+          "Sec-WebSocket-Protocol": tokenProtocols(pairingToken),
+        },
       });
       await relay.fetch(req).catch(swallow);
       expect(state.acceptWebSocket).toHaveBeenCalled();
@@ -102,6 +181,43 @@ describe("RelayDurableObject versioning", () => {
         role: "client",
         connectionId: expect.stringMatching(/^conn_/),
       });
+    });
+  });
+
+  it("rejects expired pairing tokens but accepts registered device tokens", async () => {
+    const { state, setStorage } = createMockState();
+    setStorage("room:v3", {
+      v: 3,
+      serverTokenHash: sha256(serverToken),
+      pairingTokenHash: sha256(pairingToken),
+      pairingExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+      deviceTokenHashes: [sha256(deviceToken)],
+      updatedAt: new Date().toISOString(),
+    });
+    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
+
+    const expired = await relay.fetch(
+      new Request("https://relay.test/ws?role=client&serverId=srv_test&v=3", {
+        headers: {
+          Upgrade: "websocket",
+          "Sec-WebSocket-Protocol": tokenProtocols(pairingToken),
+        },
+      }),
+    );
+    expect(expired.status).toBe(401);
+
+    await withMockWebSocketPair(async () => {
+      await relay
+        .fetch(
+          new Request("https://relay.test/ws?role=client&serverId=srv_test&v=3", {
+            headers: {
+              Upgrade: "websocket",
+              "Sec-WebSocket-Protocol": tokenProtocols(deviceToken),
+            },
+          }),
+        )
+        .catch(swallow);
+      expect(state.acceptWebSocket).toHaveBeenCalled();
     });
   });
 });
@@ -164,23 +280,32 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
 
   it("does not replace existing client sockets for the same connectionId", async () => {
     const existingClient = createMockSocket({
-      version: "2",
+      version: "3",
       role: "client",
       connectionId: "clt_same_session",
       serverId: "srv_test",
       createdAt: Date.now(),
     });
-    const { state, setTagSockets } = createMockState();
+    const { state, setTagSockets, setStorage } = createMockState();
+    setStorage("room:v3", {
+      v: 3,
+      serverTokenHash: sha256(serverToken),
+      pairingTokenHash: sha256(pairingToken),
+      pairingExpiresAt: futureIso(),
+      deviceTokenHashes: [],
+      updatedAt: new Date().toISOString(),
+    });
     setTagSockets("client:clt_same_session", [existingClient]);
     setTagSockets("client", [existingClient]);
 
     await withMockWebSocketPair(async () => {
       const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
       const req = new Request(
-        "https://relay.test/ws?role=client&serverId=srv_test&connectionId=clt_same_session&v=2",
+        "https://relay.test/ws?role=client&serverId=srv_test&connectionId=clt_same_session&v=3",
         {
           headers: {
             Upgrade: "websocket",
+            "Sec-WebSocket-Protocol": tokenProtocols(pairingToken),
           },
         },
       );
@@ -193,14 +318,14 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
   it("keeps server data socket alive while at least one client socket remains", () => {
     const clientId = "clt_multi";
     const disconnectedClient = createMockSocket({
-      version: "2",
+      version: "3",
       role: "client",
       connectionId: clientId,
       serverId: "srv_test",
       createdAt: Date.now(),
     });
     const stillConnectedClient = createMockSocket({
-      version: "2",
+      version: "3",
       role: "client",
       connectionId: clientId,
       serverId: "srv_test",
@@ -231,7 +356,7 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
 });
 
 describe("relay worker endpoint routing", () => {
-  it("routes missing v to legacy v1 isolated DO ids", async () => {
+  it("rejects missing v instead of falling back to legacy protocols", async () => {
     const fetch = vi.fn(
       async (request: Request) => new Response(`ok:${new URL(request.url).searchParams.get("v")}`),
     );
@@ -243,12 +368,13 @@ describe("relay worker endpoint routing", () => {
       { RELAY: { idFromName, get } } as unknown as RelayEnvArg,
     );
 
-    expect(idFromName).toHaveBeenCalledWith("relay-v1:srv_test");
-    expect(fetch).toHaveBeenCalledTimes(1);
-    await expect(response.text()).resolves.toBe("ok:1");
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe("Invalid v parameter (expected 3)");
+    expect(idFromName).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("routes v=2 to v2 isolated DO ids", async () => {
+  it("routes v=3 to v3 isolated DO ids", async () => {
     const fetch = vi.fn(
       async (request: Request) => new Response(`ok:${new URL(request.url).searchParams.get("v")}`),
     );
@@ -256,13 +382,17 @@ describe("relay worker endpoint routing", () => {
     const idFromName = vi.fn(() => ({ toString: () => "id" }));
 
     const response = await relayWorker.fetch(
-      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=2"),
+      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=3", {
+        headers: {
+          "Sec-WebSocket-Protocol": tokenProtocols(serverToken),
+        },
+      }),
       { RELAY: { idFromName, get } } as unknown as RelayEnvArg,
     );
 
-    expect(idFromName).toHaveBeenCalledWith("relay-v2:srv_test");
+    expect(idFromName).toHaveBeenCalledWith("relay-v3:srv_test");
     expect(fetch).toHaveBeenCalledTimes(1);
-    await expect(response.text()).resolves.toBe("ok:2");
+    await expect(response.text()).resolves.toBe("ok:3");
   });
 
   it("rejects invalid v values", async () => {
@@ -276,8 +406,45 @@ describe("relay worker endpoint routing", () => {
     );
 
     expect(response.status).toBe(400);
-    await expect(response.text()).resolves.toBe("Invalid v parameter (expected 1 or 2)");
+    await expect(response.text()).resolves.toBe("Invalid v parameter (expected 3)");
     expect(idFromName).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects relay tokens in query parameters", async () => {
+    const response = await relayWorker.fetch(
+      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=3&token=secret"),
+      {
+        RELAY: {
+          idFromName: vi.fn(),
+          get: vi.fn(),
+        },
+      } as unknown as RelayEnvArg,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe(
+      "Relay token must be sent via Sec-WebSocket-Protocol",
+    );
+  });
+
+  it("rejects browser origins outside the allowlist", async () => {
+    const response = await relayWorker.fetch(
+      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=3", {
+        headers: {
+          Origin: "https://evil.example",
+          "Sec-WebSocket-Protocol": tokenProtocols(serverToken),
+        },
+      }),
+      {
+        RELAY: {
+          idFromName: vi.fn(),
+          get: vi.fn(),
+        },
+      } as unknown as RelayEnvArg,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.text()).resolves.toBe("Origin not allowed");
   });
 });

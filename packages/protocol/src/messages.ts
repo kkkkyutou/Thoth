@@ -1066,6 +1066,11 @@ export const DaemonGetPairingOfferRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const DaemonIssueRelayDeviceTokenRequestSchema = z.object({
+  type: z.literal("daemon.issue_relay_device_token.request"),
+  requestId: z.string(),
+});
+
 export const DiagnosticsRequestSchema = z.object({
   type: z.literal("diagnostics.request"),
   requestId: z.string(),
@@ -2047,6 +2052,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WaitForFinishRequestSchema,
   DaemonGetStatusRequestSchema,
   DaemonGetPairingOfferRequestSchema,
+  DaemonIssueRelayDeviceTokenRequestSchema,
   DiagnosticsRequestSchema,
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
@@ -3075,6 +3081,15 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
       relayEnabled: z.boolean(),
     })
     .passthrough(),
+});
+
+export const DaemonIssueRelayDeviceTokenResponseSchema = z.object({
+  type: z.literal("daemon.issue_relay_device_token.response"),
+  payload: z.object({
+    requestId: z.string(),
+    relayToken: z.string(),
+    relayTokenExpiresAt: z.string(),
+  }),
 });
 
 export const DiagnosticsResponseSchema = z.object({
@@ -4195,6 +4210,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
   DaemonGetPairingOfferResponseSchema,
+  DaemonIssueRelayDeviceTokenResponseSchema,
   DiagnosticsResponseSchema,
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
@@ -4386,6 +4402,9 @@ export type ListProviderFeaturesResponseMessage = z.infer<
 export type ListAvailableProvidersResponse = z.infer<typeof ListAvailableProvidersResponseSchema>;
 export type DaemonGetStatusResponse = z.infer<typeof DaemonGetStatusResponseSchema>;
 export type DaemonGetPairingOfferResponse = z.infer<typeof DaemonGetPairingOfferResponseSchema>;
+export type DaemonIssueRelayDeviceTokenResponse = z.infer<
+  typeof DaemonIssueRelayDeviceTokenResponseSchema
+>;
 export type DiagnosticsResponse = z.infer<typeof DiagnosticsResponseSchema>;
 export type GetProvidersSnapshotResponseMessage = z.infer<
   typeof GetProvidersSnapshotResponseMessageSchema

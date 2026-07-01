@@ -322,14 +322,14 @@ const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
   daemon: {
     listen: "127.0.0.1:6767",
     cors: {
-      allowedOrigins: ["https://app.thoth.sh"],
+      allowedOrigins: ["https://app.thoth.seeles.ai"],
     },
     relay: {
       enabled: true,
     },
   },
   app: {
-    baseUrl: "https://app.thoth.sh",
+    baseUrl: "https://app.thoth.seeles.ai",
   },
 }) as PersistedConfig;
 

@@ -9,6 +9,7 @@ import {
   type CliConfigOverrides,
   type PersistedConfig,
 } from "@thoth/daemon";
+import { DEFAULT_APP_BASE_URL } from "@thoth/protocol/daemon-endpoints";
 import {
   resolveLocalThothHome,
   resolveLocalDaemonState,
@@ -300,7 +301,7 @@ function printNextSteps(pairingUrl: string | null, thothHome: string, richUi: bo
     pairingUrl
       ? "1. Open Thoth and scan the QR code above, or paste the pairing link."
       : "1. Open Thoth and connect to your daemon.",
-    "2. Web app: https://app.thoth.sh",
+    `2. Web app: ${DEFAULT_APP_BASE_URL}`,
     "3. Desktop app: https://github.com/thoth/thoth/releases/latest",
     "4. Docs: https://thoth.sh/docs",
     '5. Example: thoth run --output-schema schema.json "extract fields"',

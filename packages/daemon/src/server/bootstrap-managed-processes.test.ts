@@ -43,7 +43,7 @@ describe("daemon managed process bootstrap", () => {
         agentClients: createTestAgentClients(),
         agentStoragePath: path.join(thothHome, "agents"),
         relayEnabled: false,
-        appBaseUrl: "https://app.thoth.sh",
+        appBaseUrl: "https://app.thoth.seeles.ai",
         managedProcesses,
       } as ThothDaemonConfig,
       pino({ level: "silent" }),

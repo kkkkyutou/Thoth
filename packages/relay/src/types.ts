@@ -15,10 +15,9 @@ export interface RelaySessionAttachment {
   role: ConnectionRole;
   /**
    * Relay protocol version carried by this socket.
-   * v1: single server/client socket pair
-   * v2: control + per-client data sockets
+   * v3: daemon-registered room with role-scoped relay capability tokens.
    */
-  version?: "1" | "2";
+  version?: "3";
   /**
    * Unique id for the connection. Allows the daemon to create an
    * independent socket + E2EE channel per connected connection.

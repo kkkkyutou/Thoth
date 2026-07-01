@@ -130,9 +130,10 @@ import { wrapSessionMessage, type SessionOutboundMessage } from "./messages.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
-import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
+import { DEFAULT_APP_BASE_URL, DEFAULT_RELAY_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
+import { loadOrCreateRelayCredentials } from "./relay-credentials.js";
 import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
@@ -465,6 +466,7 @@ export async function createThothDaemon(
 
   const serverId = getOrCreateServerId(config.thothHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.thothHome, logger);
+  const relayCredentials = loadOrCreateRelayCredentials(config.thothHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
   // daemon from coming up; terminating a live leftover can take a few seconds.
@@ -1144,11 +1146,11 @@ export async function createThothDaemon(
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
             const relayEnabled = config.relayEnabled ?? true;
-            const relayEndpoint = config.relayEndpoint ?? "relay.thoth.sh:443";
+            const relayEndpoint = config.relayEndpoint ?? DEFAULT_RELAY_ENDPOINT;
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.thoth.sh:443";
+            const relayUseTls = config.relayUseTls ?? relayEndpoint === DEFAULT_RELAY_ENDPOINT;
             const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
-            const appBaseUrl = config.appBaseUrl ?? "https://app.thoth.sh";
+            const appBaseUrl = config.appBaseUrl ?? DEFAULT_APP_BASE_URL;
 
             if (boundListenTarget.type === "tcp") {
               logger.info(
@@ -1218,7 +1220,7 @@ export async function createThothDaemon(
               {
                 listen: formatListenTarget(boundListenTarget ?? listenTarget),
                 worktreesRoot: config.worktreesRoot,
-                appBaseUrl: config.appBaseUrl,
+                appBaseUrl,
                 relay: {
                   enabled: relayEnabled,
                   endpoint: relayEndpoint,
@@ -1228,20 +1230,10 @@ export async function createThothDaemon(
                 },
               },
               serviceProxyPublicBaseUrl,
+              relayCredentials,
             );
 
             if (relayEnabled) {
-              const offer = await createConnectionOfferV2({
-                serverId,
-                daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
-                relay: {
-                  endpoint: relayPublicEndpoint,
-                  useTls: relayPublicUseTls,
-                },
-              });
-
-              encodeOfferToFragmentUrl({ offer, appBaseUrl });
-
               relayTransport?.stop().catch(() => undefined);
               relayTransport = startRelayTransport({
                 logger,
@@ -1254,6 +1246,9 @@ export async function createThothDaemon(
                 relayEndpoint,
                 relayUseTls,
                 serverId,
+                serverToken: relayCredentials.serverToken,
+                getRegistrationMessage: () => relayCredentials.buildRegistrationMessage(),
+                onRegistrationChanged: (handler) => relayCredentials.onRegistrationChanged(handler),
                 daemonKeyPair: daemonKeyPair.keyPair,
               });
             }

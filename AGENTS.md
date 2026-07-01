@@ -97,6 +97,7 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 10. Voice、speech、dictation、audio 不是当前 MVP 产品能力；不得新增权限、依赖、UI 或 runtime 能力。
 11. Multica 源码禁止 copy 到本仓库。Multica 只能作为设计和工程治理参考。
 12. 不得 stage/commit `.agent-os/upstreams/`、`.agent-os/artifacts/`、`.dev/`、`packages/app/android/`、`packages/app/ios/`。
+13. Thoth I 的 dev UI 必须复用当前可发布完整版 UI 的真实体验；不得创建单独的 mock/debug-only/agent-facing UI 作为主要审核入口。
 
 ## 7. Command Discipline
 
@@ -107,6 +108,8 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 5. 当前基础门禁是 `npm run check:foundation`。
 6. Foundation gate 失败时必须先修复，不继续做业务代码。
 7. `npm install` 受 root `.npmrc` 约束，默认 `ignore-scripts=true`、`audit=false`、`fund=false`；需要 native/toolchain 初始化时必须通过显式 root script 完成。
+8. 人类审核走真实 dev UI/dogfood entry；agent 常规验收走 root scripts、unit tests、typecheck、build 和显式 smoke 命令。
+9. 访问 GitHub 私有仓库或 workflow 时必须用 `npm run gh -- ...`，该 wrapper 强制 `GH_CONFIG_DIR` 指向 ignored `.dev/gh`。不得直接运行全局 `gh auth login`，不得依赖或修改全局 `~/.config/gh`。
 
 ## 8. Test And Verification Discipline
 

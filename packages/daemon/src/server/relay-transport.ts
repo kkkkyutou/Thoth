@@ -8,7 +8,11 @@ import {
   type Transport as RelayTransport,
   type KeyPair,
 } from "@thoth/relay/e2ee";
-import { buildRelayWebSocketUrl } from "@thoth/protocol/daemon-endpoints";
+import {
+  buildRelayWebSocketProtocols,
+  buildRelayWebSocketUrl,
+} from "@thoth/protocol/daemon-endpoints";
+import type { RelayRegistrationMessage } from "./relay-credentials.js";
 import type { ExternalSocketMetadata } from "./websocket-server.js";
 
 interface RelayTransportOptions {
@@ -17,6 +21,9 @@ interface RelayTransportOptions {
   relayEndpoint: string; // "host:port"
   relayUseTls: boolean;
   serverId: string;
+  serverToken: string;
+  getRegistrationMessage: () => RelayRegistrationMessage;
+  onRegistrationChanged?: (handler: (message: RelayRegistrationMessage) => void) => () => void;
   daemonKeyPair?: KeyPair;
   createWebSocket?: RelayWebSocketFactory;
 }
@@ -42,7 +49,7 @@ interface RelayWebSocketLike extends RelaySocketLike {
   ) => void;
 }
 
-type RelayWebSocketFactory = (url: string) => RelayWebSocketLike;
+type RelayWebSocketFactory = (url: string, protocols?: string[]) => RelayWebSocketLike;
 
 type ControlMessage =
   | { type: "sync"; connectionIds: string[] }
@@ -56,8 +63,10 @@ const CONTROL_STALE_TIMEOUT_MS = 30_000;
 const CONTROL_READY_TIMEOUT_MS = 8_000;
 const RELAY_WEBSOCKET_OPTIONS = { handshakeTimeout: 10_000, perMessageDeflate: false } as const;
 
-function createDefaultRelayWebSocket(url: string): RelayWebSocketLike {
-  return new WebSocket(url, RELAY_WEBSOCKET_OPTIONS);
+function createDefaultRelayWebSocket(url: string, protocols?: string[]): RelayWebSocketLike {
+  return protocols
+    ? new WebSocket(url, protocols, RELAY_WEBSOCKET_OPTIONS)
+    : new WebSocket(url, RELAY_WEBSOCKET_OPTIONS);
 }
 
 function normalizeRelaySendPayload(data: string | Uint8Array | ArrayBuffer): string | ArrayBuffer {
@@ -122,10 +131,14 @@ export function startRelayTransport({
   relayEndpoint,
   relayUseTls,
   serverId,
+  serverToken,
+  getRegistrationMessage,
+  onRegistrationChanged,
   daemonKeyPair,
   createWebSocket = createDefaultRelayWebSocket,
 }: RelayTransportOptions): RelayTransportController {
   const relayLogger = logger.child({ module: "relay-transport" });
+  const relayProtocols = buildRelayWebSocketProtocols(serverToken);
 
   let stopped = false;
   let controlWs: RelayWebSocketLike | null = null;
@@ -136,9 +149,21 @@ export function startRelayTransport({
   let controlReadyTimeout: ReturnType<typeof setTimeout> | null = null;
   let controlLastSeenAt = 0;
   let controlConnectionSeq = 0;
+  const sendRegistration = (message: RelayRegistrationMessage): void => {
+    if (!controlWs || controlWs.readyState !== WebSocket.OPEN) return;
+    try {
+      controlWs.send(JSON.stringify(message));
+      relayLogger.debug("relay_registration_sent");
+    } catch (error) {
+      relayLogger.warn({ err: error }, "relay_registration_send_failed");
+    }
+  };
+  const unregisterRegistrationListener =
+    onRegistrationChanged?.((message) => sendRegistration(message)) ?? null;
 
   const stop = async (): Promise<void> => {
     stopped = true;
+    unregisterRegistrationListener?.();
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
@@ -179,7 +204,7 @@ export function startRelayTransport({
       serverId,
       role: "server",
     });
-    const socket = createWebSocket(url);
+    const socket = createWebSocket(url, relayProtocols);
     controlWs = socket;
     let controlConnected = false;
 
@@ -212,7 +237,7 @@ export function startRelayTransport({
         if (controlWs !== socket) return;
         if (controlConnected) return;
         relayLogger.warn(
-          { url, connectionId, waitedMs: CONTROL_READY_TIMEOUT_MS },
+          { connectionId, waitedMs: CONTROL_READY_TIMEOUT_MS },
           "relay_control_ready_timeout_terminating",
         );
         try {
@@ -234,7 +259,7 @@ export function startRelayTransport({
         // hibernated relay Durable Object, so this keepalive does not incur DO CPU billing.
         if (staleForMs > CONTROL_STALE_TIMEOUT_MS) {
           relayLogger.warn(
-            { url, staleForMs, connectionId, staleTimeoutMs: CONTROL_STALE_TIMEOUT_MS },
+            { staleForMs, connectionId, staleTimeoutMs: CONTROL_STALE_TIMEOUT_MS },
             "relay_control_stale_terminating",
           );
           try {
@@ -257,6 +282,7 @@ export function startRelayTransport({
         }
       }, CONTROL_PING_INTERVAL_MS);
       try {
+        sendRegistration(getRegistrationMessage());
         socket.ping();
       } catch (error) {
         relayLogger.warn({ err: error, connectionId }, "relay_control_ping_send_failed");
@@ -272,7 +298,7 @@ export function startRelayTransport({
     socket.on("close", (code, reason) => {
       if (controlWs !== socket) return;
       relayLogger.warn(
-        { code, reason: reason?.toString?.(), url, connectionId },
+        { code, reason: reason?.toString?.(), connectionId },
         "relay_control_disconnected",
       );
       controlWs = null;
@@ -364,7 +390,7 @@ export function startRelayTransport({
       role: "server",
       connectionId,
     });
-    const socket = createWebSocket(url);
+    const socket = createWebSocket(url, relayProtocols);
     dataSockets.set(connectionId, socket);
 
     let attached = false;
@@ -405,7 +431,7 @@ export function startRelayTransport({
     socket.on("close", (code, reason) => {
       clearTimeout(openTimeout);
       relayLogger.warn(
-        { code, reason: reason?.toString?.(), url, connectionId },
+        { code, reason: reason?.toString?.(), connectionId },
         "relay_data_disconnected",
       );
       if (dataSockets.get(connectionId) === socket) {

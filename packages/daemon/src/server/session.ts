@@ -65,6 +65,7 @@ import {
   CLIENT_SHUTDOWN_RPC_REASON,
   normalizeClientRestartRpcReason,
 } from "./lifecycle-reasons.js";
+import type { RelayCredentialsManager } from "./relay-credentials.js";
 
 import { AgentManager } from "./agent/agent-manager.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -470,6 +471,7 @@ export interface SessionOptions {
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  relayCredentials?: RelayCredentialsManager;
 }
 
 export type SessionLifecycleIntent =
@@ -791,6 +793,7 @@ export class Session {
       daemonVersion,
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
+      relayCredentials: options.relayCredentials,
       listProviderAvailability: () => this.agentManager.listProviderAvailability(),
       listAgents: () => this.agentManager.listAgents(),
       listProjects: () => this.projectRegistry.list(),
@@ -1518,6 +1521,8 @@ export class Session {
         return this.daemonSession.handleGetStatusRequest(msg);
       case "daemon.get_pairing_offer.request":
         return this.daemonSession.handleGetPairingOfferRequest(msg);
+      case "daemon.issue_relay_device_token.request":
+        return this.daemonSession.handleIssueRelayDeviceTokenRequest(msg);
       case "diagnostics.request":
         return this.daemonSession.handleDiagnosticsRequest(msg);
       case "daemon.update.request":

@@ -36,6 +36,19 @@ The first development gate is the foundation set:
 
 The daemon, app, desktop, CLI and drivers may still contain broken imports or incomplete wiring. Do not delete promoted code simply because those broader packages are expected-broken.
 
+## Human Dogfood UI
+
+The future Thoth I development entry, such as `npm run dev:thoth`, must launch the same user
+experience as the current releasable full UI. It may target a local daemon, local providers,
+development logs or development config, but the user-facing flow, layout, copy, composer controls,
+task cards, stream states and reports must match the releasable product UI.
+
+Humans use that UI for dogfood, review and experience testing. Agents use repository tests,
+typechecks, builds and explicit smoke commands as the normal validation path.
+
+Do not build a separate mock, reduced, debug-only or agent-facing UI as the primary Thoth I review
+surface.
+
 ## Standard Commands
 
 Run commands through root npm scripts:
@@ -58,6 +71,27 @@ npm run format:check
 npm run lint
 npm run lint:fix
 ```
+
+Repository-local GitHub CLI:
+
+```bash
+npm run gh -- auth status --hostname github.com
+npm run gh -- api user
+npm run gh -- repo view SeeleAI/Code4Agent
+```
+
+`npm run gh -- ...` wraps the system `gh` binary and forces `GH_CONFIG_DIR` to `.dev/gh`.
+That keeps the Thoth checkout's GitHub login separate from global `~/.config/gh`.
+Do not run plain `gh auth login` for repository work.
+
+To create or replace the local login, pass the token through stdin so the token is not placed in
+the shell command line:
+
+```bash
+printf '%s\n' "$GITHUB_TOKEN" | npm run gh -- auth login --hostname github.com --with-token
+```
+
+The `.dev/gh` directory is ignored and must never be staged.
 
 Android packaging:
 

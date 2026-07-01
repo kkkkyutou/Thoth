@@ -17,6 +17,7 @@ import {
 } from "@/types/host-connection";
 import {
   buildDaemonWebSocketUrl,
+  buildRelayWebSocketProtocols,
   buildRelayWebSocketUrl,
   decodeOfferFragmentPayload,
   normalizeHostPort,
@@ -550,6 +551,9 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
           useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
           serverId: host.serverId,
         }),
+        ...(connection.relayToken
+          ? { protocols: buildRelayWebSocketProtocols(connection.relayToken) }
+          : {}),
         e2ee: {
           enabled: true,
           daemonPublicKeyB64: connection.daemonPublicKeyB64,
@@ -1682,6 +1686,9 @@ export class HostRuntimeStore {
     relayEndpoint: string;
     useTls?: boolean;
     daemonPublicKeyB64: string;
+    relayToken?: string;
+    relayTokenExpiresAt?: string;
+    pairingExpiresAt?: string;
     label?: string;
   }): Promise<HostProfile> {
     const relayEndpoint = normalizeHostPort(input.relayEndpoint);
@@ -1698,7 +1705,11 @@ export class HostRuntimeStore {
         id: useTls ? `relay:wss:${relayEndpoint}` : `relay:${relayEndpoint}`,
         type: "relay",
         relayEndpoint,
+        relayProtocolVersion: 3,
         ...(explicitUseTls ? { useTls } : {}),
+        ...(input.relayToken ? { relayToken: input.relayToken } : {}),
+        ...(input.relayTokenExpiresAt ? { relayTokenExpiresAt: input.relayTokenExpiresAt } : {}),
+        ...(input.pairingExpiresAt ? { pairingExpiresAt: input.pairingExpiresAt } : {}),
         daemonPublicKeyB64,
       },
     });
@@ -1712,6 +1723,9 @@ export class HostRuntimeStore {
       relayEndpoint: offer.relay.endpoint,
       useTls,
       daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      relayToken: offer.pairingToken,
+      relayTokenExpiresAt: offer.pairingExpiresAt,
+      pairingExpiresAt: offer.pairingExpiresAt,
       label,
     });
   }
@@ -2299,6 +2313,9 @@ export interface HostMutations {
     relayEndpoint: string;
     useTls?: boolean;
     daemonPublicKeyB64: string;
+    relayToken?: string;
+    relayTokenExpiresAt?: string;
+    pairingExpiresAt?: string;
     label?: string;
   }) => Promise<HostProfile>;
   upsertConnectionFromOffer: (offer: ConnectionOffer, label?: string) => Promise<HostProfile>;

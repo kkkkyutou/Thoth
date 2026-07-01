@@ -1,25 +1,30 @@
 import { z } from "zod";
 
+export const ConnectionOfferRelayV3Schema = z.object({
+  endpoint: z.string().min(1),
+  useTls: z.boolean().optional(),
+  protocolVersion: z.literal(3),
+});
+
 /**
  * Relay-only pairing offer.
  *
  * `serverId` is a stable daemon identifier scoped to `THOTH_HOME`, and is also
- * used as the relay session identifier.
+ * used as the relay room identifier.
  */
-export const ConnectionOfferV2Schema = z.object({
-  v: z.literal(2),
+export const ConnectionOfferV3Schema = z.object({
+  v: z.literal(3),
   serverId: z.string().min(1),
   daemonPublicKeyB64: z.string().min(1),
-  relay: z.object({
-    endpoint: z.string().min(1),
-    useTls: z.boolean().optional(),
-  }),
+  relay: ConnectionOfferRelayV3Schema,
+  pairingToken: z.string().min(32),
+  pairingExpiresAt: z.string().datetime(),
 });
 
-export type ConnectionOfferV2 = z.infer<typeof ConnectionOfferV2Schema>;
+export type ConnectionOfferV3 = z.infer<typeof ConnectionOfferV3Schema>;
 
-export const ConnectionOfferSchema = ConnectionOfferV2Schema;
-export type ConnectionOffer = ConnectionOfferV2;
+export const ConnectionOfferSchema = ConnectionOfferV3Schema;
+export type ConnectionOffer = ConnectionOfferV3;
 
 function decodeBase64UrlToUtf8(input: string): string {
   const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
@@ -46,7 +51,7 @@ function extractOfferFragmentEncoded(input: string): string | null {
 }
 
 /**
- * Parse a pairing-offer URL of the form `https://app.thoth.sh/#offer=<base64url>`.
+ * Parse a pairing-offer URL of the form `https://app.thoth.seeles.ai/#offer=<base64url>`.
  *
  * Returns `null` if the input has no `#offer=` fragment. Throws if the fragment
  * exists but the payload is malformed or fails schema validation.

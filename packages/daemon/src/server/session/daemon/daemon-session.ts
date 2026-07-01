@@ -10,6 +10,7 @@ import {
 import { DaemonSelfUpdateSessionController } from "./daemon-self-update-session-controller.js";
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "../../workspace-registry.js";
+import type { RelayCredentialsManager } from "../../relay-credentials.js";
 
 export interface DaemonRuntimeConfig {
   listen: string | null;
@@ -45,6 +46,7 @@ export interface DaemonSessionOptions {
   listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   listProviderAvailability: () => Promise<ProviderAvailability[]>;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  relayCredentials?: RelayCredentialsManager;
   logger: pino.Logger;
 }
 
@@ -67,6 +69,7 @@ export class DaemonSession {
   private readonly listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   private readonly listProviderAvailability: () => Promise<ProviderAvailability[]>;
   private readonly getWebSocketRuntimeMetrics: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  private readonly relayCredentials: RelayCredentialsManager | null;
   private readonly logger: pino.Logger;
   private readonly selfUpdate: DaemonSelfUpdateSessionController;
 
@@ -82,6 +85,7 @@ export class DaemonSession {
     this.listWorkspaces = options.listWorkspaces;
     this.listProviderAvailability = options.listProviderAvailability;
     this.getWebSocketRuntimeMetrics = options.getWebSocketRuntimeMetrics ?? (() => null);
+    this.relayCredentials = options.relayCredentials ?? null;
     this.logger = options.logger;
     this.selfUpdate = new DaemonSelfUpdateSessionController({
       clientId: this.clientId,
@@ -149,6 +153,7 @@ export class DaemonSession {
         relayPublicUseTls: relay?.publicUseTls,
         appBaseUrl: this.daemonRuntimeConfig?.appBaseUrl,
         includeQr: true,
+        relayCredentials: this.relayCredentials ?? undefined,
         logger: this.logger,
       });
       this.host.emit({
@@ -167,6 +172,38 @@ export class DaemonSession {
         payload: {
           requestId: msg.requestId,
           requestType: "daemon.get_pairing_offer.request",
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  async handleIssueRelayDeviceTokenRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.issue_relay_device_token.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.daemonRuntimeConfig?.relay?.enabled) {
+        throw new Error("Relay is disabled.");
+      }
+      if (!this.relayCredentials) {
+        throw new Error("Relay credentials are not available.");
+      }
+      const issued = this.relayCredentials.issueDeviceToken();
+      this.host.emit({
+        type: "daemon.issue_relay_device_token.response",
+        payload: {
+          requestId: msg.requestId,
+          relayToken: issued.token,
+          relayTokenExpiresAt: issued.expiresAt,
+        },
+      });
+    } catch (error) {
+      this.logger.error({ err: error }, "Failed to issue relay device token");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: "daemon.issue_relay_device_token.request",
           error: error instanceof Error ? error.message : String(error),
         },
       });

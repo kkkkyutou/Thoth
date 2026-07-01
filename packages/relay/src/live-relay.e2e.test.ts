@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { WebSocket } from "ws";
+import { createHash } from "node:crypto";
 import {
   generateKeyPair,
   exportPublicKey,
@@ -12,7 +13,14 @@ import {
 // This live test uses the hosted relay's real TLS endpoint. Self-hosted relay TLS
 // opt-in is covered at URL-building/integration level so the local E2E does not
 // need to provision trusted certificates.
-const RELAY_BASE_URL = "wss://relay.thoth.sh";
+const RELAY_BASE_URL = "wss://relay.thoth.seeles.ai";
+const serverToken = "rst_abcdefghijklmnopqrstuvwxyz123456";
+const pairingToken = "rpt_abcdefghijklmnopqrstuvwxyz123456";
+const deviceToken = "rdt_abcdefghijklmnopqrstuvwxyz123456";
+
+const tokenProtocols = (token: string) => ["thoth.relay.v3", `thoth.relay.token.${token}`];
+const sha256 = (token: string) => createHash("sha256").update(token, "utf8").digest("hex");
+const futureIso = () => new Date(Date.now() + 60_000).toISOString();
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -90,21 +98,34 @@ function waitForOnceMessage<T extends "string" | "buffer">(
   });
 }
 
-describe("Live relay (relay.thoth.sh) E2E", () => {
+async function registerRelayRoom(ws: WebSocket): Promise<void> {
+  ws.send(
+    JSON.stringify({
+      type: "register",
+      serverTokenHash: sha256(serverToken),
+      pairingTokenHash: sha256(pairingToken),
+      pairingExpiresAt: futureIso(),
+      deviceTokenHashes: [sha256(deviceToken)],
+    }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 250));
+}
+
+describe("Live relay (relay.thoth.seeles.ai) E2E", () => {
   const liveIt = process.env.RUN_LIVE_RELAY_E2E === "1" ? it : it.skip;
 
   liveIt("bridges encrypted traffic end-to-end", { timeout: 45_000 }, async () => {
     await withRetry(
       async () => {
-        const serverId = `live-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const serverId = `srv_live_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const connectionId = `clt_live_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const serverControlUrl = `${RELAY_BASE_URL}/ws?serverId=${encodeURIComponent(serverId)}&role=server&v=2`;
+        const serverControlUrl = `${RELAY_BASE_URL}/ws?serverId=${encodeURIComponent(serverId)}&role=server&v=3`;
         const serverDataUrl = `${RELAY_BASE_URL}/ws?serverId=${encodeURIComponent(
           serverId,
-        )}&role=server&connectionId=${encodeURIComponent(connectionId)}&v=2`;
+        )}&role=server&connectionId=${encodeURIComponent(connectionId)}&v=3`;
         const clientUrl = `${RELAY_BASE_URL}/ws?serverId=${encodeURIComponent(
           serverId,
-        )}&role=client&connectionId=${encodeURIComponent(connectionId)}&v=2`;
+        )}&role=client&connectionId=${encodeURIComponent(connectionId)}&v=3`;
 
         // === Key setup ===
         const daemonKeyPair = generateKeyPair();
@@ -117,19 +138,19 @@ describe("Live relay (relay.thoth.sh) E2E", () => {
         const clientSharedKey = deriveSharedKey(clientKeyPair.secretKey, daemonPubKeyOnClient);
 
         // === Connect ===
-        const daemonControlWs = new WebSocket(serverControlUrl);
-        const clientWs = new WebSocket(clientUrl);
+        const daemonControlWs = new WebSocket(serverControlUrl, tokenProtocols(serverToken));
+        let clientWs: WebSocket | null = null;
         let daemonWs: WebSocket | null = null;
 
         try {
-          await Promise.all([
-            waitOpen(daemonControlWs, "server-control"),
-            waitOpen(clientWs, "client"),
-          ]);
+          await waitOpen(daemonControlWs, "server-control");
+          await registerRelayRoom(daemonControlWs);
 
+          clientWs = new WebSocket(clientUrl, tokenProtocols(pairingToken));
+          await waitOpen(clientWs, "client");
           await waitForConnected(daemonControlWs, connectionId);
 
-          daemonWs = new WebSocket(serverDataUrl);
+          daemonWs = new WebSocket(serverDataUrl, tokenProtocols(serverToken));
           await waitOpen(daemonWs, "server-data");
 
           // === Handshake ===
@@ -193,7 +214,7 @@ describe("Live relay (relay.thoth.sh) E2E", () => {
         } finally {
           daemonControlWs.close();
           daemonWs?.close();
-          clientWs.close();
+          clientWs?.close();
         }
       },
       { retries: 2, delayMs: 250 },

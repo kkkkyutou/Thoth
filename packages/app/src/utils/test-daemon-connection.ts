@@ -5,6 +5,7 @@ import { getOrCreateClientId } from "./client-id";
 import { resolveAppVersion } from "./app-version";
 import {
   buildDaemonWebSocketUrl,
+  buildRelayWebSocketProtocols,
   buildRelayWebSocketUrl,
   shouldUseTlsForDefaultHostedRelay,
 } from "./daemon-endpoints";
@@ -145,6 +146,9 @@ export async function buildClientConfig(
       useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
       serverId,
     }),
+    ...(connection.relayToken
+      ? { protocols: buildRelayWebSocketProtocols(connection.relayToken) }
+      : {}),
     e2ee: { enabled: true, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
   };
 }

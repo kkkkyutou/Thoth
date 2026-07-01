@@ -13,10 +13,13 @@ export interface ParsedConnectionUri extends ConnectionUriParts {
 }
 
 export type RelayRole = "server" | "client";
-export type RelayProtocolVersion = "1" | "2";
+export type RelayProtocolVersion = "3";
 
-export const CURRENT_RELAY_PROTOCOL_VERSION: RelayProtocolVersion = "2";
-export const DEFAULT_RELAY_ENDPOINT = "relay.thoth.sh:443";
+export const CURRENT_RELAY_PROTOCOL_VERSION: RelayProtocolVersion = "3";
+export const DEFAULT_RELAY_ENDPOINT = "relay.thoth.seeles.ai:443";
+export const DEFAULT_APP_BASE_URL = "https://app.thoth.seeles.ai";
+export const RELAY_SUBPROTOCOL = "thoth.relay.v3";
+export const RELAY_TOKEN_SUBPROTOCOL_PREFIX = "thoth.relay.token.";
 
 export function normalizeRelayProtocolVersion(
   value: unknown,
@@ -35,10 +38,10 @@ export function normalizeRelayProtocolVersion(
   if (!normalized) {
     return fallback;
   }
-  if (normalized === "1" || normalized === "2") {
+  if (normalized === "3") {
     return normalized;
   }
-  throw new Error('Relay version must be "1" or "2"');
+  throw new Error('Relay version must be "3"');
 }
 
 function parsePort(portStr: string, context: string): number {
@@ -183,7 +186,7 @@ export function buildRelayWebSocketUrl(params: {
    * Clients should NOT provide this — the relay assigns a routing ID on connect.
    */
   connectionId?: string;
-  version?: RelayProtocolVersion | 1 | 2;
+  version?: RelayProtocolVersion;
 }): string {
   const { host, port, isIpv6 } = parseHostPort(params.endpoint);
   const protocol = params.useTls ? "wss" : "ws";
@@ -198,14 +201,38 @@ export function buildRelayWebSocketUrl(params: {
   return url.toString();
 }
 
+export function buildRelayWebSocketProtocols(token: string): string[] {
+  const trimmed = token.trim();
+  if (!trimmed) {
+    throw new Error("Relay token is required");
+  }
+  return [RELAY_SUBPROTOCOL, `${RELAY_TOKEN_SUBPROTOCOL_PREFIX}${trimmed}`];
+}
+
+export function extractRelayTokenFromProtocols(protocols: string | string[] | null): string | null {
+  const values = Array.isArray(protocols)
+    ? protocols
+    : typeof protocols === "string"
+      ? protocols.split(",")
+      : [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed.startsWith(RELAY_TOKEN_SUBPROTOCOL_PREFIX)) {
+      const token = trimmed.slice(RELAY_TOKEN_SUBPROTOCOL_PREFIX.length).trim();
+      return token.length > 0 ? token : null;
+    }
+  }
+  return null;
+}
+
 /**
  * @deprecated Migration fallback for stored relay connections/offers that predate
  * explicit relay useTls. Delete after two release cycles.
  */
 export function shouldUseTlsForDefaultHostedRelay(endpoint: string): boolean {
   try {
-    const { port } = parseHostPort(endpoint);
-    return port === 443;
+    const { host, port } = parseHostPort(endpoint);
+    return port === 443 && host.endsWith("seeles.ai");
   } catch {
     return false;
   }

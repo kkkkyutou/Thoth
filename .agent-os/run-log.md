@@ -1,5 +1,25 @@
 # Run Log
 
+## 2026-07-01 [Relay v3 security and local preview verification]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-004`, `NTH-WS-005`, `NTH-MS-010`, `NTH-TD-012`, `NTH-TD-013`
+- State changes: Implemented v3-only relay protocol with daemon-first room registration, role-scoped capability tokens in `Sec-WebSocket-Protocol`, hashed room registration, pairing/device token metadata, strict URL/origin validation, frame/pending/socket limits and seeles relay/app defaults.
+- State changes: Updated protocol/client/daemon/app pairing paths for `ConnectionOfferV3`, relay token subprotocols, device token issuance and app token storage. Removed or disabled remaining web-build-blocking voice/dictation imports without reintroducing voice runtime or permissions.
+- State changes: Added `scripts/sync-code4agent-relay.mjs` and root `sync:code4agent-relay` to export Thoth relay source into a Code4Agent `apps/thoth-relay` mirror; added `scripts/loadtest-relay-local.mjs` and root `loadtest:relay:local`.
+- Evidence produced: `npm run build:web` passed and `npm run serve:web` is serving the real app export at `http://127.0.0.1:4173`; `curl` returned HTTP `200` for that URL.
+- Evidence produced: `npm run test:relay`, `npm run typecheck:relay`, `npm run build:relay`, `npm run test:protocol`, `npm run typecheck:protocol`, `npm run build:protocol`, `npm run typecheck:client`, `npm run build:client`, `npm run test:client` all passed. Relay local E2E passed: 1 file, 3 tests.
+- Evidence produced: Local 200-client / 10-minute relay load test passed with 24000 attempted E2EE pings, 24000 pongs, failures `0`, error rate `0`, p50 `18ms`, p95 `24ms`, p99 `31ms`; receipt `.dev/relay-load-test-1782889793822.json`.
+- Blocker recorded: Code4Agent hosted preview deploy is blocked by active `protected-paths` push ruleset restricting `.github/**/*` and `**/*/wrangler.jsonc`, while the required mirror needs `apps/thoth-relay/wrangler.jsonc` and a `_deploy-isolated.yml` job. No hosted `.seele.chat` preview or `relay.test.thoth.seeles.ai` deployment was created.
+- Next likely action: either Bot/admin applies the Code4Agent protected-path patch for `NTH-TD-013`, or development returns to `NTH-TD-002` for the first New Thoth product slice.
+
+## 2026-06-30 [Repo-local GitHub CLI wrapper added]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`
+- State changes: Added `scripts/gh-local.mjs` and root `npm run gh -- ...` as the standard repository-local GitHub CLI entry. The wrapper forces `GH_CONFIG_DIR` to ignored `.dev/gh`, preserving the current machine's global `gh` login state.
+- State changes: Updated `AGENTS.md` and `docs/development.md` so agents use `npm run gh -- ...` for private GitHub repository and workflow access, and do not run global `gh auth login` for Thoth work.
+- Evidence produced: `npm run gh -- api user` reported `Royalvice`; `npm run gh -- repo view SeeleAI/Code4Agent` reported private repo access with `viewerPermission=WRITE`; `git check-ignore -v .dev/gh .dev/gh/hosts.yml` confirmed `.dev/gh` is ignored; `npm run validate:repo`, `npm run format:check` and `git diff --check` passed.
+- Next likely action: `NTH-TD-002` - design and implement the first New Thoth slice around explicit task mode, provider-backed Router, Clarify, authority store, task lifecycle and product-identical dogfood UI entry.
+
 ## 2026-06-28 [New Thoth repo reset]
 
 - Worked on: `NTH-OBJ-001`, `NTH-MS-001`, `NTH-TD-001`
@@ -90,3 +110,11 @@
 - Evidence produced: `npm run doctor:android` reported `THOTH_ANDROID_DOCTOR_OK`; `npm run setup:android-toolchain` reported `THOTH_ANDROID_TOOLCHAIN_READY`; `npm run package:android:debug-apk` reported `THOTH_ANDROID_DEBUG_APK_OK` and produced `/mnt/cfs/5vr0p6/yzy/thoth/packages/app/android/app/build/outputs/apk/debug/app-debug.apk`, sha256 `1a3cde6a8c2eab458683a5255291ed03ca6db1aaca1ab0d6dbbb39626fd8e540`, size `302693683` bytes.
 - Evidence produced: `npm run package:ios:prebuild` on Linux reported `THOTH_IOS_PREBUILD_SKIPPED` and exited `0`; `npm run package:ios:build` on Linux reported `THOTH_IOS_BUILD_SKIPPED` and exited `1`, as expected.
 - Next likely action: `NTH-TD-002` - design and implement the first New Thoth slice around explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle.
+
+## 2026-06-30 [Thoth I dev UI boundary recorded]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`, `NTH-TD-002`
+- State changes: Recorded `NTH-CD-020`, `NTH-REQ-017` and `NTH-AC-011`: Thoth I dev UI must be the same user experience as the current releasable full UI, not a separate debug/mock/agent-facing interface.
+- Decision detail: Humans use the dev UI as the real dogfood and review surface. Agents validate repository code through standard unit tests, typechecks, builds, root gates and explicit smoke commands.
+- State changes: Updated `AGENTS.md`, `docs/development.md`, `.agent-os/project-index.md` and `.agent-os/todo.md` so the first implementation slice includes a stable human dogfood entry without compromising the releasable UI experience.
+- Next likely action: `NTH-TD-002` - design and implement the first New Thoth slice around explicit task mode, provider-backed Router, Clarify, authority store, task lifecycle and product-identical dogfood UI entry.

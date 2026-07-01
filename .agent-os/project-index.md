@@ -5,9 +5,9 @@
 1. Objective: `NTH-OBJ-001`
 2. Top next action: `NTH-TD-002`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
-4. Active blockers: None
+4. Active blockers: `NTH-TD-013`
 5. Current branch: `port/from-old-thoth-plugin`
-6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; foundation gate and Android Debug APK packaging pass, but New Thoth product behavior is not implemented
+6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; relay v3 security and web export/local preview are verified locally; foundation gate and Android Debug APK packaging pass, but New Thoth product behavior is not implemented
 
 ## Objective Summary
 
@@ -28,7 +28,7 @@
 
 ## Active Blockers
 
-None.
+1. `NTH-TD-013`: Hosted Code4Agent relay preview deploy is blocked by Code4Agent active `protected-paths` push ruleset for `.github/**/*` and `**/*/wrangler.jsonc`. Local relay security/load validation passed, but no hosted `.seele.chat` preview URL or `relay.test.thoth.seeles.ai` deployment can be claimed until Bot/admin or an allowed actor applies the protected-path changes.
 
 ## Recent Important Changes
 
@@ -46,6 +46,8 @@ None.
 12. `NTH-EV-003`: `_paseo` promotion verification passed for structure, metadata, lockfile refresh, ignored raw cache, package/config voice-residue scan, generated/cache scan, package-boundary scan, secret-like scan and `git diff --check`.
 13. `NTH-CD-019`: First-day development infrastructure is locked: Node `24.14.0`, npm `11.9.0`, root-script gates, `oxfmt`/`oxlint`, foundation packages, stable install policy, local Android Debug APK, Linux-safe iOS scripts, package AGENTS contracts and no push/publish/GitHub Actions in this round.
 14. `NTH-EV-004`: First-day development infrastructure verification passed: `npm install`, `npm run check:foundation`, Android doctor/toolchain/APK, iOS Linux behavior, AGENTS symlink coverage, generated path hygiene and `git diff --check`.
+15. `NTH-CD-020`: Thoth I dev UI must be the same user experience as the current releasable full UI. Humans use it for dogfood/review; agents use standard repository tests and gates for code validation.
+16. `NTH-CD-021`: Relay is v3-only with daemon-first room registration and role-scoped subprotocol tokens; local web preview and 200-client local relay load test passed, while hosted Code4Agent preview deploy is blocked by protected paths.
 
 ## Read Next
 

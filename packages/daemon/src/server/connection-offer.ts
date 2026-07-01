@@ -1,6 +1,6 @@
 import os from "node:os";
 
-import { ConnectionOfferV2Schema, type ConnectionOffer } from "@thoth/protocol/connection-offer";
+import { ConnectionOfferV3Schema, type ConnectionOffer } from "@thoth/protocol/connection-offer";
 
 interface BuildOfferEndpointsArgs {
   listenHost: string;
@@ -27,16 +27,23 @@ export function buildOfferEndpoints({ listenHost, port }: BuildOfferEndpointsArg
   return dedupePreserveOrder(endpoints);
 }
 
-export async function createConnectionOfferV2(args: {
+export async function createConnectionOfferV3(args: {
   serverId: string;
   daemonPublicKeyB64: string;
   relay: { endpoint: string; useTls?: boolean };
+  pairingToken: string;
+  pairingExpiresAt: string;
 }): Promise<ConnectionOffer> {
-  return ConnectionOfferV2Schema.parse({
-    v: 2,
+  return ConnectionOfferV3Schema.parse({
+    v: 3,
     serverId: args.serverId,
     daemonPublicKeyB64: args.daemonPublicKeyB64,
-    relay: args.relay,
+    relay: {
+      ...args.relay,
+      protocolVersion: 3,
+    },
+    pairingToken: args.pairingToken,
+    pairingExpiresAt: args.pairingExpiresAt,
   });
 }
 

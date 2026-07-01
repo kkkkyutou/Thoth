@@ -63,7 +63,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const daemons = useHosts();
-  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
+  const { upsertRelayConnection } = useHostMutations();
   const isMobile = useIsCompactFormFactor();
 
   const offerUrlRef = useRef("");
@@ -140,14 +140,28 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           type: "relay",
           relayEndpoint: normalizeHostPort(parsedOffer.relay.endpoint),
           useTls: parsedOffer.relay.useTls,
+          relayProtocolVersion: 3,
+          relayToken: parsedOffer.pairingToken,
+          relayTokenExpiresAt: parsedOffer.pairingExpiresAt,
+          pairingExpiresAt: parsedOffer.pairingExpiresAt,
           daemonPublicKeyB64: parsedOffer.daemonPublicKeyB64,
         },
         { serverId: parsedOffer.serverId },
       );
+      const issued = await client.issueRelayDeviceToken().catch(() => null);
       await client.close().catch(() => undefined);
 
       const isNewHost = !daemons.some((daemon) => daemon.serverId === parsedOffer.serverId);
-      const profile = await upsertDaemonFromOfferUrl(raw, hostname ?? undefined);
+      const profile = await upsertRelayConnection({
+        serverId: parsedOffer.serverId,
+        relayEndpoint: parsedOffer.relay.endpoint,
+        useTls: parsedOffer.relay.useTls,
+        daemonPublicKeyB64: parsedOffer.daemonPublicKeyB64,
+        relayToken: issued?.relayToken ?? parsedOffer.pairingToken,
+        relayTokenExpiresAt: issued?.relayTokenExpiresAt ?? parsedOffer.pairingExpiresAt,
+        pairingExpiresAt: parsedOffer.pairingExpiresAt,
+        label: hostname ?? undefined,
+      });
       onSaved?.({ profile, serverId: parsedOffer.serverId, hostname, isNewHost });
       handleClose();
     } catch (error) {
@@ -160,7 +174,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
     } finally {
       setIsSaving(false);
     }
-  }, [daemons, handleClose, isMobile, isSaving, onSaved, t, upsertDaemonFromOfferUrl]);
+  }, [daemons, handleClose, isMobile, isSaving, onSaved, t, upsertRelayConnection]);
 
   const handleChangeOfferUrl = useCallback((next: string) => {
     offerUrlRef.current = next;
@@ -189,7 +203,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           nativeID="pair-link-input"
           accessibilityLabel={t("pairing.link.label")}
           onChangeText={handleChangeOfferUrl}
-          placeholder="https://app.thoth.sh/#offer=..."
+          placeholder="https://app.thoth.seeles.ai/#offer=..."
           placeholderTextColor={theme.colors.foregroundMuted}
           style={styles.input}
           autoFocus

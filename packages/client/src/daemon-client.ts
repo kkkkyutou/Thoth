@@ -69,6 +69,7 @@ import type {
   ProviderUsageListResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
+  DaemonIssueRelayDeviceTokenResponse,
   DiagnosticsResponse,
   AgentRewindResponseMessage,
   ListTerminalsResponse,
@@ -230,6 +231,7 @@ export interface DaemonClientConfig {
   runtimeGeneration?: number | null;
   password?: string;
   authHeader?: string;
+  protocols?: string[];
   suppressSendErrors?: boolean;
   transportFactory?: DaemonTransportFactory;
   webSocketFactory?: WebSocketFactory;
@@ -354,6 +356,7 @@ type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
+type DaemonIssueRelayDeviceTokenPayload = DaemonIssueRelayDeviceTokenResponse["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
 type ReadProjectConfigPayload = Extract<
   SessionOutboundMessage,
@@ -521,6 +524,10 @@ export interface DaemonStatusOptions {
   timeout?: number;
 }
 export interface DaemonPairingOfferOptions {
+  requestId?: string;
+  timeout?: number;
+}
+export interface DaemonIssueRelayDeviceTokenOptions {
   requestId?: string;
   timeout?: number;
 }
@@ -1083,7 +1090,10 @@ export class DaemonClient {
     } else if (this.config.authHeader) {
       headers.Authorization = this.config.authHeader;
     }
-    const protocols = password ? [`thoth.bearer.${password}`] : undefined;
+    const protocols = [
+      ...(this.config.protocols ?? []),
+      ...(password ? [`thoth.bearer.${password}`] : []),
+    ];
 
     try {
       // Reconnect can overlap with browser close/error delivery ordering.
@@ -1111,7 +1121,7 @@ export class DaemonClient {
       const transport = transportFactory({
         url: transportUrl,
         headers,
-        ...(protocols ? { protocols } : {}),
+        ...(protocols.length > 0 ? { protocols } : {}),
       });
       this.transport = transport;
       this.lastServerInfoMessage = null;
@@ -3823,6 +3833,19 @@ export class DaemonClient {
         type: "daemon.get_pairing_offer.request",
       },
       responseType: "daemon.get_pairing_offer.response",
+      timeout: options?.timeout,
+    });
+  }
+
+  async issueRelayDeviceToken(
+    options?: DaemonIssueRelayDeviceTokenOptions,
+  ): Promise<DaemonIssueRelayDeviceTokenPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: {
+        type: "daemon.issue_relay_device_token.request",
+      },
+      responseType: "daemon.issue_relay_device_token.response",
       timeout: options?.timeout,
     });
   }

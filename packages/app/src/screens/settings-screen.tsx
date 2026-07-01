@@ -79,7 +79,7 @@ import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
-import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
+import { useVoiceAudioEngineOptional } from "@/contexts/disabled-voice-context";
 import {
   LANGUAGE_OPTIONS,
   formatLanguageOptionLabel,

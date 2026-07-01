@@ -3,6 +3,7 @@ import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { loadConfig, resolveThothHome, spawnProcess } from "@thoth/daemon";
+import { DEFAULT_RELAY_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
 import treeKill from "tree-kill";
 import { tryConnectToDaemon } from "../../utils/client.js";
 
@@ -557,7 +558,7 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
     home,
     listen,
     relayEnabled: config.relayEnabled ?? true,
-    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? "relay.thoth.sh:443",
+    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? DEFAULT_RELAY_ENDPOINT,
     relayUseTls: config.relayUseTls ?? false,
     relayPublicUseTls: config.relayPublicUseTls ?? config.relayUseTls ?? false,
     logPath,

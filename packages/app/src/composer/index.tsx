@@ -68,7 +68,7 @@ import {
   type QueueWriter,
   type QueuedComposerMessage,
 } from "@/composer/actions";
-import { useVoiceOptional } from "@/contexts/voice-context";
+import { useVoiceOptional } from "@/contexts/disabled-voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";

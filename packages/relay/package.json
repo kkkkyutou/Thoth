@@ -44,6 +44,7 @@
     "test:watch": "vitest --exclude 'src/**/*.e2e.test.ts' --exclude 'src/e2e.test.ts'"
   },
   "dependencies": {
+    "@thoth/protocol": "file:../protocol",
     "base64-js": "^1.5.1",
     "tweetnacl": "^1.0.3",
     "ws": "^8.14.2"

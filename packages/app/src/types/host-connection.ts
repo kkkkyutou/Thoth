@@ -23,6 +23,10 @@ export interface RelayHostConnection {
   type: "relay";
   relayEndpoint: string;
   useTls?: boolean;
+  relayProtocolVersion?: 3;
+  relayToken?: string;
+  relayTokenExpiresAt?: string;
+  pairingExpiresAt?: string;
   daemonPublicKeyB64: string;
 }
 
@@ -94,6 +98,9 @@ function hostConnectionEquals(left: HostConnection, right: HostConnection): bool
     return (
       left.relayEndpoint === right.relayEndpoint &&
       left.useTls === right.useTls &&
+      left.relayToken === right.relayToken &&
+      left.relayTokenExpiresAt === right.relayTokenExpiresAt &&
+      left.pairingExpiresAt === right.pairingExpiresAt &&
       left.daemonPublicKeyB64 === right.daemonPublicKeyB64
     );
   }
@@ -304,6 +311,16 @@ function normalizeStoredConnection(connection: unknown): HostConnection | null {
         type: "relay",
         relayEndpoint,
         ...(useTls !== undefined ? { useTls } : {}),
+        relayProtocolVersion: 3,
+        ...(typeof record.relayToken === "string" && record.relayToken.trim()
+          ? { relayToken: record.relayToken.trim() }
+          : {}),
+        ...(typeof record.relayTokenExpiresAt === "string" && record.relayTokenExpiresAt.trim()
+          ? { relayTokenExpiresAt: record.relayTokenExpiresAt.trim() }
+          : {}),
+        ...(typeof record.pairingExpiresAt === "string" && record.pairingExpiresAt.trim()
+          ? { pairingExpiresAt: record.pairingExpiresAt.trim() }
+          : {}),
         daemonPublicKeyB64,
       };
     } catch {

@@ -58,7 +58,7 @@ describe("resolveWorkspaceScriptLink", () => {
 
   it("shows the local proxy URL but disables opening over relay", () => {
     expect(
-      resolveLink({ type: "relay", endpoint: "relay.thoth.sh:443", display: "relay" }),
+      resolveLink({ type: "relay", endpoint: "relay.thoth.seeles.ai:443", display: "relay" }),
     ).toEqual({
       openUrl: null,
       labelUrl: "http://web--feature--thoth.localhost:6767",
@@ -73,7 +73,11 @@ describe("resolveWorkspaceScriptLink", () => {
           publicProxyUrl: "https://web--feature--thoth.services.example.com",
           proxyUrl: "https://web--feature--thoth.services.example.com",
         },
-        activeConnection: { type: "relay", endpoint: "relay.thoth.sh:443", display: "relay" },
+        activeConnection: {
+          type: "relay",
+          endpoint: "relay.thoth.seeles.ai:443",
+          display: "relay",
+        },
       }),
     ).toEqual({
       openUrl: "https://web--feature--thoth.services.example.com",
@@ -164,7 +168,11 @@ describe("resolveWorkspaceScriptLink", () => {
     expect(
       resolveWorkspaceScriptLink({
         script: oldPayload,
-        activeConnection: { type: "relay", endpoint: "relay.thoth.sh:443", display: "relay" },
+        activeConnection: {
+          type: "relay",
+          endpoint: "relay.thoth.seeles.ai:443",
+          display: "relay",
+        },
       }),
     ).toEqual({
       openUrl: "https://web--feature--thoth.services.example.com",

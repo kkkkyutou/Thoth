@@ -17,7 +17,8 @@
 ## Ready
 
 1. `NTH-TD-002` `[ready]`: Design the first implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing old plugin runtime compatibility.
-   - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`
+   - Scope: include a stable Thoth I human dogfood entry whose development build uses the same UI/UX as the releasable product UI; agents validate code through standard repository tests and gates.
+   - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`, `NTH-REQ-017`
 2. `NTH-TD-010` `[ready]`: Run remaining dependency and compile triage on the non-foundation promoted source substrate.
    - Scope: resolve package-lock/dependency inconsistencies, remove or quarantine remaining broad-source voice references, decide first buildable package order, and record exact compile blockers without claiming runtime readiness.
    - Related: `NTH-MS-008`, `NTH-REQ-011`, `NTH-REQ-015`
@@ -28,7 +29,10 @@ None.
 
 ## Blocked
 
-None.
+1. `NTH-TD-013` `[blocked]`: Deploy Thoth relay preview through Code4Agent feature workflow and validate a hosted `.seele.chat` relay URL.
+   - Blocker: Code4Agent active `protected-paths` push ruleset restricts `.github/**/*` and `**/*/wrangler.jsonc`; adding `apps/thoth-relay/wrangler.jsonc` and a hard-coded `_deploy-isolated.yml` job cannot be pushed by Royalvice.
+   - Retry condition: Bot/admin or an allowed actor applies the generated `apps/thoth-relay` mirror plus workflow changes, or Code4Agent deploy governance is explicitly changed by the repository owner.
+   - Related: `NTH-MS-010`, `NTH-CD-021`
 
 ## Done
 
@@ -48,6 +52,10 @@ None.
    - Scope: root validation scripts, foundation build/typecheck/test gate, `oxfmt`/`oxlint`, stable npm install policy, package AGENTS contracts, docs, local Android Debug APK packaging, iOS Linux-safe scripts and `.agent-os` bookkeeping.
    - Related: `NTH-MS-009`, `NTH-CD-019`, `NTH-REQ-016`
    - Verification: See `NTH-EV-004`.
+2. `NTH-TD-012` `[verified]`: Harden relay v3 security locally and provide a real web preview build.
+   - Scope: v3-only relay protocol, subprotocol token transport, room registration hashes, pairing/device token path, strict origin and parameter validation, seeles relay/app defaults, local Code4Agent mirror export script, web export and local static serve.
+   - Related: `NTH-MS-010`, `NTH-CD-021`
+   - Verification: See `NTH-EV-005`.
 
 ## Abandoned
 

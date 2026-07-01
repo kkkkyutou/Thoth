@@ -151,9 +151,9 @@ describe("test-daemon-connection connectToDaemon", () => {
 
     const plainResult = await connectToDaemon(
       {
-        id: "relay:relay.thoth.sh:443",
+        id: "relay:relay.thoth.seeles.ai:443",
         type: "relay",
-        relayEndpoint: "relay.thoth.sh:443",
+        relayEndpoint: "relay.thoth.seeles.ai:443",
         useTls: false,
         daemonPublicKeyB64: "pubkey",
       },
