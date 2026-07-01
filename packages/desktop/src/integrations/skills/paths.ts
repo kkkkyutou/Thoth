@@ -1,6 +1,9 @@
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import { app } from "electron";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function getBundledSkillsDir(): string {
   if (app.isPackaged) {

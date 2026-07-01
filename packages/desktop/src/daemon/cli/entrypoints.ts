@@ -13,7 +13,7 @@ const CLI_PACKAGE_NAME = "@thoth/cli";
 const CLI_BIN_ENTRY = `${CLI_PACKAGE_NAME}/bin/thoth`;
 const CLI_RUN_ENTRY = `${CLI_PACKAGE_NAME}/dist/run.js`;
 
-const esmRequire = createRequire(__filename);
+const esmRequire = createRequire(import.meta.url);
 
 function resolveCliPackageRoot(): string {
   return findPackageRootFromResolvedPath({

@@ -83,6 +83,7 @@ export default {
       // Allow HTTP connections for local network hosts (required for release builds)
       usesCleartextTraffic: true,
       permissions: ["CAMERA", "android.permission.CAMERA"],
+      blockedPermissions: ["android.permission.RECORD_AUDIO"],
       package: variant.packageId,
       ...(variant.googleServicesFile ? { googleServicesFile: variant.googleServicesFile } : {}),
     },

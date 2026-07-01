@@ -1,4 +1,5 @@
-import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export async function main(): Promise<void> {
   const [argvMode, entryPath, ...args] = process.argv.slice(2);
@@ -16,7 +17,10 @@ export async function main(): Promise<void> {
   await import(pathToFileURL(entryPath).href);
 }
 
-if (require.main === module) {
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null;
+const modulePath = fileURLToPath(import.meta.url);
+
+if (invokedPath === modulePath) {
   void main().catch((error) => {
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     process.stderr.write(`${message}\n`);

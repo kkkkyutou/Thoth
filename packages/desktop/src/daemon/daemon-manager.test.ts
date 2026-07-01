@@ -65,6 +65,11 @@ vi.mock("./cli/external.js", () => ({
   runExternalCliTextCommand: mocks.runExternalCliTextCommand,
 }));
 
+vi.mock("../features/auto-updater.js", () => ({
+  checkForAppUpdate: vi.fn(async () => ({ status: "not-available" })),
+  downloadAndInstallUpdate: vi.fn(async () => ({ status: "not-available" })),
+}));
+
 function desktopSettingsWithManagement(enabled: boolean) {
   return {
     ...DEFAULT_DESKTOP_SETTINGS,

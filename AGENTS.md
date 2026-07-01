@@ -41,12 +41,16 @@
 3. 技术方向：TypeScript / Node，npm workspaces，`packages/` monorepo。
 4. Node/npm：Node `24.14.0`，npm `11.9.0`。
 5. License：`AGPL-3.0-or-later`。
-6. 当前实现状态：promoted source substrate；foundation packages 必须绿，但 daemon/app/desktop/cli broader runtime 仍 expected-broken，不能声称 MVP 已实现。
+6. 当前实现状态：promoted source substrate；foundation packages 必须绿；daemon、web、desktop packaged smoke、Android Debug APK、relay test service 和 Codex provider smoke 已具备并行隔离验证入口，但不能声称 New Thoth MVP 业务链路已实现。
 7. 旧 plugin archive：
    - Release: `https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive`
    - Branch: `archive/main-20260627`
 8. `.agent-os/upstreams/` 是 ignored local raw cache，不是项目 authority，不得 stage/commit。
 9. `.dev/` 是 ignored local toolchain/artifact area，不得 stage/commit。
+10. Thoth direct daemon 默认监听 `127.0.0.1:6688`。
+11. 本机 Paseo/legacy daemon 的 `127.0.0.1:6767` 是保留并行服务端口；Thoth 不得自动探测、复用、停止或重启它。
+12. 当前人工 Web 审核入口是 `http://127.0.0.1:8082/`，公网映射是 `http://180.76.242.105:8148/`。
+13. 当前 relay test endpoint 是 `relay.test.thoth.seeles.ai`，部署 authority 是独立仓库 `SeeleAI/Thoth-Relay`。
 
 ## 4. Authority And Docs Split
 
@@ -96,8 +100,10 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 9. `packages/tui` 必须使用 OpenTUI；不得引入 Textual 或旧 plugin TUI。
 10. Voice、speech、dictation、audio 不是当前 MVP 产品能力；不得新增权限、依赖、UI 或 runtime 能力。
 11. Multica 源码禁止 copy 到本仓库。Multica 只能作为设计和工程治理参考。
-12. 不得 stage/commit `.agent-os/upstreams/`、`.agent-os/artifacts/`、`.dev/`、`packages/app/android/`、`packages/app/ios/`。
+12. 不得 stage/commit `.agent-os/upstreams/`、`.agent-os/artifacts/`、`.dev/`、`packages/app/android/`、`packages/app/ios/`、`packages/desktop/release/`。
 13. Thoth I 的 dev UI 必须复用当前可发布完整版 UI 的真实体验；不得创建单独的 mock/debug-only/agent-facing UI 作为主要审核入口。
+14. `localhost:6767` / `127.0.0.1:6767` 只能出现在测试 fixture、历史说明或“禁止碰 Paseo/legacy daemon”的守卫中，不能作为 Thoth runtime fallback。
+15. Relay pairing token 是自动配对凭证，不是用户手动登录 token；不得写进 URL query、日志、文档示例或 final 报告。
 
 ## 7. Command Discipline
 
@@ -110,6 +116,8 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 7. `npm install` 受 root `.npmrc` 约束，默认 `ignore-scripts=true`、`audit=false`、`fund=false`；需要 native/toolchain 初始化时必须通过显式 root script 完成。
 8. 人类审核走真实 dev UI/dogfood entry；agent 常规验收走 root scripts、unit tests、typecheck、build 和显式 smoke 命令。
 9. 访问 GitHub 私有仓库或 workflow 时必须用 `npm run gh -- ...`，该 wrapper 强制 `GH_CONFIG_DIR` 指向 ignored `.dev/gh`。不得直接运行全局 `gh auth login`，不得依赖或修改全局 `~/.config/gh`。
+10. 本地并行隔离 smoke 使用 `npm run smoke:isolation`。它必须确认 Paseo/legacy 仍在 `6767`，Thoth 在 `6688`，且二者 PID 不相同。
+11. 人工 Web 审核使用 `npm run build:web` 后的真实 web export，并用 `HOST=0.0.0.0 PORT=8082 npm run serve:web` 或 `npm run dev:web:demo` 提供入口。
 
 ## 8. Test And Verification Discipline
 
@@ -139,6 +147,8 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 3. Generated native folders `packages/app/android/` and `packages/app/ios/` stay ignored.
 4. iOS build requires macOS/Xcode. Linux scripts must fail or skip clearly without implying success.
 5. Release/publish/tag/push requires explicit user authorization. A release preview is not authorization.
+6. Linux AppImage 是本地/dev 产物，默认输出在 `packages/desktop/release/`，不得提交。
+7. Android Debug APK 的 package id 必须保持 Thoth 身份，例如当前 debug id `sh.thoth.debug`；APK 不得请求 `android.permission.RECORD_AUDIO`。
 
 ## 11. Escalation Conditions
 

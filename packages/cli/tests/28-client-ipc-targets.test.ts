@@ -80,7 +80,7 @@ console.log("=== CLI IPC Target Helpers ===\n");
     );
     assert.deepStrictEqual(resolveDefaultDaemonHosts({ THOTH_HOME: thothHome }), [
       "unix:///tmp/thoth-from-pid.sock",
-      "localhost:6767",
+      "127.0.0.1:6688",
     ]);
     const previousHome = process.env.THOTH_HOME;
     const previousHost = process.env.THOTH_HOST;
@@ -106,7 +106,7 @@ console.log("=== CLI IPC Target Helpers ===\n");
         THOTH_HOME: thothHome,
         THOTH_LISTEN: "127.0.0.1:7777",
       }),
-      ["127.0.0.1:7777", "localhost:6767"],
+      ["127.0.0.1:7777", "127.0.0.1:6688"],
     );
   } finally {
     rmSync(thothHome, { recursive: true, force: true });
@@ -134,7 +134,7 @@ console.log("=== CLI IPC Target Helpers ===\n");
         THOTH_HOME: thothHome,
         THOTH_LISTEN: "127.0.0.1:7777",
       }),
-      ["unix:///tmp/thoth-priority.sock", "127.0.0.1:7777", "localhost:6767"],
+      ["unix:///tmp/thoth-priority.sock", "127.0.0.1:7777", "127.0.0.1:6688"],
     );
   } finally {
     rmSync(thothHome, { recursive: true, force: true });

@@ -5,6 +5,7 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 
 const root = resolve(process.argv[2] ?? "packages/app/dist");
 const requestedPort = Number(process.env.PORT ?? process.argv[3] ?? "4173");
+const requestedHost = process.env.HOST ?? process.argv[4] ?? "127.0.0.1";
 
 if (!existsSync(root) || !statSync(root).isDirectory()) {
   console.error(`Static root does not exist: ${root}`);
@@ -64,9 +65,9 @@ server.on("error", (error) => {
   process.exit(1);
 });
 
-server.listen(requestedPort, "127.0.0.1", () => {
+server.listen(requestedPort, requestedHost, () => {
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : requestedPort;
   console.log(`Serving ${root}`);
-  console.log(`http://127.0.0.1:${port}`);
+  console.log(`http://${requestedHost}:${port}`);
 });

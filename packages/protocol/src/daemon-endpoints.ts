@@ -16,6 +16,8 @@ export type RelayRole = "server" | "client";
 export type RelayProtocolVersion = "3";
 
 export const CURRENT_RELAY_PROTOCOL_VERSION: RelayProtocolVersion = "3";
+export const DEFAULT_DIRECT_DAEMON_PORT = 6688;
+export const DEFAULT_DIRECT_DAEMON_ENDPOINT = `127.0.0.1:${DEFAULT_DIRECT_DAEMON_PORT}`;
 export const DEFAULT_RELAY_ENDPOINT = "relay.thoth.seeles.ai:443";
 export const DEFAULT_APP_BASE_URL = "https://app.thoth.seeles.ai";
 export const RELAY_SUBPROTOCOL = "thoth.relay.v3";
@@ -58,11 +60,11 @@ export function parseHostPort(input: string): HostPortParts {
     throw new Error("Host is required");
   }
 
-  // IPv6: [::1]:6767
+  // IPv6: [::1]:6688
   if (trimmed.startsWith("[")) {
     const match = trimmed.match(/^\[([^\]]+)\]:(\d{1,5})$/);
     if (!match) {
-      throw new Error("Invalid host:port (expected [::1]:6767)");
+      throw new Error("Invalid host:port (expected [::1]:6688)");
     }
     const host = match[1].trim();
     if (!host) throw new Error("Host is required");
@@ -72,7 +74,7 @@ export function parseHostPort(input: string): HostPortParts {
 
   const match = trimmed.match(/^(.+):(\d{1,5})$/);
   if (!match) {
-    throw new Error("Invalid host:port (expected localhost:6767)");
+    throw new Error("Invalid host:port (expected 127.0.0.1:6688)");
   }
   const host = match[1].trim();
   if (!host) throw new Error("Host is required");

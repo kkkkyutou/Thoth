@@ -9,7 +9,7 @@ function createExternalCliInvocation(args: string[]): NodeEntrypointInvocation {
     entrypoint: resolveExternalCliEntrypoint(),
     argvMode: "node-script",
     args,
-    baseEnv: process.env,
+    baseEnv: { ...process.env, THOTH_STATUS_USE_ENV_LISTEN: "1" },
   });
 }
 

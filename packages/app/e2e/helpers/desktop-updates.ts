@@ -59,7 +59,7 @@ export interface DesktopBridgeConfig {
   daemonLogPath?: string;
   /** Initial manageBuiltInDaemon setting. Defaults to false. */
   manageBuiltInDaemon?: boolean;
-  /** Daemon listen address reported by desktop_daemon_status. Defaults to 127.0.0.1:6767. */
+  /** Daemon listen address reported by desktop_daemon_status. Defaults to 127.0.0.1:6688. */
   daemonListen?: string;
   /** Keep start_desktop_daemon pending to hold the desktop startup blocker open. */
   hangDaemonStart?: boolean;
@@ -128,7 +128,7 @@ export async function injectDesktopBridge(page: Page, config: DesktopBridgeConfi
       return {
         serverId: cfg.serverId,
         status: daemonRunning ? "running" : "stopped",
-        listen: cfg.daemonListen ?? "127.0.0.1:6767",
+        listen: cfg.daemonListen ?? "127.0.0.1:6688",
         hostname: null,
         pid: currentPid,
         home: "",

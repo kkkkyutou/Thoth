@@ -67,14 +67,14 @@ if (-not $env:THOTH_HOME) {
 if (-not $env:THOTH_ELECTRON_USER_DATA_DIR) { $env:THOTH_ELECTRON_USER_DATA_DIR = "$DevStateDir\user-data" }
 New-Item -ItemType Directory -Force -Path $env:THOTH_HOME, $env:THOTH_ELECTRON_USER_DATA_DIR | Out-Null
 
-$DevDaemonPort = if ($env:THOTH_DEV_DAEMON_PORT) { $env:THOTH_DEV_DAEMON_PORT } else { "6788" }
+$DevDaemonPort = if ($env:THOTH_DEV_DAEMON_PORT) { $env:THOTH_DEV_DAEMON_PORT } else { "6688" }
 if (-not $env:THOTH_LISTEN) { $env:THOTH_LISTEN = "127.0.0.1:$DevDaemonPort" }
 
 # Seed the isolated daemon config. The desktop daemon-manager decides whether a
 # daemon is already running by reading `daemon.listen` from this config.json
 # (it does NOT honor the THOTH_LISTEN env var) and probing that address. Without
-# this it reads the default 6767, finds a production daemon there, and connects
-# the dev app to prod — whose CORS allowlist then rejects the Metro origin. Pin
+# this it may find a legacy/Paseo daemon and connect the dev app to the wrong
+# service, whose CORS allowlist then rejects the Metro origin. Pin
 # the dev port + wildcard CORS in the file so the dev app starts its OWN daemon.
 # ONLY seed the script-managed home: never rewrite a user-supplied THOTH_HOME
 # (that could clobber a production config.json with the dev port + wildcard CORS).

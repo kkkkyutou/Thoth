@@ -30,7 +30,7 @@ export async function runHooksCommand(
   agent: string,
   event: string,
   runtime: HooksRuntime = {
-    env: process.env,
+    env: process.env as HookEnvironment,
     input: process.stdin,
     fetch,
   },

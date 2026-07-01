@@ -17,6 +17,7 @@ import {
 } from "@/types/host-connection";
 import {
   buildDaemonWebSocketUrl,
+  DEFAULT_DIRECT_DAEMON_ENDPOINT,
   buildRelayWebSocketProtocols,
   buildRelayWebSocketUrl,
   decodeOfferFragmentPayload,
@@ -1281,7 +1282,7 @@ export class HostRuntimeController {
 }
 
 const REGISTRY_STORAGE_KEY = "@thoth:daemon-registry";
-const LOCALHOST_FALLBACK_ENDPOINT = "localhost:6767";
+const LOCALHOST_FALLBACK_ENDPOINT = DEFAULT_DIRECT_DAEMON_ENDPOINT;
 const DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS = 2500;
 const E2E_STORAGE_KEY = "@thoth:e2e";
 const INITIAL_DAEMON_CONNECTION_HINT_GLOBAL_KEY = "__THOTH_INITIAL_DAEMON_CONNECTION__";

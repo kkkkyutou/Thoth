@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { smokePackagedDesktopApp } = require("./smoke-packaged-desktop-app.js");
+const { smokePackagedDesktopApp } = require("./smoke-packaged-desktop-app.cjs");
 
 const EXECUTABLE_NAME = "Thoth";
 

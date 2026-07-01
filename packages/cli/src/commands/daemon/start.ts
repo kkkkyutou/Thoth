@@ -17,7 +17,7 @@ export function startCommand(): Command {
   return new Command("start")
     .description("Start the local Thoth daemon")
     .option("--listen <listen>", "Listen target (host:port, port, or unix socket path)")
-    .option("--port <port>", "Port to listen on (default: 6767)")
+    .option("--port <port>", "Port to listen on (default: 6688)")
     .option("--home <path>", "Thoth home directory (default: ~/.thoth)")
     .option("--foreground", "Run in foreground (don't daemonize)")
     .option("--no-relay", "Disable relay connection")

@@ -71,3 +71,39 @@ Android packaging scripts should translate proxy environment variables into Java
 Retry condition:
 
 If future Android packaging fails on dependency downloads, first check `.dev/gradle`, proxy env, Gradle JVM options and partially downloaded Maven metadata before changing app code.
+
+## `NTH-EXP-005` Do Not Force Relay Deployment Through A Protected Monorepo
+
+Motivation:
+
+The first hosted relay plan tried to mirror Thoth relay code into Code4Agent because that repository already had Cloudflare deployment conventions.
+
+Observed result:
+
+Code4Agent active protected-path rules blocked the required `wrangler.jsonc` and workflow changes for Royalvice. The blocked path created coordination overhead without improving relay source authority.
+
+Conclusion:
+
+The test relay deployment authority is now independent repository `SeeleAI/Thoth-Relay`. Thoth remains the product/source integration authority, while the relay repository owns Cloudflare Worker deploy configuration and test deployment to `relay.test.thoth.seeles.ai`.
+
+Retry condition:
+
+Only revisit Code4Agent if repository governance explicitly changes or the company chooses to centralize deploy infrastructure again. Do not treat the old Code4Agent mirror path as an active blocker.
+
+## `NTH-EXP-006` Runtime Isolation Must Be A First-Class Default
+
+Motivation:
+
+Thoth was promoted from a codebase with local daemon conventions that overlapped with an existing Paseo daemon on the user's machine.
+
+Observed result:
+
+If Thoth silently falls back to `localhost:6767`, it can confuse the app, desktop smoke, CLI status and provider sessions by talking to Paseo instead of Thoth.
+
+Conclusion:
+
+Thoth direct daemon default is `127.0.0.1:6688`, with isolated dev state under `.dev/thoth-runtime/`. `127.0.0.1:6767` is reserved for the local Paseo/legacy daemon and should appear only in tests, historical examples or explicit guards proving Thoth avoids it.
+
+Retry condition:
+
+If future app/CLI/desktop behavior unexpectedly connects to the wrong daemon, first run `npm run smoke:isolation`, inspect endpoint fallback code, and check for newly introduced `6767` defaults before debugging provider behavior.

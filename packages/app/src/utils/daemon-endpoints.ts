@@ -2,6 +2,8 @@ import {
   buildDaemonWebSocketUrl,
   buildRelayWebSocketProtocols,
   buildRelayWebSocketUrl as buildSharedRelayWebSocketUrl,
+  DEFAULT_DIRECT_DAEMON_ENDPOINT,
+  DEFAULT_DIRECT_DAEMON_PORT,
   deriveLabelFromEndpoint,
   extractHostPortFromWebSocketUrl,
   normalizeHostPort,
@@ -20,6 +22,8 @@ export type { HostPortParts };
 export {
   buildDaemonWebSocketUrl,
   buildRelayWebSocketProtocols,
+  DEFAULT_DIRECT_DAEMON_ENDPOINT,
+  DEFAULT_DIRECT_DAEMON_PORT,
   deriveLabelFromEndpoint,
   extractHostPortFromWebSocketUrl,
   normalizeHostPort,

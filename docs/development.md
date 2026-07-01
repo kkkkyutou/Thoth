@@ -25,7 +25,7 @@ Do not use pnpm/yarn in this repository unless a future decision changes the pac
 
 ## Current State
 
-The repository contains promoted implementation substrate. It is not a runnable product yet.
+The repository contains promoted implementation substrate. It is not a complete runnable product yet.
 
 The first development gate is the foundation set:
 
@@ -34,7 +34,44 @@ The first development gate is the foundation set:
 - `packages/protocol`
 - `packages/client`
 
-The daemon, app, desktop, CLI and drivers may still contain broken imports or incomplete wiring. Do not delete promoted code simply because those broader packages are expected-broken.
+The daemon, web app export, desktop packaged smoke, Android Debug APK, test relay deployment and Codex provider smoke now have verified development entrypoints. The New Thoth MVP business chain is still not implemented, and broader non-foundation packages may still contain incomplete wiring. Do not delete promoted code simply because some broader paths remain expected-broken.
+
+## Runtime Isolation
+
+Thoth and the local Paseo daemon must run side by side.
+
+- Thoth direct daemon default: `127.0.0.1:6688`
+- Local Paseo/legacy daemon reserved port: `127.0.0.1:6767`
+- Thoth dev home: `.dev/thoth-runtime/home`
+- Thoth desktop dev user data: `.dev/thoth-runtime/user-data`
+- Relay test endpoint: `relay.test.thoth.seeles.ai`
+- Human web review local entry: `http://127.0.0.1:8082/`
+- Human web review public mapping: `http://180.76.242.105:8148/`
+
+Do not stop, restart, migrate or reuse the Paseo daemon on `6767`. Thoth runtime code must not automatically probe `localhost:6767` or `127.0.0.1:6767`; those addresses are allowed only in tests, historical examples or explicit guards that prove Thoth avoids the legacy service.
+
+Use the dev profile helper when starting a local daemon:
+
+```bash
+source scripts/dev-home.sh
+configure_dev_thoth_home
+npm run dev:daemon
+```
+
+Or use the root script directly:
+
+```bash
+npm run dev:daemon
+```
+
+Check isolation:
+
+```bash
+npm run smoke:isolation
+curl -sS http://127.0.0.1:6688/api/health
+```
+
+The smoke must show `6767` owned by the local Paseo/legacy daemon and `6688` owned by Thoth.
 
 ## Human Dogfood UI
 
@@ -48,6 +85,16 @@ typechecks, builds and explicit smoke commands as the normal validation path.
 
 Do not build a separate mock, reduced, debug-only or agent-facing UI as the primary Thoth I review
 surface.
+
+Current web review entry:
+
+```bash
+npm run build:web
+HOST=0.0.0.0 PORT=8082 npm run serve:web
+```
+
+`npm run dev:web:demo` is the shorthand for serving the same real web export on `0.0.0.0:8082`.
+The public mapped URL for this machine is `http://180.76.242.105:8148/`.
 
 ## Standard Commands
 
@@ -77,7 +124,7 @@ Repository-local GitHub CLI:
 ```bash
 npm run gh -- auth status --hostname github.com
 npm run gh -- api user
-npm run gh -- repo view SeeleAI/Code4Agent
+npm run gh -- repo view SeeleAI/Thoth-Relay
 ```
 
 `npm run gh -- ...` wraps the system `gh` binary and forces `GH_CONFIG_DIR` to `.dev/gh`.
@@ -101,6 +148,17 @@ npm run setup:android-toolchain
 npm run package:android:debug-apk
 ```
 
+The debug APK must keep Thoth identity (`sh.thoth.debug`) and must not request
+`android.permission.RECORD_AUDIO`.
+
+Desktop packaging:
+
+```bash
+npm run package:desktop:linux-appimage
+```
+
+The Linux AppImage is a local artifact under `packages/desktop/release/` and must not be staged.
+
 iOS packaging:
 
 ```bash
@@ -123,6 +181,7 @@ Never stage:
 - `.agent-os/artifacts/`
 - `packages/app/android/`
 - `packages/app/ios/`
+- `packages/desktop/release/`
 - `node_modules/`
 - build outputs such as `dist/`, `build/`, `.expo/`, `.wrangler/`
 

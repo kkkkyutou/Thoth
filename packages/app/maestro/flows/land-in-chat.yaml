@@ -22,11 +22,11 @@ appId: sh.thoth
 - tapOn:
     id: "direct-host-input"
 - eraseText
-- inputText: "127.0.0.1:6767"
+- inputText: "127.0.0.1:6688"
 
 - assertVisible:
     id: "direct-host-input"
-    text: "127.0.0.1:6767"
+    text: "127.0.0.1:6688"
 
 - tapOn:
     id: "direct-host-submit"

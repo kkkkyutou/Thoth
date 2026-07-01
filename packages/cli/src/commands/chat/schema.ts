@@ -94,9 +94,9 @@ function formatTimestamp(input: string): string {
 export function toChatRoomRow(room: {
   id: string;
   name: string;
-  purpose: string | null;
+  purpose?: string | null;
   messageCount: number;
-  lastMessageAt: string | null;
+  lastMessageAt?: string | null;
 }): ChatRoomRow {
   return {
     id: room.id,
@@ -111,7 +111,7 @@ export function toChatMessageRow(message: {
   id: string;
   authorAgentId: string;
   createdAt: string;
-  replyToMessageId: string | null;
+  replyToMessageId?: string | null;
   mentionAgentIds: string[];
   body: string;
 }): ChatMessageRow {

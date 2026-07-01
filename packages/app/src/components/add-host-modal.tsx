@@ -7,6 +7,7 @@ import { Check, ChevronDown, ChevronRight, Eye, EyeOff, Link2 } from "lucide-rea
 import type { HostProfile } from "@/types/host-connection";
 import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import {
+  DEFAULT_DIRECT_DAEMON_PORT,
   parseConnectionUri,
   serializeConnectionUri,
   serializeConnectionUriForStorage,
@@ -16,6 +17,7 @@ import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adapt
 import { Button } from "@/components/ui/button";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
+const DEFAULT_DIRECT_PORT_TEXT = String(DEFAULT_DIRECT_DAEMON_PORT);
 
 interface DirectConnectionDraft {
   host: string;
@@ -299,7 +301,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [host, setHost] = useState("");
-  const [port, setPort] = useState("6767");
+  const [port, setPort] = useState(DEFAULT_DIRECT_PORT_TEXT);
   const [useTls, setUseTls] = useState(false);
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -309,7 +311,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
 
   const clearInput = useCallback(() => {
     setHost("");
-    setPort("6767");
+    setPort(DEFAULT_DIRECT_PORT_TEXT);
     setUseTls(false);
     setPassword("");
     setIsPasswordVisible(false);
@@ -524,7 +526,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             resetKey={`direct-port-${inputResetKey}`}
             value={port}
             onChangeText={setPort}
-            placeholder="6767"
+            placeholder={DEFAULT_DIRECT_PORT_TEXT}
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.input}
             autoCapitalize="none"
@@ -617,7 +619,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             resetKey={`direct-host-uri-${inputResetKey}`}
             value={advancedUri}
             onChangeText={setAdvancedUri}
-            placeholder="tcp://localhost:6767?ssl=true"
+            placeholder={`tcp://127.0.0.1:${DEFAULT_DIRECT_PORT_TEXT}?ssl=true`}
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.input}
             autoCapitalize="none"

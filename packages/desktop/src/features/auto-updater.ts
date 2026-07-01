@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
 import { UUID } from "builder-util-runtime";
-import { autoUpdater } from "electron-updater";
+import electronUpdater from "electron-updater";
 import {
   createAppUpdateService,
   type AppUpdateCheckResult,
@@ -20,6 +20,8 @@ import {
   type AppReleaseChannel,
   type AppUpdateCheckIntent,
 } from "./app-update-rollout.js";
+
+const { autoUpdater } = electronUpdater;
 
 export {
   bucketFromStagingUserId,

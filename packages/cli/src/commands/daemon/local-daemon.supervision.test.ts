@@ -211,4 +211,23 @@ describe("local daemon launch supervision", () => {
     expect(state.relayUseTls).toBe(false);
     expect(state.relayPublicUseTls).toBe(true);
   });
+
+  test("local daemon state only honors THOTH_LISTEN during explicit status isolation", async () => {
+    const home = await createThothHome({
+      version: 1,
+      daemon: {
+        listen: "127.0.0.1:6688",
+      },
+    });
+
+    vi.stubEnv("THOTH_LISTEN", "127.0.0.1:6699");
+    expect(resolveLocalDaemonState({ home }).listen).toBe("127.0.0.1:6688");
+
+    vi.stubEnv("THOTH_STATUS_USE_ENV_LISTEN", "1");
+    expect(resolveLocalDaemonState({ home }).listen).toBe("127.0.0.1:6699");
+
+    vi.stubEnv("THOTH_STATUS_USE_ENV_LISTEN", "");
+    vi.stubEnv("THOTH_DESKTOP_SMOKE", "1");
+    expect(resolveLocalDaemonState({ home }).listen).toBe("127.0.0.1:6699");
+  });
 });

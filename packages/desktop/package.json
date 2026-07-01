@@ -16,12 +16,13 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "npm --prefix ../.. run build:server:clean && npm run build:main && electron-builder --config electron-builder.yml",
+    "build": "npm --prefix ../.. run build:web && npm --prefix ../.. run build:daemon && npm --prefix ../.. run build:cli && npm run build:main && electron-builder --config electron-builder.yml",
+    "build:linux-appimage": "npm --prefix ../.. run build:web && npm --prefix ../.. run build:daemon && npm --prefix ../.. run build:cli && npm run build:main && electron-builder --config electron-builder.yml --linux AppImage",
     "build:main": "tsc -p tsconfig.json",
     "dev": "./scripts/dev.sh",
     "dev:win": "powershell ./scripts/dev.ps1",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@thoth/cli": "file:../cli",

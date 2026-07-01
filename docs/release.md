@@ -17,16 +17,22 @@ The agent must wait for explicit user authorization before any of the following:
 - EAS cloud build
 - App Store or Play Store submission
 
-## Current Round
+## Current State
 
-This first-day infrastructure round does not add GitHub Actions and does not publish anything.
+The main Thoth repository still has no authorized production release flow from this branch.
 
-Allowed outputs:
+Allowed local outputs:
 
 - local foundation gate
 - local Android Debug APK
+- local Linux AppImage
 - local packaging receipts under ignored artifact paths
 - docs and `.agent-os` evidence
+
+The test relay is deployed from independent repository `SeeleAI/Thoth-Relay` to
+`relay.test.thoth.seeles.ai`. That test deploy is not a production release and does not authorize
+production `relay.thoth.seeles.ai`, production `app.thoth.seeles.ai`, app store submission, npm
+publish, desktop installer upload, Thoth main repo push or release tagging.
 
 ## Future Release Blueprint
 

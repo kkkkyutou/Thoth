@@ -177,10 +177,7 @@ let passed = 0;
 let failed = 0;
 const failures: Failure[] = [];
 
-await runCommand(
-  "Building server stack",
-  `npm --prefix ${JSON.stringify(repoRoot)} run build:server`,
-);
+await runCommand("Building CLI stack", `npm --prefix ${JSON.stringify(repoRoot)} run build:cli`);
 
 type TestOutcome =
   | { status: "passed"; durationMs: number }

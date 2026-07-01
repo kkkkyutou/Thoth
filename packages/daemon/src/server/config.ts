@@ -18,12 +18,16 @@ import type {
 } from "./agent/provider-launch-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import { AgentProviderSchema } from "@thoth/protocol/provider-manifest";
-import { DEFAULT_APP_BASE_URL, DEFAULT_RELAY_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
+import {
+  DEFAULT_APP_BASE_URL,
+  DEFAULT_DIRECT_DAEMON_PORT,
+  DEFAULT_RELAY_ENDPOINT,
+} from "@thoth/protocol/daemon-endpoints";
 import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 
-const DEFAULT_PORT = 6767;
+const DEFAULT_PORT = DEFAULT_DIRECT_DAEMON_PORT;
 const DEFAULT_TRUSTED_PROXIES = ["loopback"];
 
 export function resolveBundledWebUiDistDir(moduleUrl: string | URL = import.meta.url): string {
@@ -352,7 +356,8 @@ function resolveTrustedProxiesConfig(
 // - host:port (TCP)
 // - /path/to/socket (Unix socket)
 // - unix:///path/to/socket (Unix socket)
-// Default is TCP at 127.0.0.1:6767
+// Default is TCP at 127.0.0.1:6688. Port 6767 is intentionally left for
+// developer-owned legacy/Paseo daemons and must not be auto-probed by Thoth.
 function resolveListenAddress(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,

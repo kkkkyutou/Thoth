@@ -18,8 +18,8 @@ LOCAL_VIDEO="$VIDEO_DIR/thoth-maestro-workspace-create-focused.mp4"
 CLIENT_EXPORTS="$REPO_ROOT/packages/client/dist/daemon-client.js"
 
 export THOTH_MAESTRO_APP_ID="${THOTH_MAESTRO_APP_ID:-sh.thoth.debug}"
-export THOTH_MAESTRO_DIRECT_ENDPOINT="${THOTH_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6767}"
-export THOTH_MAESTRO_DAEMON_WS_URL="${THOTH_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6767/ws}"
+export THOTH_MAESTRO_DIRECT_ENDPOINT="${THOTH_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6688}"
+export THOTH_MAESTRO_DAEMON_WS_URL="${THOTH_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6688/ws}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -88,7 +88,7 @@ echo "Video: $LOCAL_VIDEO"
 echo "Project: $THOTH_MAESTRO_PROJECT_PATH"
 echo "Project name: $THOTH_MAESTRO_PROJECT_NAME"
 
-adb reverse tcp:6767 tcp:6767 >/dev/null
+adb reverse tcp:6688 tcp:6688 >/dev/null
 
 echo ""
 echo "Opening project in daemon..."

@@ -532,12 +532,19 @@ export function resolveTcpHostFromListen(listen: string): string | null {
   return null;
 }
 
+function shouldUseEnvListenForStatus(env: NodeJS.ProcessEnv): boolean {
+  return env.THOTH_STATUS_USE_ENV_LISTEN === "1" || env.THOTH_DESKTOP_SMOKE === "1";
+}
+
 export function resolveLocalDaemonState(options: { home?: string } = {}): LocalDaemonState {
+  const statusListen = shouldUseEnvListenForStatus(process.env)
+    ? process.env.THOTH_LISTEN
+    : undefined;
   const env: NodeJS.ProcessEnv = {
     ...envWithHome(options.home),
     // Status should reflect local persisted config + pid file, not inherited daemon env overrides.
     // This is CLI-side defensive scrubbing; the daemon RPC is authoritative when available.
-    THOTH_LISTEN: undefined,
+    THOTH_LISTEN: statusListen,
     THOTH_HOSTNAMES: undefined,
     THOTH_ALLOWED_HOSTS: undefined,
     THOTH_RELAY_ENABLED: undefined,
@@ -729,7 +736,7 @@ export async function stopLocalDaemon(
   }
 
   const pid = state.pidInfo?.pid ?? null;
-  const fallbackMessage = shutdownAttempt.requested ? null : shutdownAttempt.reason;
+  const fallbackMessage = "reason" in shutdownAttempt ? shutdownAttempt.reason : null;
   if (!lifecycleRequested) {
     const notRunningResult = await signalDaemonOwnerForStop(state, pid);
     if (notRunningResult) return notRunningResult;

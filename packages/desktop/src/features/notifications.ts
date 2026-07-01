@@ -1,5 +1,6 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, Notification, ipcMain, nativeImage } from "electron";
 
 interface NotificationInput {
@@ -13,6 +14,7 @@ interface NotificationClickPayload {
 }
 
 const activeNotifications = new Set<Notification>();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function toTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {

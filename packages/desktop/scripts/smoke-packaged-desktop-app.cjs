@@ -60,9 +60,12 @@ function getLaunchCommand(executablePath) {
     };
   }
 
+  const electronArgs =
+    typeof process.getuid === "function" && process.getuid() === 0 ? ["--no-sandbox"] : [];
+
   return {
     command: "xvfb-run",
-    args: ["-a", executablePath],
+    args: ["-a", executablePath, ...electronArgs],
   };
 }
 
@@ -92,15 +95,11 @@ function getShellCommand(script) {
   };
 }
 
-function createDefaultDaemonEnv(extraEnv) {
-  const env = {
+function createDefaultDaemonEnv(extraEnv = {}) {
+  return {
     ...process.env,
     ...extraEnv,
   };
-
-  delete env.THOTH_HOME;
-  delete env.THOTH_LISTEN;
-  return env;
 }
 
 function reserveLocalTcpPort() {
@@ -228,9 +227,9 @@ function readIfExists(filePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
 }
 
-function formatLogs({ stdout, stderr, userData }) {
+function formatLogs({ stdout, stderr, userData, thothHome }) {
   const desktopLog = readIfExists(path.join(userData, "logs", "main.log"));
-  const daemonLog = readIfExists(path.join(os.homedir(), ".thoth", "daemon.log"));
+  const daemonLog = readIfExists(path.join(thothHome, "daemon.log"));
   return [
     `App stdout:\n${stdout.join("").trim() || "<empty>"}`,
     `App stderr:\n${stderr.join("").trim() || "<empty>"}`,
@@ -301,7 +300,7 @@ async function removeTempDir(tempDir) {
   }
 }
 
-function waitForSmokeMessage({ child, stdout, stderr, userData, type, validate }) {
+function waitForSmokeMessage({ child, stdout, stderr, userData, thothHome, type, validate }) {
   return new Promise((resolve, reject) => {
     let settled = false;
 
@@ -323,6 +322,7 @@ function waitForSmokeMessage({ child, stdout, stderr, userData, type, validate }
             stdout,
             stderr,
             userData,
+            thothHome,
           })}`,
         ),
       );
@@ -351,7 +351,7 @@ function waitForSmokeMessage({ child, stdout, stderr, userData, type, validate }
         new Error(
           `Packaged app exited before reporting smoke success (code ${code}, signal ${
             signal ?? "none"
-          }).\n${formatLogs({ stdout, stderr, userData })}`,
+          }).\n${formatLogs({ stdout, stderr, userData, thothHome })}`,
         ),
       );
     });
@@ -637,9 +637,15 @@ async function smokePackagedDesktopApp({ appPath }) {
   await smokeColdCliDaemonStart({ appPath });
 
   const userData = createTempDir("thoth-smoke-user-data-");
+  const thothHome = createTempDir("thoth-smoke-desktop-home-");
+  const port = await reserveLocalTcpPort();
+  const listen = `127.0.0.1:${port}`;
   const env = createDefaultDaemonEnv({
     THOTH_DESKTOP_SMOKE: "1",
     THOTH_ELECTRON_USER_DATA_DIR: userData,
+    THOTH_HOME: thothHome,
+    THOTH_LISTEN: listen,
+    THOTH_RELAY_ENABLED: "false",
   });
 
   const stdout = [];
@@ -659,7 +665,7 @@ async function smokePackagedDesktopApp({ appPath }) {
       return;
     }
 
-    await stopCliDaemon({ appPath, env: createDefaultDaemonEnv() });
+    await stopCliDaemon({ appPath, env });
     daemonStopped = true;
   };
 
@@ -669,12 +675,17 @@ async function smokePackagedDesktopApp({ appPath }) {
       stdout,
       stderr,
       userData,
+      thothHome,
       type: "desktop-daemon-smoke-started",
       validate: assertRunningDesktopManagedDaemon,
     });
     smokeStarted = true;
     console.log("Packaged desktop smoke: desktop-managed daemon reported running");
-    const cliEnv = createDefaultDaemonEnv();
+    const cliEnv = createDefaultDaemonEnv({
+      THOTH_HOME: thothHome,
+      THOTH_LISTEN: listen,
+      THOTH_RELAY_ENABLED: "false",
+    });
     await smokeCliShim({ appPath, env: cliEnv });
     await smokeCliTerminal({ appPath, env: cliEnv });
     await stopDaemonForCleanup();
@@ -698,6 +709,7 @@ async function smokePackagedDesktopApp({ appPath }) {
     }
     releaseChildHandles(child);
     await removeTempDir(userData);
+    await removeTempDir(thothHome);
   }
 }
 
@@ -709,7 +721,7 @@ if (require.main === module) {
   const appIndex = process.argv.indexOf("--app");
   const appPath = appIndex >= 0 ? process.argv[appIndex + 1] : null;
   if (!appPath) {
-    process.stderr.write("Usage: node smoke-packaged-desktop-app.js --app <Thoth.app>\n");
+    process.stderr.write("Usage: node smoke-packaged-desktop-app.cjs --app <Thoth.app>\n");
     process.exit(2);
   }
 

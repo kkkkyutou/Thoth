@@ -102,7 +102,9 @@ describe("desktop packaging", () => {
     const deps = pkg.dependencies ?? {};
 
     for (const required of ["@thoth/cli", "@thoth/daemon"]) {
-      expect(deps[required], `${required} must be declared in dependencies`).toBe("*");
+      expect(deps[required], `${required} must be declared in dependencies`).toMatch(
+        /^(\*|file:\.\.\/)/,
+      );
     }
   });
 

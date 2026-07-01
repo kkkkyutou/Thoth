@@ -52,9 +52,10 @@ the wrong route. The header assertion and the `New workspace` negative assertion
 are what prove the redirect actually completed.
 
 The scripts assume a development build with package id `sh.thoth.debug`, an
-already-running local daemon on `127.0.0.1:6767`, and a connected Android device
-or emulator. They call `adb reverse tcp:6767 tcp:6767`; they do not restart the
-daemon.
+already-running local Thoth daemon on `127.0.0.1:6688`, and a connected Android
+device or emulator. They call `adb reverse tcp:6688 tcp:6688`; they do not
+restart the daemon. Port `6767` is reserved for local legacy/Paseo daemons and
+must not be used by these flows.
 
 ```bash
 bash packages/app/maestro/test-workspace-create-android-crash.sh
@@ -65,7 +66,7 @@ Optional environment:
 
 ```bash
 THOTH_MAESTRO_APP_ID=sh.thoth.debug
-THOTH_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6767
-THOTH_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6767/ws
+THOTH_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6688
+THOTH_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6688/ws
 THOTH_MAESTRO_PROJECT_PATH=/path/to/git/repo
 ```

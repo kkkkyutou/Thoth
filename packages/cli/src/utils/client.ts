@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { loadConfig, resolveThothHome } from "@thoth/daemon";
 import {
+  DEFAULT_DIRECT_DAEMON_ENDPOINT,
   buildDaemonWebSocketUrl,
   buildRelayWebSocketUrl,
   normalizeHostPort,
@@ -22,9 +23,10 @@ export interface ConnectOptions {
   timeout?: number;
 }
 
-const DEFAULT_HOST = "localhost:6767";
+const DEFAULT_HOST = DEFAULT_DIRECT_DAEMON_ENDPOINT;
 const DEFAULT_TIMEOUT = 15000;
 const PID_FILENAME = "thoth.pid";
+const LEGACY_PASEO_DAEMON_HOSTS = new Set(["127.0.0.1:6767", "localhost:6767"]);
 
 type DaemonTarget =
   | {
@@ -147,7 +149,7 @@ function resolveConfiguredTcpDaemonHost(env: NodeJS.ProcessEnv, thothHome: strin
   if (!isTcpDaemonHost(configuredHost)) {
     return null;
   }
-  return configuredHost === "127.0.0.1:6767" ? null : configuredHost;
+  return LEGACY_PASEO_DAEMON_HOSTS.has(configuredHost) ? null : configuredHost;
 }
 
 export function resolveDefaultDaemonHosts(env: NodeJS.ProcessEnv = process.env): string[] {

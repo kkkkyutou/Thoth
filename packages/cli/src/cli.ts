@@ -6,7 +6,6 @@ import { createLoopCommand } from "./commands/loop/index.js";
 import { createPermitCommand } from "./commands/permit/index.js";
 import { createProviderCommand } from "./commands/provider/index.js";
 import { createScheduleCommand } from "./commands/schedule/index.js";
-import { createSpeechCommand } from "./commands/speech/index.js";
 import { createTerminalCommand } from "./commands/terminal/index.js";
 import { createWorktreeCommand } from "./commands/worktree/index.js";
 import { createHooksCommand } from "./commands/hooks.js";
@@ -163,9 +162,6 @@ export function createCli(): Command {
 
   // Provider commands
   program.addCommand(createProviderCommand());
-
-  // Speech model commands
-  program.addCommand(createSpeechCommand());
 
   // Worktree commands
   program.addCommand(createWorktreeCommand());

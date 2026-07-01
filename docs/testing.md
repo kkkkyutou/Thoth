@@ -36,6 +36,16 @@ npm run typecheck:client
 
 Do not run broad daemon/app/desktop/CLI suites by default. They are expected to remain partially broken until their dedicated migration milestones.
 
+## Runtime Isolation Smoke
+
+When touching daemon, CLI host resolution, app host bootstrap, desktop daemon lifecycle, relay pairing or packaging paths, run:
+
+```bash
+npm run smoke:isolation
+```
+
+The smoke must prove the local Paseo/legacy daemon remains on `127.0.0.1:6767` and the Thoth daemon is on `127.0.0.1:6688`. A passing foundation gate does not replace this isolation smoke for runtime endpoint changes.
+
 ## Test Suffixes
 
 - `*.test.ts(x)`: deterministic unit tests.

@@ -15,8 +15,8 @@
 #
 # Optional environment:
 #   THOTH_MAESTRO_APP_ID=sh.thoth.debug
-#   THOTH_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6767
-#   THOTH_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6767/ws
+#   THOTH_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6688
+#   THOTH_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6688/ws
 #   THOTH_MAESTRO_PROJECT_PATH=/path/to/git/repo
 set -euo pipefail
 
@@ -27,8 +27,8 @@ OUT_DIR="/tmp/thoth-workspace-create-android-$(date +%s)"
 CLIENT_EXPORTS="$REPO_ROOT/packages/client/dist/daemon-client.js"
 
 export THOTH_MAESTRO_APP_ID="${THOTH_MAESTRO_APP_ID:-sh.thoth.debug}"
-export THOTH_MAESTRO_DIRECT_ENDPOINT="${THOTH_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6767}"
-export THOTH_MAESTRO_DAEMON_WS_URL="${THOTH_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6767/ws}"
+export THOTH_MAESTRO_DIRECT_ENDPOINT="${THOTH_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6688}"
+export THOTH_MAESTRO_DAEMON_WS_URL="${THOTH_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6688/ws}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -102,7 +102,7 @@ echo "Rendered flow: $FLOW"
 
 echo ""
 echo "Preparing Android port reverse..."
-adb reverse tcp:6767 tcp:6767 >/dev/null
+adb reverse tcp:6688 tcp:6688 >/dev/null
 
 echo ""
 echo "Opening project in daemon..."

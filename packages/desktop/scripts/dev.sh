@@ -8,11 +8,11 @@ ROOT_DIR="$(cd "$DESKTOP_DIR/../.." && pwd)"
 source "$ROOT_DIR/scripts/dev-home.sh"
 
 export PATH="$ROOT_DIR/node_modules/.bin:$PATH"
-export THOTH_LISTEN="${THOTH_LISTEN:-127.0.0.1:6768}"
+export THOTH_LISTEN="${THOTH_LISTEN:-127.0.0.1:6688}"
 configure_dev_thoth_home
 
 DEV_ROOT="${THOTH_DEV_ROOT:-$(default_dev_thoth_root)}"
-export THOTH_ELECTRON_USER_DATA_DIR="${THOTH_ELECTRON_USER_DATA_DIR:-$DEV_ROOT/.dev/user-data}"
+export THOTH_ELECTRON_USER_DATA_DIR="${THOTH_ELECTRON_USER_DATA_DIR:-$DEV_ROOT/user-data}"
 mkdir -p "$THOTH_ELECTRON_USER_DATA_DIR"
 
 if [ -z "${EXPO_PORT:-}" ]; then

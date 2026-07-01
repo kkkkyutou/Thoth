@@ -7,7 +7,7 @@ log.initialize({ spyRendererConsole: true });
 import { inheritLoginShellEnv } from "./login-shell-env.js";
 
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
@@ -72,6 +72,7 @@ import { runDesktopStartup } from "./desktop-startup.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_SCHEME = "thoth";
 const THOTH_DEBUG = process.env.THOTH_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.THOTH_DISABLE_SINGLE_INSTANCE_LOCK === "1";

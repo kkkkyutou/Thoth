@@ -17,7 +17,7 @@ import {
 
 const SERVER_PACKAGE_NAME = "@thoth/daemon";
 
-const esmRequire = createRequire(__filename);
+const esmRequire = createRequire(import.meta.url);
 
 function resolveServerPackageInfo(): PackageInfo {
   const serverExportPath = esmRequire.resolve(SERVER_PACKAGE_NAME);
@@ -46,7 +46,7 @@ export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
           resolvePackagedAsarPath(),
           "node_modules",
           "@thoth",
-          "server",
+          "daemon",
           "dist",
           "scripts",
           "supervisor-entrypoint.js",

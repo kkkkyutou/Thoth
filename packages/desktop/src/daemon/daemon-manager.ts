@@ -1,6 +1,7 @@
 import { type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { app, ipcMain, powerMonitor } from "electron";
 import log from "electron-log/main";
 import { resolveThothHome, spawnProcess } from "@thoth/daemon";
@@ -39,6 +40,8 @@ import {
 import type { DesktopSettings } from "../settings/desktop-settings.js";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DAEMON_LOG_FILENAME = "daemon.log";
 const STARTUP_POLL_INTERVAL_MS = 200;
@@ -227,6 +230,10 @@ function logDesktopDaemonLifecycle(message: string, details?: Record<string, unk
   });
 }
 
+function isDesktopSmokeMode(): boolean {
+  return process.env.THOTH_DESKTOP_SMOKE === "1";
+}
+
 function toTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -360,7 +367,9 @@ async function pollForRunningDaemon(): Promise<DesktopDaemonStatus> {
         serverId: status.serverId || null,
       });
     }
-    if (status.status === "running" && status.serverId && status.listen) return status;
+    if (status.status === "running" && status.serverId && status.listen && status.desktopManaged) {
+      return status;
+    }
     await sleep(STARTUP_POLL_INTERVAL_MS);
     return poll(attempt + 1);
   }
@@ -379,7 +388,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     error: current.error,
     desktopManaged: current.desktopManaged,
   });
-  if (current.status === "running") {
+  if (current.status === "running" && (!isDesktopSmokeMode() || current.desktopManaged)) {
     if (shouldRestartForVersion(current)) {
       logDesktopDaemonLifecycle("daemon version mismatch, restarting", {
         appVersion: normalizeVersion(resolveDesktopAppVersion()),

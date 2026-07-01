@@ -238,7 +238,90 @@ Evidence:
 
 Current result:
 
-Relay security and local validation are verified. Hosted Code4Agent preview deployment is blocked before push by repository governance: adding `apps/thoth-relay/wrangler.jsonc` and updating `.github/workflows/_deploy-isolated.yml` both hit active protected paths. No `.seele.chat`, `relay.test.thoth.seeles.ai` or production relay deployment is claimed by this evidence.
+Relay security and local validation are verified. Hosted Code4Agent preview deployment was blocked before push by repository governance: adding `apps/thoth-relay/wrangler.jsonc` and updating `.github/workflows/_deploy-isolated.yml` both hit active protected paths. This Code4Agent path is now historical and superseded by independent repository `SeeleAI/Thoth-Relay`; see `NTH-EV-006` for the hosted test relay and runtime isolation evidence.
+
+### `NTH-EV-006` Thoth/Paseo Runtime Isolation Verification
+
+Status: `passed`
+
+Scope:
+
+1. Keep the existing local Paseo daemon running on `127.0.0.1:6767`.
+2. Run Thoth daemon independently on `127.0.0.1:6688`.
+3. Serve the real web app review entry on local `8082` and current public mapping `8148`.
+4. Deploy and validate the independent test relay service at `relay.test.thoth.seeles.ai`.
+5. Produce and smoke the Linux AppImage without using Paseo or the live user daemon.
+6. Produce Android Debug APK with Thoth package identity and no microphone permission.
+7. Verify Codex provider smoke through the Thoth provider path.
+8. Re-run repository foundation and hygiene checks.
+
+Evidence:
+
+1. Port isolation check:
+   - `Paseo\x20` PID `1567463` listens on `127.0.0.1:6767`.
+   - `Thoth\x20` PID `1529981` listens on `127.0.0.1:6688`.
+   - Web static server PID `1211974` listens on `*:8082`.
+2. Thoth daemon health:
+   - `GET http://127.0.0.1:6688/api/health` returned `{"status":"ok"}`.
+   - `GET http://127.0.0.1:6688/api/status` returned listen `127.0.0.1:6688`.
+3. CLI status through the Thoth dev profile reported:
+   - `localDaemon: "running"`
+   - `connectedDaemon: "reachable"`
+   - `home: "/mnt/cfs/5vr0p6/yzy/thoth/.dev/thoth-runtime/home"`
+   - `listen: "127.0.0.1:6688"`
+   - providers include `Claude`, `Codex` and `mock`.
+4. Web checks:
+   - `npm run build:web` passed.
+   - `curl -I http://127.0.0.1:8082/` returned HTTP `200`.
+   - `curl -I http://180.76.242.105:8148/` returned HTTP `200`.
+   - Playwright smoke rendered the real app UI with no page errors and no `6767` console attempt. Local route showed workspace UI; public route showed Welcome / Direct connection / Paste pairing link / Settings.
+5. Relay deployment:
+   - Independent repo `SeeleAI/Thoth-Relay` latest pushed commit: `317bcda46571ae0ae508f4d892759eff779d9d73`.
+   - GitHub Actions run `28537212728` completed with conclusion `success`.
+   - Workflow URL: `https://github.com/SeeleAI/Thoth-Relay/actions/runs/28537212728`.
+   - `GET https://relay.test.thoth.seeles.ai/health` returned `{"status":"ok","protocol":"3","service":"thoth-relay"}`.
+6. Relay live load test:
+   - Receipt: `/mnt/cfs/5vr0p6/yzy/Thoth-Relay/.dev/relay-live-load-test-1782929276055.json`.
+   - Clients: `200`.
+   - Duration: `600000ms`.
+   - Interval: `5000ms`.
+   - Connected clients: `200`.
+   - Attempted pings: `23972`.
+   - Pongs: `23954`.
+   - Failures: `18`.
+   - Error rate: `0.0007508760220256966`.
+   - Latency: p50 `394ms`, p95 `427ms`, p99 `765ms`.
+   - Reconnects: `114`.
+7. Desktop AppImage:
+   - Path: `/mnt/cfs/5vr0p6/yzy/thoth/packages/desktop/release/Thoth-x86_64.AppImage`.
+   - sha256: `6fc25b0f92cf930b5f7e43d6eb11de8a466cc54f881e8fcbb832f288acd1fd43`.
+   - Bytes: `131375945`.
+   - Packaged smoke passed with desktop-managed daemon PID `1561097` listening on isolated temp port `127.0.0.1:38579`; CLI shim daemon status and terminal smoke succeeded.
+8. Android Debug APK:
+   - Path: `/mnt/cfs/5vr0p6/yzy/thoth/packages/app/android/app/build/outputs/apk/debug/app-debug.apk`.
+   - sha256: `9579e3cb43637b6380faf2890eb496d43d7a7cc9779c787afdf16f9d98a70fa0`.
+   - Bytes: `302700513`.
+   - Package id: `sh.thoth.debug`.
+   - `aapt dump permissions` did not include `android.permission.RECORD_AUDIO`.
+9. Codex provider smoke:
+   - `npm --workspace=@thoth/daemon run test:unit -- src/server/agent/providers/codex/app-server-transport.test.ts src/server/agent/providers/codex-app-server-agent.test.ts` passed: 2 files, 79 tests.
+   - Debug targeted local e2e `npm --workspace=@thoth/daemon exec -- vitest run src/server/agent/providers/codex-app-server-agent.local.e2e.test.ts` passed: 1 file, 1 test.
+   - Broader provider local e2e command hit an unrelated missing `opencode` binary and is not counted as an isolation failure.
+10. CLI boundary checks:
+    - CLI speech command exposure was removed.
+    - Voice onboarding is fixed to disabled and does not prompt for enablement.
+    - `npm --workspace=@thoth/cli run typecheck` passed.
+    - `npm --workspace=@thoth/cli exec -- tsx tests/17-onboard.test.ts` passed.
+11. Repository checks:
+    - `npm run check:foundation` passed.
+    - `npm --workspace=@thoth/cli exec -- vitest run src/commands/daemon/local-daemon.supervision.test.ts` passed: 1 file, 7 tests.
+    - `npm --workspace=@thoth/desktop run test -- src/daemon/daemon-manager.test.ts src/daemon/desktop-packaging.test.ts src/daemon/node-entrypoint-runner.test.ts src/daemon/node-entrypoint-launcher.test.ts` passed: 4 files, 19 tests.
+    - `npm run smoke:isolation` passed.
+    - `git diff --check` passed.
+
+Current result:
+
+Thoth services can now run in parallel with the user's local Paseo daemon. This evidence proves development/runtime isolation and packaging/smoke readiness, not the New Thoth MVP task workflow.
 
 ## Failed Or Not-Yet-Passed Checks
 
@@ -247,4 +330,4 @@ Relay security and local validation are verified. Hosted Code4Agent preview depl
 3. Some old `.tmp_pytest` fixture entries could not be unlinked promptly on NFS and were moved under ignored `.agent-os/.trash/tmp_pytest-nfs-stale-20260628`; this is not part of the committed source tree.
 4. Android build currently emits upstream Expo/React Native/Gradle deprecation warnings; the Debug APK is still produced successfully.
 5. Real iOS build was not run because the current environment is Linux and lacks macOS/Xcode.
-6. Code4Agent hosted relay preview was not deployed because protected paths block the required `wrangler.jsonc` and workflow changes for Royalvice. Retry requires Bot/admin or an allowed actor.
+6. The Code4Agent hosted relay preview path was abandoned after protected-path blockers; independent `SeeleAI/Thoth-Relay` is now the verified test relay authority.

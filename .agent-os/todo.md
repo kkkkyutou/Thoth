@@ -29,10 +29,7 @@ None.
 
 ## Blocked
 
-1. `NTH-TD-013` `[blocked]`: Deploy Thoth relay preview through Code4Agent feature workflow and validate a hosted `.seele.chat` relay URL.
-   - Blocker: Code4Agent active `protected-paths` push ruleset restricts `.github/**/*` and `**/*/wrangler.jsonc`; adding `apps/thoth-relay/wrangler.jsonc` and a hard-coded `_deploy-isolated.yml` job cannot be pushed by Royalvice.
-   - Retry condition: Bot/admin or an allowed actor applies the generated `apps/thoth-relay` mirror plus workflow changes, or Code4Agent deploy governance is explicitly changed by the repository owner.
-   - Related: `NTH-MS-010`, `NTH-CD-021`
+None.
 
 ## Done
 
@@ -56,7 +53,14 @@ None.
    - Scope: v3-only relay protocol, subprotocol token transport, room registration hashes, pairing/device token path, strict origin and parameter validation, seeles relay/app defaults, local Code4Agent mirror export script, web export and local static serve.
    - Related: `NTH-MS-010`, `NTH-CD-021`
    - Verification: See `NTH-EV-005`.
+3. `NTH-TD-014` `[verified]`: Isolate Thoth runtime from the local Paseo daemon and prove daemon, relay, web app, desktop app, Android app and Codex provider smoke can run side by side.
+   - Scope: Thoth direct daemon defaults to `127.0.0.1:6688`; local Paseo/legacy `127.0.0.1:6767` remains untouched; real web review serves at `8082 -> 8148`; independent `SeeleAI/Thoth-Relay` deploys `relay.test.thoth.seeles.ai`; Linux AppImage and Android Debug APK are produced; Codex provider smoke runs through Thoth paths.
+   - Related: `NTH-MS-010`, `NTH-MS-011`, `NTH-CD-022`
+   - Verification: See `NTH-EV-006`.
 
 ## Abandoned
 
-None.
+1. `NTH-TD-013` `[abandoned]`: Deploy Thoth relay preview through Code4Agent feature workflow and validate a hosted `.seele.chat` relay URL.
+   - Reason: Code4Agent active `protected-paths` push ruleset restricted `.github/**/*` and `**/*/wrangler.jsonc`; the user then explicitly moved relay deployment authority to a new independent repository. The working test relay is now `SeeleAI/Thoth-Relay` at `relay.test.thoth.seeles.ai`.
+   - Historical evidence: See `NTH-EV-005` and `NTH-EXP-005`.
+   - Related: `NTH-MS-010`, `NTH-CD-021`, `NTH-CD-022`

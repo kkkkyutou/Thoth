@@ -2,8 +2,8 @@ npmRebuild: false
 appId: sh.thoth.desktop
 productName: Thoth
 executableName: Thoth
-afterPack: ./scripts/after-pack.js
-afterSign: ./scripts/after-sign.js
+afterPack: ./scripts/after-pack.cjs
+afterSign: ./scripts/after-sign.cjs
 directories:
   output: release
 files:

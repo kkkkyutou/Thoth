@@ -23,6 +23,7 @@
 15. `NTH-REQ-015`: Use `AGPL-3.0-or-later` for New Thoth and allow upstream-derived implementation seed material only when provenance, license, commit SHA, exclusion policy and expected broken state are recorded. Multica source code must not be copied into this repository.
 16. `NTH-REQ-016`: Maintain first-day development infrastructure before feature work: stable npm install, root-script validation gates, foundation build/typecheck/test coverage, local Android Debug APK packaging, Linux-safe iOS script behavior, package-level agent contracts and executable development/testing/packaging/release docs.
 17. `NTH-REQ-017`: Provide a stable human dogfood entry for Thoth I whose UI and experience match the current releasable full UI. Development mode may change runtime wiring, logs, local daemon targets or provider configuration, but it must not change the user-facing flow, layout, copy, states or task experience into a separate debug product.
+18. `NTH-REQ-018`: Keep Thoth runtime independent from the local Paseo daemon. Thoth direct daemon defaults to `127.0.0.1:6688`; local Paseo/legacy `127.0.0.1:6767` must remain untouched; web review uses the real app on `8082 -> 8148`; relay test traffic uses `relay.test.thoth.seeles.ai` through v3 tokenized pairing; desktop and Android artifacts must carry Thoth identity and avoid legacy/Paseo runtime state.
 
 ## Acceptance Criteria
 
@@ -37,6 +38,7 @@
 9. `NTH-AC-009`: `npm run package:android:debug-apk` produces a real local Debug APK and records its absolute path, sha256 and byte size without committing the APK or generated native project.
 10. `NTH-AC-010`: Root plus all 10 packages have local `AGENTS.md` files, and every `CLAUDE.md` is a symlink to the matching `AGENTS.md`.
 11. `NTH-AC-011`: Once the Thoth I dev entry exists, human review enters the same UI component tree, routes, composer controls, task cards, stream states and report surfaces that a releasable build uses; debug overlays or logs may exist only as non-primary developer aids.
+12. `NTH-AC-012`: Runtime isolation smoke proves Paseo/legacy remains on `127.0.0.1:6767`, Thoth runs on `127.0.0.1:6688`, the real web UI responds on `8082 -> 8148`, the test relay health endpoint responds, Linux AppImage packaged smoke passes with an isolated managed daemon, Android Debug APK has package id `sh.thoth.debug` without `RECORD_AUDIO`, and Codex provider smoke passes through Thoth paths.
 
 ## Hard Constraints
 
@@ -61,6 +63,9 @@
 19. Do not stage or commit `.dev/`, `.agent-os/artifacts/`, generated Android/iOS native folders or APK artifacts.
 20. Do not create a separate mock, reduced, debug-only or agent-facing UI as the primary Thoth I review surface.
 21. Do not use manual UI exploration as the ordinary agent validation gate; agents should use repository tests, typechecks, builds and explicit smoke commands.
+22. Do not auto-probe, reuse, stop or restart `localhost:6767` / `127.0.0.1:6767` from Thoth runtime. That port is reserved for the user's local Paseo/legacy daemon.
+23. Do not place relay pairing tokens in URL query strings, logs, screenshots, docs examples or final reports.
+24. Do not stage or commit `packages/desktop/release/`.
 
 ## Non-Goals
 
@@ -71,3 +76,5 @@
 5. Maintaining the old Python package for compatibility.
 6. Creating GitHub Actions, pushing commits, publishing packages, uploading releases, running EAS cloud builds or producing a real iOS build on Linux.
 7. Building a second development-only product surface that behaves differently from the releasable Thoth UI.
+8. Deploying production relay `relay.thoth.seeles.ai` or production app `app.thoth.seeles.ai`.
+9. Using Code4Agent as the current relay deployment authority after the independent `SeeleAI/Thoth-Relay` decision.

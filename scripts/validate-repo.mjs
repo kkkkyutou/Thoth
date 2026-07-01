@@ -173,7 +173,13 @@ function checkPackageConfigVoiceResidue() {
   for (const path of [...new Set(paths)]) {
     const absolutePath = join(root, path);
     if (!fileExists(absolutePath)) continue;
-    const content = readFileSync(absolutePath, "utf8");
+    let content = readFileSync(absolutePath, "utf8");
+    if (path === "packages/app/app.config.js") {
+      content = content.replace(
+        /blockedPermissions:\s*\[\s*["']android\.permission\.RECORD_AUDIO["']\s*\],?/g,
+        "",
+      );
+    }
     if (pattern.test(content)) fail(`voice/audio residue in package/config file: ${path}`);
   }
   ok("package/config voice residue scan passed");

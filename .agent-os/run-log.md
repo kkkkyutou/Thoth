@@ -1,5 +1,25 @@
 # Run Log
 
+## 2026-07-01 [Thoth/Paseo runtime isolation verified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-004`, `NTH-WS-005`, `NTH-MS-010`, `NTH-MS-011`, `NTH-TD-014`
+- State changes: Isolated Thoth direct runtime from the local Paseo daemon. Thoth defaults now target `127.0.0.1:6688`; `127.0.0.1:6767` is reserved for the existing Paseo/legacy daemon and is not an automatic Thoth fallback.
+- State changes: Added stable development entrypoints for `dev:daemon`, `dev:web:demo`, `dev:desktop`, `smoke:isolation` and Linux AppImage packaging. `scripts/dev-home.sh` gives Thoth a repo-local ignored runtime home under `.dev/thoth-runtime/`.
+- State changes: Fixed web export module-script handling, desktop packaging/smoke isolation, packaged daemon path identity, CLI status isolation, Android microphone permission removal, CLI voice/speech command exposure and Thoth-specific app/package defaults.
+- State changes: Moved current hosted relay test authority from the blocked Code4Agent mirror path to independent repository `SeeleAI/Thoth-Relay`. Test relay allows broad browser Origin only in test while still enforcing relay v3 subprotocol tokens.
+- Evidence produced: Port checks showed Paseo PID `1567463` listening on `127.0.0.1:6767`, Thoth PID `1529981` listening on `127.0.0.1:6688` and web static server PID `1211974` listening on `*:8082`.
+- Evidence produced: `curl http://127.0.0.1:6688/api/health` returned `{"status":"ok"}` and daemon status reported listen `127.0.0.1:6688`. CLI status through the Thoth dev profile reported local daemon running, connected daemon reachable, home `.dev/thoth-runtime/home`, and providers `Claude`, `Codex` and `mock`.
+- Evidence produced: `npm run build:web` passed; `curl -I http://127.0.0.1:8082/` and `curl -I http://180.76.242.105:8148/` both returned HTTP `200`; Playwright smoke rendered the real app UI with no page errors and no `6767` console attempt.
+- Evidence produced: `SeeleAI/Thoth-Relay` pushed commit `317bcda46571ae0ae508f4d892759eff779d9d73`; GitHub Actions run `28537212728` completed successfully; `curl https://relay.test.thoth.seeles.ai/health` returned `{"status":"ok","protocol":"3","service":"thoth-relay"}`.
+- Evidence produced: Live relay load test passed with 200 clients for 10 minutes: 23972 attempted pings, 23954 pongs, 18 failures, error rate `0.0007508760220256966`, p50 `394ms`, p95 `427ms`, p99 `765ms`; receipt `/mnt/cfs/5vr0p6/yzy/Thoth-Relay/.dev/relay-live-load-test-1782929276055.json`.
+- Evidence produced: Linux AppImage produced `/mnt/cfs/5vr0p6/yzy/thoth/packages/desktop/release/Thoth-x86_64.AppImage`, sha256 `6fc25b0f92cf930b5f7e43d6eb11de8a466cc54f881e8fcbb832f288acd1fd43`, size `131375945`; packaged smoke passed with isolated desktop-managed daemon on `127.0.0.1:38579`.
+- Evidence produced: Android Debug APK produced `/mnt/cfs/5vr0p6/yzy/thoth/packages/app/android/app/build/outputs/apk/debug/app-debug.apk`, sha256 `9579e3cb43637b6380faf2890eb496d43d7a7cc9779c787afdf16f9d98a70fa0`, size `302700513`, package id `sh.thoth.debug`; `aapt dump permissions` did not include `android.permission.RECORD_AUDIO`.
+- Evidence produced: Codex provider targeted tests passed: app-server transport plus Codex app-server agent unit tests passed 79 tests; Codex app-server local e2e passed 1 test. The broader provider local e2e command hit an unrelated missing `opencode` binary and was not treated as an isolation blocker.
+- Evidence produced: CLI checks passed after disabling the speech command and voice onboarding path: `npm --workspace=@thoth/cli run typecheck`, targeted CLI supervision test and `npm --workspace=@thoth/cli exec -- tsx tests/17-onboard.test.ts`.
+- Evidence produced: `npm run check:foundation`, targeted desktop daemon/packaging tests, `npm run smoke:isolation` and `git diff --check` passed.
+- State documentation: Recorded `NTH-CD-022`, `NTH-REQ-018`, `NTH-AC-012`, `NTH-MS-011`, `NTH-TD-014`, `NTH-EV-006`, `NTH-EXP-005` and `NTH-EXP-006`. `NTH-TD-013` is abandoned because the independent relay repository supersedes the blocked Code4Agent path.
+- Next likely action: `NTH-TD-002` - design and implement the first New Thoth slice around explicit task mode, provider-backed Router, Clarify, authority store, task lifecycle and product-identical dogfood UI entry.
+
 ## 2026-07-01 [Relay v3 security and local preview verification]
 
 - Worked on: `NTH-OBJ-001`, `NTH-WS-004`, `NTH-WS-005`, `NTH-MS-010`, `NTH-TD-012`, `NTH-TD-013`

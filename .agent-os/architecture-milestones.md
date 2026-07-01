@@ -2,7 +2,7 @@
 
 ## Current Architecture State
 
-Current state is promoted source substrate with first-day foundation infrastructure. It is still not a runnable New Thoth product.
+Current state is promoted source substrate with first-day foundation infrastructure and verified runtime isolation. It is still not a runnable New Thoth product.
 
 1. Root package manager: `npm workspaces`.
 2. Runtime language direction: TypeScript / Node.
@@ -23,7 +23,11 @@ Current state is promoted source substrate with first-day foundation infrastruct
 7. No tracked `_paseo/` directories should remain after `NTH-MS-008`.
 8. Foundation packages now have a required green gate: `packages/app/highlight`, `packages/relay`, `packages/protocol` and `packages/client`.
 9. Android Debug APK packaging is available as a local infrastructure artifact through root scripts.
-10. Daemon, broader app, desktop, CLI and drivers may still be expected-broken until their dedicated migration milestones.
+10. Thoth direct daemon default is `127.0.0.1:6688`; local Paseo/legacy daemon on `127.0.0.1:6767` is reserved and must not be touched.
+11. Real web review currently serves on `http://127.0.0.1:8082/` with public mapping `http://180.76.242.105:8148/`.
+12. Test relay deployment is live at `relay.test.thoth.seeles.ai` from independent repository `SeeleAI/Thoth-Relay`.
+13. Desktop Linux AppImage and Android Debug APK can be produced as local/dev artifacts.
+14. Broader MVP task authority, Router, Clarify, PlanExec and Review behavior is still pending `NTH-MS-002` and later milestones.
 
 ## Workstreams
 
@@ -162,9 +166,9 @@ Acceptance:
 
 ### `NTH-MS-010` Relay Security V3 And Preview Path
 
-State: `partial`
+State: `done`
 
-Goal: Replace the upstream-style unauthenticated relay with Thoth v3 security, validate local relay behavior under load, produce a real web preview build and prepare the Code4Agent hosted deployment path.
+Goal: Replace the upstream-style unauthenticated relay with Thoth v3 security, validate relay behavior under load, produce a real web preview build and establish a hosted test relay path.
 
 Acceptance:
 
@@ -174,8 +178,28 @@ Acceptance:
 4. Daemon/app/client/protocol paths understand v3 connection offers, pairing token and device token metadata.
 5. Web app can be exported and served locally through the real product UI.
 6. Local relay E2E and 200-client / 10-minute load test pass.
-7. Code4Agent hosted preview deploy is attempted or blocked with exact governance evidence.
+7. Hosted test relay deployment is attempted or blocked with exact governance evidence.
 
 Current result:
 
-Items 1-6 are verified by `NTH-EV-005`. Item 7 is blocked by `NTH-TD-013` because Code4Agent protected paths prevent Royalvice from pushing the required `wrangler.jsonc` and workflow changes.
+Items 1-6 are verified by `NTH-EV-005`. The original Code4Agent mirror deploy path was blocked by protected paths and then abandoned after the user moved deployment authority to independent repository `SeeleAI/Thoth-Relay`. Hosted test relay deployment and live load validation are verified by `NTH-EV-006`.
+
+### `NTH-MS-011` Runtime Isolation And Dogfood Entry
+
+State: `done`
+
+Goal: Let Thoth daemon, relay, web app, desktop app, Android app and Codex provider smoke run side by side with the existing local Paseo daemon without stopping, reusing or migrating Paseo.
+
+Acceptance:
+
+1. Thoth direct daemon defaults to `127.0.0.1:6688`.
+2. Local Paseo/legacy daemon remains on `127.0.0.1:6767` and is not killed, restarted or reused.
+3. Web human review serves the real product UI on `8082` with current public mapping `8148`.
+4. Test relay service responds at `relay.test.thoth.seeles.ai` and keeps v3 token enforcement.
+5. Linux AppImage package smoke uses an isolated desktop-managed daemon, not Paseo or the user's live Thoth daemon.
+6. Android Debug APK uses Thoth package identity and does not request microphone permission.
+7. Codex provider smoke runs through the Thoth daemon/provider path.
+
+Current result:
+
+Verified by `NTH-EV-006`.

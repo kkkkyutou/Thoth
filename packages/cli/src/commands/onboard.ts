@@ -1,4 +1,4 @@
-import { cancel, confirm, intro, isCancel, log, note, outro, spinner } from "@clack/prompts";
+import { cancel, intro, log, note, outro, spinner } from "@clack/prompts";
 import { Command, Option } from "commander";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
@@ -22,7 +22,6 @@ import { tryConnectToDaemon } from "../utils/client.js";
 
 interface OnboardOptions extends DaemonStartOptions {
   timeout?: string;
-  voice?: "ask" | "enable" | "disable";
 }
 
 type RawOnboardOptions = OnboardOptions & {
@@ -42,8 +41,6 @@ type OnboardPersistedConfig = PersistedConfig & {
 
 const DEFAULT_READY_TIMEOUT_MS = 10 * 60 * 1000;
 const READY_PROBE_TIMEOUT_MS = 1200;
-
-class OnboardCancelledError extends Error {}
 
 const plainNoteFormat = (line: string): string => line;
 
@@ -126,47 +123,6 @@ function applyVoiceSelection(
   };
 }
 
-function resolvePersistedVoiceSelection(config: OnboardPersistedConfig): boolean | null {
-  const voiceModeEnabled = config.features?.voiceMode?.enabled;
-  if (typeof voiceModeEnabled === "boolean") {
-    return voiceModeEnabled;
-  }
-
-  const dictationEnabled = config.features?.dictation?.enabled;
-  if (typeof dictationEnabled === "boolean") {
-    return dictationEnabled;
-  }
-
-  return null;
-}
-
-async function resolveVoiceSelection(mode: OnboardOptions["voice"]): Promise<boolean> {
-  if (mode === "enable") {
-    return true;
-  }
-  if (mode === "disable") {
-    return false;
-  }
-
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    log.message("Non-interactive terminal detected; voice setup defaults to disabled.");
-    return false;
-  }
-
-  const answer = await confirm({
-    message: "Enable voice features? (downloads local STT/TTS models in background)",
-    active: "Yes",
-    inactive: "No",
-    initialValue: false,
-  });
-
-  if (isCancel(answer)) {
-    throw new OnboardCancelledError("Onboarding cancelled by user.");
-  }
-
-  return answer;
-}
-
 interface DownloadProgress {
   modelId: string | null;
   pct: number | null;
@@ -196,9 +152,9 @@ function parseDownloadProgress(logTail: string): DownloadProgress | null {
 function renderProgressLine(progress: DownloadProgress): string {
   const modelSuffix = progress.modelId ? ` (${progress.modelId})` : "";
   if (progress.pct === null) {
-    return `Downloading speech model${modelSuffix}...`;
+    return `Downloading model artifact${modelSuffix}...`;
   }
-  return `Downloading speech model${modelSuffix}: ${progress.pct}%`;
+  return `Downloading model artifact${modelSuffix}: ${progress.pct}%`;
 }
 
 type ProbeResult = { kind: "ready"; listen: string; host: string | null } | { kind: "pending" };
@@ -336,7 +292,7 @@ export function onboardCommand(): Command {
   return new Command("onboard")
     .description("Run first-time setup, start daemon, and print pairing instructions")
     .option("--listen <listen>", "Listen target (host:port, port, or unix socket path)")
-    .option("--port <port>", "Port to listen on (default: 6767)")
+    .option("--port <port>", "Port to listen on (default: 6688)")
     .option("--home <path>", "Thoth home directory (default: ~/.thoth)")
     .option("--no-relay", "Disable relay connection")
     .option("--no-mcp", "Disable the Agent MCP HTTP endpoint")
@@ -346,7 +302,6 @@ export function onboardCommand(): Command {
     )
     .addOption(new Option("--allowed-hosts <hosts>").hideHelp())
     .option("--timeout <seconds>", "Max time to wait for daemon readiness (default: 600)")
-    .option("--voice <mode>", "Voice setup mode: ask, enable, disable", "ask")
     .action(async (options: RawOnboardOptions) => {
       await runOnboard({
         ...options,
@@ -357,28 +312,10 @@ export function onboardCommand(): Command {
 
 async function resolveAndPersistVoice(
   thothHome: string,
-  options: OnboardOptions,
+  _options: OnboardOptions,
 ): Promise<boolean> {
   let persisted = loadPersistedConfig(thothHome) as OnboardPersistedConfig;
-  const persistedVoiceSelection = resolvePersistedVoiceSelection(persisted);
-  const shouldPrompt = options.voice === "ask" || options.voice === undefined;
-  let voiceEnabled: boolean;
-  try {
-    voiceEnabled =
-      shouldPrompt && persistedVoiceSelection !== null
-        ? persistedVoiceSelection
-        : await resolveVoiceSelection(options.voice);
-  } catch (error) {
-    if (error instanceof OnboardCancelledError) {
-      cancel("Onboarding cancelled.");
-      process.exit(0);
-    }
-    throw error;
-  }
-
-  if (shouldPrompt && persistedVoiceSelection !== null) {
-    log.message(`Using saved voice setup from config (${voiceEnabled ? "enabled" : "disabled"}).`);
-  }
+  const voiceEnabled = false;
 
   persisted = applyVoiceSelection(persisted, voiceEnabled);
   savePersistedConfig(thothHome, persisted);
@@ -476,14 +413,10 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     renderNote(thothHome, "Thoth home");
   }
 
-  const voiceEnabled = await resolveAndPersistVoice(thothHome, options);
+  await resolveAndPersistVoice(thothHome, options);
   const config = loadConfig(thothHome, { cli: toCliOverrides(options) });
 
-  log.message(
-    voiceEnabled
-      ? "Voice features enabled. Local speech models will be downloaded automatically if missing."
-      : "Voice features disabled. Local speech models will not be downloaded.",
-  );
+  log.message("Voice, speech and dictation are disabled in the current Thoth MVP.");
 
   await ensureDaemonStarted(options, richUi);
   await waitForDaemonReadyWithUi({

@@ -33,6 +33,14 @@ The APK is not committed. The packaging script writes a local receipt under `.ag
 - byte size
 - timestamp
 
+Current verified debug artifact from the Thoth/Paseo isolation run:
+
+- Path: `/mnt/cfs/5vr0p6/yzy/thoth/packages/app/android/app/build/outputs/apk/debug/app-debug.apk`
+- sha256: `9579e3cb43637b6380faf2890eb496d43d7a7cc9779c787afdf16f9d98a70fa0`
+- Bytes: `302700513`
+- Package: `sh.thoth.debug`
+- Permission check: does not request `android.permission.RECORD_AUDIO`
+
 ## iOS
 
 iOS local build requires macOS with Xcode. Linux cannot produce a real iOS build.
@@ -48,15 +56,70 @@ On Linux, these scripts must report a clear macOS/Xcode requirement and must not
 
 ## Web/App
 
-The app web export flow is present in `packages/app`, but it is not part of the first foundation gate.
+The app web export flow uses the real product UI, not a mock review shell.
+
+Commands:
+
+```bash
+npm run build:web
+HOST=0.0.0.0 PORT=8082 npm run serve:web
+```
+
+Local human review URL:
+
+```text
+http://127.0.0.1:8082/
+```
+
+Current public mapping for this environment:
+
+```text
+http://180.76.242.105:8148/
+```
+
+The public web entry may be unable to use direct local network access to `127.0.0.1:6688` from an external browser. It must still render the real Welcome / Add Host / Paste pairing link experience and use relay pairing for external devices.
 
 ## Relay
 
-Relay build/typecheck/test are part of the foundation gate. Cloudflare deploy is never automatic and requires explicit user authorization.
+Relay build/typecheck/test are part of the foundation gate. Production deploy is never automatic and requires explicit user authorization.
+
+Current test relay authority is the independent private repository:
+
+```text
+SeeleAI/Thoth-Relay
+```
+
+Current test endpoint:
+
+```text
+https://relay.test.thoth.seeles.ai/health
+wss://relay.test.thoth.seeles.ai/ws
+```
+
+The test relay accepts browser origins broadly for development convenience, but still requires relay v3 role-scoped tokens through `Sec-WebSocket-Protocol`. Pairing tokens are automatic credentials and must not be placed in URL query parameters, logs, screenshots or documentation examples.
 
 ## Desktop
 
-Desktop packaging depends on app export, daemon/CLI build outputs, signing/notarization and platform-specific tooling. It is not part of the foundation gate.
+Desktop packaging depends on app export, daemon/CLI build outputs, Electron Builder and platform-specific tooling. It is not part of the foundation gate.
+
+Linux AppImage command:
+
+```bash
+npm run package:desktop:linux-appimage
+```
+
+Current verified local artifact:
+
+- Path: `/mnt/cfs/5vr0p6/yzy/thoth/packages/desktop/release/Thoth-x86_64.AppImage`
+- sha256: `6fc25b0f92cf930b5f7e43d6eb11de8a466cc54f881e8fcbb832f288acd1fd43`
+- Bytes: `131375945`
+- Packaged smoke: passed with an isolated desktop-managed daemon on a temporary port
+
+`packages/desktop/release/` is local artifact output and must not be committed.
+
+## Runtime Isolation Packaging Rule
+
+Packaged desktop smoke, Android debug builds and web preview must not stop or reuse the local Paseo daemon on `127.0.0.1:6767`. Thoth direct daemon defaults to `127.0.0.1:6688`; packaged smoke should use an isolated temporary home and port when it launches a managed daemon.
 
 ## Voice/Audio Policy
 
