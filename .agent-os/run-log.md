@@ -310,3 +310,12 @@
 - State changes: Added `packages/tui/src/runtime.ts` and `packages/tui/src/opentui-renderer.ts` so native OpenTUI renderer creation is guarded by the current runtime. The locked Node `24.14.0` path reports unavailable before renderer creation because OpenTUI needs Bun or Node `26.3.0+` with experimental FFI.
 - Evidence produced: `npm run test --workspace=@thoth/tui` passed with 2 files and 9 tests. `npm run typecheck --workspace=@thoth/tui` passed. `npm run build --workspace=@thoth/tui` passed. Runtime guard smoke returned `reason: node_version_too_old`, `currentVersion: 24.14.0`, `minimumNodeVersion: 26.3.0`. `npm run format:check`, `git diff --check` and `npm run check:foundation` passed.
 - Next likely action: Continue `NTH-TD-002` by connecting the shared UI slots to minimal authority/task state design, or run the explicit `NTH-TD-005` OpenTUI runtime spike before claiming native TUI renderer smoke.
+
+## 2026-07-02 [OpenTUI renderer smoke path verified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-004`, `NTH-TD-005`
+- State changes: Added the first OpenTUI render layer in `packages/tui/src/render.ts`, exported it from `@thoth/tui`, and added `scripts/smoke-opentui-renderer.mjs`.
+- State changes: Added root `npm run smoke:tui:renderer`, which builds `@thoth/tui` and runs the OpenTUI test renderer under pinned `node-linux-x64@26.4.0 --experimental-ffi`. Updated `packages/tui/AGENTS.md` to remove the stale skeleton-only command wording.
+- Spike result: Current reproducible renderer smoke path is Node FFI through `node-linux-x64@26.4.0`; Bun was not selected because `bun@1.3.14` needs postinstall under the current install policy and `@oven/bun-linux-x64@1.3.14` did not expose `bun` through `npm exec`.
+- Evidence produced: Manual Node 24 `@opentui/core/testing` renderer creation failed with `OpenTUI native FFI is not available for this runtime yet`; manual Node 26.4 FFI smoke captured `One Thoth TUI smoke`; root `npm run smoke:tui:renderer` passed at default `96x34`; narrow `72x34` and wide `132x34` renderer smoke also passed. `npm run test --workspace=@thoth/tui` passed with 3 files and 10 tests. `npm run typecheck --workspace=@thoth/tui`, `npm run build --workspace=@thoth/tui`, `npm run format:check`, `git diff --check` and `npm run check:foundation` passed.
+- Next likely action: Continue toward the real OpenTUI CLI workspace dogfood entry by connecting the renderer to daemon/client state and adding focus/input/navigation smoke; this renderer smoke does not yet prove interactive TUI readiness.

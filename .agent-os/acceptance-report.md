@@ -464,6 +464,42 @@ Current result:
 
 `packages/tui` now has the first shared-state OpenTUI shell foundation and a truthful native renderer guard. This does not complete the interactive TUI app, renderer/input smoke, Node FFI vs Bun runtime decision, task backend, Clarify runtime, contract freeze, PlanExec or Review.
 
+### `NTH-EV-011` OpenTUI Renderer Smoke Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Run the first OpenTUI runtime spike for `packages/tui`.
+2. Choose a reproducible native renderer smoke path that does not change the repository's locked Node `24.14.0` developer toolchain.
+3. Render the actual One Thoth TUI surface model through OpenTUI, not a hello-world-only check.
+4. Verify default, narrow and wide terminal character frames.
+
+Evidence:
+
+1. Node `24.14.0` can import `@opentui/core` and `@opentui/core/testing`, but `createTestRenderer()` fails with `OpenTUI native FFI is not available for this runtime yet`.
+2. `npm view bun@1.3.14` showed a package with `bun`/`bunx` bins, but `npm exec --package=bun@1.3.14 -- bun --version` failed because the package requires a postinstall script and the repository install policy uses `ignore-scripts=true`.
+3. `npm pack @oven/bun-linux-x64@1.3.14 --dry-run --json` showed the package contains `bin/bun`, but `npm exec --package=@oven/bun-linux-x64@1.3.14 -- bun --version` did not expose `bun` on PATH.
+4. `npm exec --package=node@26.4.0 -- node --version` still resolved to the current Node `24.14.0`, so the generic `node` package was not a valid spike path.
+5. `npm pack node-linux-x64@26.4.0 --dry-run --json` showed a Linux x64 Node package containing `bin/node`.
+6. `npm exec --package=node-linux-x64@26.4.0 -- node --version` returned `v26.4.0`.
+7. Manual spike with `npm exec --package=node-linux-x64@26.4.0 -- node --experimental-ffi -e ...createTestRenderer...` created an OpenTUI test renderer and captured `One Thoth TUI smoke`.
+8. Added `packages/tui/src/render.ts` to mount the existing `TuiSurfaceModel` through OpenTUI and added `packages/tui/src/render.test.ts` for pure surface-line formatting.
+9. Added root `npm run smoke:tui:renderer`, which runs `npm run build --workspace=@thoth/tui` then `npm exec --yes --package=node-linux-x64@26.4.0 -- node --experimental-ffi scripts/smoke-opentui-renderer.mjs`.
+10. Default `npm run smoke:tui:renderer` passed and captured a `96x34` split surface with `One Thoth - OpenTUI split surface`, `Needs a registered workspace`, `Select model first`, `Fresh pairing supported`, `Evidence / Review`, `+ Images/files <10MB | Provider | Mode Quick/Loop | Clarify | Loop`, and `Authority: daemon/client/protocol state only`.
+11. Narrow `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:renderer` passed and captured a compact surface.
+12. Wide `THOTH_TUI_SMOKE_WIDTH=132 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:renderer` passed and captured a split surface.
+13. `npm run test --workspace=@thoth/tui` passed: 3 files, 10 tests.
+14. `npm run typecheck --workspace=@thoth/tui` passed.
+15. `npm run build --workspace=@thoth/tui` passed.
+16. `npm run format:check` passed.
+17. `git diff --check` passed.
+18. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+The OpenTUI renderer runtime spike now has a reproducible root-script path using pinned `node-linux-x64@26.4.0` plus experimental FFI. Bun is not selected for the current repo-local smoke path. This proves renderer creation and character-frame capture for the One Thoth surface, not the complete interactive CLI workspace TUI, daemon-connected TUI state, focus/input loops or final TUI scorecard.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

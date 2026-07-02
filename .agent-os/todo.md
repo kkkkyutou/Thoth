@@ -6,11 +6,9 @@
    - Related: `NTH-MS-002`, `NTH-REQ-002`, `NTH-REQ-004`
 2. `NTH-TD-004` `[backlog]`: Design the first Claude Code, Codex and ACP driver capability contract.
    - Related: `NTH-MS-004`, `NTH-REQ-005`
-3. `NTH-TD-005` `[backlog]`: Run an OpenTUI spike to decide Node FFI vs Bun runtime for `packages/tui`.
-   - Related: `NTH-MS-005`, `NTH-REQ-007`
-4. `NTH-TD-006` `[backlog]`: Design E2EE relay deployment path for Cloudflare prototype and seeles.ai hosted/self-hosted service.
+3. `NTH-TD-006` `[backlog]`: Design E2EE relay deployment path for Cloudflare prototype and seeles.ai hosted/self-hosted service.
    - Related: `NTH-MS-005`, `NTH-REQ-006`
-5. `NTH-TD-007` `[backlog]`: Design the Paseo-like release and packaging pipeline for New Thoth.
+4. `NTH-TD-007` `[backlog]`: Design the Paseo-like release and packaging pipeline for New Thoth.
    - Scope: tag-triggered GitHub Actions, desktop installer builds for macOS/Linux/Windows, Android APK builds through Expo/EAS, GitHub Release upload behavior, web/app deploy target, relay deploy target, signing/secrets requirements and iOS TestFlight/App Store distribution policy.
    - Related: `NTH-MS-006`, `NTH-REQ-010`, `NTH-CD-011`
 
@@ -42,6 +40,10 @@ None.
 3. `NTH-TD-009` `[done]`: Promote tracked `_paseo` implementation seeds into formal package source trees and delete `_paseo`.
    - Related: `NTH-MS-008`, `NTH-CD-018`
    - Verification: See `NTH-EV-003`.
+4. `NTH-TD-005` `[done]`: Run an OpenTUI spike to decide Node FFI vs Bun runtime for `packages/tui`.
+   - Result: Current reproducible renderer smoke path uses pinned `node-linux-x64@26.4.0` with `--experimental-ffi` through the root `smoke:tui:renderer` script. The locked repository developer toolchain remains Node `24.14.0`; Bun was not selected because the npm `bun` package requires postinstall under the current install policy and `@oven/bun-linux-x64` did not expose a `bun` executable through `npm exec`.
+   - Related: `NTH-MS-005`, `NTH-REQ-007`
+   - Verification: See `NTH-EV-011`.
 
 ## Verified
 

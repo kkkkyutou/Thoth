@@ -9,6 +9,7 @@ export {
   type TuiSurfaceModel,
   type TuiTaskSlot,
 } from "./surface.js";
+export { buildTuiSurfaceLines, mountTuiSurface, type TuiSurfaceLine } from "./render.js";
 export {
   createNativeOpenTuiRenderer,
   type NativeOpenTuiRendererOptions,

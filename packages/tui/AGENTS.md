@@ -12,4 +12,6 @@ This package will contain the Thoth terminal UI shell.
 
 ## Commands
 
-This package is skeleton-only. Do not add fake build/test scripts before a real OpenTUI implementation slice exists.
+This package now has a first real OpenTUI implementation slice: shared surface modeling, a guarded renderer factory and a renderer smoke path. Do not add fake renderer, fake backend, fake daemon state, debug-only UI or scripts that pretend native TUI behavior passed without OpenTUI evidence.
+
+Allowed current package scripts are build/typecheck/test for the real TypeScript slice. Native renderer smoke is exposed through the root script so it can use the pinned Node FFI runtime path without changing the repository's locked Node 24 developer toolchain.

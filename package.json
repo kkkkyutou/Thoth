@@ -28,6 +28,7 @@
     "dev:web:demo": "node scripts/serve-static.mjs packages/app/dist 8082 0.0.0.0",
     "dev:desktop": "npm run dev --workspace=@thoth/desktop",
     "smoke:isolation": "node scripts/smoke-isolation.mjs",
+    "smoke:tui:renderer": "npm run build --workspace=@thoth/tui && npm exec --yes --package=node-linux-x64@26.4.0 -- node --experimental-ffi scripts/smoke-opentui-renderer.mjs",
     "loadtest:relay:local": "node scripts/loadtest-relay-local.mjs",
     "build:foundation": "npm run build:highlight && npm run build:relay && npm run build:protocol && npm run build:client",
     "typecheck:highlight": "npm --prefix packages/app/highlight run typecheck",
