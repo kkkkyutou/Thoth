@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { applyTuiInteractionAction, createInitialTuiInteractionState } from "./interaction.js";
 import { buildTuiSurfaceLines } from "./render.js";
 import { buildTuiSurfaceModel } from "./surface.js";
 
@@ -18,6 +19,8 @@ describe("buildTuiSurfaceLines", () => {
     expect(text).toContain("One Thoth - OpenTUI");
     expect(text).toContain("Workspace: Needs a registered workspace");
     expect(text).toContain("Snapshot: Startup snapshot");
+    expect(text).toContain("Active Route Detail");
+    expect(text).toContain("One Thoth Home: Needs host");
     expect(text).toContain("+ Images/files <10MB | Provider | Mode Quick/Loop | Clarify | Loop");
     expect(text).toContain("Loop: Off in Quick");
     expect(text).toContain("Keys: Tab/arrows focus");
@@ -48,5 +51,47 @@ describe("buildTuiSurfaceLines", () => {
     expect(text).toContain("Refresh error: Relay closed before handshake completed");
     expect(text).toContain("Recovery: start Thoth daemon on 127.0.0.1:6688");
     expect(text).not.toContain("Host: Connected");
+  });
+
+  test("formats provider and settings route detail panels", () => {
+    const model = buildTuiSurfaceModel({
+      connection: { status: "connected" },
+      providers: {
+        entries: [
+          {
+            provider: "codex",
+            status: "ready",
+            enabled: true,
+            label: "Codex",
+            models: [{ provider: "codex", id: "gpt-5", label: "GPT-5" }],
+          },
+        ],
+        generatedAt: "2026-07-02T00:00:00.000Z",
+        requestId: "providers_1",
+      },
+    });
+    let interaction = createInitialTuiInteractionState(model);
+
+    interaction = applyTuiInteractionAction(
+      interaction,
+      { type: "setRoute", route: "providers" },
+      model,
+    );
+    const providersText = buildTuiSurfaceLines(model, { interaction })
+      .map((line) => line.text)
+      .join("\n");
+    expect(providersText).toContain("Providers: Provider session source available");
+    expect(providersText).toContain("- Codex: ready, 1 models, first GPT-5");
+
+    interaction = applyTuiInteractionAction(
+      interaction,
+      { type: "setRoute", route: "settings" },
+      model,
+    );
+    const settingsText = buildTuiSurfaceLines(model, { interaction })
+      .map((line) => line.text)
+      .join("\n");
+    expect(settingsText).toContain("Settings / About: One Thoth identity and runtime guard");
+    expect(settingsText).toContain("No Textual, no old plugin TUI, no hidden LLM API");
   });
 });

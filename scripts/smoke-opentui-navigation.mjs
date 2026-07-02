@@ -45,6 +45,9 @@ try {
   assert.match(frame, /One Thoth/);
   assert.match(frame, /Route: Evidence \/ Review/);
   assert.match(frame, /Focus: Loop/);
+  assert.match(frame, /Active Route Detail/);
+  assert.match(frame, /Evidence \/ Review: Receipts preview/);
+  assert.match(frame, /Independent Review backend unavailable/);
   assert.match(frame, /Mode: Loop/);
   assert.match(frame, /Loop: One Plan, One Do/);
   assert.match(frame, /Evidence and review receipts are preview-only/);

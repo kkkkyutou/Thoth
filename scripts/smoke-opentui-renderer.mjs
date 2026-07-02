@@ -26,7 +26,9 @@ try {
   assert.match(frame, /OpenTUI/);
   assert.match(frame, /Workspace/);
   assert.match(frame, /Provider/);
-  assert.match(frame, /Evidence \/ Review/);
+  assert.match(frame, /Active Route Detail/);
+  assert.match(frame, /One Thoth Home/);
+  assert.match(frame, /Next step: Register\/connect this workspace before task loops/);
   assert.match(frame, /Images\/files <10MB/);
   assert.match(frame, /daemon\/client\/protocol state only/);
 

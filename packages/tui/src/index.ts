@@ -1,6 +1,8 @@
 export {
   buildTuiSurfaceModel,
   deriveTuiLayout,
+  type TuiDetailLine,
+  type TuiDetailSection,
   type TuiLayout,
   type TuiNavItem,
   type TuiRefreshInput,

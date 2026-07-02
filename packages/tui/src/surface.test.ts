@@ -234,6 +234,85 @@ describe("buildTuiSurfaceModel", () => {
       tone: "preview",
     });
   });
+
+  test("builds route detail panels from real surface inputs", () => {
+    const model = buildTuiSurfaceModel({
+      connection: connected,
+      workspaces: [workspace()],
+      providers: providerSnapshot({
+        entries: [
+          {
+            provider: "codex",
+            status: "ready",
+            enabled: true,
+            label: "Codex",
+            models: [
+              {
+                provider: "codex",
+                id: "gpt-5",
+                label: "GPT-5",
+                thinkingOptions: [{ id: "high", label: "High" }],
+              },
+            ],
+          },
+          {
+            provider: "claude",
+            status: "error",
+            enabled: true,
+            label: "Claude",
+            error: "Not logged in",
+          },
+        ],
+      }),
+      agents: [
+        agent({
+          title: "Review permission",
+          requiresAttention: true,
+          attentionReason: "permission",
+        }),
+      ],
+      relayPaired: false,
+      refresh: { status: "loaded", updatedAt: "2026-07-02T12:00:00.000Z" },
+    });
+
+    expect(model.routeDetails.providers).toMatchObject({
+      title: "Providers",
+      summary: "Provider session source available",
+      tone: "ready",
+    });
+    expect(model.routeDetails.providers.lines).toEqual(
+      expect.arrayContaining([
+        { label: "Codex", value: "ready, 1 models, first GPT-5", tone: "ready" },
+        { label: "Claude", value: "error", tone: "needs-action" },
+      ]),
+    );
+    expect(model.routeDetails.connections.lines).toEqual(
+      expect.arrayContaining([
+        { label: "Direct daemon", value: "Connected", tone: "ready" },
+        { label: "Relay", value: "Fresh pairing supported", tone: "preview" },
+      ]),
+    );
+    expect(model.routeDetails.review.lines).toEqual(
+      expect.arrayContaining([
+        { label: "Attention", value: "Review permission", tone: "needs-action" },
+        {
+          label: "Validation",
+          value: "Independent Review backend unavailable",
+          tone: "unavailable",
+        },
+      ]),
+    );
+    expect(model.routeDetails.settings.lines).toEqual(
+      expect.arrayContaining([
+        { label: "Product", value: "One Thoth task control plane", tone: "ready" },
+        {
+          label: "Runtime boundary",
+          value: "No Textual, no old plugin TUI, no hidden LLM API",
+          tone: "ready",
+        },
+      ]),
+    );
+  });
 });
 
 describe("deriveTuiLayout", () => {

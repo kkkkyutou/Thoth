@@ -609,6 +609,48 @@ Current result:
 
 OpenTUI now has a live CLI refresh/recovery slice: users can discover `R refresh`, the CLI re-fetches real daemon/client state, the TUI shows updated snapshot state, and disconnected hosts remain inside an honest recovery surface. This still does not complete final OpenTUI onboarding, in-TUI workspace registration, richer route detail panels, task backend, Clarify runtime, contract freeze, PlanExec, Review, long interactive PTY stress or the full UI review scorecard.
 
+### `NTH-EV-015` OpenTUI Route Detail Panels Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add route-specific detail panels for Home, Workspace, Task / Loop, Providers, Connections, Evidence / Review and Settings / About.
+2. Derive detail content only from existing TUI surface inputs: connection chip, daemon workspaces, provider snapshot, agents, refresh state, relay paired state and current `cwd`.
+3. Keep the panels honest about unavailable or preview-only capabilities: no fake task authority, no fake Clarify/Loop backend, no fake Review validation and no hidden provider/API call.
+4. Render the active route detail above the composer so the selected route has a product-like status explanation without pushing Mode/Loop out of compact 34-row frames.
+5. Extend renderer, navigation, connected CLI and recovery CLI smokes to assert the detail panels.
+
+Evidence:
+
+1. Added `TuiDetailLine`, `TuiDetailSection` and `routeDetails: Record<TuiRouteId, TuiDetailSection>` to `packages/tui/src/surface.ts`.
+2. `buildTuiSurfaceModel` now builds route details for Home, Workspace, Task / Loop, Providers, Connections, Evidence / Review and Settings / About from input state; `packages/tui` still does not own durable task, provider, workspace or daemon authority.
+3. `packages/tui/src/render.ts` now renders `Active Route Detail` for the current route before the composer. The default order is Header, Status, Active Route Detail, Composer, Navigation, Interaction and Task Control Plane.
+4. `packages/tui/src/index.ts` exports the new detail-section types for consumers.
+5. `packages/tui/src/surface.test.ts` covers provider, connection, review and settings detail values from real surface inputs.
+6. `packages/tui/src/render.test.ts` covers Home detail rendering plus provider/settings route detail formatting.
+7. `scripts/smoke-opentui-renderer.mjs` now verifies `Active Route Detail`, `One Thoth Home` and `Next step: Register/connect this workspace before task loops`.
+8. `scripts/smoke-opentui-navigation.mjs` now verifies the Evidence / Review detail panel and `Independent Review backend unavailable`.
+9. `scripts/smoke-opentui-cli.sh` now verifies connected Workspace detail: `Workspace Control: Current workspace selected from daemon state` and `Context/files: Workspace context preview; attachments stay <10MB`.
+10. `scripts/smoke-opentui-cli-recovery.sh` now verifies disconnected Home detail: `One Thoth Home: Needs host` and the workspace registration next step.
+11. `npm run test --workspace=@thoth/tui` passed with 5 files and 25 tests.
+12. `npm run typecheck --workspace=@thoth/tui` passed.
+13. `npm run build --workspace=@thoth/tui` passed.
+14. `npm run smoke:tui:renderer` passed under pinned `node-linux-x64@26.4.0 --experimental-ffi`; the frame contained Home detail and the workspace registration next step.
+15. `npm run smoke:tui:navigation` passed under pinned Node FFI; the frame contained Evidence / Review detail, Review receipt preview and the unavailable independent Review backend state.
+16. `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:navigation` passed; the compact frame still showed composer Mode and Loop after the detail panel.
+17. `npm run smoke:tui:cli` passed against real Thoth daemon `127.0.0.1:6688`; the final frame showed connected Workspace detail for workspace `yzy`.
+18. `npm run smoke:tui:cli:recovery` passed against unreachable host `127.0.0.1:1`; the final frame showed recovery state, Home detail and no fake connected state.
+19. `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed with connected Workspace detail.
+20. `THOTH_TUI_SMOKE_WIDTH=132 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed with connected Workspace detail.
+21. `npm run format:check` passed.
+22. `git diff --check` passed.
+23. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+OpenTUI route detail panels now give each major route a richer, product-shaped status explanation while remaining derived from existing daemon/client/provider/agent/refresh inputs. This still does not complete final OpenTUI onboarding, in-TUI workspace registration, provider setup flows, task backend, Clarify runtime, Loop runtime, independent Review runtime, long interactive PTY stress or the full Web/Desktop/OpenTUI UI scorecard.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

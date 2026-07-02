@@ -13,7 +13,14 @@ import {
   type TuiInteractionState,
 } from "./interaction.js";
 import { mapTuiKeyToIntent, type TuiKeyLike } from "./keyboard.js";
-import type { TuiBadgeTone, TuiNavItem, TuiStatusChip, TuiSurfaceModel } from "./surface.js";
+import type {
+  TuiBadgeTone,
+  TuiDetailSection,
+  TuiNavItem,
+  TuiRouteId,
+  TuiStatusChip,
+  TuiSurfaceModel,
+} from "./surface.js";
 
 export interface TuiSurfaceLine {
   text: string;
@@ -71,11 +78,13 @@ export function buildTuiSurfaceLines(
     { text: "Status", tone: "title" },
     ...model.statusChips.map(formatStatusChip),
     blankLine(),
-    { text: "Navigation", tone: "title" },
-    ...model.navigation.map((item) => formatNavigationItem(item, interaction)),
+    ...formatRouteDetail(model, interaction.activeRoute),
     blankLine(),
     { text: "Composer", tone: "title" },
     ...formatComposerControls(interaction),
+    blankLine(),
+    { text: "Navigation", tone: "title" },
+    ...model.navigation.map((item) => formatNavigationItem(item, interaction)),
     blankLine(),
     { text: "Interaction", tone: "title" },
     ...buildTuiInteractionHints(interaction, model).map((hint) => ({
@@ -169,6 +178,28 @@ export function mountTuiSurface(
       update(applyTuiInteractionAction(interaction, intent.action, currentModel));
       return "handled";
     },
+  };
+}
+
+function formatRouteDetail(model: TuiSurfaceModel, route: TuiRouteId): TuiSurfaceLine[] {
+  const section = model.routeDetails[route];
+  if (!section) {
+    return [];
+  }
+  return [
+    { text: "Active Route Detail", tone: "title" },
+    formatDetailSummary(section),
+    ...section.lines.map((line) => ({
+      text: `- ${line.label}: ${line.value}`,
+      tone: line.tone,
+    })),
+  ];
+}
+
+function formatDetailSummary(section: TuiDetailSection): TuiSurfaceLine {
+  return {
+    text: `${section.title}: ${section.summary}`,
+    tone: section.tone,
   };
 }
 

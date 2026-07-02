@@ -356,3 +356,15 @@
 - Evidence produced: `npm run smoke:isolation` passed: Paseo remained on `127.0.0.1:6767`, Thoth remained on `127.0.0.1:6688`, and PIDs differed. `npm run format:check`, `git diff --check` and `npm run check:foundation` passed; foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
 - State documentation: Recorded `NTH-EV-014` and updated `project-index.md`.
 - Next likely action: Continue `NTH-TD-002` by expanding OpenTUI route detail panels and onboarding/registration recovery, or return to Web/Desktop scorecard and full UI smoke matrix. The full New Thoth MVP task loop and full multi-endpoint UI productization remain incomplete.
+
+## 2026-07-02 [OpenTUI route detail panels verified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-004`, `NTH-TD-002`
+- State changes: Added route-specific `Active Route Detail` panels to the shared OpenTUI surface for Home, Workspace, Task / Loop, Providers, Connections, Evidence / Review and Settings / About.
+- State changes: The detail panels are derived from the existing surface inputs: host connection chip, daemon workspaces, provider snapshot, agents, relay paired state, refresh state and current `cwd`. They do not introduce TUI-owned durable task authority or hidden provider calls.
+- State changes: Updated OpenTUI renderer output order so route detail appears before the composer, keeping Mode and Loop visible in compact 34-row frames. Updated renderer, navigation, connected CLI and recovery CLI smokes to assert the detail panels.
+- Evidence produced: `npm run test --workspace=@thoth/tui` passed with 5 files and 25 tests. `npm run typecheck --workspace=@thoth/tui` and `npm run build --workspace=@thoth/tui` passed.
+- Evidence produced: `npm run smoke:tui:renderer`, `npm run smoke:tui:navigation`, `npm run smoke:tui:cli` and `npm run smoke:tui:cli:recovery` passed. Compact `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:navigation`, compact `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` and wide `THOTH_TUI_SMOKE_WIDTH=132 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` also passed.
+- Evidence produced: `npm run format:check`, `git diff --check` and `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+- State documentation: Recorded `NTH-EV-015` and updated `project-index.md`.
+- Next likely action: Continue `NTH-TD-002` with OpenTUI onboarding/registration recovery, or return to Web/Desktop final surface and strict UI scorecard. The full New Thoth MVP task loop and full multi-endpoint UI productization remain incomplete.
