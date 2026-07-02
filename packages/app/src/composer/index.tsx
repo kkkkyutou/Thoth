@@ -40,6 +40,7 @@ import {
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
+import { ThothComposerControls } from "@/composer/thoth-composer-controls";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
@@ -790,7 +791,7 @@ interface ComposerProps {
   isCompactLayout?: boolean;
 }
 
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
 const StableMessageInput = memo(MessageInput);
@@ -803,6 +804,25 @@ function resolveContextWindowValues(
     return { contextWindowMaxTokens: rawMax, contextWindowUsedTokens: rawUsed };
   }
   return { contextWindowMaxTokens: null, contextWindowUsedTokens: null };
+}
+
+function resolveThothProviderState(input: {
+  agentProvider: string | null;
+  agentModel: string | null;
+  draftControls: DraftAgentControlsProps | undefined;
+}): { label: string; ready: boolean } {
+  const draftProvider = input.draftControls?.selectedProvider ?? null;
+  const draftModel = input.draftControls?.selectedModel ?? "";
+  if (draftProvider && draftModel.trim().length > 0) {
+    return { label: draftProvider, ready: true };
+  }
+  if (input.agentProvider) {
+    return { label: input.agentProvider, ready: Boolean(input.agentModel) };
+  }
+  if (draftProvider) {
+    return { label: draftProvider, ready: false };
+  }
+  return { label: "Provider", ready: false };
 }
 
 interface ComposerCancelButtonProps {
@@ -1364,7 +1384,7 @@ export function Composer({
       const oversized = files.find((f) => f.bytes.byteLength > MAX_FILE_SIZE_BYTES);
       if (oversized) {
         toastErrorRef.current(
-          t("composer.errors.fileTooLarge", { size: "50MB", fileName: oversized.fileName }),
+          t("composer.errors.fileTooLarge", { size: "10MB", fileName: oversized.fileName }),
         );
         return;
       }
@@ -1883,6 +1903,15 @@ export function Composer({
   );
 
   const messageInputContainerRef = useRef<View>(null);
+  const thothProviderState = useMemo(
+    () =>
+      resolveThothProviderState({
+        agentProvider: agentState.provider,
+        agentModel: agentState.model,
+        draftControls: agentControls,
+      }),
+    [agentControls, agentState.model, agentState.provider],
+  );
 
   const isSubmitBusy = isProcessing || isSubmitLoading || isUploadingFile;
 
@@ -1912,6 +1941,10 @@ export function Composer({
         {/* Input area */}
         <View style={inputAreaContainerStyle}>
           <View style={styles.inputAreaContent}>
+            <ThothComposerControls
+              providerLabel={thothProviderState.label}
+              providerReady={thothProviderState.ready}
+            />
             {queueList}
             {sendErrorNode}
 

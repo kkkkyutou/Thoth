@@ -1,5 +1,19 @@
 # Run Log
 
+## 2026-07-02 [Workspace composer task surface wired]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`, `NTH-TD-002`
+- User-visible request: Continue the long-running Web/Desktop/OpenTUI UI productization goal from the One Thoth shell slice, focusing next on the real Workspace surface without mocking backend task capability.
+- State changes: Added `packages/app/src/composer/thoth-composer-controls.tsx`, a reusable Thoth composer rail for `+`, Provider, Mode, Clarify and Loop. It shows provider readiness from the existing real agent/draft provider/model state, keeps Loop disabled in Quick, cycles local Mode/Clarify/Loop UI choices, and marks unimplemented execution behavior as preview/needs-provider rather than task authority.
+- State changes: Wired the new rail into `packages/app/src/composer/index.tsx` above the existing message input while preserving current provider submission flow. The existing file upload limit is now `10MB`, matching the locked MVP attachment rule surfaced in the rail.
+- State changes: Added a Workspace draft preview surface in `packages/app/src/composer/draft/workspace-tab.tsx` with workspace/provider/host/loop readiness chips plus Active task, Contract and Evidence slots. The slots intentionally say `No frozen task yet`, `Needs Clarify session` and `Review receipts will land here` until the real backend exists.
+- Evidence produced: `npm run build:web` passed and exported `packages/app/dist/_expo/static/js/web/index-9b372b8af504495884b37da2d845671e.js`.
+- Evidence produced: Static scan of the exported bundle found `Images/files <10MB`, `thoth-composer-controls`, `workspace-thoth-surface-preview` and `Loop task runtime preview`.
+- Evidence produced: Playwright smoke against temporary `http://127.0.0.1:8093/open-project` passed at `1440x960` and `390x844`: both found One Thoth / Task control plane / Provider / Fresh pairing supported and reported page errors `[]`. The temporary `8093` static server was stopped afterward.
+- Evidence produced: `npm run format:check`, `git diff --check` and `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+- Current limitation: This slice proves the real web bundle now contains the Workspace composer/task/evidence UI slots and honest unavailable states. It does not implement provider-backed Router, Clarify runtime, contract freeze, PlanExec, Review, OpenTUI or desktop packaged smoke for the full productization goal.
+- Next likely action: Continue `NTH-TD-002` by connecting these UI slots to a minimal authority/task state design, or begin the OpenTUI implementation slice over shared daemon/client/protocol if the UI shell remains the priority.
+
 ## 2026-07-02 [One Thoth web shell icon surface wired]
 
 - Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`, `NTH-TD-002`

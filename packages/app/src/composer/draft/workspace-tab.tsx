@@ -8,6 +8,10 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
+import {
+  ThothInventoryIcon,
+  type ThothInventoryIconName,
+} from "@/components/icons/thoth-inventory-icon";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
@@ -305,6 +309,155 @@ function resolveImportPillPress(
     return null;
   }
   return onOpenImportSheet ?? null;
+}
+
+interface WorkspaceSurfacePreviewStatus {
+  label: string;
+  value: string;
+  icon: ThothInventoryIconName;
+  state: "ready" | "pending" | "preview";
+}
+
+function getSurfaceStatusChipStyle(state: WorkspaceSurfacePreviewStatus["state"]) {
+  if (state === "ready") {
+    return [styles.surfaceStatusChip, styles.surfaceStatusChipReady];
+  }
+  if (state === "preview") {
+    return [styles.surfaceStatusChip, styles.surfaceStatusChipPreview];
+  }
+  return [styles.surfaceStatusChip, styles.surfaceStatusChipPending];
+}
+
+function WorkspaceSurfacePreviewStatusChip({ status }: { status: WorkspaceSurfacePreviewStatus }) {
+  return (
+    <View style={getSurfaceStatusChipStyle(status.state)}>
+      <ThothInventoryIcon name={status.icon} size={18} style={styles.surfaceStatusIcon} />
+      <View style={styles.surfaceStatusTextGroup}>
+        <Text style={styles.surfaceStatusLabel} numberOfLines={1}>
+          {status.label}
+        </Text>
+        <Text style={styles.surfaceStatusValue} numberOfLines={1} ellipsizeMode="tail">
+          {status.value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+interface WorkspaceSurfacePreviewCardProps {
+  title: string;
+  value: string;
+  icon: ThothInventoryIconName;
+  tone?: "normal" | "warning";
+}
+
+function WorkspaceSurfacePreviewCard({
+  title,
+  value,
+  icon,
+  tone = "normal",
+}: WorkspaceSurfacePreviewCardProps) {
+  return (
+    <View style={[styles.surfaceCard, tone === "warning" ? styles.surfaceCardWarning : null]}>
+      <ThothInventoryIcon name={icon} size={30} style={styles.surfaceCardIcon} />
+      <View style={styles.surfaceCardTextGroup}>
+        <Text style={styles.surfaceCardTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.surfaceCardValue} numberOfLines={2}>
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function WorkspaceSurfacePreview({
+  workspaceDirectory,
+  providerLabel,
+  providerReady,
+  isConnected,
+}: {
+  workspaceDirectory: string | null;
+  providerLabel: string | null;
+  providerReady: boolean;
+  isConnected: boolean;
+}) {
+  const statuses = useMemo<WorkspaceSurfacePreviewStatus[]>(
+    () => [
+      {
+        label: "Workspace",
+        value: workspaceDirectory ? "Registered" : "Needs workspace",
+        icon: workspaceDirectory ? "workspace-connected" : "empty-workspace",
+        state: workspaceDirectory ? "ready" : "pending",
+      },
+      {
+        label: "Provider",
+        value: providerReady ? (providerLabel ?? "Ready") : "Select model first",
+        icon: providerReady ? "provider-loadout" : "no-provider",
+        state: providerReady ? "ready" : "pending",
+      },
+      {
+        label: "Host",
+        value: isConnected ? "Connected" : "Offline",
+        icon: isConnected ? "local-thoth" : "relay-offline",
+        state: isConnected ? "ready" : "pending",
+      },
+      {
+        label: "Loop",
+        value: "Preview",
+        icon: "loop-mode",
+        state: "preview",
+      },
+    ],
+    [isConnected, providerLabel, providerReady, workspaceDirectory],
+  );
+
+  return (
+    <View style={styles.surfacePreview} testID="workspace-thoth-surface-preview">
+      <View style={styles.surfaceHero}>
+        <View style={styles.surfaceHeroIconWrap}>
+          <ThothInventoryIcon name="open-workspace" size={44} />
+        </View>
+        <View style={styles.surfaceHeroText}>
+          <Text style={styles.surfaceEyebrow}>One Thoth workspace</Text>
+          <Text style={styles.surfaceTitle} numberOfLines={1}>
+            Task control plane
+          </Text>
+          <Text style={styles.surfaceSubtitle} numberOfLines={2} ellipsizeMode="tail">
+            {workspaceDirectory ?? "Register a workspace before creating recoverable tasks."}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.surfaceStatusRow}>
+        {statuses.map((status) => (
+          <WorkspaceSurfacePreviewStatusChip key={status.label} status={status} />
+        ))}
+      </View>
+
+      <View style={styles.surfaceCardGrid}>
+        <WorkspaceSurfacePreviewCard
+          title="Active task"
+          value="No frozen task yet"
+          icon="draft"
+          tone={providerReady ? "normal" : "warning"}
+        />
+        <WorkspaceSurfacePreviewCard
+          title="Contract"
+          value="Needs Clarify session"
+          icon="contract-frozen"
+          tone="warning"
+        />
+        <WorkspaceSurfacePreviewCard
+          title="Evidence"
+          value="Review receipts will land here"
+          icon="evidence"
+          tone="warning"
+        />
+      </View>
+    </View>
+  );
 }
 
 export function WorkspaceDraftAgentTab({
@@ -682,6 +835,14 @@ export function WorkspaceDraftAgentTab({
         ) : (
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
             <View style={styles.configSection}>
+              <WorkspaceSurfacePreview
+                workspaceDirectory={workspaceDirectory}
+                providerLabel={composerState.selectedProvider}
+                providerReady={Boolean(
+                  composerState.selectedProvider && composerState.effectiveModelId,
+                )}
+                isConnected={isConnected}
+              />
               {formErrorMessage ? (
                 <View style={styles.errorContainer}>
                   <Text style={styles.errorText}>{formErrorMessage}</Text>
@@ -750,6 +911,143 @@ const styles = StyleSheet.create((theme) => ({
   },
   configSection: {
     gap: theme.spacing[3],
+  },
+  surfacePreview: {
+    width: "100%",
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: "center",
+    gap: theme.spacing[3],
+  },
+  surfaceHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[3],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface1,
+  },
+  surfaceHeroIconWrap: {
+    width: 54,
+    height: 54,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface0,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+  },
+  surfaceHeroText: {
+    minWidth: 0,
+    flex: 1,
+  },
+  surfaceEyebrow: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: Math.round(theme.fontSize.xs * 1.25),
+  },
+  surfaceTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xl,
+    lineHeight: Math.round(theme.fontSize.xl * 1.2),
+    fontWeight: theme.fontWeight.semibold,
+  },
+  surfaceSubtitle: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.35),
+  },
+  surfaceStatusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+  },
+  surfaceStatusChip: {
+    minHeight: 40,
+    minWidth: 142,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: theme.borderWidth[1],
+  },
+  surfaceStatusChipReady: {
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.success,
+  },
+  surfaceStatusChipPending: {
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.destructive,
+  },
+  surfaceStatusChipPreview: {
+    backgroundColor: theme.colors.surface2,
+    borderColor: theme.colors.borderAccent,
+  },
+  surfaceStatusIcon: {
+    flexShrink: 0,
+  },
+  surfaceStatusTextGroup: {
+    minWidth: 0,
+    flex: 1,
+  },
+  surfaceStatusLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: Math.round(theme.fontSize.xs * 1.2),
+  },
+  surfaceStatusValue: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.25),
+    fontWeight: theme.fontWeight.semibold,
+  },
+  surfaceCardGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+  },
+  surfaceCard: {
+    minHeight: 78,
+    minWidth: 176,
+    flexGrow: 1,
+    flexBasis: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    padding: theme.spacing[3],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface0,
+  },
+  surfaceCardWarning: {
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.borderAccent,
+  },
+  surfaceCardIcon: {
+    flexShrink: 0,
+  },
+  surfaceCardTextGroup: {
+    minWidth: 0,
+    flex: 1,
+  },
+  surfaceCardTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.25),
+    fontWeight: theme.fontWeight.semibold,
+  },
+  surfaceCardValue: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: Math.round(theme.fontSize.xs * 1.35),
   },
   inputAreaWrapper: {
     width: "100%",

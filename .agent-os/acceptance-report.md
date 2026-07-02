@@ -389,6 +389,49 @@ Current result:
 
 The real Web/Desktop shared shell now visibly presents Thoth as One Thoth / task control plane and consumes the locked transparent PNG icon set in first-viewport and navigation surfaces. This evidence does not prove the complete multi-endpoint UI productization goal: OpenTUI, final Workspace composer/task/evidence slots, desktop packaged smoke, full Playwright/PTTY stress matrix and scorecard remain unfinished.
 
+### `NTH-EV-009` Workspace Composer And Task Surface Slice Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add the fixed Thoth composer control surface for `+`, Provider, Mode, Clarify and Loop without changing provider execution semantics.
+2. Keep Loop/Clarify/backend-unimplemented behavior honest as preview or needs-provider state.
+3. Add Workspace task-control-plane slots for active task, frozen contract and evidence/review preview.
+4. Align MVP file upload limit with the locked `<10MB` attachment rule.
+5. Verify the real web export, foundation gate, formatting and smoke checks for this UI slice.
+
+Evidence:
+
+1. Added `packages/app/src/composer/thoth-composer-controls.tsx` with a shared Thoth composer rail:
+   - `+`: `Images/files <10MB`
+   - `Provider`: `Select model first` until an existing provider/model selection is present
+   - `Mode`: local `Quick` / `Loop` UI selection
+   - `Clarify`: local cycle through `Auto`, `Don't Ask`, `Light`, `Balanced`, `Dive Dive Dive`
+   - `Loop`: disabled in Quick as `Off in Quick`, enabled in Loop with `Auto`, `Single Pass`, `Light`, `Balanced`, `Try Try Try`
+2. `packages/app/src/composer/index.tsx` now renders the Thoth rail above the existing message input and derives provider readiness from the existing real agent/draft provider and model state. It does not create task authority, call a hidden model API or bypass existing provider submission.
+3. The existing file upload guard in `packages/app/src/composer/index.tsx` now rejects files over `10MB`, matching the current MVP attachment rule surfaced in the composer.
+4. `packages/app/src/composer/draft/workspace-tab.tsx` now renders a Workspace preview surface for draft tabs with:
+   - Workspace status: `Registered` or `Needs workspace`
+   - Provider status: selected provider or `Select model first`
+   - Host status: `Connected` or `Offline`
+   - Loop status: `Preview`
+   - Active task: `No frozen task yet`
+   - Contract: `Needs Clarify session`
+   - Evidence: `Review receipts will land here`
+5. `npm run build:web` passed and exported `packages/app/dist/_expo/static/js/web/index-9b372b8af504495884b37da2d845671e.js`.
+6. Static web bundle scan found the new composer/workspace markers in the latest export, including `Images/files <10MB`, `thoth-composer-controls`, `workspace-thoth-surface-preview` and `Loop task runtime preview`.
+7. Playwright desktop-width smoke against temporary `http://127.0.0.1:8093/open-project` at `1440x960` found `ONE THOTH` / `One Thoth`, `Task control plane`, `Provider` and `Fresh pairing supported`, with page errors `[]`.
+8. Playwright mobile-width smoke against temporary `http://127.0.0.1:8093/open-project` at `390x844` found `ONE THOTH` / `One Thoth`, `Task control plane`, `Provider` and `Fresh pairing supported`, with page errors `[]`.
+9. The temporary `8093` static server was stopped after smoke; `lsof -tiTCP:8093 -sTCP:LISTEN` returned no listener afterward.
+10. `npm run format:check` passed after the final `build:web`.
+11. `git diff --check` passed.
+12. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+The real Web/Desktop app bundle now contains the next Workspace UI slice: fixed Thoth-level composer controls, honest provider/loop readiness states, Workspace task/contract/evidence preview slots and the MVP `10MB` attachment limit. This does not implement provider-backed Router, Clarify runtime, contract freeze, PlanExec, Review or OpenTUI.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.
