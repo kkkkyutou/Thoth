@@ -1,4 +1,4 @@
-import { app, Menu, BrowserWindow, ipcMain } from "electron";
+import { Menu, BrowserWindow, ipcMain } from "electron";
 import { getWorkspaceActiveThothBrowserWebContents } from "./browser-webviews/index.js";
 
 interface ShowContextMenuInput {
@@ -6,7 +6,7 @@ interface ShowContextMenuInput {
   hasSelection?: boolean;
 }
 
-interface ApplicationMenuOptions {
+export interface ApplicationMenuOptions {
   onNewWindow: () => void;
 }
 
@@ -45,30 +45,34 @@ function reloadFocusedContentsOrWindow(win: BrowserWindow, options?: { ignoreCac
   win.webContents.reload();
 }
 
-function buildApplicationMenuTemplate(
+export function buildApplicationMenuTemplate(
   options: ApplicationMenuOptions,
 ): Electron.MenuItemConstructorOptions[] {
   const isMac = process.platform === "darwin";
+  const thothMenu: Electron.MenuItemConstructorOptions = {
+    label: "Thoth",
+    submenu: [
+      { role: "about" as const },
+      { type: "separator" as const },
+      { label: "One Thoth Home", enabled: false },
+      { label: "Settings / About", enabled: false },
+      { type: "separator" as const },
+      ...(isMac
+        ? [
+            { role: "services" as const },
+            { type: "separator" as const },
+            { role: "hide" as const },
+            { role: "hideOthers" as const },
+            { role: "unhide" as const },
+            { type: "separator" as const },
+          ]
+        : []),
+      { role: "quit" as const },
+    ],
+  };
 
   return [
-    ...(isMac
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: "about" as const },
-              { type: "separator" as const },
-              { role: "services" as const },
-              { type: "separator" as const },
-              { role: "hide" as const },
-              { role: "hideOthers" as const },
-              { role: "unhide" as const },
-              { type: "separator" as const },
-              { role: "quit" as const },
-            ],
-          },
-        ]
-      : []),
+    thothMenu,
     {
       label: "File",
       submenu: [
@@ -79,18 +83,46 @@ function buildApplicationMenuTemplate(
             options.onNewWindow();
           },
         },
-      ],
-    },
-    {
-      label: "Edit",
-      submenu: [
+        { type: "separator" as const },
         { role: "undo" },
         { role: "redo" },
-        { type: "separator" },
+        { type: "separator" as const },
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
         { role: "selectAll" },
+      ],
+    },
+    {
+      label: "Workspace",
+      submenu: [
+        { label: "Open Workspace...", enabled: false },
+        { label: "Register Current Workspace", enabled: false },
+        { label: "Workspace Settings", enabled: false },
+        { type: "separator" as const },
+        { label: "Context / Files", enabled: false },
+        { label: "Evidence Preview", enabled: false },
+      ],
+    },
+    {
+      label: "Task",
+      submenu: [
+        { label: "New Quick Conversation", enabled: false },
+        { label: "New Loop Task", enabled: false },
+        { type: "separator" as const },
+        { label: "Clarify Contract", enabled: false },
+        { label: "Review Evidence", enabled: false },
+        { label: "Stop Current Loop", enabled: false },
+      ],
+    },
+    {
+      label: "Provider",
+      submenu: [
+        { label: "Provider Settings", enabled: false },
+        { label: "Refresh Provider Readiness", enabled: false },
+        { type: "separator" as const },
+        { label: "Select Model", enabled: false },
+        { label: "Permission Mode", enabled: false },
       ],
     },
     {
@@ -145,6 +177,14 @@ function buildApplicationMenuTemplate(
         ...(isMac
           ? [{ type: "separator" as const }, { role: "front" as const }]
           : [{ role: "close" as const }]),
+      ],
+    },
+    {
+      label: "Help",
+      submenu: [
+        { label: "Thoth Help", enabled: false },
+        { label: "Recovery Guide", enabled: false },
+        { label: "Report Diagnostics", enabled: false },
       ],
     },
   ];

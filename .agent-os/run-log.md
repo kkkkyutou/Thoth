@@ -407,3 +407,14 @@
 - Evidence produced: `npm run smoke:isolation` passed with Paseo on `127.0.0.1:6767`, Thoth on `127.0.0.1:6688` and different PIDs. `npm run format:check`, `git diff --check` and `npm run check:foundation` passed; foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
 - State documentation: Recorded `NTH-EV-018` and updated `project-index.md`.
 - Next likely action: Continue `NTH-TD-002` toward the next UI productization slice or return to Web/Desktop scorecard. The full New Thoth MVP task loop, full paired-device persistence UI, provider/model editing inside TUI and Clarify/Loop/Review runtime are still incomplete.
+
+## 2026-07-02 [Desktop semantic menu and UI scorecard baseline verified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-005`, `NTH-TD-002`
+- State changes: Reworked the Desktop application menu from a generic Electron `File/Edit/View/Window` shell into Thoth semantic top-level groups: `Thoth`, `File`, `Workspace`, `Task`, `Provider`, `View`, `Window` and `Help`.
+- State changes: Kept unfinished Desktop menu product actions honest. Workspace, Task and Provider slots are present for the final UI surface but disabled until real backing behavior is wired; the menu does not fake provider/model editing, task creation, Clarify contract or Review actions.
+- State changes: Added `packages/desktop/src/features/menu.test.ts` to verify the menu model with an Electron mock. Added `docs/ui-review-scorecard.md` as the durable working scorecard for Web/Desktop/OpenTUI UI review, with current failing scores and missing screenshot/stress evidence clearly marked.
+- Evidence produced: `npm --workspace=@thoth/desktop run test -- src/features/menu.test.ts` passed with 1 file and 3 tests. `npm --workspace=@thoth/desktop run typecheck` passed. `npm --workspace=@thoth/desktop run build:main` passed.
+- Evidence produced: `npm run format:check` and `git diff --check` passed.
+- State documentation: Recorded `NTH-EV-019` and updated `project-index.md`.
+- Next likely action: Continue `NTH-TD-002` by filling the scorecard with current Web/Desktop/OpenTUI screenshots and stress evidence, then repair whichever endpoint scores lowest. The final UI threshold is still not met.

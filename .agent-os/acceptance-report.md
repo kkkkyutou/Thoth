@@ -774,6 +774,51 @@ Current result:
 
 OpenTUI now has a safe real device pairing action: pressing `D` asks the daemon for a fresh pairing offer, lands users on the Connections route and shows only safe relay endpoint/expiry summary. This still does not complete full paired-device persistence UI, provider/model editing or auth setup inside TUI, task backend, Clarify runtime, Loop runtime, independent Review runtime, long PTY stress or the full Web/Desktop/OpenTUI UI scorecard.
 
+### `NTH-EV-019` Desktop Semantic Menu And UI Scorecard Baseline Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Move the Desktop application menu away from a generic Electron shell toward Thoth product
+   navigation.
+2. Add Thoth semantic top-level menus for Desktop without changing daemon lifecycle or claiming
+   unimplemented backend actions work.
+3. Keep unfinished Workspace, Task and Provider menu targets disabled instead of presenting fake
+   behavior.
+4. Establish a durable UI scorecard document for the final Web/Desktop/OpenTUI review while marking
+   the current score as not passing.
+
+Evidence:
+
+1. `packages/desktop/src/features/menu.ts` now exports `buildApplicationMenuTemplate` and uses
+   top-level menus `Thoth`, `File`, `Workspace`, `Task`, `Provider`, `View`, `Window` and `Help`.
+2. The generic top-level `Edit` menu was removed; standard editing roles remain under `File` so
+   basic desktop edit commands are still present.
+3. The new `Workspace`, `Task` and `Provider` menu groups expose final product slots such as
+   `Open Workspace...`, `Register Current Workspace`, `New Loop Task`, `Clarify Contract`,
+   `Review Evidence`, `Provider Settings`, `Refresh Provider Readiness`, `Select Model` and
+   `Permission Mode`, all disabled until the real backing actions are wired.
+4. Added `packages/desktop/src/features/menu.test.ts` with an Electron mock. The tests verify the
+   Thoth top-level menu order, absence of the generic `Edit` top-level menu, disabled unfinished
+   product actions and preserved `File`, `View` and `Window` commands.
+5. Added `docs/ui-review-scorecard.md` as a working scorecard and evidence ledger. It records the
+   final Web/Desktop/OpenTUI threshold, dimensions, current failing working scores and missing
+   screenshot/stress artifacts. It explicitly does not claim final UI acceptance.
+6. `npm --workspace=@thoth/desktop run test -- src/features/menu.test.ts` passed with 1 file and
+   3 tests.
+7. `npm --workspace=@thoth/desktop run typecheck` passed.
+8. `npm --workspace=@thoth/desktop run build:main` passed.
+9. `npm run format:check` passed.
+10. `git diff --check` passed.
+
+Current result:
+
+Desktop now has a Thoth-specific application menu surface and the project has a durable working UI
+scorecard. This still does not complete Web/Desktop/OpenTUI final UI acceptance: current scorecard
+status is failing until fresh screenshots, Playwright UI stress, Desktop smoke, OpenTUI PTY stress,
+full endpoint score evidence and final thresholds are satisfied.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.
