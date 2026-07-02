@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
-import { FolderOpen, Inbox, Plug, Smartphone } from "lucide-react-native";
 import { ThothLogo } from "@/components/icons/thoth-logo";
+import {
+  ThothInventoryIcon,
+  type ThothInventoryIconName,
+} from "@/components/icons/thoth-inventory-icon";
 import { CommunityLinks } from "@/components/community-links";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
@@ -94,9 +97,26 @@ export function OpenProjectScreen() {
         <View style={styles.logo}>
           <ThothLogo size={52} />
         </View>
+        <View style={styles.heroCopy}>
+          <Text style={styles.eyebrow}>One Thoth</Text>
+          <Text style={styles.title}>Task control plane</Text>
+          <Text style={styles.subtitle}>
+            A calm workspace for turning intent into provider-backed loops, evidence and recovery.
+          </Text>
+        </View>
+        <View style={styles.surfaceStrip}>
+          <SurfaceStatus
+            iconName="workspace-connected"
+            label="Workspace"
+            value="Needs a registered workspace"
+          />
+          <SurfaceStatus iconName="no-provider" label="Provider" value="Select a model first" />
+          <SurfaceStatus iconName="remote-relay" label="Relay" value="Fresh pairing supported" />
+          <SurfaceStatus iconName="evidence-center" label="Review" value="Preview surface" />
+        </View>
         <View style={styles.tiles}>
           <HomeTile
-            icon={FolderOpen}
+            iconName="add-workspace"
             title={t("openProject.tiles.addProject.title")}
             description={t("openProject.tiles.addProject.description")}
             onPress={handleOpenPicker}
@@ -104,14 +124,14 @@ export function OpenProjectScreen() {
             accent
           />
           <HomeTile
-            icon={Inbox}
+            iconName="evidence"
             title={t("openProject.tiles.importSession.title")}
             description={t("openProject.tiles.importSession.description")}
             onPress={handleOpenImportSession}
             testID="open-project-import-session"
           />
           <HomeTile
-            icon={Plug}
+            iconName="provider-loadout"
             title={t("openProject.tiles.setupProviders.title")}
             description={t("openProject.tiles.setupProviders.description")}
             onPress={handleOpenProviders}
@@ -119,7 +139,7 @@ export function OpenProjectScreen() {
           />
           {localServerId ? (
             <HomeTile
-              icon={Smartphone}
+              iconName="pair-device"
               title={t("openProject.tiles.pairDevice.title")}
               description={t("openProject.tiles.pairDevice.description")}
               onPress={handleOpenPairDevice}
@@ -147,8 +167,28 @@ export function OpenProjectScreen() {
   );
 }
 
+function SurfaceStatus({
+  iconName,
+  label,
+  value,
+}: {
+  iconName: ThothInventoryIconName;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.surfaceStatus}>
+      <ThothInventoryIcon name={iconName} size={30} />
+      <View style={styles.surfaceStatusText}>
+        <Text style={styles.surfaceStatusLabel}>{label}</Text>
+        <Text style={styles.surfaceStatusValue}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
 interface HomeTileProps {
-  icon: ComponentType<{ size: number; color: string }>;
+  iconName: ThothInventoryIconName;
   title: string;
   description: string;
   onPress: () => void;
@@ -156,22 +196,19 @@ interface HomeTileProps {
   accent?: boolean;
 }
 
-function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: HomeTileProps) {
-  // useUnistyles is acceptable here: leaf component, off the hot path (home screen renders once).
-  const { theme } = useUnistyles();
+function HomeTile({ iconName, title, description, onPress, testID, accent }: HomeTileProps) {
   const [hovered, setHovered] = useState(false);
   const handleHoverIn = useCallback(() => setHovered(true), []);
   const handleHoverOut = useCallback(() => setHovered(false), []);
 
-  const iconColor = accent ? theme.colors.accent : theme.colors.foregroundMuted;
-
   const pressableStyle = useCallback(
     ({ pressed }: { pressed: boolean }) => [
       styles.tile,
+      accent && styles.tileAccent,
       hovered && styles.tileHovered,
       pressed && styles.tilePressed,
     ],
-    [hovered],
+    [accent, hovered],
   );
 
   return (
@@ -182,7 +219,7 @@ function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: H
       testID={testID}
       style={pressableStyle}
     >
-      <Icon size={20} color={iconColor} />
+      <ThothInventoryIcon name={iconName} size={34} />
       <View style={styles.tileText}>
         <Text style={styles.tileTitle}>{title}</Text>
         <Text style={styles.tileDescription}>{description}</Text>
@@ -211,26 +248,91 @@ const styles = StyleSheet.create((theme) => ({
     },
   },
   logo: {
-    marginBottom: theme.spacing[8],
+    marginBottom: theme.spacing[3],
+  },
+  heroCopy: {
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 620,
+    gap: theme.spacing[2],
+  },
+  eyebrow: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+    textTransform: "uppercase",
+  },
+  title: {
+    color: theme.colors.foreground,
+    fontSize: { xs: theme.fontSize.xl, md: theme.fontSize["2xl"] },
+    fontWeight: theme.fontWeight.semibold,
+    textAlign: "center",
+  },
+  subtitle: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 20,
+    textAlign: "center",
+    maxWidth: 520,
+  },
+  surfaceStrip: {
+    width: "100%",
+    maxWidth: 688,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[6],
+  },
+  surfaceStatus: {
+    width: { xs: "100%", sm: 330, md: 166 },
+    minHeight: 74,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    padding: theme.spacing[3],
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  surfaceStatusText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  surfaceStatusLabel: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  surfaceStatusValue: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: 16,
   },
   tiles: {
-    marginTop: { xs: theme.spacing[6], md: theme.spacing[12] },
+    marginTop: theme.spacing[6],
     width: "100%",
-    maxWidth: 452,
+    maxWidth: 688,
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "flex-start",
     gap: theme.spacing[3],
   },
   tile: {
-    width: { xs: "100%", md: 220 },
-    minHeight: { xs: 0, md: 132 },
+    width: { xs: "100%", md: 334 },
+    minHeight: { xs: 0, md: 118 },
     padding: theme.spacing[4],
     backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.xl,
+    borderRadius: theme.borderRadius.lg,
     gap: theme.spacing[3],
+  },
+  tileAccent: {
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.colors.surface2,
   },
   tileHovered: {
     backgroundColor: theme.colors.surface2,

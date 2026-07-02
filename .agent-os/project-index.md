@@ -53,6 +53,7 @@ None.
 19. `NTH-EV-007`: Web workspace white-screen regression is fixed. Workspace navigation and `hi` submission no longer crash the browser; the route now surfaces the expected current `Select model` validation.
 20. `NTH-CD-024`: Thoth UI icon system is locked to the final single-version `05-arcade-inventory` set under `packages/app/assets/icons/arcade-inventory/`.
 21. `NTH-CD-025`: UI development branch is renamed from `port/from-old-thoth-plugin` to `agent/dev/ui` before pushing the current UI shell/icon/runtime work.
+22. `NTH-EV-008`: One Thoth Web/Desktop shared shell slice passed for the current scope. The real open-project entry now uses the locked transparent arcade-inventory PNG icon set, presents One Thoth / task control plane product language, shows honest workspace/provider/relay/review states, and preserves existing Add project, Import session, Provider setup and Pair device flows. This does not complete OpenTUI or the full task/Clarify/Loop UI productization goal.
 
 ## Read Next
 

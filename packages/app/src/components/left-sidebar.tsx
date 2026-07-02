@@ -1,5 +1,5 @@
 import { router, usePathname } from "expo-router";
-import { FolderPlus, History, Home, Plus, Search, Server, Settings, X } from "lucide-react-native";
+import { FolderPlus, History, Plus, Search, Server, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -65,6 +65,10 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+import {
+  ThothInventoryIcon,
+  type ThothInventoryIconName,
+} from "@/components/icons/thoth-inventory-icon";
 
 const MIN_CHAT_WIDTH = 400;
 
@@ -296,13 +300,15 @@ function FooterIconButton({
   testID,
   accessibilityLabel,
   icon: Icon,
+  inventoryIconName,
   iconSize,
   theme,
 }: {
   onPress: () => void;
   testID: string;
   accessibilityLabel: string;
-  icon: typeof FolderPlus;
+  icon?: typeof FolderPlus;
+  inventoryIconName?: ThothInventoryIconName;
   iconSize?: number;
   theme: SidebarTheme;
   buttonRef?: RefObject<View | null>;
@@ -320,10 +326,16 @@ function FooterIconButton({
       onPress={onPress}
     >
       {({ hovered }) => (
-        <Icon
-          size={iconSize ?? theme.iconSize.md}
-          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-        />
+        <>
+          {inventoryIconName ? (
+            <ThothInventoryIcon name={inventoryIconName} size={iconSize ?? 22} />
+          ) : Icon ? (
+            <Icon
+              size={iconSize ?? theme.iconSize.md}
+              color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+            />
+          ) : null}
+        </>
       )}
     </Pressable>
   );
@@ -505,7 +517,7 @@ function SidebarFooter({
               onPress={handleOpenProject}
               testID="sidebar-add-project"
               accessibilityLabel={labels.addProject}
-              icon={FolderPlus}
+              inventoryIconName="add-workspace"
               theme={theme}
             />
           </TooltipTrigger>
@@ -517,14 +529,14 @@ function SidebarFooter({
           onPress={handleHome}
           testID="sidebar-home"
           accessibilityLabel={labels.home}
-          icon={Home}
+          inventoryIconName="brand-mark"
           theme={theme}
         />
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
           accessibilityLabel={labels.settings}
-          icon={Settings}
+          inventoryIconName="general-settings"
           theme={theme}
         />
       </View>
@@ -966,7 +978,10 @@ function WorkspacesSectionHeader() {
 
   return (
     <View style={styles.workspacesSectionHeader}>
-      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
+      <View style={styles.workspacesSectionTitleGroup}>
+        <ThothInventoryIcon name="open-workspace" size={18} />
+        <Text style={styles.workspacesSectionTitle}>Workspace</Text>
+      </View>
       <View style={styles.workspacesSectionActions}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
@@ -1058,6 +1073,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
+  },
+  workspacesSectionTitleGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   workspacesSectionActions: {
     flexDirection: "row",

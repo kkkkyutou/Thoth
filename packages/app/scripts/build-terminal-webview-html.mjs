@@ -1,9 +1,12 @@
 import esbuild from "esbuild";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const execFileAsync = promisify(execFile);
 const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "../..");
 const entry = path.join(appRoot, "src/terminal/webview/terminal-emulator-webview-entry.ts");
@@ -90,4 +93,5 @@ export const terminalEmulatorWebViewHtml = ${JSON.stringify(html)};
 `;
 
 await fs.writeFile(output, contents);
+await execFileAsync("oxfmt", [output], { cwd: repoRoot });
 console.log(`Wrote ${path.relative(repoRoot, output)} (${html.length} bytes)`);

@@ -352,6 +352,43 @@ Current result:
 
 The web workspace route no longer white-screens on navigation or `hi` submission. The next visible product-path issue is provider/model selection for actual message execution, not a browser crash.
 
+### `NTH-EV-008` One Thoth Web Shell Icon Surface Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Use the locked transparent `05-arcade-inventory` PNG icon set as a real app asset surface.
+2. Move the Web/Desktop shared entry shell toward One Thoth / task-control-plane product language.
+3. Preserve existing real Add project, Import session, Provider setup and Pair device flows.
+4. Keep backend-unimplemented states honest rather than showing fake task/provider/evidence success.
+5. Ensure `build:web`, foundation gate and formatting hygiene remain green for this slice.
+
+Evidence:
+
+1. `packages/app/src/components/icons/thoth-inventory-icon.tsx` now provides a single typed registry for the locked package-local PNG assets.
+2. `packages/app/src/components/icons/thoth-logo.tsx` now renders the `brand-mark` inventory PNG instead of the old vector mark.
+3. `packages/app/src/screens/open-project-screen.tsx` now renders One Thoth / Task control plane copy plus honest status chips:
+   - Workspace: `Needs a registered workspace`
+   - Provider: `Select a model first`
+   - Relay: `Fresh pairing supported`
+   - Review: `Preview surface`
+4. `packages/app/src/components/left-sidebar.tsx` uses inventory PNGs for Add workspace, Home, Settings and the Workspace section label.
+5. `packages/app/src/screens/settings-screen.tsx` uses inventory PNGs for General, Appearance, Diagnostics, About, Connections, Agents/Tasks, Workspaces, Providers, Host and Projects navigation/detail headers where package-local icons exist.
+6. `packages/app/scripts/build-terminal-webview-html.mjs` now formats its generated `terminal-emulator-webview-html.ts` output with `oxfmt`, keeping `build:web` and `format:check` compatible.
+7. `npm run build:web` passed and exported `packages/app/dist/_expo/static/js/web/index-199f42bfb01d2ed5ca71875d38711970.js`; Expo export listed the arcade-inventory PNG assets in the web bundle.
+8. Static bundle scan found `Task control plane`, `One Thoth`, `Needs a registered workspace`, `Fresh pairing supported` and `Preview surface` in the exported web bundle.
+9. Playwright desktop-width smoke against `http://127.0.0.1:8092/open-project` at `1440x960` found the One Thoth entry text and had no React page errors.
+10. Playwright mobile-width smoke against `http://localhost:8092/open-project` at `390x844` found the One Thoth entry text and exact `Provider` status, with no React page errors.
+11. The temporary-origin Playwright runs logged local daemon WebSocket `403` console errors because the smoke used `8092` rather than the formal `8082 -> 8148` dogfood origin/daemon pairing path; no white screen or page exception occurred.
+12. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests.
+13. `npm run format:check` passed after `build:web`.
+14. `git diff --check` passed.
+
+Current result:
+
+The real Web/Desktop shared shell now visibly presents Thoth as One Thoth / task control plane and consumes the locked transparent PNG icon set in first-viewport and navigation surfaces. This evidence does not prove the complete multi-endpoint UI productization goal: OpenTUI, final Workspace composer/task/evidence slots, desktop packaged smoke, full Playwright/PTTY stress matrix and scorecard remain unfinished.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

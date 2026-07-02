@@ -1,5 +1,36 @@
 # Run Log
 
+## 2026-07-02 [One Thoth web shell icon surface wired]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`, `NTH-TD-002`
+- User-visible request: Continue the long-running Web/Desktop/OpenTUI UI productization goal and move the real dogfood UI away from a generic/Paseo-shaped shell without mocking backend capability.
+- State changes: Added a single `ThothInventoryIcon` registry for the locked 52 transparent `05-arcade-inventory` PNG assets. Replaced the in-app Thoth logo renderer with the package-local `brand-mark` PNG asset. Wired inventory PNGs into the real Web/Desktop shared `OpenProjectScreen`, sidebar footer/workspace header and Settings sidebar/detail header.
+- State changes: Changed the open-project entry into a more explicit One Thoth control-plane surface with honest status chips for workspace/provider/relay/review: `Needs a registered workspace`, `Select a model first`, `Fresh pairing supported` and `Preview surface`. Existing Add project, Import session, Setup providers and Pair device actions remain connected to current real app flows.
+- State changes: Made `packages/app/scripts/build-terminal-webview-html.mjs` format-stable by running `oxfmt` on its generated output, so `npm run build:web` no longer leaves the generated terminal webview file failing `format:check`.
+- Evidence produced: `npm run build:web` passed and exported `packages/app/dist/_expo/static/js/web/index-199f42bfb01d2ed5ca71875d38711970.js`. Expo export listed arcade-inventory icon assets in the web bundle.
+- Evidence produced: `npm run check:foundation`, `npm run format:check` and `git diff --check` passed.
+- Evidence produced: Playwright smoke against `http://127.0.0.1:8092/open-project` at `1440x960` found `One Thoth`, `Task control plane`, `Needs a registered workspace` and `Fresh pairing supported`; no React page errors occurred. Playwright smoke against `http://localhost:8092/open-project` at `390x844` found `One Thoth`, `Task control plane` and exact `Provider`; no React page errors occurred. Both temporary-origin runs logged the expected local daemon WebSocket `403` console error because the smoke used a temporary `8092` origin rather than the formal dogfood origin/daemon pairing path.
+- Evidence produced: A broad debug `npm --workspace=@thoth/app run typecheck` still failed on pre-existing promoted-source blockers such as missing `react-dom`/`jsdom` declarations, voice residue typing, i18n `pairAgain` key drift and unrelated app TS errors; this was not treated as a passing gate or as introduced by the UI icon shell slice.
+- Current limitation: This slice improves the real Web/Desktop shared shell and keeps states honest, but it does not complete OpenTUI, task/Clarify/Loop backend behavior, full UI scorecard, desktop packaged smoke or the final multi-viewport/PTY stress matrix.
+- Next likely action: Continue `NTH-TD-002` by expanding the real Workspace surface: final composer controls (`+`, Provider, Mode, Clarify, Loop), active task/contract/evidence preview slots and honest unavailable/needs-provider states, then begin the OpenTUI implementation slice over shared daemon/client/protocol.
+
+## 2026-07-02 [Compressed UI goal prompt added]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Compress the long New Thoth Web/Desktop/OpenTUI UI implementation prompt to under 3000 characters and store it in project docs for reuse.
+- State changes: Added `.agent-os/designs/new-thoth-ui-goal-prompt.md` with a ready-to-use goal-mode prompt.
+- Evidence produced: Prompt body length verified as 2714 characters.
+- Next likely action: Use the prompt to launch a long-running goal-mode UI implementation session.
+
+## 2026-07-02 [Final UI icons converted to transparent PNG]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Remove backgrounds from the final full icon set and consider `rembg` or a more mature cutout method for transparent PNG assets.
+- State changes: Recorded `NTH-CD-026`. Converted the 52 final `05-arcade-inventory` PNG icons under `packages/app/assets/icons/arcade-inventory/` to transparent-background PNGs in place.
+- Implementation note: `rembg` is not installed in the current environment, and generic AI matting is not ideal for these pixel-art assets. Used deterministic edge-connected flood-fill alpha extraction from the near-solid ivory background, preserving enclosed slot/card interiors and crisp pixel outlines.
+- Evidence produced: Alpha verification reported 52 files, 0 issues; every final icon has alpha extrema `(0, 255)` and non-empty visible/opaque pixels. A temporary light/dark background preview was inspected and then removed so no extra candidate/preview asset remains.
+- Next likely action: Use these transparent package-local icons directly in the Thoth UI shell.
+
 ## 2026-07-02 [UI branch rename requested]
 
 - Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
