@@ -432,6 +432,38 @@ Current result:
 
 The real Web/Desktop app bundle now contains the next Workspace UI slice: fixed Thoth-level composer controls, honest provider/loop readiness states, Workspace task/contract/evidence preview slots and the MVP `10MB` attachment limit. This does not implement provider-backed Router, Clarify runtime, contract freeze, PlanExec, Review or OpenTUI.
 
+### `NTH-EV-010` OpenTUI Shell Surface Foundation Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Move `packages/tui` from skeleton-only toward the first real OpenTUI shell implementation slice.
+2. Keep TUI state derived from shared daemon/client/protocol shapes instead of adding separate task authority.
+3. Add a guarded native OpenTUI renderer factory without pretending the locked Node `24.14.0` toolchain can run the native renderer.
+4. Verify TUI unit tests, typecheck, build, formatting, diff hygiene and the current foundation gate.
+
+Evidence:
+
+1. `packages/tui/package.json` now declares real package exports, build/typecheck/test scripts, `@thoth/client` and `@opentui/core@0.4.2`.
+2. `packages/tui/src/surface.ts` derives the One Thoth TUI surface model from `ConnectionState`, `ThothWorkspace`, `ThothAgent` and provider snapshot types exported through `@thoth/client`.
+3. The derived surface covers Home, Workspace, Task / Loop, Providers, Connections, Evidence / Review and Settings / About slots with honest `ready`, `needs-action`, `preview`, `running` and `unavailable` states.
+4. `packages/tui/src/runtime.ts` records the current runtime guard: Bun can be accepted for renderer creation, while Node renderer creation requires Node `26.3.0+` and `--experimental-ffi`.
+5. `packages/tui/src/opentui-renderer.ts` dynamically imports `@opentui/core` only after the runtime guard passes, so the current Node `24.14.0` path fails before native renderer creation.
+6. `packages/tui/README.md` and `packages/tui/tests/README.md` now state the real current status: first non-rendering OpenTUI shell slice exists, native renderer tests remain deferred until the Node FFI vs Bun spike is explicitly resolved.
+7. `npm install --package-lock-only` passed; `npm install` passed and added the local OpenTUI dependency under the repository install policy.
+8. `npm run test --workspace=@thoth/tui` passed: 2 files, 9 tests.
+9. `npm run typecheck --workspace=@thoth/tui` passed.
+10. `npm run build --workspace=@thoth/tui` passed.
+11. Runtime guard smoke with `node -e "import('./packages/tui/dist/runtime.js')..."` returned `available: false`, `runtime: node`, `reason: node_version_too_old`, `currentVersion: 24.14.0`, `minimumNodeVersion: 26.3.0`.
+12. `npm run format:check` passed.
+13. `git diff --check` passed.
+14. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+`packages/tui` now has the first shared-state OpenTUI shell foundation and a truthful native renderer guard. This does not complete the interactive TUI app, renderer/input smoke, Node FFI vs Bun runtime decision, task backend, Clarify runtime, contract freeze, PlanExec or Review.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

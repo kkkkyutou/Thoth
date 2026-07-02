@@ -301,3 +301,12 @@
 - User-visible request: Delete the previous Paseo icons completely after locking the new package-local Thoth icon artwork.
 - State changes: Deleted the old Paseo butterfly brand assets `packages/app/assets/images/butterfly-green.svg` and `packages/app/assets/images/butterfly-white.svg`. Moved the approved source icon into `packages/app/assets/images/thoth-icon-source.png` and removed the duplicate root `assets/icon.png`. Kept `assets/thoth.png` because it is a Thoth wordmark asset, not a Paseo icon.
 - Evidence produced: Filesystem scan found no remaining `butterfly`, `paseo-logo`, old favicon SVG or `thoth-icon.svg` icon files outside ignored upstream cache. Text scan found no active source references to `PaseoLogo`, `paseo-logo`, `butterfly` or old favicon SVG assets outside historical `.agent-os` evidence entries. `git diff --check` passed.
+
+## 2026-07-02 [OpenTUI shell surface foundation wired]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-004`, `NTH-TD-002`
+- State changes: Moved `packages/tui` beyond skeleton-only by adding a first non-rendering OpenTUI shell surface model, package exports, build/typecheck/test scripts, `@thoth/client` and `@opentui/core@0.4.2`.
+- State changes: Added `packages/tui/src/surface.ts` so Home, Workspace, Task / Loop, Providers, Connections, Evidence / Review and Settings / About slots are derived from shared daemon/client shapes instead of TUI-only authority.
+- State changes: Added `packages/tui/src/runtime.ts` and `packages/tui/src/opentui-renderer.ts` so native OpenTUI renderer creation is guarded by the current runtime. The locked Node `24.14.0` path reports unavailable before renderer creation because OpenTUI needs Bun or Node `26.3.0+` with experimental FFI.
+- Evidence produced: `npm run test --workspace=@thoth/tui` passed with 2 files and 9 tests. `npm run typecheck --workspace=@thoth/tui` passed. `npm run build --workspace=@thoth/tui` passed. Runtime guard smoke returned `reason: node_version_too_old`, `currentVersion: 24.14.0`, `minimumNodeVersion: 26.3.0`. `npm run format:check`, `git diff --check` and `npm run check:foundation` passed.
+- Next likely action: Continue `NTH-TD-002` by connecting the shared UI slots to minimal authority/task state design, or run the explicit `NTH-TD-005` OpenTUI runtime spike before claiming native TUI renderer smoke.

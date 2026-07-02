@@ -1,0 +1,181 @@
+import { describe, expect, test } from "vitest";
+import type {
+  ConnectionState,
+  ThothAgent,
+  ThothProviderSnapshotResult,
+  ThothWorkspace,
+} from "@thoth/client";
+import { buildTuiSurfaceModel, deriveTuiLayout } from "./surface.js";
+
+const connected: ConnectionState = { status: "connected" };
+
+function workspace(input: Partial<ThothWorkspace> = {}): ThothWorkspace {
+  return {
+    id: "workspace_1",
+    projectId: "project_1",
+    projectDisplayName: "Thoth Repo",
+    projectRootPath: "/repo/thoth",
+    workspaceDirectory: "/repo/thoth",
+    projectKind: "git",
+    workspaceKind: "directory",
+    name: "thoth",
+    archivingAt: null,
+    status: "done",
+    statusEnteredAt: null,
+    activityAt: "2026-07-02T00:00:00.000Z",
+    scripts: [],
+    gitRuntime: null,
+    githubRuntime: null,
+    ...input,
+  };
+}
+
+function providerSnapshot(
+  input: Partial<ThothProviderSnapshotResult> = {},
+): ThothProviderSnapshotResult {
+  return {
+    entries: [
+      {
+        provider: "codex",
+        status: "ready",
+        enabled: true,
+        label: "Codex",
+        models: [{ provider: "codex", id: "gpt-5", label: "GPT-5" }],
+      },
+    ],
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    requestId: "providers_1",
+    ...input,
+  };
+}
+
+function agent(input: Partial<ThothAgent> = {}): ThothAgent {
+  return {
+    id: "agent_1",
+    provider: "codex",
+    cwd: "/repo/thoth",
+    workspaceId: "workspace_1",
+    model: "gpt-5",
+    createdAt: "2026-07-02T00:00:00.000Z",
+    updatedAt: "2026-07-02T00:00:00.000Z",
+    lastUserMessageAt: null,
+    status: "running",
+    capabilities: {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: false,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsRewindBoth: false,
+      supportsRewindConversation: false,
+      supportsRewindFiles: false,
+      supportsToolInvocations: true,
+    },
+    currentModeId: null,
+    availableModes: [],
+    pendingPermissions: [],
+    persistence: null,
+    title: null,
+    labels: {},
+    archivedAt: null,
+    ...input,
+  };
+}
+
+describe("buildTuiSurfaceModel", () => {
+  test("shows honest setup states without inventing task authority", () => {
+    const model = buildTuiSurfaceModel({
+      connection: { status: "idle" },
+      terminalWidth: 72,
+      terminalHeight: 20,
+    });
+
+    expect(model.activeRoute).toBe("home");
+    expect(model.activeWorkspace).toMatchObject({
+      id: null,
+      label: "Needs a registered workspace",
+      status: "needs-workspace",
+    });
+    expect(model.statusChips).toEqual(
+      expect.arrayContaining([
+        { label: "Host", value: "Needs host", tone: "needs-action" },
+        { label: "Provider", value: "Select model first", tone: "needs-action" },
+        { label: "Review", value: "Preview surface", tone: "preview" },
+      ]),
+    );
+    expect(model.taskSlots).toEqual(
+      expect.arrayContaining([
+        { id: "active-task", title: "Active task", value: "No frozen task yet", tone: "preview" },
+        { id: "contract", title: "Contract", value: "Needs provider", tone: "needs-action" },
+      ]),
+    );
+  });
+
+  test("selects workspace and provider readiness from shared daemon/client shapes", () => {
+    const model = buildTuiSurfaceModel({
+      connection: connected,
+      workspaces: [workspace()],
+      providers: providerSnapshot(),
+      selectedWorkspaceId: "workspace_1",
+      relayPaired: true,
+      terminalWidth: 144,
+      terminalHeight: 40,
+    });
+
+    expect(model.activeRoute).toBe("workspace");
+    expect(model.activeWorkspace).toMatchObject({
+      id: "workspace_1",
+      label: "Thoth Repo",
+      cwd: "/repo/thoth",
+      status: "ready",
+    });
+    expect(model.navigation.find((item) => item.id === "providers")).toMatchObject({
+      tone: "ready",
+      badge: "Available",
+    });
+    expect(model.navigation.find((item) => item.id === "connections")).toMatchObject({
+      tone: "ready",
+      badge: "Paired",
+    });
+  });
+
+  test("treats provider sessions as runtime evidence without claiming frozen tasks", () => {
+    const model = buildTuiSurfaceModel({
+      connection: connected,
+      workspaces: [workspace()],
+      providers: providerSnapshot(),
+      agents: [agent({ title: "Check workspace state" })],
+    });
+
+    expect(model.navigation.find((item) => item.id === "tasks")).toMatchObject({
+      tone: "running",
+      badge: "1 running",
+    });
+    expect(model.taskSlots.find((slot) => slot.id === "active-task")).toMatchObject({
+      value: "Check workspace state",
+      tone: "running",
+    });
+    expect(model.taskSlots.find((slot) => slot.id === "contract")).toMatchObject({
+      value: "Needs Clarify session",
+      tone: "preview",
+    });
+  });
+});
+
+describe("deriveTuiLayout", () => {
+  test("uses a compact layout for narrow terminals", () => {
+    expect(deriveTuiLayout(72, 24)).toMatchObject({
+      mode: "compact",
+      sidebarWidth: 0,
+      showPreviewColumn: false,
+    });
+  });
+
+  test("uses split layout and a preview column for wide terminals", () => {
+    expect(deriveTuiLayout(144, 40)).toMatchObject({
+      mode: "split",
+      sidebarWidth: 28,
+      showPreviewColumn: true,
+    });
+  });
+});

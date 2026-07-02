@@ -7,7 +7,7 @@
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
 4. Active blockers: None
 5. Current branch: `agent/dev/ui`
-6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; Thoth/Paseo parallel runtime isolation is verified with Thoth daemon on `127.0.0.1:6688`, local Paseo daemon preserved on `127.0.0.1:6767`, real web review on `8082 -> 8148`, independent test relay deployment at `relay.test.thoth.seeles.ai`, Linux AppImage, Android Debug APK and Codex provider smoke. The latest web workspace white-screen regression is fixed, and the Web/Desktop app now has first Workspace composer/task/evidence UI slots, but New Thoth product behavior is still not implemented.
+6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; Thoth/Paseo parallel runtime isolation is verified with Thoth daemon on `127.0.0.1:6688`, local Paseo daemon preserved on `127.0.0.1:6767`, real web review on `8082 -> 8148`, independent test relay deployment at `relay.test.thoth.seeles.ai`, Linux AppImage, Android Debug APK and Codex provider smoke. The latest web workspace white-screen regression is fixed, the Web/Desktop app now has first Workspace composer/task/evidence UI slots, and `packages/tui` now has a first non-rendering OpenTUI shell surface plus native renderer guard. New Thoth product behavior is still not implemented.
 
 ## Objective Summary
 
@@ -55,6 +55,7 @@ None.
 21. `NTH-CD-025`: UI development branch is renamed from `port/from-old-thoth-plugin` to `agent/dev/ui` before pushing the current UI shell/icon/runtime work.
 22. `NTH-EV-008`: One Thoth Web/Desktop shared shell slice passed for the current scope. The real open-project entry now uses the locked transparent arcade-inventory PNG icon set, presents One Thoth / task control plane product language, shows honest workspace/provider/relay/review states, and preserves existing Add project, Import session, Provider setup and Pair device flows. This does not complete OpenTUI or the full task/Clarify/Loop UI productization goal.
 23. `NTH-EV-009`: Workspace composer/task surface slice passed for the current scope. The web bundle now contains fixed Thoth-level composer controls for `+`, Provider, Mode, Clarify and Loop, honest preview/needs-provider states, Workspace active-task/contract/evidence slots and the MVP `10MB` attachment limit. This does not implement provider-backed Router, Clarify runtime, contract freeze, PlanExec, Review or OpenTUI.
+24. `NTH-EV-010`: OpenTUI shell surface foundation passed for the current scope. `packages/tui` now derives Home, Workspace, Task / Loop, Providers, Connections, Evidence / Review and Settings / About slots from shared client/protocol shapes, has a guarded `@opentui/core` renderer factory, and truthfully reports the locked Node `24.14.0` runtime as unable to create the native renderer without Node `26.3.0+` plus experimental FFI or a future Bun decision. This does not complete the interactive native TUI app or the Node FFI vs Bun runtime spike.
 
 ## Read Next
 
