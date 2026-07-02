@@ -3,7 +3,7 @@ set -euo pipefail
 
 width="${THOTH_TUI_SMOKE_WIDTH:-96}"
 height="${THOTH_TUI_SMOKE_HEIGHT:-34}"
-host="${THOTH_TUI_SMOKE_HOST:-127.0.0.1:6688}"
+host="${THOTH_TUI_SMOKE_HOST:-127.0.0.1:1}"
 tmpfile="$(mktemp)"
 
 cleanup() {
@@ -30,17 +30,14 @@ const raw = fs.readFileSync(outputPath, "utf8");
 const plain = stripAnsi(raw);
 
 assert.match(plain, /One Thoth - OpenTUI/);
-assert.match(plain, /Route: /);
-assert.match(plain, /Host: Connected/);
-assert.match(plain, /Snapshot: Updated/);
-assert.match(plain, /State: Refreshed daemon snapshot/);
-assert.match(plain, /Workspace:/);
-assert.match(plain, /Provider:/);
-assert.match(plain, /Relay:/);
-assert.match(plain, /Composer/);
-assert.match(plain, /Images\/files <10MB/);
+assert.match(plain, /Host: Cannot connect to/);
+assert.match(plain, /Snapshot: Refresh failed/);
+assert.match(plain, /State: Refresh failed; recovery state shown/);
+assert.match(plain, /Recovery: start Thoth daemon on 127\.0\.0\.1:6688 or pair a fresh relay offer, then press R\./);
 assert.match(plain, /R refresh/);
+assert.match(plain, /Workspace: Needs a registered workspace/);
 assert.match(plain, /daemon\/client\/protocol state only/);
+assert.doesNotMatch(plain, /Host: Connected/);
 assert.doesNotMatch(plain, /127\.0\.0\.1:6767|localhost:6767/);
 assert.doesNotMatch(plain, /offer=|pairingToken|thoth-relay-v3-client\./);
 
@@ -49,7 +46,7 @@ console.log(
   JSON.stringify(
     {
       ok: true,
-      smoke: "opentui-cli",
+      smoke: "opentui-cli-recovery",
       width: Number.parseInt(width, 10),
       height: Number.parseInt(height, 10),
       host,

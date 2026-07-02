@@ -7,6 +7,7 @@ import {
   mountTuiSurface,
   type TuiSurfaceInput,
 } from "@thoth/tui";
+import { parseConnectionOfferFromUrl } from "@thoth/protocol/connection-offer";
 import { connectToDaemon, getDaemonHost } from "../utils/client.js";
 import type { ConnectOptions } from "../utils/client.js";
 
@@ -15,6 +16,7 @@ export interface TuiCommandOptions extends ConnectOptions {
   screen?: string;
   width?: string;
   height?: string;
+  refreshAfterRenderMs?: string;
   printFinalFrame?: boolean;
 }
 
@@ -27,6 +29,10 @@ export function addTuiOptions(cmd: Command): Command {
     .option(
       "--exit-after-render-ms <ms>",
       "Destroy the live OpenTUI renderer after a short delay for CLI smoke tests",
+    )
+    .option(
+      "--refresh-after-render-ms <ms>",
+      "Refresh the live daemon snapshot after a short delay for CLI smoke tests",
     )
     .option("--print-final-frame", "Print a plain-text final frame after renderer shutdown");
 }
@@ -41,11 +47,17 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
   }
 
   const cwd = process.cwd();
-  const surfaceInput = await loadTuiSurfaceInput(options, cwd);
+  const terminalWidth = parseOptionalPositiveInteger(options.width, "--width");
+  const terminalHeight = parseOptionalPositiveInteger(options.height, "--height");
+  const surfaceInput = await loadTuiSurfaceInput(options, cwd, { terminalWidth, terminalHeight });
   const model = buildTuiSurfaceModel(surfaceInput);
   const exitAfterRenderMs = parseOptionalNonNegativeInteger(
     options.exitAfterRenderMs,
     "--exit-after-render-ms",
+  );
+  const refreshAfterRenderMs = parseOptionalNonNegativeInteger(
+    options.refreshAfterRenderMs,
+    "--refresh-after-render-ms",
   );
 
   let resolveExit!: () => void;
@@ -54,18 +66,51 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
   });
   const renderer = await createNativeOpenTuiRenderer({
     screenMode: normalizeScreenMode(options.screen),
-    width: parseOptionalPositiveInteger(options.width, "--width"),
-    height: parseOptionalPositiveInteger(options.height, "--height"),
+    width: terminalWidth,
+    height: terminalHeight,
     consoleMode: "disabled",
     useMouse: false,
     onDestroy: resolveExit,
   });
 
   const mount = mountTuiSurface(renderer, model);
+  let refreshInFlight = false;
+
+  async function refreshSurface(): Promise<void> {
+    if (refreshInFlight) {
+      mount.update({
+        ...mount.getInteraction(),
+        notice: "Refresh already running",
+      });
+      return;
+    }
+    refreshInFlight = true;
+    mount.update({
+      ...mount.getInteraction(),
+      notice: "Refreshing daemon snapshot...",
+    });
+    try {
+      const nextInput = await loadTuiSurfaceInput(options, cwd, { terminalWidth, terminalHeight });
+      const nextModel = buildTuiSurfaceModel(nextInput);
+      mount.updateModel(nextModel, {
+        ...mount.getInteraction(),
+        notice:
+          nextInput.connection.status === "connected"
+            ? "Refreshed daemon snapshot"
+            : "Refresh failed; recovery state shown",
+      });
+    } finally {
+      refreshInFlight = false;
+    }
+  }
+
   renderer.keyInput.on("keypress", (key: { name?: string; ctrl?: boolean; shift?: boolean }) => {
     const result = mount.handleKey(key);
     if (result === "exit") {
       renderer.destroy();
+    }
+    if (result === "refresh") {
+      void refreshSurface();
     }
   });
 
@@ -77,12 +122,17 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
       renderer.destroy();
     }, exitAfterRenderMs).unref();
   }
+  if (refreshAfterRenderMs !== undefined) {
+    setTimeout(() => {
+      void refreshSurface();
+    }, refreshAfterRenderMs).unref();
+  }
 
   await exited;
 
   if (options.printFinalFrame) {
     console.log(
-      buildTuiSurfaceLines(model, { interaction: mount.getInteraction() })
+      buildTuiSurfaceLines(mount.getModel(), { interaction: mount.getInteraction() })
         .map((line) => line.text)
         .join("\n"),
     );
@@ -92,8 +142,10 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
 async function loadTuiSurfaceInput(
   options: Pick<TuiCommandOptions, "host" | "timeout">,
   cwd: string,
+  terminal: { terminalWidth?: number; terminalHeight?: number } = {},
 ): Promise<TuiSurfaceInput> {
   const host = getDaemonHost({ host: options.host });
+  const updatedAt = new Date().toISOString();
   let client: Awaited<ReturnType<typeof connectToDaemon>> | null = null;
   try {
     client = await connectToDaemon({ host: options.host, timeout: options.timeout ?? 5000 });
@@ -109,23 +161,53 @@ async function loadTuiSurfaceInput(
       agents: agents.status === "fulfilled" ? agents.value.entries.map((entry) => entry.agent) : [],
       providers: providers.status === "fulfilled" ? providers.value : null,
       cwd,
-      terminalWidth: parseTerminalDimension(process.stdout.columns),
-      terminalHeight: parseTerminalDimension(process.stdout.rows),
+      terminalWidth: terminal.terminalWidth ?? parseTerminalDimension(process.stdout.columns),
+      terminalHeight: terminal.terminalHeight ?? parseTerminalDimension(process.stdout.rows),
+      refresh: { status: "loaded", updatedAt },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = redactTuiConnectionMessage(
+      error instanceof Error ? error.message : String(error),
+    );
     return {
       connection: {
         status: "disconnected",
-        reason: `Cannot connect to ${host}: ${message}`,
+        reason: `Cannot connect to ${describeHostForTui(host)}: ${message}`,
       },
       cwd,
-      terminalWidth: parseTerminalDimension(process.stdout.columns),
-      terminalHeight: parseTerminalDimension(process.stdout.rows),
+      terminalWidth: terminal.terminalWidth ?? parseTerminalDimension(process.stdout.columns),
+      terminalHeight: terminal.terminalHeight ?? parseTerminalDimension(process.stdout.rows),
+      refresh: { status: "failed", updatedAt, error: message },
     };
   } finally {
     await client?.close().catch(() => {});
   }
+}
+
+function describeHostForTui(host: string): string {
+  try {
+    const offer = parseConnectionOfferFromUrl(host);
+    if (offer) {
+      return `relay pairing offer for ${offer.relay.endpoint}`;
+    }
+  } catch {
+    // Not a relay offer URL.
+  }
+  try {
+    const url = new URL(host);
+    if (url.searchParams.has("password")) {
+      url.searchParams.set("password", "<redacted>");
+    }
+    return url.toString();
+  } catch {
+    return host.replace(/password=[^&\s]+/gi, "password=<redacted>");
+  }
+}
+
+function redactTuiConnectionMessage(message: string): string {
+  return message
+    .replace(/offer=[^&\s]+/gi, "offer=<redacted>")
+    .replace(/password=[^&\s]+/gi, "password=<redacted>");
 }
 
 function normalizeScreenMode(value: string | undefined): "alternate-screen" | "main-screen" {

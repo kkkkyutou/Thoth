@@ -38,6 +38,7 @@ describe("mapTuiKeyToIntent", () => {
       type: "action",
       action: { type: "cycleLoop" },
     });
+    expect(mapTuiKeyToIntent({ name: "r" })).toEqual({ type: "refresh" });
   });
 
   test("maps q and ctrl-c to exit", () => {

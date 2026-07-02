@@ -38,6 +38,18 @@ export interface TuiTaskSlot {
   tone: TuiBadgeTone;
 }
 
+export interface TuiRefreshInput {
+  status: "loaded" | "failed";
+  updatedAt?: string | null;
+  error?: string | null;
+}
+
+export interface TuiRefreshState {
+  value: string;
+  tone: TuiBadgeTone;
+  error: string | null;
+}
+
 export interface TuiLayout {
   mode: "compact" | "split";
   sidebarWidth: number;
@@ -55,6 +67,7 @@ export interface TuiSurfaceInput {
   relayPaired?: boolean;
   terminalWidth?: number;
   terminalHeight?: number;
+  refresh?: TuiRefreshInput;
 }
 
 export interface TuiSurfaceModel {
@@ -68,6 +81,7 @@ export interface TuiSurfaceModel {
     status: "ready" | "needs-workspace";
   };
   layout: TuiLayout;
+  refresh: TuiRefreshState;
   statusChips: TuiStatusChip[];
   navigation: TuiNavItem[];
   taskSlots: TuiTaskSlot[];
@@ -83,6 +97,7 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
   const connectionChip = buildConnectionChip(input.connection);
   const workspaceReady = Boolean(activeWorkspace);
   const layout = deriveTuiLayout(input.terminalWidth ?? 100, input.terminalHeight ?? 32);
+  const refresh = buildRefreshState(input.refresh);
 
   return {
     title: "One Thoth",
@@ -102,8 +117,14 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
           status: "needs-workspace",
         },
     layout,
+    refresh,
     statusChips: [
       connectionChip,
+      {
+        label: "Snapshot",
+        value: refresh.value,
+        tone: refresh.tone,
+      },
       {
         label: "Workspace",
         value: activeWorkspace
@@ -146,6 +167,28 @@ export function deriveTuiLayout(width: number, height: number): TuiLayout {
     sidebarWidth: compact ? 0 : Math.min(28, Math.max(22, Math.floor(width * 0.22))),
     composerRows: height < 20 ? 3 : 5,
     showPreviewColumn: !compact && width >= 118,
+  };
+}
+
+function buildRefreshState(refresh: TuiRefreshInput | undefined): TuiRefreshState {
+  if (!refresh) {
+    return {
+      value: "Startup snapshot",
+      tone: "preview",
+      error: null,
+    };
+  }
+  if (refresh.status === "failed") {
+    return {
+      value: refresh.updatedAt ? `Refresh failed ${refresh.updatedAt}` : "Refresh failed",
+      tone: "needs-action",
+      error: refresh.error ?? "Unable to refresh daemon state",
+    };
+  }
+  return {
+    value: refresh.updatedAt ? `Updated ${refresh.updatedAt}` : "Updated",
+    tone: "ready",
+    error: null,
   };
 }
 

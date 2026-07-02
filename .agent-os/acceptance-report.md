@@ -569,6 +569,46 @@ Current result:
 
 OpenTUI now has a real CLI dogfood entry that uses daemon/client/protocol authority and can render the current workspace from `pwd` under the pinned Node 26 FFI path. This still does not complete the final OpenTUI product: deeper onboarding flows, live daemon refresh, richer error recovery, task backend, Clarify runtime, contract freeze, PlanExec, Review and the full UI review scorecard remain incomplete.
 
+### `NTH-EV-014` OpenTUI Live Refresh And Recovery Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add a discoverable refresh action to the live OpenTUI CLI entry without creating TUI-only daemon, workspace, provider or task truth.
+2. Re-fetch real daemon workspaces, agents and provider snapshots from the CLI/client layer when the user presses `R` or when a smoke test requests refresh.
+3. Show honest `Snapshot` / last-updated state in the TUI frame.
+4. Keep disconnected recovery inside the TUI surface instead of exiting, crashing or pretending to be connected.
+5. Avoid leaking relay pairing tokens, URL `offer=` values, password query values or legacy `6767` fallback text in CLI TUI frames.
+
+Evidence:
+
+1. `packages/tui/src/surface.ts` now accepts an optional refresh input and derives a `Snapshot` status chip plus `refresh` state from it. The state is still input-derived and does not create durable authority in `packages/tui`.
+2. `packages/tui/src/keyboard.ts` maps `R` to a refresh intent. Existing Tab/arrows, Enter, Esc, `M`, `C`, `L`, `Q` and Ctrl+C behavior remains deterministic UI interaction.
+3. `packages/tui/src/render.ts` now lets the live mount replace its current `TuiSurfaceModel`, renders `R refresh` in the key hints, and shows recovery text when the host is unavailable or a refresh fails.
+4. `packages/cli/src/commands/tui.ts` handles refresh in the CLI layer by calling the same real daemon-loading path used on startup: `fetchWorkspaces`, `fetchAgents` and `getProvidersSnapshot`. Refresh updates the mounted OpenTUI surface rather than writing a mock file or using a fake backend.
+5. `packages/cli/src/commands/tui.ts` redacts sensitive host material for TUI recovery text: relay pairing offers are described as relay pairing offers, URL `password=` is redacted, and error messages scrub `offer=` / `password=` fragments.
+6. Added root `npm run smoke:tui:cli:recovery`, backed by `scripts/smoke-opentui-cli-recovery.sh`, which runs the real CLI OpenTUI entry under pinned `node-linux-x64@26.4.0 --experimental-ffi` against an unreachable host and verifies the disconnected recovery frame.
+7. `npm run test --workspace=@thoth/tui` passed with 5 files and 23 tests, including refresh state, recovery rendering and `R` key mapping coverage.
+8. `npm run typecheck --workspace=@thoth/tui` passed.
+9. `npm --workspace=@thoth/cli run typecheck` passed.
+10. `npm run build --workspace=@thoth/tui` and `npm --workspace=@thoth/cli run build` passed.
+11. `npm run smoke:tui:renderer` passed and still captured the One Thoth OpenTUI surface under the pinned Node 26 FFI renderer path.
+12. `npm run smoke:tui:navigation` passed and still captured route/focus/composer interaction state.
+13. `npm run smoke:tui:cli` passed against Thoth `127.0.0.1:6688`; the final frame included `State: Refreshed daemon snapshot`, `Snapshot: Updated ...`, `Host: Connected`, `Workspace: yzy`, provider readiness, task/evidence preview slots and `R refresh`.
+14. Compact `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed and captured the connected refresh frame in compact layout.
+15. Wide `THOTH_TUI_SMOKE_WIDTH=132 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed and captured the connected refresh frame in split layout.
+16. `npm run smoke:tui:cli:recovery` passed; the final frame included `State: Refresh failed; recovery state shown`, `Snapshot: Refresh failed ...`, `Recovery: start Thoth daemon on 127.0.0.1:6688 or pair a fresh relay offer, then press R.`, `Workspace: Needs a registered workspace`, and no fake connected host state.
+17. CLI smoke assertions now reject `127.0.0.1:6767`, `localhost:6767`, `offer=`, `pairingToken` and `thoth-relay-v3-client.` in final frames.
+18. `npm run smoke:isolation` passed: Paseo remained on `127.0.0.1:6767`, Thoth remained on `127.0.0.1:6688`, and the PIDs differed.
+19. `npm run format:check` passed.
+20. `git diff --check` passed.
+21. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+OpenTUI now has a live CLI refresh/recovery slice: users can discover `R refresh`, the CLI re-fetches real daemon/client state, the TUI shows updated snapshot state, and disconnected hosts remain inside an honest recovery surface. This still does not complete final OpenTUI onboarding, in-TUI workspace registration, richer route detail panels, task backend, Clarify runtime, contract freeze, PlanExec, Review, long interactive PTY stress or the full UI review scorecard.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

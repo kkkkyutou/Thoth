@@ -8,6 +8,7 @@ export interface TuiKeyLike {
 
 export type TuiKeyIntent =
   | { type: "action"; action: TuiInteractionAction }
+  | { type: "refresh" }
   | { type: "exit" }
   | { type: "none" };
 
@@ -40,6 +41,8 @@ export function mapTuiKeyToIntent(key: TuiKeyLike): TuiKeyIntent {
       return { type: "action", action: { type: "cycleClarify" } };
     case "l":
       return { type: "action", action: { type: "cycleLoop" } };
+    case "r":
+      return { type: "refresh" };
     default:
       return { type: "none" };
   }

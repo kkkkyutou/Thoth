@@ -26,8 +26,10 @@ export interface TuiRenderOptions {
 
 export interface TuiSurfaceMount {
   getInteraction(): TuiInteractionState;
+  getModel(): TuiSurfaceModel;
   update(interaction: TuiInteractionState): void;
-  handleKey(key: TuiKeyLike): "handled" | "exit" | "ignored";
+  updateModel(model: TuiSurfaceModel, interaction?: TuiInteractionState): void;
+  handleKey(key: TuiKeyLike): "handled" | "refresh" | "exit" | "ignored";
 }
 
 export function buildTuiSurfaceLines(
@@ -64,6 +66,7 @@ export function buildTuiSurfaceLines(
       text: `Path: ${model.activeWorkspace.cwd ?? "Connect a host or register this workspace"}`,
       tone: "muted",
     },
+    ...formatRecoveryLines(model),
     blankLine(),
     { text: "Status", tone: "title" },
     ...model.statusChips.map(formatStatusChip),
@@ -91,7 +94,7 @@ export function buildTuiSurfaceLines(
       tone: "muted",
     },
     {
-      text: "Keys: Tab/arrows focus, Enter open, Esc back, M/C/L controls, Q or Ctrl+C exit.",
+      text: "Keys: Tab/arrows focus, Enter open, Esc back, R refresh, M/C/L controls, Q or Ctrl+C exit.",
       tone: "muted",
     },
   ];
@@ -104,6 +107,7 @@ export function mountTuiSurface(
   model: TuiSurfaceModel,
   options: TuiRenderOptions = {},
 ): TuiSurfaceMount {
+  let currentModel = model;
   let interaction = options.interaction ?? createInitialTuiInteractionState(model);
   renderer.root.add(
     Box(
@@ -116,7 +120,7 @@ export function mountTuiSurface(
       },
       Text({
         id: "thoth-tui-frame",
-        content: buildTuiSurfaceLines(model, { interaction })
+        content: buildTuiSurfaceLines(currentModel, { interaction })
           .map((line) => line.text)
           .join("\n"),
         fg: colorForTone("muted"),
@@ -134,28 +138,64 @@ export function mountTuiSurface(
   function update(nextInteraction: TuiInteractionState): void {
     interaction = nextInteraction;
     if (frame) {
-      frame.content = buildTuiSurfaceLines(model, { interaction })
+      frame.content = buildTuiSurfaceLines(currentModel, { interaction })
         .map((line) => line.text)
         .join("\n");
     }
     renderer.requestRender();
   }
 
+  function updateModel(nextModel: TuiSurfaceModel, nextInteraction = interaction): void {
+    currentModel = nextModel;
+    update(nextInteraction);
+  }
+
   return {
     getInteraction: () => interaction,
+    getModel: () => currentModel,
     update,
+    updateModel,
     handleKey: (key) => {
       const intent = mapTuiKeyToIntent(key);
       if (intent.type === "none") {
         return "ignored";
       }
+      if (intent.type === "refresh") {
+        return "refresh";
+      }
       if (intent.type === "exit") {
         return "exit";
       }
-      update(applyTuiInteractionAction(interaction, intent.action, model));
+      update(applyTuiInteractionAction(interaction, intent.action, currentModel));
       return "handled";
     },
   };
+}
+
+function formatRecoveryLines(model: TuiSurfaceModel): TuiSurfaceLine[] {
+  const disconnected =
+    model.statusChips.find((chip) => chip.label === "Host")?.tone === "unavailable";
+  if (!disconnected && !model.refresh.error) {
+    return [];
+  }
+  return [
+    {
+      text: `Refresh: ${model.refresh.value}`,
+      tone: model.refresh.tone,
+    },
+    ...(model.refresh.error
+      ? [
+          {
+            text: `Refresh error: ${model.refresh.error}`,
+            tone: "needs-action" as const,
+          },
+        ]
+      : []),
+    {
+      text: "Recovery: start Thoth daemon on 127.0.0.1:6688 or pair a fresh relay offer, then press R.",
+      tone: "needs-action",
+    },
+  ];
 }
 
 function formatStatusChip(chip: TuiStatusChip): TuiSurfaceLine {

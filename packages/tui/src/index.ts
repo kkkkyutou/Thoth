@@ -3,6 +3,8 @@ export {
   deriveTuiLayout,
   type TuiLayout,
   type TuiNavItem,
+  type TuiRefreshInput,
+  type TuiRefreshState,
   type TuiRouteId,
   type TuiStatusChip,
   type TuiSurfaceInput,

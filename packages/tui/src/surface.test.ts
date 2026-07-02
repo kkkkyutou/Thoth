@@ -99,6 +99,7 @@ describe("buildTuiSurfaceModel", () => {
     expect(model.statusChips).toEqual(
       expect.arrayContaining([
         { label: "Host", value: "Needs host", tone: "needs-action" },
+        { label: "Snapshot", value: "Startup snapshot", tone: "preview" },
         { label: "Provider", value: "Select model first", tone: "needs-action" },
         { label: "Review", value: "Preview surface", tone: "preview" },
       ]),
@@ -107,6 +108,33 @@ describe("buildTuiSurfaceModel", () => {
       expect.arrayContaining([
         { id: "active-task", title: "Active task", value: "No frozen task yet", tone: "preview" },
         { id: "contract", title: "Contract", value: "Needs provider", tone: "needs-action" },
+      ]),
+    );
+  });
+
+  test("exposes refresh state without hiding disconnected recovery", () => {
+    const model = buildTuiSurfaceModel({
+      connection: { status: "disconnected", reason: "Cannot connect to relay pairing offer" },
+      cwd: "/repo/thoth",
+      refresh: {
+        status: "failed",
+        updatedAt: "2026-07-02T12:00:00.000Z",
+        error: "WebSocket closed before daemon snapshot loaded",
+      },
+    });
+
+    expect(model.refresh).toEqual({
+      value: "Refresh failed 2026-07-02T12:00:00.000Z",
+      tone: "needs-action",
+      error: "WebSocket closed before daemon snapshot loaded",
+    });
+    expect(model.statusChips).toEqual(
+      expect.arrayContaining([
+        {
+          label: "Snapshot",
+          value: "Refresh failed 2026-07-02T12:00:00.000Z",
+          tone: "needs-action",
+        },
       ]),
     );
   });

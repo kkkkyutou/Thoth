@@ -17,10 +17,36 @@ describe("buildTuiSurfaceLines", () => {
 
     expect(text).toContain("One Thoth - OpenTUI");
     expect(text).toContain("Workspace: Needs a registered workspace");
+    expect(text).toContain("Snapshot: Startup snapshot");
     expect(text).toContain("+ Images/files <10MB | Provider | Mode Quick/Loop | Clarify | Loop");
     expect(text).toContain("Loop: Off in Quick");
     expect(text).toContain("Keys: Tab/arrows focus");
+    expect(text).toContain("R refresh");
     expect(text).toContain("Active task: No frozen task yet");
     expect(text).toContain("Authority: daemon/client/protocol state only");
+  });
+
+  test("formats disconnected recovery without claiming a connected host", () => {
+    const model = buildTuiSurfaceModel({
+      connection: { status: "disconnected", reason: "Cannot connect to relay pairing offer" },
+      cwd: "/repo/current",
+      terminalWidth: 72,
+      terminalHeight: 22,
+      refresh: {
+        status: "failed",
+        updatedAt: "2026-07-02T12:00:00.000Z",
+        error: "Relay closed before handshake completed",
+      },
+    });
+
+    const text = buildTuiSurfaceLines(model)
+      .map((line) => line.text)
+      .join("\n");
+
+    expect(text).toContain("Host: Cannot connect to relay pairing offer");
+    expect(text).toContain("Refresh: Refresh failed 2026-07-02T12:00:00.000Z");
+    expect(text).toContain("Refresh error: Relay closed before handshake completed");
+    expect(text).toContain("Recovery: start Thoth daemon on 127.0.0.1:6688");
+    expect(text).not.toContain("Host: Connected");
   });
 });
