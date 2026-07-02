@@ -70,6 +70,21 @@ export interface TuiRefreshState {
   error: string | null;
 }
 
+export interface TuiPairingInput {
+  status: "offer-ready" | "failed";
+  endpoint?: string | null;
+  expiresAt?: string | null;
+  error?: string | null;
+}
+
+export interface TuiPairingState {
+  value: string;
+  tone: TuiBadgeTone;
+  endpoint: string | null;
+  expiresAt: string | null;
+  error: string | null;
+}
+
 export interface TuiLayout {
   mode: "compact" | "split";
   sidebarWidth: number;
@@ -88,6 +103,7 @@ export interface TuiSurfaceInput {
   terminalWidth?: number;
   terminalHeight?: number;
   refresh?: TuiRefreshInput;
+  pairing?: TuiPairingInput;
 }
 
 export interface TuiSurfaceModel {
@@ -102,6 +118,7 @@ export interface TuiSurfaceModel {
   };
   layout: TuiLayout;
   refresh: TuiRefreshState;
+  pairing: TuiPairingState;
   statusChips: TuiStatusChip[];
   navigation: TuiNavItem[];
   taskSlots: TuiTaskSlot[];
@@ -121,6 +138,7 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
   const workspaceReady = Boolean(activeWorkspace);
   const layout = deriveTuiLayout(input.terminalWidth ?? 100, input.terminalHeight ?? 32);
   const refresh = buildRefreshState(input.refresh);
+  const pairing = buildPairingState(input.pairing);
 
   return {
     title: "One Thoth",
@@ -141,6 +159,7 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
         },
     layout,
     refresh,
+    pairing,
     statusChips: [
       connectionChip,
       {
@@ -162,8 +181,8 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
       },
       {
         label: "Relay",
-        value: input.relayPaired ? "Paired device" : "Fresh pairing supported",
-        tone: input.relayPaired ? "ready" : "preview",
+        value: input.relayPaired ? "Paired device" : pairing.value,
+        tone: input.relayPaired ? "ready" : pairing.tone,
       },
       {
         label: "Review",
@@ -176,6 +195,7 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
       providerReady,
       connected: input.connection.status === "connected",
       relayPaired: input.relayPaired === true,
+      pairing,
       activeTaskCount: runningAgents.length,
       attentionCount: attentionAgents.length,
     }),
@@ -191,6 +211,7 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
       runningAgents,
       attentionAgents,
       relayPaired: input.relayPaired === true,
+      pairing,
       refresh,
       cwd: input.cwd ?? null,
     }),
@@ -199,6 +220,7 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
       workspaceReady,
       providerReady,
       relayPaired: input.relayPaired === true,
+      pairing,
       cwd: input.cwd ?? null,
       refresh,
     }),
@@ -237,6 +259,34 @@ function buildRefreshState(refresh: TuiRefreshInput | undefined): TuiRefreshStat
   };
 }
 
+function buildPairingState(pairing: TuiPairingInput | undefined): TuiPairingState {
+  if (!pairing) {
+    return {
+      value: "Fresh pairing supported",
+      tone: "preview",
+      endpoint: null,
+      expiresAt: null,
+      error: null,
+    };
+  }
+  if (pairing.status === "failed") {
+    return {
+      value: "Pairing offer failed",
+      tone: "needs-action",
+      endpoint: pairing.endpoint ?? null,
+      expiresAt: pairing.expiresAt ?? null,
+      error: pairing.error ?? "Unable to create pairing offer",
+    };
+  }
+  return {
+    value: "Pairing offer ready",
+    tone: "ready",
+    endpoint: pairing.endpoint ?? null,
+    expiresAt: pairing.expiresAt ?? null,
+    error: null,
+  };
+}
+
 function buildConnectionChip(connection: ConnectionState): TuiStatusChip {
   switch (connection.status) {
     case "connected":
@@ -257,9 +307,11 @@ function buildNavigation(input: {
   providerReady: boolean;
   connected: boolean;
   relayPaired: boolean;
+  pairing: TuiPairingState;
   activeTaskCount: number;
   attentionCount: number;
 }): TuiNavItem[] {
+  const pairingReady = input.pairing.value === "Pairing offer ready";
   return [
     {
       id: "home",
@@ -293,8 +345,8 @@ function buildNavigation(input: {
       id: "connections",
       label: "Connections",
       description: "Direct daemon, relay and device pairing",
-      tone: input.relayPaired ? "ready" : "preview",
-      badge: input.relayPaired ? "Paired" : "Pairing ready",
+      tone: input.relayPaired || pairingReady ? "ready" : input.pairing.tone,
+      badge: input.relayPaired ? "Paired" : pairingReady ? "Offer ready" : "Pairing ready",
     },
     {
       id: "review",
@@ -355,6 +407,7 @@ function buildRouteDetails(input: {
   runningAgents: readonly ThothAgent[];
   attentionAgents: readonly ThothAgent[];
   relayPaired: boolean;
+  pairing: TuiPairingState;
   refresh: TuiRefreshState;
   cwd: string | null;
 }): Record<TuiRouteId, TuiDetailSection> {
@@ -487,6 +540,11 @@ function buildRouteDetails(input: {
                 tone: "needs-action",
               },
               {
+                label: "Provider action",
+                value: "Press P to refresh daemon provider readiness",
+                tone: "needs-action",
+              },
+              {
                 label: "Authority",
                 value: "Thoth uses configured provider sessions only",
                 tone: "preview",
@@ -495,8 +553,18 @@ function buildRouteDetails(input: {
     },
     connections: {
       title: "Connections / Devices",
-      summary: input.connectionChip.tone === "ready" ? "Direct daemon connected" : "Needs host",
-      tone: input.connectionChip.tone === "ready" ? "ready" : "needs-action",
+      summary:
+        input.pairing.value === "Pairing offer ready"
+          ? "Pairing offer ready"
+          : input.connectionChip.tone === "ready"
+            ? "Direct daemon connected"
+            : "Needs host",
+      tone:
+        input.pairing.value === "Pairing offer ready"
+          ? "ready"
+          : input.connectionChip.tone === "ready"
+            ? "ready"
+            : "needs-action",
       lines: [
         {
           label: "Direct daemon",
@@ -505,8 +573,23 @@ function buildRouteDetails(input: {
         },
         {
           label: "Relay",
-          value: input.relayPaired ? "Paired device" : "Fresh pairing supported",
-          tone: input.relayPaired ? "ready" : "preview",
+          value: input.relayPaired ? "Paired device" : input.pairing.value,
+          tone: input.relayPaired ? "ready" : input.pairing.tone,
+        },
+        {
+          label: "Pairing endpoint",
+          value: input.pairing.endpoint ?? "Press D to create a daemon pairing offer",
+          tone: input.pairing.endpoint ? "ready" : "preview",
+        },
+        {
+          label: "Pairing expiry",
+          value: input.pairing.expiresAt ?? "No active pairing offer in this frame",
+          tone: input.pairing.expiresAt ? "ready" : "preview",
+        },
+        {
+          label: "Credential safety",
+          value: "Offer URL, QR and tokens are kept out of the TUI frame",
+          tone: input.pairing.value === "Pairing offer ready" ? "ready" : "preview",
         },
         {
           label: "Snapshot",
@@ -584,6 +667,7 @@ function buildNextActions(input: {
   workspaceReady: boolean;
   providerReady: boolean;
   relayPaired: boolean;
+  pairing: TuiPairingState;
   cwd: string | null;
   refresh: TuiRefreshState;
 }): TuiNextAction[] {
@@ -610,7 +694,7 @@ function buildNextActions(input: {
       key: "W",
       label: "Register workspace",
       value: input.cwd
-        ? `Create daemon workspace for ${input.cwd}`
+        ? "Create daemon workspace for current pwd"
         : "Open TUI from a workspace directory",
       tone: input.connectionChip.tone === "ready" ? "needs-action" : "preview",
     });
@@ -619,7 +703,7 @@ function buildNextActions(input: {
     actions.push({
       key: "P",
       label: "Provider setup",
-      value: "Open Providers and select a model before task loops",
+      value: "Refresh provider readiness from daemon",
       tone: "needs-action",
     });
   }
@@ -627,8 +711,11 @@ function buildNextActions(input: {
     actions.push({
       key: "D",
       label: "Pair device",
-      value: "Open Connections for direct daemon or fresh relay pairing",
-      tone: "preview",
+      value:
+        input.pairing.value === "Pairing offer ready"
+          ? "Refresh safe daemon pairing offer"
+          : "Create safe daemon pairing offer",
+      tone: input.pairing.tone,
     });
   }
   if (actions.length === 0) {

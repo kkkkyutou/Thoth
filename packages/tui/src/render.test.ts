@@ -22,6 +22,7 @@ describe("buildTuiSurfaceLines", () => {
     expect(text).toContain("Next Actions");
     expect(text).toContain("W: Register workspace");
     expect(text).toContain("P: Provider setup");
+    expect(text).toContain("Refresh provider readiness from daemon");
     expect(text).toContain("Active Route Detail");
     expect(text).toContain("One Thoth Home: Needs host");
     expect(text).toContain("+ Images/files <10MB | Provider | Mode Quick/Loop | Clarify | Loop");
@@ -99,5 +100,31 @@ describe("buildTuiSurfaceLines", () => {
       .join("\n");
     expect(settingsText).toContain("Settings / About: One Thoth identity and runtime guard");
     expect(settingsText).toContain("No Textual, no old plugin TUI, no hidden LLM API");
+  });
+
+  test("formats safe pairing detail without raw offer credentials", () => {
+    const model = buildTuiSurfaceModel({
+      connection: { status: "connected" },
+      pairing: {
+        status: "offer-ready",
+        endpoint: "relay.test.thoth.seeles.ai:443",
+        expiresAt: "2026-07-02T13:00:00.000Z",
+      },
+    });
+    const interaction = {
+      ...createInitialTuiInteractionState(model),
+      activeRoute: "connections" as const,
+      focus: { kind: "nav" as const, route: "connections" as const },
+    };
+    const text = buildTuiSurfaceLines(model, { interaction })
+      .map((line) => line.text)
+      .join("\n");
+
+    expect(text).toContain("Connections / Devices: Pairing offer ready");
+    expect(text).toContain("Pairing endpoint: relay.test.thoth.seeles.ai:443");
+    expect(text).toContain("Pairing expiry: 2026-07-02T13:00:00.000Z");
+    expect(text).toContain("Offer URL, QR and tokens are kept out of the TUI frame");
+    expect(text).toContain("D: Pair device - Refresh safe daemon pairing offer");
+    expect(text).not.toMatch(/offer=|#offer=|pairingToken|thoth-relay-v3-client\./);
   });
 });

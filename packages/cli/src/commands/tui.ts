@@ -5,6 +5,8 @@ import {
   createNativeOpenTuiRenderer,
   getOpenTuiRendererRuntimeStatus,
   mountTuiSurface,
+  type TuiInteractionState,
+  type TuiPairingInput,
   type TuiSurfaceInput,
 } from "@thoth/tui";
 import { parseConnectionOfferFromUrl } from "@thoth/protocol/connection-offer";
@@ -18,6 +20,8 @@ export interface TuiCommandOptions extends ConnectOptions {
   height?: string;
   refreshAfterRenderMs?: string;
   registerWorkspaceAfterRenderMs?: string;
+  providerSetupAfterRenderMs?: string;
+  pairDeviceAfterRenderMs?: string;
   printFinalFrame?: boolean;
 }
 
@@ -38,6 +42,14 @@ export function addTuiOptions(cmd: Command): Command {
     .option(
       "--register-workspace-after-render-ms <ms>",
       "Register the current pwd after a short delay for CLI smoke tests",
+    )
+    .option(
+      "--provider-setup-after-render-ms <ms>",
+      "Refresh provider readiness after a short delay for CLI smoke tests",
+    )
+    .option(
+      "--pair-device-after-render-ms <ms>",
+      "Create a safe daemon pairing offer after a short delay for CLI smoke tests",
     )
     .option("--print-final-frame", "Print a plain-text final frame after renderer shutdown");
 }
@@ -68,6 +80,14 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     options.registerWorkspaceAfterRenderMs,
     "--register-workspace-after-render-ms",
   );
+  const providerSetupAfterRenderMs = parseOptionalNonNegativeInteger(
+    options.providerSetupAfterRenderMs,
+    "--provider-setup-after-render-ms",
+  );
+  const pairDeviceAfterRenderMs = parseOptionalNonNegativeInteger(
+    options.pairDeviceAfterRenderMs,
+    "--pair-device-after-render-ms",
+  );
 
   let resolveExit!: () => void;
   const exited = new Promise<void>((resolve) => {
@@ -85,6 +105,8 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
   const mount = mountTuiSurface(renderer, model);
   let refreshInFlight = false;
   let workspaceRegistrationInFlight = false;
+  let providerSetupInFlight = false;
+  let devicePairingInFlight = false;
 
   async function refreshSurface(): Promise<void> {
     if (refreshInFlight) {
@@ -180,6 +202,110 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     }
   }
 
+  function openProvidersInteraction(notice: string): TuiInteractionState {
+    const interaction = mount.getInteraction();
+    return {
+      ...interaction,
+      activeRoute: "providers",
+      focus: { kind: "nav", route: "providers" },
+      routeHistory:
+        interaction.activeRoute === "providers"
+          ? interaction.routeHistory
+          : [...interaction.routeHistory, interaction.activeRoute],
+      notice,
+    };
+  }
+
+  async function refreshProviderReadiness(): Promise<void> {
+    if (providerSetupInFlight) {
+      mount.update(openProvidersInteraction("Provider readiness check already running"));
+      return;
+    }
+    providerSetupInFlight = true;
+    mount.update(openProvidersInteraction("Checking provider readiness from daemon..."));
+    let client: Awaited<ReturnType<typeof connectToDaemon>> | null = null;
+    try {
+      client = await connectToDaemon({ host: options.host, timeout: options.timeout ?? 5000 });
+      await client.refreshProvidersSnapshot({ cwd });
+      const nextInput = await loadTuiSurfaceInput(options, cwd, { terminalWidth, terminalHeight });
+      const nextModel = buildTuiSurfaceModel(nextInput);
+      const providerChip = nextModel.statusChips.find((chip) => chip.label === "Provider");
+      mount.updateModel(
+        nextModel,
+        openProvidersInteraction(
+          providerChip?.tone === "ready"
+            ? "Provider readiness refreshed from daemon"
+            : "Provider snapshot refreshed; select a model before task loops",
+        ),
+      );
+    } catch (error) {
+      const message = redactTuiConnectionMessage(
+        error instanceof Error ? error.message : String(error),
+      );
+      mount.update(openProvidersInteraction(`Provider readiness check failed: ${message}`));
+    } finally {
+      providerSetupInFlight = false;
+      await client?.close().catch(() => {});
+    }
+  }
+
+  function openConnectionsInteraction(notice: string): TuiInteractionState {
+    const interaction = mount.getInteraction();
+    return {
+      ...interaction,
+      activeRoute: "connections",
+      focus: { kind: "nav", route: "connections" },
+      routeHistory:
+        interaction.activeRoute === "connections"
+          ? interaction.routeHistory
+          : [...interaction.routeHistory, interaction.activeRoute],
+      notice,
+    };
+  }
+
+  async function createDevicePairingOffer(): Promise<void> {
+    if (devicePairingInFlight) {
+      mount.update(openConnectionsInteraction("Device pairing offer already running"));
+      return;
+    }
+    devicePairingInFlight = true;
+    mount.update(openConnectionsInteraction("Creating safe daemon pairing offer..."));
+    let client: Awaited<ReturnType<typeof connectToDaemon>> | null = null;
+    try {
+      client = await connectToDaemon({ host: options.host, timeout: options.timeout ?? 5000 });
+      const offer = await client.getDaemonPairingOffer({ timeout: 5000 });
+      const pairing = buildSafePairingInputFromOffer(offer);
+      const nextInput = {
+        ...(await loadTuiSurfaceInput(options, cwd, { terminalWidth, terminalHeight })),
+        pairing,
+      };
+      const nextModel = buildTuiSurfaceModel(nextInput);
+      mount.updateModel(
+        nextModel,
+        openConnectionsInteraction(
+          pairing.status === "offer-ready"
+            ? `Pairing offer ready for ${pairing.endpoint ?? "relay"}; credential hidden`
+            : `Pairing offer failed: ${pairing.error ?? "unknown error"}`,
+        ),
+      );
+    } catch (error) {
+      const message = redactTuiConnectionMessage(
+        error instanceof Error ? error.message : String(error),
+      );
+      const nextInput = {
+        ...(await loadTuiSurfaceInput(options, cwd, { terminalWidth, terminalHeight })),
+        pairing: { status: "failed", error: message } satisfies TuiPairingInput,
+      };
+      mount.updateModel(
+        buildTuiSurfaceModel(nextInput),
+        openConnectionsInteraction(`Pairing offer failed: ${message}`),
+      );
+    } finally {
+      devicePairingInFlight = false;
+      await client?.close().catch(() => {});
+    }
+  }
+
   renderer.keyInput.on("keypress", (key: { name?: string; ctrl?: boolean; shift?: boolean }) => {
     const result = mount.handleKey(key);
     if (result === "exit") {
@@ -190,6 +316,12 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     }
     if (result === "registerWorkspace") {
       void registerCurrentWorkspace();
+    }
+    if (result === "providerSetup") {
+      void refreshProviderReadiness();
+    }
+    if (result === "devicePairing") {
+      void createDevicePairingOffer();
     }
   });
 
@@ -211,6 +343,16 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
       void registerCurrentWorkspace();
     }, registerWorkspaceAfterRenderMs).unref();
   }
+  if (providerSetupAfterRenderMs !== undefined) {
+    setTimeout(() => {
+      void refreshProviderReadiness();
+    }, providerSetupAfterRenderMs).unref();
+  }
+  if (pairDeviceAfterRenderMs !== undefined) {
+    setTimeout(() => {
+      void createDevicePairingOffer();
+    }, pairDeviceAfterRenderMs).unref();
+  }
 
   await exited;
 
@@ -220,6 +362,38 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
         .map((line) => line.text)
         .join("\n"),
     );
+  }
+}
+
+function buildSafePairingInputFromOffer(offer: {
+  relayEnabled: boolean;
+  url: string;
+}): TuiPairingInput {
+  if (!offer.relayEnabled || !offer.url) {
+    return {
+      status: "failed",
+      error: "Relay pairing is disabled for this daemon",
+    };
+  }
+
+  try {
+    const parsed = parseConnectionOfferFromUrl(offer.url);
+    if (!parsed) {
+      return {
+        status: "failed",
+        error: "Daemon returned no pairing offer payload",
+      };
+    }
+    return {
+      status: "offer-ready",
+      endpoint: parsed.relay.endpoint,
+      expiresAt: parsed.pairingExpiresAt,
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      error: redactTuiConnectionMessage(error instanceof Error ? error.message : String(error)),
+    };
   }
 }
 
@@ -290,8 +464,11 @@ function describeHostForTui(host: string): string {
 
 function redactTuiConnectionMessage(message: string): string {
   return message
-    .replace(/offer=[^&\s]+/gi, "offer=<redacted>")
-    .replace(/password=[^&\s]+/gi, "password=<redacted>");
+    .replace(/[#?&]?offer=[^&\s]+/gi, "offer <redacted>")
+    .replace(/password=[^&\s]+/gi, "password=<redacted>")
+    .replace(/pairingToken(?:[:=][^\s,]+)?/gi, "pairing token <redacted>")
+    .replace(/thoth-relay-v3-client\.[^\s,]+/gi, "relay client token <redacted>")
+    .replace(/thoth\.relay\.token\.[^\s,]+/gi, "relay token <redacted>");
 }
 
 function normalizeScreenMode(value: string | undefined): "alternate-screen" | "main-screen" {

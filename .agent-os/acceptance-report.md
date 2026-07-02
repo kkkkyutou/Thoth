@@ -691,6 +691,89 @@ Current result:
 
 OpenTUI now has a real onboarding next-action surface and can register the current `pwd` as a workspace from inside `thoth tui` through daemon authority. This still does not complete provider setup editing inside TUI, relay pairing execution inside TUI, task backend, Clarify runtime, Loop runtime, independent Review runtime, long PTY stress or the full Web/Desktop/OpenTUI UI scorecard.
 
+### `NTH-EV-017` OpenTUI Provider Readiness Action Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Turn `P providers` from a local-only route shortcut into a real provider readiness action handled by the CLI/client layer.
+2. Refresh daemon provider snapshot state through existing provider authority, without adding TUI-owned provider configuration, fake auth checks, hidden LLM/API calls or a fake default model setting.
+3. Keep the Providers route honest: show provider readiness/read-only setup state derived from daemon snapshots and tell users to select a model before task loops when no ready model exists.
+4. Preserve existing workspace registration, recovery, renderer, navigation, connected CLI and isolation behavior.
+5. Verify compact terminal layout still exposes both `W` and `P` next actions after shortening the workspace registration action copy.
+
+Evidence:
+
+1. `packages/tui/src/keyboard.ts` now maps `P` to a `providerSetup` intent instead of a pure `setRoute` action. The TUI package still does not call daemon/provider APIs directly.
+2. `packages/tui/src/render.ts` now returns `providerSetup` from the mounted surface so the CLI layer can decide how to handle it.
+3. `packages/cli/src/commands/tui.ts` now handles provider setup by opening the Providers route, calling the real daemon client `refreshProvidersSnapshot({ cwd })`, reloading the same surface input path used by refresh, and updating the frame with either `Provider readiness refreshed from daemon` or `Provider snapshot refreshed; select a model before task loops`.
+4. Added `--provider-setup-after-render-ms` as a smoke-only automation option for the real `thoth tui` command.
+5. Added root `npm run smoke:tui:cli:provider-setup`, backed by `scripts/smoke-opentui-cli-provider-setup.sh`. The smoke runs the real CLI OpenTUI entry under pinned `node-linux-x64@26.4.0 --experimental-ffi`, triggers provider setup, verifies `Route: Providers (...)`, `State: Provider readiness refreshed from daemon` or provider snapshot refresh state, `Host: Connected`, Providers route detail and the authority guard.
+6. Provider setup smoke assertions reject `fake configured`, `configured by TUI`, `TUI-only provider`, `127.0.0.1:6767`, `localhost:6767`, `offer=`, `pairingToken` and `thoth-relay-v3-client.` in final frames.
+7. `packages/tui/src/surface.ts` now phrases the `P` next action as `Refresh provider readiness from daemon`, and shortens the `W` action to `Create daemon workspace for current pwd` so compact `72x34` frames keep both `W` and `P` visible.
+8. `npm run test --workspace=@thoth/tui` passed with 5 files and 26 tests.
+9. `npm run typecheck --workspace=@thoth/tui` passed.
+10. `npm run build --workspace=@thoth/tui` passed.
+11. `npm --workspace=@thoth/cli run typecheck` passed.
+12. `npm run smoke:tui:cli:provider-setup` passed against real Thoth daemon `127.0.0.1:6688`, showing `Route: Providers (Available)`, `State: Provider readiness refreshed from daemon`, provider entries from daemon snapshot and the authority guard.
+13. `npm run smoke:tui:renderer` passed at default `96x34`.
+14. `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:renderer` passed and showed both `W: Register workspace - Create daemon workspace for current pwd` and `P: Provider setup - Refresh provider readiness from daemon`.
+15. `npm run smoke:tui:navigation` passed.
+16. `npm run smoke:tui:cli` passed against real Thoth daemon `127.0.0.1:6688`.
+17. `npm run smoke:tui:cli:recovery` passed against unreachable host `127.0.0.1:1`.
+18. `npm run smoke:tui:cli:workspace-register` passed; a post-smoke active workspace check reported `tmpWorkspaceCount: 0`.
+19. `npm run smoke:isolation` passed: Paseo remained on `127.0.0.1:6767`, Thoth remained on `127.0.0.1:6688`, and the PIDs differed.
+20. `npm run format:check` passed.
+21. `git diff --check` passed.
+22. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+OpenTUI now has a real provider readiness action: pressing `P` refreshes provider state through daemon/client authority and lands users on the Providers route with honest readiness status. This still does not complete provider/model editing or auth setup inside TUI, relay pairing execution inside TUI, task backend, Clarify runtime, Loop runtime, independent Review runtime, long PTY stress or the full Web/Desktop/OpenTUI UI scorecard.
+
+### `NTH-EV-018` OpenTUI Device Pairing Action Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Turn `D devices` from a local route shortcut into a real daemon pairing action handled by the CLI/client layer.
+2. Request a fresh daemon pairing offer through existing daemon authority, which refreshes relay registration before returning the offer.
+3. Parse the sensitive daemon offer only inside the CLI layer and pass only safe summary fields into the TUI surface.
+4. Keep raw offer URLs, QR payloads, pairing tokens and relay subprotocol tokens out of the TUI model, final frame, smoke output and final report.
+5. Preserve existing workspace registration, provider readiness, recovery, renderer, navigation, connected CLI and isolation behavior.
+
+Evidence:
+
+1. `packages/tui/src/keyboard.ts` now maps `D` to a `devicePairing` intent instead of a pure local route action. The TUI package still does not call daemon or relay APIs directly.
+2. `packages/tui/src/render.ts` now returns `devicePairing` from the mounted surface so the CLI layer owns the daemon call.
+3. `packages/cli/src/commands/tui.ts` now handles device pairing by opening the Connections route, calling real daemon client `getDaemonPairingOffer({ timeout: 5000 })`, parsing the returned offer with `parseConnectionOfferFromUrl`, and injecting only `endpoint` plus `pairingExpiresAt` into the surface input.
+4. The TUI Connections route now shows `Pairing offer ready`, `Pairing endpoint`, `Pairing expiry` and `Credential safety: Offer URL, QR and tokens are kept out of the TUI frame`.
+5. CLI TUI redaction now scrubs URL `offer=` / `#offer=` material, `pairingToken`, `thoth-relay-v3-client.*`, `thoth.relay.token.*` and URL passwords from recovery/error text before it can enter a TUI frame.
+6. Added `--pair-device-after-render-ms` as a smoke-only automation option for the real `thoth tui` command.
+7. Added root `npm run smoke:tui:cli:device-pairing`, backed by `scripts/smoke-opentui-cli-device-pairing.sh`. The smoke runs the real CLI OpenTUI entry under pinned `node-linux-x64@26.4.0 --experimental-ffi`, triggers daemon pairing, verifies the Connections route and rejects raw offer/token/QR/legacy-host leakage.
+8. `npm run test --workspace=@thoth/tui` passed with 5 files and 28 tests, including `D` key mapping, safe pairing surface state and rendered Connections detail.
+9. `npm run typecheck --workspace=@thoth/tui` passed.
+10. `npm run build --workspace=@thoth/tui` passed.
+11. `npm --workspace=@thoth/cli run typecheck` passed.
+12. `npm run smoke:tui:cli:device-pairing` passed against real Thoth daemon `127.0.0.1:6688`, showing `Route: Connections (Offer ready)`, `State: Pairing offer ready for relay.test.thoth.seeles.ai:443; credential hidden`, `Pairing endpoint: relay.test.thoth.seeles.ai:443`, `Pairing expiry: ...` and the credential safety line. The smoke rejects `offer=`, `#offer=`, `pairingToken`, `thoth-relay-v3-client.`, `thoth.relay.token.`, QR text and legacy `6767` hosts.
+13. `npm run smoke:tui:renderer` passed at default `96x34`.
+14. `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:renderer` passed and still showed compact `W` / `P` onboarding actions.
+15. `npm run smoke:tui:navigation` passed.
+16. `npm run smoke:tui:cli` passed against real Thoth daemon `127.0.0.1:6688`.
+17. `npm run smoke:tui:cli:recovery` passed against unreachable host `127.0.0.1:1`.
+18. `npm run smoke:tui:cli:workspace-register` passed; a post-smoke active workspace check reported `tmpWorkspaceCount: 0`.
+19. `npm run smoke:tui:cli:provider-setup` passed against real Thoth daemon `127.0.0.1:6688`.
+20. `npm run smoke:isolation` passed: Paseo remained on `127.0.0.1:6767`, Thoth remained on `127.0.0.1:6688`, and the PIDs differed.
+21. `npm run format:check` passed.
+22. `git diff --check` passed.
+23. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+OpenTUI now has a safe real device pairing action: pressing `D` asks the daemon for a fresh pairing offer, lands users on the Connections route and shows only safe relay endpoint/expiry summary. This still does not complete full paired-device persistence UI, provider/model editing or auth setup inside TUI, task backend, Clarify runtime, Loop runtime, independent Review runtime, long PTY stress or the full Web/Desktop/OpenTUI UI scorecard.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

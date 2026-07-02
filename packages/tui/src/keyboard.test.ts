@@ -39,12 +39,10 @@ describe("mapTuiKeyToIntent", () => {
       action: { type: "cycleLoop" },
     });
     expect(mapTuiKeyToIntent({ name: "p" })).toEqual({
-      type: "action",
-      action: { type: "setRoute", route: "providers" },
+      type: "providerSetup",
     });
     expect(mapTuiKeyToIntent({ name: "d" })).toEqual({
-      type: "action",
-      action: { type: "setRoute", route: "connections" },
+      type: "devicePairing",
     });
     expect(mapTuiKeyToIntent({ name: "w" })).toEqual({ type: "registerWorkspace" });
     expect(mapTuiKeyToIntent({ name: "r" })).toEqual({ type: "refresh" });

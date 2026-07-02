@@ -36,7 +36,16 @@ export interface TuiSurfaceMount {
   getModel(): TuiSurfaceModel;
   update(interaction: TuiInteractionState): void;
   updateModel(model: TuiSurfaceModel, interaction?: TuiInteractionState): void;
-  handleKey(key: TuiKeyLike): "handled" | "refresh" | "registerWorkspace" | "exit" | "ignored";
+  handleKey(
+    key: TuiKeyLike,
+  ):
+    | "handled"
+    | "refresh"
+    | "registerWorkspace"
+    | "providerSetup"
+    | "devicePairing"
+    | "exit"
+    | "ignored";
 }
 
 export function buildTuiSurfaceLines(
@@ -180,6 +189,12 @@ export function mountTuiSurface(
       }
       if (intent.type === "registerWorkspace") {
         return "registerWorkspace";
+      }
+      if (intent.type === "providerSetup") {
+        return "providerSetup";
+      }
+      if (intent.type === "devicePairing") {
+        return "devicePairing";
       }
       if (intent.type === "exit") {
         return "exit";

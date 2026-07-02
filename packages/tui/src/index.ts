@@ -6,6 +6,8 @@ export {
   type TuiLayout,
   type TuiNavItem,
   type TuiNextAction,
+  type TuiPairingInput,
+  type TuiPairingState,
   type TuiRefreshInput,
   type TuiRefreshState,
   type TuiRouteId,

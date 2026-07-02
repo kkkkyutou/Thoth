@@ -33,6 +33,8 @@
     "smoke:tui:cli": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli.sh",
     "smoke:tui:cli:recovery": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli-recovery.sh",
     "smoke:tui:cli:workspace-register": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli-workspace-register.sh",
+    "smoke:tui:cli:provider-setup": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli-provider-setup.sh",
+    "smoke:tui:cli:device-pairing": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli-device-pairing.sh",
     "loadtest:relay:local": "node scripts/loadtest-relay-local.mjs",
     "build:foundation": "npm run build:highlight && npm run build:relay && npm run build:protocol && npm run build:client",
     "typecheck:highlight": "npm --prefix packages/app/highlight run typecheck",

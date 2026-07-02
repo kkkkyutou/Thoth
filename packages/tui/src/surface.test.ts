@@ -121,7 +121,7 @@ describe("buildTuiSurfaceModel", () => {
         {
           key: "P",
           label: "Provider setup",
-          value: "Open Providers and select a model before task loops",
+          value: "Refresh provider readiness from daemon",
           tone: "needs-action",
         },
       ]),
@@ -262,7 +262,7 @@ describe("buildTuiSurfaceModel", () => {
         {
           key: "W",
           label: "Register workspace",
-          value: "Create daemon workspace for /tmp/unregistered-thoth-workspace",
+          value: "Create daemon workspace for current pwd",
           tone: "needs-action",
         },
       ]),
@@ -373,7 +373,7 @@ describe("buildTuiSurfaceModel", () => {
         {
           key: "D",
           label: "Pair device",
-          value: "Open Connections for direct daemon or fresh relay pairing",
+          value: "Create safe daemon pairing offer",
           tone: "preview",
         },
         {
@@ -391,6 +391,55 @@ describe("buildTuiSurfaceModel", () => {
         }),
       ]),
     );
+  });
+
+  test("surfaces safe pairing offer details without credential material", () => {
+    const model = buildTuiSurfaceModel({
+      connection: connected,
+      workspaces: [workspace()],
+      pairing: {
+        status: "offer-ready",
+        endpoint: "relay.test.thoth.seeles.ai:443",
+        expiresAt: "2026-07-02T13:00:00.000Z",
+      },
+      refresh: { status: "loaded", updatedAt: "2026-07-02T12:00:00.000Z" },
+    });
+    const renderedModelText = JSON.stringify(model);
+
+    expect(model.statusChips).toEqual(
+      expect.arrayContaining([{ label: "Relay", value: "Pairing offer ready", tone: "ready" }]),
+    );
+    expect(model.navigation.find((item) => item.id === "connections")).toMatchObject({
+      tone: "ready",
+      badge: "Offer ready",
+    });
+    expect(model.routeDetails.connections).toMatchObject({
+      title: "Connections / Devices",
+      summary: "Pairing offer ready",
+      tone: "ready",
+    });
+    expect(model.routeDetails.connections.lines).toEqual(
+      expect.arrayContaining([
+        { label: "Pairing endpoint", value: "relay.test.thoth.seeles.ai:443", tone: "ready" },
+        { label: "Pairing expiry", value: "2026-07-02T13:00:00.000Z", tone: "ready" },
+        {
+          label: "Credential safety",
+          value: "Offer URL, QR and tokens are kept out of the TUI frame",
+          tone: "ready",
+        },
+      ]),
+    );
+    expect(model.nextActions).toEqual(
+      expect.arrayContaining([
+        {
+          key: "D",
+          label: "Pair device",
+          value: "Refresh safe daemon pairing offer",
+          tone: "ready",
+        },
+      ]),
+    );
+    expect(renderedModelText).not.toMatch(/offer=|#offer=|pairingToken|thoth-relay-v3-client\./);
   });
 });
 

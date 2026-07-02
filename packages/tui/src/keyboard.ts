@@ -10,6 +10,8 @@ export type TuiKeyIntent =
   | { type: "action"; action: TuiInteractionAction }
   | { type: "refresh" }
   | { type: "registerWorkspace" }
+  | { type: "providerSetup" }
+  | { type: "devicePairing" }
   | { type: "exit" }
   | { type: "none" };
 
@@ -43,9 +45,9 @@ export function mapTuiKeyToIntent(key: TuiKeyLike): TuiKeyIntent {
     case "l":
       return { type: "action", action: { type: "cycleLoop" } };
     case "p":
-      return { type: "action", action: { type: "setRoute", route: "providers" } };
+      return { type: "providerSetup" };
     case "d":
-      return { type: "action", action: { type: "setRoute", route: "connections" } };
+      return { type: "devicePairing" };
     case "w":
       return { type: "registerWorkspace" };
     case "r":
