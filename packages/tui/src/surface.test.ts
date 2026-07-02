@@ -139,6 +139,52 @@ describe("buildTuiSurfaceModel", () => {
     });
   });
 
+  test("selects the registered workspace when cwd is a descendant", () => {
+    const model = buildTuiSurfaceModel({
+      connection: connected,
+      workspaces: [workspace()],
+      cwd: "/repo/thoth/packages/tui",
+    });
+
+    expect(model.activeRoute).toBe("workspace");
+    expect(model.activeWorkspace).toMatchObject({
+      id: "workspace_1",
+      label: "Thoth Repo",
+      cwd: "/repo/thoth",
+      status: "ready",
+    });
+  });
+
+  test("prefers the most specific registered workspace for descendant cwd", () => {
+    const model = buildTuiSurfaceModel({
+      connection: connected,
+      workspaces: [
+        workspace({
+          id: "workspace_parent",
+          projectDisplayName: "YZY",
+          name: "yzy",
+          projectRootPath: "/repo",
+          workspaceDirectory: "/repo",
+        }),
+        workspace({
+          id: "workspace_child",
+          projectDisplayName: "Thoth Repo",
+          name: "thoth",
+          projectRootPath: "/repo/thoth",
+          workspaceDirectory: "/repo/thoth",
+        }),
+      ],
+      cwd: "/repo/thoth/packages/tui",
+    });
+
+    expect(model.activeWorkspace).toMatchObject({
+      id: "workspace_child",
+      label: "Thoth Repo",
+      cwd: "/repo/thoth",
+      status: "ready",
+    });
+  });
+
   test("treats provider sessions as runtime evidence without claiming frozen tasks", () => {
     const model = buildTuiSurfaceModel({
       connection: connected,

@@ -9,7 +9,34 @@ export {
   type TuiSurfaceModel,
   type TuiTaskSlot,
 } from "./surface.js";
-export { buildTuiSurfaceLines, mountTuiSurface, type TuiSurfaceLine } from "./render.js";
+export {
+  buildTuiSurfaceLines,
+  mountTuiSurface,
+  type TuiRenderOptions,
+  type TuiSurfaceLine,
+  type TuiSurfaceMount,
+} from "./render.js";
+export { mapTuiKeyToIntent, type TuiKeyIntent, type TuiKeyLike } from "./keyboard.js";
+export {
+  applyTuiInteractionAction,
+  buildTuiFocusOrder,
+  buildTuiInteractionHints,
+  clarifyLabel,
+  createInitialTuiInteractionState,
+  describeTuiFocusTarget,
+  isLoopControlEnabled,
+  loopLabel,
+  modeLabel,
+  routeLabel,
+  type TuiClarifyLevel,
+  type TuiComposerControlId,
+  type TuiComposerMode,
+  type TuiFocusTarget,
+  type TuiInteractionAction,
+  type TuiInteractionHint,
+  type TuiInteractionState,
+  type TuiLoopLevel,
+} from "./interaction.js";
 export {
   createNativeOpenTuiRenderer,
   type NativeOpenTuiRendererOptions,

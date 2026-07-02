@@ -500,6 +500,75 @@ Current result:
 
 The OpenTUI renderer runtime spike now has a reproducible root-script path using pinned `node-linux-x64@26.4.0` plus experimental FFI. Bun is not selected for the current repo-local smoke path. This proves renderer creation and character-frame capture for the One Thoth surface, not the complete interactive CLI workspace TUI, daemon-connected TUI state, focus/input loops or final TUI scorecard.
 
+### `NTH-EV-012` OpenTUI Interaction Navigation Slice Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add a testable OpenTUI interaction state layer for focus, route navigation, route history and explicit composer controls.
+2. Keep interaction state limited to UI focus/control presentation; do not create fake task authority, fake daemon state or fake backend behavior.
+3. Render active route, focus, state notices, composer values and authority guard text through the existing OpenTUI render path.
+4. Add a root navigation smoke that simulates deterministic interaction actions and captures an OpenTUI character frame under the pinned Node FFI renderer path.
+5. Verify default, compact and wide terminal frames.
+
+Evidence:
+
+1. Added `packages/tui/src/interaction.ts` with `createInitialTuiInteractionState`, `applyTuiInteractionAction`, focus order, route open/back behavior, Mode/Clarify/Loop cycling, Quick-mode Loop disablement and user-facing interaction hints.
+2. Added `packages/tui/src/interaction.test.ts`; `npm run test --workspace=@thoth/tui` passed with 4 files and 16 tests.
+3. Updated `packages/tui/src/render.ts` so the frame shows route, focus, state notice, authority guard, focused/active navigation markers and composer control values while retaining the original surface model input.
+4. Added root `npm run smoke:tui:navigation`, which runs `npm run build --workspace=@thoth/tui` and then `npm exec --yes --package=node-linux-x64@26.4.0 -- node --experimental-ffi scripts/smoke-opentui-navigation.mjs`.
+5. Default `npm run smoke:tui:renderer` passed at `96x34` and captured the updated Home frame with `Route: Home`, `Focus: Home`, `State: One Thoth overview`, `Loop: Off in Quick` and `Authority: daemon/client/protocol state only`.
+6. Default `npm run smoke:tui:navigation` passed at `96x34` and captured `Route: Evidence / Review (Preview)`, `Focus: Loop`, `State: Evidence and review receipts are preview-only`, `Mode: Loop`, `Loop: One Plan, One Do` and the authority guard.
+7. Compact `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:navigation` passed and captured the compact frame.
+8. Wide `THOTH_TUI_SMOKE_WIDTH=132 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:navigation` passed and captured the split frame.
+9. `npm run typecheck --workspace=@thoth/tui` passed.
+10. `npm run build --workspace=@thoth/tui` passed.
+11. `npm run format:check` passed.
+12. `git diff --check` passed.
+13. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+`packages/tui` now has a deterministic interaction/navigation model and an OpenTUI navigation smoke that proves the renderer can display simulated focus, route and composer-control state. This still does not complete a live interactive CLI TUI, daemon-connected workspace state, native keypress loop, task backend, Clarify runtime, contract freeze, PlanExec or Review.
+
+### `NTH-EV-013` OpenTUI CLI Dogfood Entry Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add a real top-level `thoth tui` command rather than a detached TUI smoke script.
+2. Build the TUI surface from the same daemon/client/protocol state used by other CLI commands.
+3. From the current `pwd`, choose the matching registered workspace, preferring the most specific workspace root when parent and child workspaces both match.
+4. Keep Node `24.14.0` behavior truthful: the live native renderer is unavailable without Node `26.3.0+` and `--experimental-ffi`.
+5. Verify a daemon-connected OpenTUI CLI smoke against Thoth `127.0.0.1:6688` without touching Paseo `127.0.0.1:6767`.
+
+Evidence:
+
+1. Added `packages/cli/src/commands/tui.ts` and registered top-level `thoth tui` in `packages/cli/src/cli.ts`.
+2. `thoth tui` connects through existing CLI daemon utilities, fetches real `fetchWorkspaces`, `fetchAgents` and `getProvidersSnapshot` data, then mounts the shared `@thoth/tui` OpenTUI surface. If the daemon cannot be reached, it renders a disconnected/needs-host surface rather than fake connected state.
+3. `packages/tui/src/surface.ts` now treats `cwd` descendants as workspace matches and chooses the most specific registered workspace root. `packages/tui/src/surface.test.ts` covers descendant and parent/child specificity cases.
+4. Added `packages/tui/src/keyboard.ts` and live `mountTuiSurface(...).handleKey(...)` support so Tab/arrows, Enter, Esc, `M`, `C`, `L`, `Q` and Ctrl+C map to deterministic interaction actions or exit.
+5. Added root `npm run smoke:tui:cli`, which builds `@thoth/tui`, builds CLI/daemon/client dependencies, then runs the real CLI entry under pinned `node-linux-x64@26.4.0 --experimental-ffi`.
+6. Node `24.14.0` direct command check returned the truthful runtime error: OpenTUI native renderer is disabled for Node `24.14.0` and needs Node `26.3.0+` with experimental FFI.
+7. `npm run smoke:tui:cli` passed against `127.0.0.1:6688`, capturing `One Thoth - OpenTUI split surface`, `Route: Workspace (Ready)`, `Host: Connected`, `Workspace: yzy`, `Provider: Provider available`, `Relay: Fresh pairing supported`, composer controls, task/evidence preview slots and the authority guard. The smoke asserts that `127.0.0.1:6767` / `localhost:6767` do not appear.
+8. Compact `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed.
+9. Wide `THOTH_TUI_SMOKE_WIDTH=132 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed.
+10. `npm run test --workspace=@thoth/tui` passed with 5 files and 21 tests.
+11. `npm run typecheck --workspace=@thoth/tui` passed.
+12. `npm --workspace=@thoth/cli run typecheck` passed.
+13. `npm --workspace=@thoth/cli run build` passed.
+14. `npm run smoke:isolation` passed: Paseo remained on `127.0.0.1:6767`, Thoth remained on `127.0.0.1:6688`, and the PIDs differed.
+15. `npm run smoke:tui:renderer` and `npm run smoke:tui:navigation` passed after the CLI changes.
+16. `npm run format:check` passed.
+17. `git diff --check` passed.
+18. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+OpenTUI now has a real CLI dogfood entry that uses daemon/client/protocol authority and can render the current workspace from `pwd` under the pinned Node 26 FFI path. This still does not complete the final OpenTUI product: deeper onboarding flows, live daemon refresh, richer error recovery, task backend, Clarify runtime, contract freeze, PlanExec, Review and the full UI review scorecard remain incomplete.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

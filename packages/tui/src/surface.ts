@@ -4,6 +4,7 @@ import type {
   ThothProviderSnapshotResult,
   ThothWorkspace,
 } from "@thoth/client";
+import path from "node:path";
 
 export type TuiRouteId =
   | "home"
@@ -267,10 +268,15 @@ function selectActiveWorkspace(
     }
   }
   if (cwd) {
-    const byCwd = workspaces.find((workspace) => {
-      const directory = workspace.workspaceDirectory ?? workspace.projectRootPath;
-      return directory === cwd || workspace.projectRootPath === cwd;
-    });
+    const byCwd = workspaces
+      .filter((workspace) => {
+        const directory = workspace.workspaceDirectory ?? workspace.projectRootPath;
+        return (
+          isSameOrDescendantPath(cwd, directory) ||
+          isSameOrDescendantPath(cwd, workspace.projectRootPath)
+        );
+      })
+      .sort((left, right) => workspaceRootLength(right) - workspaceRootLength(left))[0];
     if (byCwd) {
       return byCwd;
     }
@@ -284,4 +290,18 @@ function hasReadyProvider(snapshot: ThothProviderSnapshotResult | null | undefin
       (entry) => entry.enabled && entry.status === "ready" && (entry.models?.length ?? 0) > 0,
     ) ?? false
   );
+}
+
+function workspaceRootLength(workspace: ThothWorkspace): number {
+  return path.resolve(workspace.workspaceDirectory ?? workspace.projectRootPath).length;
+}
+
+function isSameOrDescendantPath(candidate: string, root: string | null | undefined): boolean {
+  if (!root) {
+    return false;
+  }
+  const normalizedCandidate = path.resolve(candidate);
+  const normalizedRoot = path.resolve(root);
+  const relative = path.relative(normalizedRoot, normalizedCandidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

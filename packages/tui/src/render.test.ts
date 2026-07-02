@@ -18,6 +18,8 @@ describe("buildTuiSurfaceLines", () => {
     expect(text).toContain("One Thoth - OpenTUI");
     expect(text).toContain("Workspace: Needs a registered workspace");
     expect(text).toContain("+ Images/files <10MB | Provider | Mode Quick/Loop | Clarify | Loop");
+    expect(text).toContain("Loop: Off in Quick");
+    expect(text).toContain("Keys: Tab/arrows focus");
     expect(text).toContain("Active task: No frozen task yet");
     expect(text).toContain("Authority: daemon/client/protocol state only");
   });

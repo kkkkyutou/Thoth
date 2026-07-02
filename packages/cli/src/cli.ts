@@ -23,6 +23,7 @@ import { addWaitOptions, runWaitCommand } from "./commands/agent/wait.js";
 import { addArchiveOptions, runArchiveCommand } from "./commands/agent/archive.js";
 import { addAttachOptions, runAttachCommand } from "./commands/agent/attach.js";
 import { addImportOptions, runImportCommand } from "./commands/agent/import.js";
+import { addTuiOptions, runTuiCommand } from "./commands/tui.js";
 import { withOutput } from "./output/index.js";
 import { onboardCommand } from "./commands/onboard.js";
 import {
@@ -97,6 +98,7 @@ export function createCli(): Command {
   program.addCommand(onboardCommand());
   program.addCommand(daemonStartCommand());
   program.addCommand(createHooksCommand());
+  addDaemonHostOption(addTuiOptions(program.command("tui"))).action(runTuiCommand);
 
   addJsonOption(
     program
