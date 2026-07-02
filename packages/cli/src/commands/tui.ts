@@ -22,6 +22,7 @@ export interface TuiCommandOptions extends ConnectOptions {
   registerWorkspaceAfterRenderMs?: string;
   providerSetupAfterRenderMs?: string;
   pairDeviceAfterRenderMs?: string;
+  stressAfterRenderMs?: string;
   printFinalFrame?: boolean;
 }
 
@@ -50,6 +51,10 @@ export function addTuiOptions(cmd: Command): Command {
     .option(
       "--pair-device-after-render-ms <ms>",
       "Create a safe daemon pairing offer after a short delay for CLI smoke tests",
+    )
+    .option(
+      "--stress-after-render-ms <ms>",
+      "Run route, composer, refresh, provider and pairing churn after a short delay for CLI smoke tests",
     )
     .option("--print-final-frame", "Print a plain-text final frame after renderer shutdown");
 }
@@ -87,6 +92,10 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
   const pairDeviceAfterRenderMs = parseOptionalNonNegativeInteger(
     options.pairDeviceAfterRenderMs,
     "--pair-device-after-render-ms",
+  );
+  const stressAfterRenderMs = parseOptionalNonNegativeInteger(
+    options.stressAfterRenderMs,
+    "--stress-after-render-ms",
   );
 
   let resolveExit!: () => void;
@@ -306,24 +315,69 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     }
   }
 
-  renderer.keyInput.on("keypress", (key: { name?: string; ctrl?: boolean; shift?: boolean }) => {
-    const result = mount.handleKey(key);
+  async function handleMountResult(result: ReturnType<typeof mount.handleKey>): Promise<void> {
     if (result === "exit") {
       renderer.destroy();
     }
     if (result === "refresh") {
-      void refreshSurface();
+      await refreshSurface();
     }
     if (result === "registerWorkspace") {
-      void registerCurrentWorkspace();
+      await registerCurrentWorkspace();
     }
     if (result === "providerSetup") {
-      void refreshProviderReadiness();
+      await refreshProviderReadiness();
     }
     if (result === "devicePairing") {
-      void createDevicePairingOffer();
+      await createDevicePairingOffer();
     }
-  });
+  }
+
+  function handleTuiKey(key: { name?: string; ctrl?: boolean; shift?: boolean }): void {
+    const result = mount.handleKey(key);
+    void handleMountResult(result);
+  }
+
+  async function runStressSequence(): Promise<void> {
+    const keySequence: Array<{ name: string; ctrl?: boolean; shift?: boolean }> = [
+      { name: "m" },
+      { name: "c" },
+      { name: "c" },
+      { name: "l" },
+      { name: "l" },
+      { name: "tab" },
+      { name: "return" },
+      { name: "tab" },
+      { name: "return" },
+      { name: "tab" },
+      { name: "return" },
+      { name: "tab" },
+      { name: "return" },
+      { name: "tab" },
+      { name: "return" },
+      { name: "escape" },
+      { name: "escape" },
+      { name: "tab", shift: true },
+      { name: "tab" },
+    ];
+
+    for (const key of keySequence) {
+      await handleMountResult(mount.handleKey(key));
+      await pause(20);
+    }
+
+    await refreshSurface();
+    await refreshProviderReadiness();
+    await createDevicePairingOffer();
+    mount.update({
+      ...mount.getInteraction(),
+      activeRoute: "connections",
+      focus: { kind: "nav", route: "connections" },
+      notice: "Stress completed: route/focus/composer/provider/device churn",
+    });
+  }
+
+  renderer.keyInput.on("keypress", handleTuiKey);
 
   renderer.start();
   renderer.requestRender();
@@ -352,6 +406,11 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     setTimeout(() => {
       void createDevicePairingOffer();
     }, pairDeviceAfterRenderMs).unref();
+  }
+  if (stressAfterRenderMs !== undefined) {
+    setTimeout(() => {
+      void runStressSequence();
+    }, stressAfterRenderMs).unref();
   }
 
   await exited;
@@ -515,4 +574,10 @@ function parseOptionalNonNegativeInteger(
     throw new Error(`${label} must be a non-negative integer`);
   }
   return parsed;
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

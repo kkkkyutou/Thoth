@@ -43,12 +43,12 @@ Each endpoint is scored on 10 dimensions, 10 points each:
 These are current working scores, not final acceptance scores. They intentionally include
 penalties for missing current screenshots, missing stress artifacts and unfinished backend slots.
 
-| Endpoint | Score | Status      | Current evidence                                                                                        | Main gaps                                                                                                                                                                  |
-| -------- | ----: | ----------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web      |    72 | In progress | `NTH-EV-008`, `NTH-EV-009`, prior web build and relay timeout smokes                                    | Needs current screenshot set, Playwright UI stress, complete Home/Workspace/Task/Provider/Relay/Evidence/Settings audit, and score above 90                                |
-| Desktop  |    76 | In progress | Desktop wrapper/package substrate, `NTH-EV-006`, unsigned macOS zip evidence, Thoth semantic menu slice | Needs current packaged/dev smoke after menu change, screenshot set, Desktop menu visual/behavior smoke, and score above 90                                                 |
-| OpenTUI  |    84 | In progress | `NTH-EV-010` through `NTH-EV-018`, renderer/navigation/CLI/recovery/workspace/provider/device smokes    | Needs long PTY stress, broader route churn stress, final scorecard terminal captures, provider/model editing path or honest final unavailable state, and score at least 88 |
-| Overall  |    77 | Failing     | Multi-endpoint slices exist, but final score evidence is incomplete                                     | Needs full scorecard evidence and threshold pass                                                                                                                           |
+| Endpoint | Score | Status      | Current evidence                                                                                                          | Main gaps                                                                                                                                   |
+| -------- | ----: | ----------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web      |    72 | In progress | `NTH-EV-008`, `NTH-EV-009`, prior web build and relay timeout smokes                                                      | Needs current screenshot set, Playwright UI stress, complete Home/Workspace/Task/Provider/Relay/Evidence/Settings audit, and score above 90 |
+| Desktop  |    76 | In progress | Desktop wrapper/package substrate, `NTH-EV-006`, unsigned macOS zip evidence, Thoth semantic menu slice                   | Needs current packaged/dev smoke after menu change, screenshot set, Desktop menu visual/behavior smoke, and score above 90                  |
+| OpenTUI  |    87 | In progress | `NTH-EV-010` through `NTH-EV-018`, `NTH-EV-020`, renderer/navigation/CLI/recovery/workspace/provider/device/stress smokes | Needs final scorecard terminal capture ledger, provider/model editing path or honest final unavailable state, and score at least 88         |
+| Overall  |    78 | Failing     | Multi-endpoint slices exist, but final score evidence is incomplete                                                       | Needs full scorecard evidence and threshold pass                                                                                            |
 
 ## Evidence Ledger
 
@@ -97,12 +97,15 @@ Required final captures:
 8. PTY stress output for rapid route/focus/composer/action churn.
 
 Current status: strong but still incomplete. Current evidence covers renderer, navigation, CLI
-workspace, recovery, workspace registration, provider readiness and device pairing, but final PTY
-stress and screenshot ledger are not yet complete.
+workspace, recovery, workspace registration, provider readiness, device pairing and a PTY-wrapped
+CLI/OpenTUI stress run across `72x34`, `96x34` and `132x34`. The final scorecard terminal capture
+ledger and provider/model editing path or final honest unavailable state are not yet complete.
 
 ## Current Slice Result
 
-The 2026-07-02 Desktop menu slice improves Desktop's Thoth recognition and Paseo removal score by
-moving the app-level menu from a generic Electron shell into Thoth product language. This is not a
-final UI pass because the full Web/Desktop/OpenTUI scorecard evidence and threshold are still
-missing.
+The 2026-07-02 OpenTUI PTY stress slice improves OpenTUI cross-terminal resilience evidence. The
+new `npm run smoke:tui:pty-stress` root script builds the real TUI/CLI path, runs `thoth tui` under
+a pseudo-terminal wrapper at `72x34`, `96x34` and `132x34`, churns route/focus/composer state,
+refreshes daemon/provider state, creates a safe daemon pairing offer summary and rejects legacy
+`6767`, raw relay offer/token and QR leakage. This is not a final UI pass because the full
+Web/Desktop/OpenTUI scorecard evidence and threshold are still missing.

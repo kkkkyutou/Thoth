@@ -819,6 +819,71 @@ scorecard. This still does not complete Web/Desktop/OpenTUI final UI acceptance:
 status is failing until fresh screenshots, Playwright UI stress, Desktop smoke, OpenTUI PTY stress,
 full endpoint score evidence and final thresholds are satisfied.
 
+### `NTH-EV-020` OpenTUI PTY Stress And Scorecard Capture Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add a reproducible OpenTUI stress smoke for the real `thoth tui` CLI path.
+2. Run the smoke under a pseudo-terminal wrapper while preserving the pinned `node-linux-x64@26.4.0`
+   plus `--experimental-ffi` OpenTUI runtime path.
+3. Cover rapid route, focus, composer, refresh, provider readiness and device pairing churn without
+   adding fake TUI backend state or fake provider/task authority.
+4. Verify narrow, default and wide terminal widths.
+5. Keep raw relay offers, pairing tokens, QR payloads and legacy Paseo/daemon endpoints out of the
+   terminal frame and smoke output.
+6. Update the working UI scorecard without claiming final UI acceptance.
+
+Evidence:
+
+1. `packages/cli/src/commands/tui.ts` now exposes smoke-only `--stress-after-render-ms` for the
+   real `thoth tui` command. The stress path reuses the mounted OpenTUI surface, drives key-intent
+   handling for Mode/Clarify/Loop, Tab/Enter route churn and Esc/back churn, then calls the existing
+   daemon snapshot refresh, provider readiness refresh and safe device pairing handlers.
+2. The CLI key handling now funnels interactive keypresses and smoke-driven key results through the
+   same result dispatcher, so refresh, workspace registration, provider readiness and device pairing
+   remain owned by the CLI/client layer rather than `packages/tui`.
+3. Added root `npm run smoke:tui:pty-stress`, backed by
+   `scripts/smoke-opentui-pty-stress.mjs`. The script builds `@thoth/tui` and the CLI, then runs
+   `thoth tui` through `/usr/bin/script -qfec ... /dev/null` to allocate a pseudo-terminal.
+4. The stress script verifies `72x34`, `96x34` and `132x34` final frames. Each final frame shows
+   Connections offer-ready route/focus, stress-completed state, `Mode: Loop`, `Clarify: Light`,
+   `Loop: Light`, `Host: Connected`, `Provider: Provider available`, safe pairing endpoint
+   `relay.test.thoth.seeles.ai:443` and the authority guard.
+5. The stress assertions reject `127.0.0.1:6767`, `localhost:6767`, raw `offer=` / `#offer=`,
+   `pairingToken`, relay subprotocol token prefixes, QR text, `undefined`, `[object Object]` and
+   common crash traces.
+6. `npm run typecheck --workspace=@thoth/tui` passed.
+7. `npm --workspace=@thoth/cli run typecheck` passed.
+8. `npm run test --workspace=@thoth/tui` passed with 5 files and 28 tests.
+9. `npm run build --workspace=@thoth/tui` passed.
+10. `npm run smoke:tui:pty-stress` passed after formatting. The command produced three passing
+    receipts for widths `72`, `96` and `132`, all with height `34` and host `127.0.0.1:6688`.
+11. `npm run smoke:tui:cli` passed against real Thoth daemon `127.0.0.1:6688`.
+12. `npm run smoke:tui:cli:recovery` passed against unreachable host `127.0.0.1:1`.
+13. `npm run smoke:tui:cli:provider-setup` passed against real Thoth daemon `127.0.0.1:6688`.
+14. `npm run smoke:tui:cli:device-pairing` passed against real Thoth daemon `127.0.0.1:6688`.
+15. `npm run format:check` passed.
+16. `git diff --check` passed.
+17. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation
+    build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`,
+    relay `29`, protocol `286` and client `110` tests.
+18. `npm run smoke:isolation` passed: Paseo/legacy remained on `127.0.0.1:6767`, Thoth remained on
+    `127.0.0.1:6688`, and the PIDs differed.
+19. `docs/ui-review-scorecard.md` now records OpenTUI stress evidence and raises the OpenTUI working
+    score from `84` to `87`, while keeping the overall score failing at `78` and the final threshold
+    unmet.
+
+Current result:
+
+OpenTUI now has a reproducible pseudo-terminal stress smoke for route/focus/composer/provider/device
+churn across narrow, default and wide terminal widths. This still does not complete final
+Web/Desktop/OpenTUI UI acceptance: OpenTUI is still below the final `88` score threshold, Web and
+Desktop still need current screenshot/stress evidence, and the full New Thoth MVP task loop,
+provider/model editing path, Clarify runtime, Loop runtime and independent Review runtime remain
+unimplemented.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

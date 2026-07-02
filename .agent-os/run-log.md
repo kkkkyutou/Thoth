@@ -418,3 +418,22 @@
 - Evidence produced: `npm run format:check` and `git diff --check` passed.
 - State documentation: Recorded `NTH-EV-019` and updated `project-index.md`.
 - Next likely action: Continue `NTH-TD-002` by filling the scorecard with current Web/Desktop/OpenTUI screenshots and stress evidence, then repair whichever endpoint scores lowest. The final UI threshold is still not met.
+
+## 2026-07-02 [OpenTUI PTY stress and scorecard evidence verified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-004`, `NTH-TD-002`
+- State changes: Added smoke-only `--stress-after-render-ms` to the real `thoth tui` CLI command. The stress path drives the existing OpenTUI mount through key-intent route/focus/composer churn, then uses the existing CLI/client handlers for daemon refresh, provider readiness refresh and safe device pairing.
+- State changes: Added root `npm run smoke:tui:pty-stress`, backed by `scripts/smoke-opentui-pty-stress.mjs`. The script builds the TUI and CLI, runs `thoth tui` under `/usr/bin/script -qfec ... /dev/null` with pinned `node-linux-x64@26.4.0 --experimental-ffi`, and verifies `72x34`, `96x34` and `132x34` final frames.
+- State changes: Updated `docs/ui-review-scorecard.md`: OpenTUI working score is now `87`, overall working score is `78`, and the scorecard still explicitly fails final UI acceptance because Web/Desktop evidence and final OpenTUI threshold evidence are incomplete.
+- Evidence produced: `npm run typecheck --workspace=@thoth/tui` passed.
+- Evidence produced: `npm --workspace=@thoth/cli run typecheck` passed.
+- Evidence produced: `npm run test --workspace=@thoth/tui` passed with 5 files and 28 tests.
+- Evidence produced: `npm run build --workspace=@thoth/tui` passed.
+- Evidence produced: `npm run smoke:tui:pty-stress` passed after formatting. The final frames showed `Route: Connections (Offer ready)`, `Focus: Connections`, `State: Stress completed: route/focus/composer/provider/device churn`, `Mode: Loop`, `Clarify: Light`, `Loop: Light`, safe relay endpoint `relay.test.thoth.seeles.ai:443` and the daemon/client/protocol authority guard at all three widths.
+- Evidence produced: `npm run smoke:tui:cli`, `npm run smoke:tui:cli:recovery`, `npm run smoke:tui:cli:provider-setup` and `npm run smoke:tui:cli:device-pairing` passed.
+- Evidence produced: `npm run format:check` and `git diff --check` passed.
+- Evidence produced: `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+- Evidence produced: `npm run smoke:isolation` passed with Paseo/legacy on `127.0.0.1:6767`, Thoth on `127.0.0.1:6688` and different PIDs.
+- Evidence produced: The PTY stress assertions rejected legacy `6767`, raw relay offer material, pairing tokens, relay subprotocol token prefixes, QR text, `undefined`, `[object Object]` and common crash traces.
+- State documentation: Recorded `NTH-EV-020` and updated `project-index.md`.
+- Next likely action: Continue `NTH-TD-002` by collecting current Web/Desktop scorecard screenshots and stress evidence, or close the remaining OpenTUI score gap with provider/model editing or an explicit final unavailable-state design. The full New Thoth MVP task loop remains unimplemented.
