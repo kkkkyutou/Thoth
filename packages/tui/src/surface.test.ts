@@ -110,6 +110,22 @@ describe("buildTuiSurfaceModel", () => {
         { id: "contract", title: "Contract", value: "Needs provider", tone: "needs-action" },
       ]),
     );
+    expect(model.nextActions).toEqual(
+      expect.arrayContaining([
+        {
+          key: "W",
+          label: "Register workspace",
+          value: "Open TUI from a workspace directory",
+          tone: "preview",
+        },
+        {
+          key: "P",
+          label: "Provider setup",
+          value: "Open Providers and select a model before task loops",
+          tone: "needs-action",
+        },
+      ]),
+    );
   });
 
   test("exposes refresh state without hiding disconnected recovery", () => {
@@ -137,6 +153,20 @@ describe("buildTuiSurfaceModel", () => {
         },
       ]),
     );
+    expect(model.nextActions).toEqual([
+      {
+        key: "R",
+        label: "Retry snapshot",
+        value: "Reconnect to direct daemon or fresh relay offer",
+        tone: "needs-action",
+      },
+      {
+        key: "Host",
+        label: "Start daemon",
+        value: "Use Thoth daemon on 127.0.0.1:6688",
+        tone: "needs-action",
+      },
+    ]);
   });
 
   test("selects workspace and provider readiness from shared daemon/client shapes", () => {
@@ -211,6 +241,32 @@ describe("buildTuiSurfaceModel", () => {
       cwd: "/repo/thoth",
       status: "ready",
     });
+  });
+
+  test("does not fall back to an unrelated workspace when cwd is unregistered", () => {
+    const model = buildTuiSurfaceModel({
+      connection: connected,
+      workspaces: [workspace()],
+      cwd: "/tmp/unregistered-thoth-workspace",
+    });
+
+    expect(model.activeRoute).toBe("home");
+    expect(model.activeWorkspace).toMatchObject({
+      id: null,
+      label: "Needs a registered workspace",
+      cwd: "/tmp/unregistered-thoth-workspace",
+      status: "needs-workspace",
+    });
+    expect(model.nextActions).toEqual(
+      expect.arrayContaining([
+        {
+          key: "W",
+          label: "Register workspace",
+          value: "Create daemon workspace for /tmp/unregistered-thoth-workspace",
+          tone: "needs-action",
+        },
+      ]),
+    );
   });
 
   test("treats provider sessions as runtime evidence without claiming frozen tasks", () => {
@@ -310,6 +366,29 @@ describe("buildTuiSurfaceModel", () => {
           value: "No Textual, no old plugin TUI, no hidden LLM API",
           tone: "ready",
         },
+      ]),
+    );
+    expect(model.nextActions).toEqual(
+      expect.arrayContaining([
+        {
+          key: "D",
+          label: "Pair device",
+          value: "Open Connections for direct daemon or fresh relay pairing",
+          tone: "preview",
+        },
+        {
+          key: "R",
+          label: "Refresh",
+          value: "Reload daemon snapshot",
+          tone: "preview",
+        },
+      ]),
+    );
+    expect(model.nextActions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "W",
+        }),
       ]),
     );
   });

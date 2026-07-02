@@ -9,6 +9,7 @@ export interface TuiKeyLike {
 export type TuiKeyIntent =
   | { type: "action"; action: TuiInteractionAction }
   | { type: "refresh" }
+  | { type: "registerWorkspace" }
   | { type: "exit" }
   | { type: "none" };
 
@@ -41,6 +42,12 @@ export function mapTuiKeyToIntent(key: TuiKeyLike): TuiKeyIntent {
       return { type: "action", action: { type: "cycleClarify" } };
     case "l":
       return { type: "action", action: { type: "cycleLoop" } };
+    case "p":
+      return { type: "action", action: { type: "setRoute", route: "providers" } };
+    case "d":
+      return { type: "action", action: { type: "setRoute", route: "connections" } };
+    case "w":
+      return { type: "registerWorkspace" };
     case "r":
       return { type: "refresh" };
     default:

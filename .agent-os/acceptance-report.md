@@ -651,6 +651,46 @@ Current result:
 
 OpenTUI route detail panels now give each major route a richer, product-shaped status explanation while remaining derived from existing daemon/client/provider/agent/refresh inputs. This still does not complete final OpenTUI onboarding, in-TUI workspace registration, provider setup flows, task backend, Clarify runtime, Loop runtime, independent Review runtime, long interactive PTY stress or the full Web/Desktop/OpenTUI UI scorecard.
 
+### `NTH-EV-016` OpenTUI Onboarding Next Actions And Workspace Registration Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add an OpenTUI `Next Actions` surface derived from existing daemon/client state, not from fake local authority.
+2. Make unregistered current `pwd` visible as an onboarding state instead of silently selecting an unrelated workspace.
+3. Add a discoverable `W workspace` key path that registers the current `pwd` through the real daemon workspace RPC and then reloads the daemon snapshot.
+4. Keep provider setup, relay/device pairing and recovery as honest next actions where backend/UI editing paths are not yet implemented in TUI.
+5. Verify compact terminal layout keeps composer Mode/Loop visible after adding next actions.
+
+Evidence:
+
+1. `packages/tui/src/surface.ts` now adds `TuiNextAction` and `nextActions` to the surface model. Actions are derived from connection, workspace readiness, provider readiness, relay paired state, refresh state and current `cwd`.
+2. `packages/tui/src/render.ts` now renders `Next Actions` after the composer, keeping Mode/Clarify/Loop visible before onboarding actions in default and compact frames.
+3. `packages/tui/src/keyboard.ts` maps `W` to workspace registration, `P` to Providers and `D` to Connections / Devices while preserving existing Tab/arrows/Enter/Esc/R/M/C/L/Q behavior.
+4. `packages/cli/src/commands/tui.ts` now handles `W` by calling the existing daemon `createWorkspace({ source: { kind: "directory", path: cwd } })` path, then reloading workspaces, agents and provider snapshots through the same client layer used by refresh.
+5. The TUI workspace selector no longer falls back to the first registered workspace when the current `cwd` is not under any registered workspace. It now shows `Needs a registered workspace` and offers `W: Register workspace`.
+6. Added `npm run smoke:tui:cli:workspace-register`, backed by `scripts/smoke-opentui-cli-workspace-register.sh`. The smoke starts TUI from a temporary directory, auto-triggers workspace registration, verifies `State: Registered workspace`, `Route: Workspace (Ready)`, the temporary path and the workspace detail panel, then archives the temporary workspace.
+7. Temporary workspace cleanup check after the smoke reported `tmpWorkspaceCount: 0`.
+8. `npm run test --workspace=@thoth/tui` passed with 5 files and 26 tests, including the unregistered-`cwd` regression.
+9. `npm run typecheck --workspace=@thoth/tui` passed.
+10. `npm run build --workspace=@thoth/tui` passed.
+11. `npm --workspace=@thoth/cli run typecheck` passed.
+12. `npm run smoke:tui:renderer` passed and showed `Next Actions`, `W: Register workspace`, `P: Provider setup`, composer Mode/Clarify/Loop and the existing authority guard.
+13. `npm run smoke:tui:navigation` passed and showed composer Mode/Loop plus next actions in default `96x34`.
+14. `npm run smoke:tui:cli` passed against real Thoth daemon `127.0.0.1:6688`, showing connected Workspace detail and `D: Pair device`.
+15. `npm run smoke:tui:cli:recovery` passed against unreachable host `127.0.0.1:1`, showing recovery state without fake connected host state.
+16. `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:navigation` passed and kept composer Mode/Loop visible in compact layout.
+17. `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed against `127.0.0.1:6688`.
+18. `npm run smoke:isolation` passed: Paseo remained on `127.0.0.1:6767`, Thoth remained on `127.0.0.1:6688`, and PIDs differed.
+19. `npm run format:check` passed.
+20. `git diff --check` passed.
+21. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+
+Current result:
+
+OpenTUI now has a real onboarding next-action surface and can register the current `pwd` as a workspace from inside `thoth tui` through daemon authority. This still does not complete provider setup editing inside TUI, relay pairing execution inside TUI, task backend, Clarify runtime, Loop runtime, independent Review runtime, long PTY stress or the full Web/Desktop/OpenTUI UI scorecard.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

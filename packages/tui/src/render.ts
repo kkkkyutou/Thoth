@@ -36,7 +36,7 @@ export interface TuiSurfaceMount {
   getModel(): TuiSurfaceModel;
   update(interaction: TuiInteractionState): void;
   updateModel(model: TuiSurfaceModel, interaction?: TuiInteractionState): void;
-  handleKey(key: TuiKeyLike): "handled" | "refresh" | "exit" | "ignored";
+  handleKey(key: TuiKeyLike): "handled" | "refresh" | "registerWorkspace" | "exit" | "ignored";
 }
 
 export function buildTuiSurfaceLines(
@@ -83,6 +83,12 @@ export function buildTuiSurfaceLines(
     { text: "Composer", tone: "title" },
     ...formatComposerControls(interaction),
     blankLine(),
+    { text: "Next Actions", tone: "title" },
+    ...model.nextActions.map((action) => ({
+      text: `- ${action.key}: ${action.label} - ${action.value}`,
+      tone: action.tone,
+    })),
+    blankLine(),
     { text: "Navigation", tone: "title" },
     ...model.navigation.map((item) => formatNavigationItem(item, interaction)),
     blankLine(),
@@ -103,7 +109,7 @@ export function buildTuiSurfaceLines(
       tone: "muted",
     },
     {
-      text: "Keys: Tab/arrows focus, Enter open, Esc back, R refresh, M/C/L controls, Q or Ctrl+C exit.",
+      text: "Keys: Tab/arrows focus, Enter open, Esc back, W workspace, P providers, D devices, R refresh, M/C/L controls, Q or Ctrl+C exit.",
       tone: "muted",
     },
   ];
@@ -171,6 +177,9 @@ export function mountTuiSurface(
       }
       if (intent.type === "refresh") {
         return "refresh";
+      }
+      if (intent.type === "registerWorkspace") {
+        return "registerWorkspace";
       }
       if (intent.type === "exit") {
         return "exit";

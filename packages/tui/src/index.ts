@@ -5,6 +5,7 @@ export {
   type TuiDetailSection,
   type TuiLayout,
   type TuiNavItem,
+  type TuiNextAction,
   type TuiRefreshInput,
   type TuiRefreshState,
   type TuiRouteId,

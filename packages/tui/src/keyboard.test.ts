@@ -38,6 +38,15 @@ describe("mapTuiKeyToIntent", () => {
       type: "action",
       action: { type: "cycleLoop" },
     });
+    expect(mapTuiKeyToIntent({ name: "p" })).toEqual({
+      type: "action",
+      action: { type: "setRoute", route: "providers" },
+    });
+    expect(mapTuiKeyToIntent({ name: "d" })).toEqual({
+      type: "action",
+      action: { type: "setRoute", route: "connections" },
+    });
+    expect(mapTuiKeyToIntent({ name: "w" })).toEqual({ type: "registerWorkspace" });
     expect(mapTuiKeyToIntent({ name: "r" })).toEqual({ type: "refresh" });
   });
 

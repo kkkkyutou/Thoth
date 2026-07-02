@@ -19,11 +19,15 @@ describe("buildTuiSurfaceLines", () => {
     expect(text).toContain("One Thoth - OpenTUI");
     expect(text).toContain("Workspace: Needs a registered workspace");
     expect(text).toContain("Snapshot: Startup snapshot");
+    expect(text).toContain("Next Actions");
+    expect(text).toContain("W: Register workspace");
+    expect(text).toContain("P: Provider setup");
     expect(text).toContain("Active Route Detail");
     expect(text).toContain("One Thoth Home: Needs host");
     expect(text).toContain("+ Images/files <10MB | Provider | Mode Quick/Loop | Clarify | Loop");
     expect(text).toContain("Loop: Off in Quick");
     expect(text).toContain("Keys: Tab/arrows focus");
+    expect(text).toContain("W workspace");
     expect(text).toContain("R refresh");
     expect(text).toContain("Active task: No frozen task yet");
     expect(text).toContain("Authority: daemon/client/protocol state only");
@@ -50,6 +54,8 @@ describe("buildTuiSurfaceLines", () => {
     expect(text).toContain("Refresh: Refresh failed 2026-07-02T12:00:00.000Z");
     expect(text).toContain("Refresh error: Relay closed before handshake completed");
     expect(text).toContain("Recovery: start Thoth daemon on 127.0.0.1:6688");
+    expect(text).toContain("R: Retry snapshot");
+    expect(text).toContain("Host: Start daemon");
     expect(text).not.toContain("Host: Connected");
   });
 

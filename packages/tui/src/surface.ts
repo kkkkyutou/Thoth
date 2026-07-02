@@ -51,6 +51,13 @@ export interface TuiDetailSection {
   lines: TuiDetailLine[];
 }
 
+export interface TuiNextAction {
+  key: string;
+  label: string;
+  value: string;
+  tone: TuiBadgeTone;
+}
+
 export interface TuiRefreshInput {
   status: "loaded" | "failed";
   updatedAt?: string | null;
@@ -99,6 +106,7 @@ export interface TuiSurfaceModel {
   navigation: TuiNavItem[];
   taskSlots: TuiTaskSlot[];
   routeDetails: Record<TuiRouteId, TuiDetailSection>;
+  nextActions: TuiNextAction[];
 }
 
 export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
@@ -185,6 +193,14 @@ export function buildTuiSurfaceModel(input: TuiSurfaceInput): TuiSurfaceModel {
       relayPaired: input.relayPaired === true,
       refresh,
       cwd: input.cwd ?? null,
+    }),
+    nextActions: buildNextActions({
+      connectionChip,
+      workspaceReady,
+      providerReady,
+      relayPaired: input.relayPaired === true,
+      cwd: input.cwd ?? null,
+      refresh,
     }),
   };
 }
@@ -563,6 +579,75 @@ function buildRouteDetails(input: {
   };
 }
 
+function buildNextActions(input: {
+  connectionChip: TuiStatusChip;
+  workspaceReady: boolean;
+  providerReady: boolean;
+  relayPaired: boolean;
+  cwd: string | null;
+  refresh: TuiRefreshState;
+}): TuiNextAction[] {
+  if (input.connectionChip.tone === "unavailable") {
+    return [
+      {
+        key: "R",
+        label: "Retry snapshot",
+        value: "Reconnect to direct daemon or fresh relay offer",
+        tone: "needs-action",
+      },
+      {
+        key: "Host",
+        label: "Start daemon",
+        value: "Use Thoth daemon on 127.0.0.1:6688",
+        tone: "needs-action",
+      },
+    ];
+  }
+
+  const actions: TuiNextAction[] = [];
+  if (!input.workspaceReady) {
+    actions.push({
+      key: "W",
+      label: "Register workspace",
+      value: input.cwd
+        ? `Create daemon workspace for ${input.cwd}`
+        : "Open TUI from a workspace directory",
+      tone: input.connectionChip.tone === "ready" ? "needs-action" : "preview",
+    });
+  }
+  if (!input.providerReady) {
+    actions.push({
+      key: "P",
+      label: "Provider setup",
+      value: "Open Providers and select a model before task loops",
+      tone: "needs-action",
+    });
+  }
+  if (!input.relayPaired) {
+    actions.push({
+      key: "D",
+      label: "Pair device",
+      value: "Open Connections for direct daemon or fresh relay pairing",
+      tone: "preview",
+    });
+  }
+  if (actions.length === 0) {
+    actions.push({
+      key: "M",
+      label: "Choose mode",
+      value: "Use Quick for passthrough or Loop for formal task control",
+      tone: "ready",
+    });
+  }
+  actions.push({
+    key: "R",
+    label: "Refresh",
+    value: input.refresh.error ? "Retry after fixing the recovery item" : "Reload daemon snapshot",
+    tone: input.refresh.error ? "needs-action" : "preview",
+  });
+  return actions;
+}
+
 function selectActiveWorkspace(
   workspaces: readonly ThothWorkspace[],
   selectedWorkspaceId: string | null | undefined,
@@ -587,6 +672,7 @@ function selectActiveWorkspace(
     if (byCwd) {
       return byCwd;
     }
+    return null;
   }
   return workspaces[0] ?? null;
 }

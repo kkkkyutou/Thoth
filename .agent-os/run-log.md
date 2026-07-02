@@ -368,3 +368,16 @@
 - Evidence produced: `npm run format:check`, `git diff --check` and `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
 - State documentation: Recorded `NTH-EV-015` and updated `project-index.md`.
 - Next likely action: Continue `NTH-TD-002` with OpenTUI onboarding/registration recovery, or return to Web/Desktop final surface and strict UI scorecard. The full New Thoth MVP task loop and full multi-endpoint UI productization remain incomplete.
+
+## 2026-07-02 [OpenTUI onboarding workspace registration verified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-004`, `NTH-TD-002`
+- State changes: Added OpenTUI `Next Actions` derived from connection, workspace, provider, relay and refresh state. The actions show workspace registration, provider setup, device pairing and refresh/recovery without inventing task authority.
+- State changes: Added `W workspace`, `P providers` and `D devices` key paths. `W` is handled in the CLI/client layer and calls the real daemon `workspace.create.request` for the current `pwd`, then reloads the same daemon snapshot used by refresh.
+- State changes: Fixed an important workspace selection bug: when `thoth tui` is launched from an unregistered `cwd`, the surface no longer falls back to the first unrelated registered workspace. It now stays on Home / needs-workspace and offers registration.
+- Evidence produced: `npm run test --workspace=@thoth/tui` passed with 5 files and 26 tests. `npm run typecheck --workspace=@thoth/tui`, `npm run build --workspace=@thoth/tui` and `npm --workspace=@thoth/cli run typecheck` passed.
+- Evidence produced: `npm run smoke:tui:renderer`, `npm run smoke:tui:navigation`, `npm run smoke:tui:cli`, `npm run smoke:tui:cli:recovery` and `npm run smoke:tui:cli:workspace-register` passed. The workspace-register smoke created a temporary workspace from inside TUI, showed `State: Registered workspace`, then archived the temporary workspace.
+- Evidence produced: A post-smoke active workspace check found `tmpWorkspaceCount: 0`. Compact `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 npm run smoke:tui:navigation` and compact `THOTH_TUI_SMOKE_WIDTH=72 THOTH_TUI_SMOKE_HEIGHT=34 bash scripts/smoke-opentui-cli.sh` passed. `npm run smoke:isolation` passed with Paseo on `6767` and Thoth on `6688` with different PIDs.
+- Evidence produced: `npm run format:check`, `git diff --check` and `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+- State documentation: Recorded `NTH-EV-016` and updated `project-index.md`.
+- Next likely action: Continue `NTH-TD-002` by adding provider setup and relay pairing actions to OpenTUI, or return to Web/Desktop final surface and strict UI scorecard. The full New Thoth MVP task loop and full multi-endpoint UI productization remain incomplete.

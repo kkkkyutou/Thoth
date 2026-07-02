@@ -38,6 +38,7 @@ assert.match(plain, /Active Route Detail/);
 assert.match(plain, /One Thoth Home: Needs host/);
 assert.match(plain, /Next step: Register\/connect this workspace before task loops/);
 assert.match(plain, /R refresh/);
+assert.match(plain, /W workspace/);
 assert.match(plain, /Workspace: Needs a registered workspace/);
 assert.match(plain, /daemon\/client\/protocol state only/);
 assert.doesNotMatch(plain, /Host: Connected/);

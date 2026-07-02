@@ -26,6 +26,9 @@ try {
   assert.match(frame, /OpenTUI/);
   assert.match(frame, /Workspace/);
   assert.match(frame, /Provider/);
+  assert.match(frame, /Next Actions/);
+  assert.match(frame, /W: Register workspace/);
+  assert.match(frame, /P: Provider setup/);
   assert.match(frame, /Active Route Detail/);
   assert.match(frame, /One Thoth Home/);
   assert.match(frame, /Next step: Register\/connect this workspace before task loops/);

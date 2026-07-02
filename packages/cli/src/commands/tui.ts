@@ -17,6 +17,7 @@ export interface TuiCommandOptions extends ConnectOptions {
   width?: string;
   height?: string;
   refreshAfterRenderMs?: string;
+  registerWorkspaceAfterRenderMs?: string;
   printFinalFrame?: boolean;
 }
 
@@ -33,6 +34,10 @@ export function addTuiOptions(cmd: Command): Command {
     .option(
       "--refresh-after-render-ms <ms>",
       "Refresh the live daemon snapshot after a short delay for CLI smoke tests",
+    )
+    .option(
+      "--register-workspace-after-render-ms <ms>",
+      "Register the current pwd after a short delay for CLI smoke tests",
     )
     .option("--print-final-frame", "Print a plain-text final frame after renderer shutdown");
 }
@@ -59,6 +64,10 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     options.refreshAfterRenderMs,
     "--refresh-after-render-ms",
   );
+  const registerWorkspaceAfterRenderMs = parseOptionalNonNegativeInteger(
+    options.registerWorkspaceAfterRenderMs,
+    "--register-workspace-after-render-ms",
+  );
 
   let resolveExit!: () => void;
   const exited = new Promise<void>((resolve) => {
@@ -75,6 +84,7 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
 
   const mount = mountTuiSurface(renderer, model);
   let refreshInFlight = false;
+  let workspaceRegistrationInFlight = false;
 
   async function refreshSurface(): Promise<void> {
     if (refreshInFlight) {
@@ -104,6 +114,72 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     }
   }
 
+  async function registerCurrentWorkspace(): Promise<void> {
+    if (workspaceRegistrationInFlight) {
+      mount.update({
+        ...mount.getInteraction(),
+        notice: "Workspace registration already running",
+      });
+      return;
+    }
+    if (mount.getModel().activeWorkspace.status === "ready") {
+      mount.update({
+        ...mount.getInteraction(),
+        notice: "Current workspace is already registered",
+      });
+      return;
+    }
+    if (!cwd) {
+      mount.update({
+        ...mount.getInteraction(),
+        notice: "Open Thoth TUI from a workspace directory first",
+      });
+      return;
+    }
+
+    workspaceRegistrationInFlight = true;
+    mount.update({
+      ...mount.getInteraction(),
+      notice: "Registering current pwd as a Thoth workspace...",
+    });
+    let client: Awaited<ReturnType<typeof connectToDaemon>> | null = null;
+    try {
+      client = await connectToDaemon({ host: options.host, timeout: options.timeout ?? 5000 });
+      const created = await client.createWorkspace({
+        source: { kind: "directory", path: cwd },
+      });
+      if (!created.workspace || created.error) {
+        mount.update({
+          ...mount.getInteraction(),
+          notice: `Workspace registration failed: ${created.error ?? "daemon returned no workspace"}`,
+        });
+        return;
+      }
+
+      const nextInput = await loadTuiSurfaceInput(options, cwd, { terminalWidth, terminalHeight });
+      const nextModel = buildTuiSurfaceModel(nextInput);
+      const label =
+        created.workspace.projectDisplayName || created.workspace.name || created.workspace.id;
+      mount.updateModel(nextModel, {
+        ...mount.getInteraction(),
+        activeRoute: "workspace",
+        focus: { kind: "nav", route: "workspace" },
+        notice: `Registered workspace ${label}`,
+      });
+    } catch (error) {
+      const message = redactTuiConnectionMessage(
+        error instanceof Error ? error.message : String(error),
+      );
+      mount.update({
+        ...mount.getInteraction(),
+        notice: `Workspace registration failed: ${message}`,
+      });
+    } finally {
+      workspaceRegistrationInFlight = false;
+      await client?.close().catch(() => {});
+    }
+  }
+
   renderer.keyInput.on("keypress", (key: { name?: string; ctrl?: boolean; shift?: boolean }) => {
     const result = mount.handleKey(key);
     if (result === "exit") {
@@ -111,6 +187,9 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     }
     if (result === "refresh") {
       void refreshSurface();
+    }
+    if (result === "registerWorkspace") {
+      void registerCurrentWorkspace();
     }
   });
 
@@ -126,6 +205,11 @@ export async function runTuiCommand(options: TuiCommandOptions): Promise<void> {
     setTimeout(() => {
       void refreshSurface();
     }, refreshAfterRenderMs).unref();
+  }
+  if (registerWorkspaceAfterRenderMs !== undefined) {
+    setTimeout(() => {
+      void registerCurrentWorkspace();
+    }, registerWorkspaceAfterRenderMs).unref();
   }
 
   await exited;

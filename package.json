@@ -32,6 +32,7 @@
     "smoke:tui:navigation": "npm run build --workspace=@thoth/tui && npm exec --yes --package=node-linux-x64@26.4.0 -- node --experimental-ffi scripts/smoke-opentui-navigation.mjs",
     "smoke:tui:cli": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli.sh",
     "smoke:tui:cli:recovery": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli-recovery.sh",
+    "smoke:tui:cli:workspace-register": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli-workspace-register.sh",
     "loadtest:relay:local": "node scripts/loadtest-relay-local.mjs",
     "build:foundation": "npm run build:highlight && npm run build:relay && npm run build:protocol && npm run build:client",
     "typecheck:highlight": "npm --prefix packages/app/highlight run typecheck",
