@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type pino from "pino";
 import { startRelayTransport } from "./relay-transport";
+import type { RelayRegistrationMessage } from "./relay-credentials";
 
 function createMockLogger() {
   const messages: { level: "debug" | "info" | "warn" | "error"; args: unknown[] }[] = [];
@@ -16,6 +17,21 @@ function createMockLogger() {
 }
 
 type TestLogger = ReturnType<typeof createMockLogger>;
+
+const TEST_SERVER_TOKEN = "rst_test_token_abcdefghijklmnopqrstuvwxyz";
+
+function createRegistrationMessage(
+  overrides: Partial<RelayRegistrationMessage> = {},
+): RelayRegistrationMessage {
+  return {
+    type: "register",
+    serverTokenHash: "server-token-hash",
+    pairingTokenHash: null,
+    pairingExpiresAt: null,
+    deviceTokenHashes: [],
+    ...overrides,
+  };
+}
 
 function hasLogMessage(logger: TestLogger, level: "info" | "warn", message: string): boolean {
   return logger.messages.some((entry) => {
@@ -138,6 +154,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.thoth.seeles.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
+      serverToken: TEST_SERVER_TOKEN,
+      getRegistrationMessage: () => createRegistrationMessage(),
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -146,11 +164,81 @@ describe("relay-transport control lifecycle", () => {
     expect(control).toBeDefined();
 
     control.open();
+    expect(control.sent.map((entry) => JSON.parse(String(entry)))).toContainEqual(
+      createRegistrationMessage(),
+    );
     expect(hasLogMessage(logger, "info", "relay_control_connected")).toBe(false);
     expect(control.pingCalls).toBeGreaterThan(0);
 
     control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
     expect(hasLogMessage(logger, "info", "relay_control_connected")).toBe(true);
+  });
+
+  test("refreshRegistration sends the latest registration over an open control socket", () => {
+    const logger = createMockLogger();
+    let registration = createRegistrationMessage();
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "relay.thoth.seeles.ai:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      serverToken: TEST_SERVER_TOKEN,
+      getRegistrationMessage: () => registration,
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+
+    registration = createRegistrationMessage({
+      pairingTokenHash: "pairing-token-hash",
+      pairingExpiresAt: "2026-07-02T00:15:00.000Z",
+      deviceTokenHashes: ["device-token-hash"],
+    });
+    controller.refreshRegistration();
+
+    expect(control.sent.map((entry) => JSON.parse(String(entry)))).toEqual([
+      createRegistrationMessage(),
+      registration,
+    ]);
+    expect(hasLogMessage(logger, "info", "relay_registration_sent")).toBe(true);
+  });
+
+  test("sends registration updates from the credentials change listener", () => {
+    const logger = createMockLogger();
+    let listener: ((message: RelayRegistrationMessage) => void) | null = null;
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "relay.thoth.seeles.ai:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      serverToken: TEST_SERVER_TOKEN,
+      getRegistrationMessage: () => createRegistrationMessage(),
+      onRegistrationChanged: (handler) => {
+        listener = handler;
+        return () => {
+          listener = null;
+        };
+      },
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    const update = createRegistrationMessage({
+      pairingTokenHash: "changed-pairing-token-hash",
+      pairingExpiresAt: "2026-07-02T00:20:00.000Z",
+    });
+    listener?.(update);
+
+    expect(control.sent.map((entry) => JSON.parse(String(entry)))).toEqual([
+      createRegistrationMessage(),
+      update,
+    ]);
   });
 
   test("terminates and reconnects when control socket opens but never becomes ready", () => {
@@ -162,6 +250,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.thoth.seeles.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
+      serverToken: TEST_SERVER_TOKEN,
+      getRegistrationMessage: () => createRegistrationMessage(),
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -186,6 +276,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.thoth.seeles.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
+      serverToken: TEST_SERVER_TOKEN,
+      getRegistrationMessage: () => createRegistrationMessage(),
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -214,6 +306,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.thoth.seeles.ai:443",
       relayUseTls: true,
       serverId: "srv_test",
+      serverToken: TEST_SERVER_TOKEN,
+      getRegistrationMessage: () => createRegistrationMessage(),
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -247,6 +341,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "[::1]:443",
       relayUseTls: true,
       serverId: "srv_test",
+      serverToken: TEST_SERVER_TOKEN,
+      getRegistrationMessage: () => createRegistrationMessage(),
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);

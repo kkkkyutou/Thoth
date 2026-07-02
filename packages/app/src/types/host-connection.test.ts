@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeRelayCredentialStatus,
+  getRelayCredentialStatus,
   normalizeStoredHostProfile,
   orderHostsLocalFirst,
+  type HostConnection,
   type HostProfile,
 } from "./host-connection";
 
@@ -87,6 +90,7 @@ describe("normalizeStoredHostProfile", () => {
       id: "relay:relay.example.com:80",
       type: "relay",
       relayEndpoint: "relay.example.com:80",
+      relayProtocolVersion: 3,
       daemonPublicKeyB64: "pubkey",
     });
   });
@@ -110,7 +114,62 @@ describe("normalizeStoredHostProfile", () => {
       type: "relay",
       relayEndpoint: "relay.example.com:443",
       useTls: true,
+      relayProtocolVersion: 3,
       daemonPublicKeyB64: "pubkey",
     });
+  });
+});
+
+describe("getRelayCredentialStatus", () => {
+  const nowMs = Date.parse("2026-07-02T00:00:00.000Z");
+
+  function relay(overrides?: Partial<Extract<HostConnection, { type: "relay" }>>): HostConnection {
+    return {
+      id: "relay:wss:relay.test.thoth.seeles.ai:443",
+      type: "relay",
+      relayEndpoint: "relay.test.thoth.seeles.ai:443",
+      useTls: true,
+      daemonPublicKeyB64: "pubkey",
+      relayToken: "rdt_valid",
+      relayTokenExpiresAt: "2026-07-03T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("accepts relay credentials with a future expiry", () => {
+    expect(getRelayCredentialStatus(relay(), nowMs)).toEqual({ ok: true });
+  });
+
+  it("marks relay credentials missing when the token is absent", () => {
+    const status = getRelayCredentialStatus(relay({ relayToken: "" }), nowMs);
+
+    expect(status).toEqual({ ok: false, reason: "missing" });
+    expect(describeRelayCredentialStatus(status)).toBe(
+      "Relay credentials missing. Pair this host again.",
+    );
+  });
+
+  it("marks relay credentials expired at or after expiry", () => {
+    const status = getRelayCredentialStatus(
+      relay({ relayTokenExpiresAt: "2026-07-01T23:59:59.000Z" }),
+      nowMs,
+    );
+
+    expect(status).toEqual({ ok: false, reason: "expired" });
+    expect(describeRelayCredentialStatus(status)).toBe(
+      "Relay credentials expired. Pair this host again.",
+    );
+  });
+
+  it("falls back to pairing expiry for legacy relay entries", () => {
+    expect(
+      getRelayCredentialStatus(
+        relay({
+          relayTokenExpiresAt: "",
+          pairingExpiresAt: "2026-07-02T00:01:00.000Z",
+        }),
+        nowMs,
+      ),
+    ).toEqual({ ok: true });
   });
 });

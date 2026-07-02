@@ -1652,6 +1652,7 @@ export const zhCN: TranslationResources = {
         removeErrorTitle: "错误",
         removeErrorMessage: "无法移除连接",
         timeout: "超时",
+        pairAgain: "重新配对",
       },
       pairDevices: {
         title: "配对设备",

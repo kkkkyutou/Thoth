@@ -36,6 +36,8 @@ export type HostConnection =
   | DirectPipeHostConnection
   | RelayHostConnection;
 
+export type RelayCredentialStatus = { ok: true } | { ok: false; reason: "missing" | "expired" };
+
 export type HostLifecycle = Record<string, never>;
 
 export interface HostProfile {
@@ -50,6 +52,43 @@ export interface HostProfile {
 
 export function defaultLifecycle(): HostLifecycle {
   return {};
+}
+
+export function getRelayCredentialStatus(
+  connection: HostConnection,
+  nowMs = Date.now(),
+): RelayCredentialStatus {
+  if (connection.type !== "relay") {
+    return { ok: true };
+  }
+
+  const relayToken = connection.relayToken?.trim() ?? "";
+  if (!relayToken) {
+    return { ok: false, reason: "missing" };
+  }
+
+  const relayTokenExpiresAt = connection.relayTokenExpiresAt?.trim() ?? "";
+  const pairingExpiresAt = connection.pairingExpiresAt?.trim() ?? "";
+  const expiresAt = relayTokenExpiresAt || pairingExpiresAt;
+  if (!expiresAt) {
+    return { ok: false, reason: "missing" };
+  }
+
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+    return { ok: false, reason: "expired" };
+  }
+
+  return { ok: true };
+}
+
+export function describeRelayCredentialStatus(status: RelayCredentialStatus): string | null {
+  if (status.ok) {
+    return null;
+  }
+  return status.reason === "expired"
+    ? "Relay credentials expired. Pair this host again."
+    : "Relay credentials missing. Pair this host again.";
 }
 
 export function normalizeHostLabel(value: string | null | undefined, serverId: string): string {

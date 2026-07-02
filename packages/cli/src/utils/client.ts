@@ -3,6 +3,7 @@ import { loadConfig, resolveThothHome } from "@thoth/daemon";
 import {
   DEFAULT_DIRECT_DAEMON_ENDPOINT,
   buildDaemonWebSocketUrl,
+  buildRelayWebSocketProtocols,
   buildRelayWebSocketUrl,
   normalizeHostPort,
   parseConnectionUri,
@@ -306,6 +307,7 @@ async function connectViaRelayOffer(
       target: string,
       config?: { headers?: Record<string, string>; protocols?: string[] },
     ) => nodeWebSocketFactory(target, { headers: config?.headers, protocols: config?.protocols }),
+    protocols: buildRelayWebSocketProtocols(offer.pairingToken),
     e2ee: { enabled: true, daemonPublicKeyB64: offer.daemonPublicKeyB64 },
     reconnect: { enabled: false },
   });

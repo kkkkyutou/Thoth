@@ -99,11 +99,11 @@ export default defineConfig({
       },
       {
         find: /^@xterm\/addon-ligatures\/lib\/addon-ligatures\.mjs$/,
-        replacement: path.resolve(__dirname, "test-stubs/xterm-addon-ligatures.ts"),
+        replacement: path.resolve(__dirname, "src/terminal/runtime/xterm-addon-ligatures-stub.ts"),
       },
       {
         find: /^@xterm\/addon-ligatures$/,
-        replacement: path.resolve(__dirname, "test-stubs/xterm-addon-ligatures.ts"),
+        replacement: path.resolve(__dirname, "src/terminal/runtime/xterm-addon-ligatures-stub.ts"),
       },
     ],
   },

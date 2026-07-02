@@ -40,6 +40,7 @@ function makeSubsystem(overrides: {
   daemonRuntimeConfig?: DaemonRuntimeConfig;
   listProviderAvailability?: () => Promise<ProviderAvailability[]>;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  refreshRelayRegistration?: () => void;
 }) {
   const emitted: SessionOutboundMessage[] = [];
   const restartIntents: Parameters<DaemonSessionHost["emitLifecycleIntent"]>[0][] = [];
@@ -60,6 +61,7 @@ function makeSubsystem(overrides: {
     listWorkspaces: async () => [],
     listProviderAvailability: overrides.listProviderAvailability ?? (async () => []),
     getWebSocketRuntimeMetrics: overrides.getWebSocketRuntimeMetrics,
+    refreshRelayRegistration: overrides.refreshRelayRegistration,
     logger: pino({ level: "silent" }),
   });
   return { subsystem, emitted, thothHome, restartIntents };
@@ -158,6 +160,7 @@ describe("DaemonSession", () => {
   });
 
   test("pairing offer mints a real connection URL when relay is enabled", async () => {
+    let refreshCalls = 0;
     const { subsystem, emitted } = makeSubsystem({
       daemonRuntimeConfig: {
         listen: "127.0.0.1:6767",
@@ -169,6 +172,9 @@ describe("DaemonSession", () => {
           useTls: true,
           publicUseTls: true,
         },
+      },
+      refreshRelayRegistration: () => {
+        refreshCalls += 1;
       },
     });
 
@@ -187,6 +193,7 @@ describe("DaemonSession", () => {
     expect(message.payload.relayEnabled).toBe(true);
     expect(message.payload.url.startsWith("https://app.example.test")).toBe(true);
     expect(typeof message.payload.qr).toBe("string");
+    expect(refreshCalls).toBe(1);
   });
 
   test("diagnostics includes a log tail and redacts connection secrets", async () => {

@@ -143,6 +143,8 @@ describe("test-daemon-connection connectToDaemon", () => {
         relayEndpoint: "[::1]:443",
         useTls: true,
         daemonPublicKeyB64: "pubkey",
+        relayToken: "rdt_valid",
+        relayTokenExpiresAt: "2099-01-01T00:00:00.000Z",
       },
       { serverId: "srv_probe_test" },
       probe.deps,
@@ -156,6 +158,8 @@ describe("test-daemon-connection connectToDaemon", () => {
         relayEndpoint: "relay.thoth.seeles.ai:443",
         useTls: false,
         daemonPublicKeyB64: "pubkey",
+        relayToken: "rdt_valid",
+        relayTokenExpiresAt: "2099-01-01T00:00:00.000Z",
       },
       { serverId: "srv_probe_test" },
       probe.deps,
@@ -163,7 +167,29 @@ describe("test-daemon-connection connectToDaemon", () => {
     await plainResult.client.close();
 
     expect(probe.createdConfigs()[0]?.url).toMatch(/^wss:\/\/\[::1\]\/ws\?/);
-    expect(probe.createdConfigs()[1]?.url).toMatch(/^ws:\/\/relay\.thoth\.sh:443\/ws\?/);
+    expect(probe.createdConfigs()[1]?.url).toMatch(/^ws:\/\/relay\.thoth\.seeles\.ai:443\/ws\?/);
+  });
+
+  it("rejects expired relay credentials before opening a websocket", async () => {
+    const { connectToDaemon } = await import("./test-daemon-connection");
+
+    await expect(
+      connectToDaemon(
+        {
+          id: "relay:wss:relay.test.thoth.seeles.ai:443",
+          type: "relay",
+          relayEndpoint: "relay.test.thoth.seeles.ai:443",
+          useTls: true,
+          daemonPublicKeyB64: "pubkey",
+          relayToken: "rdt_expired",
+          relayTokenExpiresAt: "2000-01-01T00:00:00.000Z",
+        },
+        { serverId: "srv_probe_test" },
+        probe.deps,
+      ),
+    ).rejects.toThrow("Relay credentials expired. Pair this host again.");
+
+    expect(probe.createdClients).toHaveLength(0);
   });
 
   it("surfaces auth rejection as an incorrect password", async () => {

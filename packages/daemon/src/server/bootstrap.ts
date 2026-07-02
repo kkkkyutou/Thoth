@@ -1231,6 +1231,7 @@ export async function createThothDaemon(
               },
               serviceProxyPublicBaseUrl,
               relayCredentials,
+              () => relayTransport?.refreshRegistration(),
             );
 
             if (relayEnabled) {

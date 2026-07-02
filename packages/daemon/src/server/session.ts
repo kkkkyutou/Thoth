@@ -472,6 +472,7 @@ export interface SessionOptions {
   daemonRuntimeConfig?: DaemonRuntimeConfig;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
   relayCredentials?: RelayCredentialsManager;
+  refreshRelayRegistration?: () => void;
 }
 
 export type SessionLifecycleIntent =
@@ -794,6 +795,7 @@ export class Session {
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
       relayCredentials: options.relayCredentials,
+      refreshRelayRegistration: options.refreshRelayRegistration,
       listProviderAvailability: () => this.agentManager.listProviderAvailability(),
       listAgents: () => this.agentManager.listAgents(),
       listProjects: () => this.projectRegistry.list(),

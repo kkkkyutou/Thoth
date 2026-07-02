@@ -439,6 +439,7 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
   private readonly providerUsageService: ProviderUsageService;
   private readonly relayCredentials: RelayCredentialsManager | null;
+  private readonly refreshRelayRegistration: (() => void) | null;
   private unsubscribeTerminalActivity: (() => void) | null = null;
 
   constructor(
@@ -494,6 +495,7 @@ export class VoiceAssistantWebSocketServer {
     },
     serviceProxyPublicBaseUrl?: string | null,
     relayCredentials?: RelayCredentialsManager | null,
+    refreshRelayRegistration?: (() => void) | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.serverId = serverId;
@@ -570,6 +572,7 @@ export class VoiceAssistantWebSocketServer {
       logger: this.logger,
     });
     this.relayCredentials = relayCredentials ?? null;
+    this.refreshRelayRegistration = refreshRelayRegistration ?? null;
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
     this.startRuntimeMetricsInterval();
@@ -1042,6 +1045,7 @@ export class VoiceAssistantWebSocketServer {
       daemonRuntimeConfig: this.daemonRuntimeConfig,
       getWebSocketRuntimeMetrics: () => this.lastRuntimeMetricsSnapshot,
       relayCredentials: this.relayCredentials ?? undefined,
+      refreshRelayRegistration: this.refreshRelayRegistration ?? undefined,
     });
 
     connection = {

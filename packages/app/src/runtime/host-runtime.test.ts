@@ -223,6 +223,8 @@ function makeHost(input?: Partial<HostProfile>): HostProfile {
     type: "relay",
     relayEndpoint: "relay.thoth.seeles.ai:443",
     daemonPublicKeyB64: "pk_test",
+    relayToken: "rdt_valid",
+    relayTokenExpiresAt: "2099-01-01T00:00:00.000Z",
   };
 
   return {
@@ -238,13 +240,16 @@ function makeHost(input?: Partial<HostProfile>): HostProfile {
 
 function makeOffer(input?: Partial<ConnectionOffer>): ConnectionOffer {
   return {
-    v: 2,
+    v: 3,
     serverId: input?.serverId ?? "srv_offer",
     daemonPublicKeyB64: input?.daemonPublicKeyB64 ?? "pk_test_offer",
     relay: {
       endpoint: input?.relay?.endpoint ?? "relay.thoth.seeles.ai:443",
       useTls: input?.relay?.useTls ?? false,
+      protocolVersion: 3,
     },
+    pairingToken: input?.pairingToken ?? "rpt_valid_pairing_token_abcdefghijklmnopqrstuvwxyz",
+    pairingExpiresAt: input?.pairingExpiresAt ?? "2099-01-01T00:00:00.000Z",
   };
 }
 
@@ -350,6 +355,8 @@ describe("HostRuntimeController", () => {
       relayEndpoint: "relay.thoth.seeles.ai:443",
       useTls: true,
       daemonPublicKeyB64: "pk_old",
+      relayToken: "rdt_valid",
+      relayTokenExpiresAt: "2099-01-01T00:00:00.000Z",
     };
     const newRelay: HostConnection = {
       ...oldRelay,
@@ -1036,6 +1043,8 @@ describe("HostRuntimeController", () => {
           type: "relay",
           relayEndpoint: "relay.thoth.seeles.ai:443",
           daemonPublicKeyB64: "pk_test",
+          relayToken: "rdt_valid",
+          relayTokenExpiresAt: "2099-01-01T00:00:00.000Z",
         },
       ],
     });
@@ -1694,6 +1703,54 @@ describe("HostRuntimeStore", () => {
     });
   });
 
+  it("marks expired relay credentials unavailable without probing the network", async () => {
+    const host = makeHost({
+      connections: [
+        {
+          id: "relay:wss:relay.test.thoth.seeles.ai:443",
+          type: "relay",
+          relayEndpoint: "relay.test.thoth.seeles.ai:443",
+          useTls: true,
+          daemonPublicKeyB64: "pk_test",
+          relayToken: "rdt_expired",
+          relayTokenExpiresAt: "2000-01-01T00:00:00.000Z",
+        },
+      ],
+      preferredConnectionId: "relay:wss:relay.test.thoth.seeles.ai:443",
+    });
+    let probeCalls = 0;
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => {
+          throw new Error("create client should not be called");
+        },
+        connectToDaemon: async () => {
+          probeCalls += 1;
+          throw new Error("probe should not be called");
+        },
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    store.syncHosts([host]);
+    let snapshot = store.getSnapshot(host.serverId);
+    const timeoutAt = Date.now() + 100;
+    while (
+      snapshot?.probeByConnectionId.get("relay:wss:relay.test.thoth.seeles.ai:443")?.status !==
+        "unavailable" &&
+      Date.now() < timeoutAt
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      snapshot = store.getSnapshot(host.serverId);
+    }
+
+    expect(probeCalls).toBe(0);
+    expect(snapshot?.probeByConnectionId.get("relay:wss:relay.test.thoth.seeles.ai:443")).toEqual({
+      status: "unavailable",
+      latencyMs: null,
+    });
+  });
+
   it("renameHost updates label in memory", async () => {
     const store = new HostRuntimeStore({
       deps: {
@@ -1891,6 +1948,10 @@ describe("HostRuntimeStore", () => {
         type: "relay",
         relayEndpoint: "relay.example.com:443",
         useTls: true,
+        relayProtocolVersion: 3,
+        relayToken: "rpt_valid_pairing_token_abcdefghijklmnopqrstuvwxyz",
+        relayTokenExpiresAt: "2099-01-01T00:00:00.000Z",
+        pairingExpiresAt: "2099-01-01T00:00:00.000Z",
         daemonPublicKeyB64: "pk_test_offer",
       },
     ]);
@@ -1898,7 +1959,7 @@ describe("HostRuntimeStore", () => {
     store.syncHosts([]);
   });
 
-  it("uses TLS for old pairing URLs that omit relay TLS on port 443", async () => {
+  it("uses TLS for v3 pairing URLs that omit relay TLS on port 443", async () => {
     const store = new HostRuntimeStore({
       deps: {
         createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
@@ -1911,10 +1972,12 @@ describe("HostRuntimeStore", () => {
       },
     });
     const oldPairingUrl = encodeOfferUrl({
-      v: 2,
+      v: 3,
       serverId: "srv_offer",
       daemonPublicKeyB64: "pk_test_offer",
-      relay: { endpoint: "relay.thoth.seeles.ai:443" },
+      relay: { endpoint: "relay.thoth.seeles.ai:443", protocolVersion: 3 },
+      pairingToken: "rpt_valid_pairing_token_abcdefghijklmnopqrstuvwxyz",
+      pairingExpiresAt: "2099-01-01T00:00:00.000Z",
     });
 
     await store.upsertConnectionFromOfferUrl(oldPairingUrl, "old relay");
@@ -1926,6 +1989,10 @@ describe("HostRuntimeStore", () => {
         type: "relay",
         relayEndpoint: "relay.thoth.seeles.ai:443",
         useTls: true,
+        relayProtocolVersion: 3,
+        relayToken: "rpt_valid_pairing_token_abcdefghijklmnopqrstuvwxyz",
+        relayTokenExpiresAt: "2099-01-01T00:00:00.000Z",
+        pairingExpiresAt: "2099-01-01T00:00:00.000Z",
         daemonPublicKeyB64: "pk_test_offer",
       },
     ]);

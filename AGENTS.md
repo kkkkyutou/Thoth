@@ -37,7 +37,7 @@
 ## 3. Current Truth
 
 1. 项目名：New Thoth。
-2. 当前分支：`port/from-old-thoth-plugin`。
+2. 当前分支：`agent/dev/ui`。
 3. 技术方向：TypeScript / Node，npm workspaces，`packages/` monorepo。
 4. Node/npm：Node `24.14.0`，npm `11.9.0`。
 5. License：`AGPL-3.0-or-later`。

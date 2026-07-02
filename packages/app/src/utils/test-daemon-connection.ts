@@ -1,6 +1,7 @@
 import { DaemonClient } from "@thoth/client/internal/daemon-client";
 import type { DaemonClientConfig } from "@thoth/client/internal/daemon-client";
 import type { HostConnection } from "@/types/host-connection";
+import { describeRelayCredentialStatus, getRelayCredentialStatus } from "@/types/host-connection";
 import { getOrCreateClientId } from "./client-id";
 import { resolveAppVersion } from "./app-version";
 import {
@@ -137,6 +138,12 @@ export async function buildClientConfig(
 
   if (!serverId) {
     throw new Error("serverId is required to probe a relay connection");
+  }
+  const relayCredentialStatus = getRelayCredentialStatus(connection);
+  if (!relayCredentialStatus.ok) {
+    throw new Error(
+      describeRelayCredentialStatus(relayCredentialStatus) ?? "Relay credentials are unavailable.",
+    );
   }
 
   return {

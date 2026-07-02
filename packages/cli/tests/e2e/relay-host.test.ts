@@ -4,9 +4,12 @@ import { createRequire } from "node:module";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildRelayWebSocketUrl } from "@thoth/protocol/daemon-endpoints";
+import {
+  buildRelayWebSocketProtocols,
+  buildRelayWebSocketUrl,
+  shouldUseTlsForDefaultHostedRelay,
+} from "@thoth/protocol/daemon-endpoints";
 import { parseConnectionOfferFromUrl } from "@thoth/protocol/connection-offer";
-import { generateLocalPairingOffer } from "@thoth/daemon";
 import { DaemonClient } from "@thoth/client/internal/daemon-client";
 import { WebSocket } from "ws";
 import { getAvailablePort } from "../helpers/network.ts";
@@ -14,7 +17,7 @@ import { createE2ETestContext } from "../helpers/test-daemon.ts";
 
 const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
 const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
-const wranglerCliPath = createRequire(import.meta.url).resolve("wrangler/bin/wrangler.js");
+const wranglerCliPath = createRequire(import.meta.url).resolve("wrangler");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const relayDir = path.resolve(__dirname, "../../../relay");
 const STARTUP_HOOK_TIMEOUT_MS = 120_000;
@@ -124,16 +127,21 @@ async function probeRelayConnection(offerUrl: string): Promise<boolean> {
     endpoint: offer.relay.endpoint,
     serverId: offer.serverId,
     role: "client",
+    useTls: offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint),
   });
   const client = new DaemonClient({
     url,
     clientId: `relay-probe-${Date.now()}`,
     clientType: "cli",
     connectTimeoutMs: 4000,
+    protocols: buildRelayWebSocketProtocols(offer.pairingToken),
     e2ee: { enabled: true, daemonPublicKeyB64: offer.daemonPublicKeyB64 },
     reconnect: { enabled: false },
-    webSocketFactory: (target: string, opts?: { headers?: Record<string, string> }) =>
-      new WebSocket(target, { headers: opts?.headers }) as unknown as ReturnType<
+    webSocketFactory: (
+      target: string,
+      opts?: { headers?: Record<string, string>; protocols?: string[] },
+    ) =>
+      new WebSocket(target, opts?.protocols, { headers: opts?.headers }) as unknown as ReturnType<
         NonNullable<ConstructorParameters<typeof DaemonClient>[0]["webSocketFactory"]>
       >,
   });
@@ -186,15 +194,13 @@ async function waitForDaemonRelayRegistered(offerUrl: string, timeoutMs = 30_000
       },
     });
 
-    const offer = await generateLocalPairingOffer({
-      thothHome: ctx.thothHome,
-      relayEnabled: true,
-      relayEndpoint,
-      relayPublicEndpoint: relayEndpoint,
-      includeQr: false,
-    });
-    if (!offer.url) throw new Error("generateLocalPairingOffer returned no URL");
-    offerUrl = offer.url;
+    const pair = await ctx.thoth(["daemon", "pair", "--json"], { timeout: 30_000 });
+    if (pair.exitCode !== 0) {
+      throw new Error(`daemon pair failed: ${pair.stderr}\nstdout: ${pair.stdout}`);
+    }
+    const parsedPair = JSON.parse(pair.stdout.trim()) as { url?: string | null };
+    if (!parsedPair.url) throw new Error("daemon pair returned no URL");
+    offerUrl = parsedPair.url;
 
     await waitForDaemonRelayRegistered(offerUrl, 30_000);
   }, STARTUP_HOOK_TIMEOUT_MS);

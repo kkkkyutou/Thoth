@@ -14,6 +14,10 @@ const customWebPlatform = (process.env.THOTH_WEB_PLATFORM ?? "")
 
 const config = getDefaultConfig(projectRoot);
 const defaultResolveRequest = config.resolver.resolveRequest ?? resolve;
+const xtermLigaturesStubPath = path.resolve(
+  projectRoot,
+  "src/terminal/runtime/xterm-addon-ligatures-stub.ts",
+);
 const escapedAppSrcRoot = appSrcRoot
   .split(path.sep)
   .map((segment) => segment.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&"))
@@ -66,6 +70,16 @@ function resolveWithCustomWebOverlay(context, moduleName, platform) {
 }
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    platform === "web" &&
+    /^@xterm\/addon-ligatures(?:\/lib\/addon-ligatures\.mjs)?$/.test(moduleName)
+  ) {
+    return {
+      type: "sourceFile",
+      filePath: xtermLigaturesStubPath,
+    };
+  }
+
   const origin = context.originModulePath;
   if (origin && origin.startsWith(relaySrcRoot) && moduleName.endsWith(".js")) {
     const tsModuleName = moduleName.replace(/\.js$/, ".ts");

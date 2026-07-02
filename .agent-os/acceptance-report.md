@@ -323,6 +323,35 @@ Current result:
 
 Thoth services can now run in parallel with the user's local Paseo daemon. This evidence proves development/runtime isolation and packaging/smoke readiness, not the New Thoth MVP task workflow.
 
+### `NTH-EV-007` Web Workspace White-Screen Regression Verification
+
+Status: `passed`
+
+Scope:
+
+1. Reproduce the web app blank page after workspace navigation.
+2. Identify the concrete browser runtime exception.
+3. Fix the web bundle without changing product flow or mocking the review UI.
+4. Rebuild the real web export and verify local/public review entry behavior.
+
+Evidence:
+
+1. Playwright reproduced the blank page after clicking workspace `Greeting` and captured `TypeError: (...).channel is not a function`.
+2. The crashing import path was traced to the xterm ligatures addon pulling a browser-incompatible `diagnostics_channel.channel()` path through `lru-cache`.
+3. `packages/app` now aliases `@xterm/addon-ligatures` to a no-op production web stub for Metro web export and terminal webview esbuild output.
+4. `npm run build:web` passed and produced `packages/app/dist/_expo/static/js/web/index-82dc0d5713cdea0252baa9435ac46581.js`.
+5. Static scans confirmed the new web bundle and generated terminal webview HTML do not contain `diagnostics_channel`, `hasSubscribers&&` or the real ligatures addon markers.
+6. Playwright local smoke clicked workspace `Greeting` and reached `/h/srv_Qd3ONVF7rQEHNW2PJTTBxA/workspace/wks_fe7ac40e0f64e5bb` with the composer visible and `PAGE_ERRORS []`.
+7. Playwright local smoke submitted `hi`; the page stayed on the workspace route with `PAGE_ERRORS []` and surfaced the current expected `Select model` validation instead of crashing.
+8. `curl` confirmed both `http://127.0.0.1:8082/open-project` and `http://180.76.242.105:8148/open-project` serve the new hashed web bundle.
+9. Public fresh-browser Playwright loaded `http://180.76.242.105:8148/open-project` with `PAGE_ERRORS []`; it showed `No projects yet` because the fresh origin had no paired host registry.
+10. `npm --workspace=@thoth/app run test -- --project unit src/terminal/runtime/terminal-emulator-runtime.test.ts` passed with 17 tests.
+11. `npm run format:check` and `git diff --check` passed.
+
+Current result:
+
+The web workspace route no longer white-screens on navigation or `hi` submission. The next visible product-path issue is provider/model selection for actual message execution, not a browser crash.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

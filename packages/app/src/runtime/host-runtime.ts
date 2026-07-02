@@ -9,6 +9,8 @@ import {
 } from "@thoth/client/internal/daemon-client";
 import {
   connectionFromListen,
+  describeRelayCredentialStatus,
+  getRelayCredentialStatus,
   normalizeStoredHostProfile,
   upsertHostConnectionInProfiles,
   registryHasConnection,
@@ -545,6 +547,13 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
           ...(connection.password ? { password: connection.password } : {}),
         });
       }
+      const relayCredentialStatus = getRelayCredentialStatus(connection);
+      if (!relayCredentialStatus.ok) {
+        throw new Error(
+          describeRelayCredentialStatus(relayCredentialStatus) ??
+            "Relay credentials are unavailable.",
+        );
+      }
       return new DaemonClient({
         ...base,
         url: buildRelayWebSocketUrl({
@@ -772,11 +781,33 @@ export class HostRuntimeController {
     }
 
     const now = performance.now();
+    const credentialCheckNow = Date.now();
     const isOnline = this.snapshot.connectionStatus === "online";
     const activeConnectionId = this.snapshot.activeConnectionId;
     const hasActiveOnlineConnection = isOnline && activeConnectionId !== null;
+    const probeByConnectionId = new Map(this.snapshot.probeByConnectionId);
+
+    let probeStateChanged = false;
+    for (const connection of this.host.connections) {
+      const relayCredentialStatus = getRelayCredentialStatus(connection, credentialCheckNow);
+      if (relayCredentialStatus.ok) {
+        continue;
+      }
+      const previous = probeByConnectionId.get(connection.id);
+      if (previous?.status !== "unavailable") {
+        probeByConnectionId.set(connection.id, {
+          status: "unavailable",
+          latencyMs: null,
+        });
+        probeStateChanged = true;
+      }
+    }
 
     const connectionsToProbe = this.host.connections.filter((connection) => {
+      const relayCredentialStatus = getRelayCredentialStatus(connection, credentialCheckNow);
+      if (!relayCredentialStatus.ok) {
+        return false;
+      }
       const lastProbed = this.connectionLastProbedAt.get(connection.id);
       if (lastProbed == null) {
         return true;
@@ -793,10 +824,12 @@ export class HostRuntimeController {
     });
 
     if (connectionsToProbe.length === 0) {
+      if (probeStateChanged) {
+        this.updateSnapshot({ probeByConnectionId: new Map(probeByConnectionId) });
+      }
       return;
     }
 
-    const probeByConnectionId = new Map(this.snapshot.probeByConnectionId);
     for (const connection of connectionsToProbe) {
       this.connectionLastProbedAt.set(connection.id, performance.now());
       const existingProbe = probeByConnectionId.get(connection.id);
@@ -1195,6 +1228,21 @@ export class HostRuntimeController {
     const nextGeneration = this.snapshot.clientGeneration + 1;
     if (existingClient) {
       existingClient.setReconnectEnabled(true);
+    }
+    const relayCredentialStatus = getRelayCredentialStatus(connection);
+    if (!relayCredentialStatus.ok) {
+      await this.abortSwitchWithClient(existingClient);
+      this.applyConnectionEvent({
+        type: "connect_failed",
+        message:
+          describeRelayCredentialStatus(relayCredentialStatus) ??
+          "Relay credentials are unavailable.",
+      });
+      this.updateSnapshot({
+        ...toSnapshotConnectionPatch(this.connectionMachineState),
+        ...this.buildAgentDirectoryStatusPatch(),
+      });
+      return;
     }
     const client =
       existingClient ??

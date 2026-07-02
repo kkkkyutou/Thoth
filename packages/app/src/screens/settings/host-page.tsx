@@ -50,6 +50,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
+import { getRelayCredentialStatus } from "@/types/host-connection";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
@@ -460,14 +461,19 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
       <View style={settingsStyles.card} testID="host-page-connections-card">
         {host.connections.map((conn, index) => {
           const probe = probeByConnectionId.get(conn.id);
+          const relayCredentialStatus = getRelayCredentialStatus(conn);
+          const relayNeedsPairing = !relayCredentialStatus.ok;
           return (
             <ConnectionRow
               key={conn.id}
               connection={conn}
               showBorder={index > 0}
               latencyMs={probe?.status === "available" ? probe.latencyMs : undefined}
-              latencyLoading={!probe || probe.status === "pending"}
-              latencyError={probe?.status === "unavailable"}
+              latencyLoading={!relayNeedsPairing && (!probe || probe.status === "pending")}
+              latencyError={relayNeedsPairing || probe?.status === "unavailable"}
+              latencyTextOverride={
+                relayNeedsPairing ? t("settings.host.connections.pairAgain") : undefined
+              }
               onRemove={handleRequestRemove}
             />
           );
@@ -519,6 +525,7 @@ function ConnectionRow({
   latencyMs,
   latencyLoading,
   latencyError,
+  latencyTextOverride,
   onRemove,
 }: {
   connection: HostConnection;
@@ -526,6 +533,7 @@ function ConnectionRow({
   latencyMs: number | null | undefined;
   latencyLoading: boolean;
   latencyError: boolean;
+  latencyTextOverride?: string;
   onRemove: (connection: HostConnection) => void;
 }) {
   const { t } = useTranslation();
@@ -533,6 +541,7 @@ function ConnectionRow({
   const title = formatHostConnectionLabel(connection, t);
 
   const latencyText = (() => {
+    if (latencyTextOverride) return latencyTextOverride;
     if (latencyLoading) return "...";
     if (latencyError) return t("settings.host.connections.timeout");
     if (latencyMs != null) return formatLatency(latencyMs);

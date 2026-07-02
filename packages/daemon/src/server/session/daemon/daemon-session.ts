@@ -47,6 +47,7 @@ export interface DaemonSessionOptions {
   listProviderAvailability: () => Promise<ProviderAvailability[]>;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
   relayCredentials?: RelayCredentialsManager;
+  refreshRelayRegistration?: () => void;
   logger: pino.Logger;
 }
 
@@ -70,6 +71,7 @@ export class DaemonSession {
   private readonly listProviderAvailability: () => Promise<ProviderAvailability[]>;
   private readonly getWebSocketRuntimeMetrics: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
   private readonly relayCredentials: RelayCredentialsManager | null;
+  private readonly refreshRelayRegistration: (() => void) | null;
   private readonly logger: pino.Logger;
   private readonly selfUpdate: DaemonSelfUpdateSessionController;
 
@@ -86,6 +88,7 @@ export class DaemonSession {
     this.listProviderAvailability = options.listProviderAvailability;
     this.getWebSocketRuntimeMetrics = options.getWebSocketRuntimeMetrics ?? (() => null);
     this.relayCredentials = options.relayCredentials ?? null;
+    this.refreshRelayRegistration = options.refreshRelayRegistration ?? null;
     this.logger = options.logger;
     this.selfUpdate = new DaemonSelfUpdateSessionController({
       clientId: this.clientId,
@@ -156,6 +159,7 @@ export class DaemonSession {
         relayCredentials: this.relayCredentials ?? undefined,
         logger: this.logger,
       });
+      this.refreshRelayRegistration?.();
       this.host.emit({
         type: "daemon.get_pairing_offer.response",
         payload: {

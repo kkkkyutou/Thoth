@@ -30,6 +30,7 @@ interface RelayTransportOptions {
 
 export interface RelayTransportController {
   stop: () => Promise<void>;
+  refreshRegistration: () => void;
 }
 
 interface RelaySocketLike {
@@ -149,17 +150,28 @@ export function startRelayTransport({
   let controlReadyTimeout: ReturnType<typeof setTimeout> | null = null;
   let controlLastSeenAt = 0;
   let controlConnectionSeq = 0;
-  const sendRegistration = (message: RelayRegistrationMessage): void => {
+  const sendRegistration = (message: RelayRegistrationMessage, reason: string): void => {
     if (!controlWs || controlWs.readyState !== WebSocket.OPEN) return;
     try {
       controlWs.send(JSON.stringify(message));
-      relayLogger.debug("relay_registration_sent");
+      relayLogger.info(
+        {
+          reason,
+          hasPairingToken: message.pairingTokenHash !== null,
+          pairingExpiresAt: message.pairingExpiresAt,
+          deviceTokenCount: message.deviceTokenHashes.length,
+        },
+        "relay_registration_sent",
+      );
     } catch (error) {
       relayLogger.warn({ err: error }, "relay_registration_send_failed");
     }
   };
+  const refreshRegistration = (reason = "explicit-refresh"): void => {
+    sendRegistration(getRegistrationMessage(), reason);
+  };
   const unregisterRegistrationListener =
-    onRegistrationChanged?.((message) => sendRegistration(message)) ?? null;
+    onRegistrationChanged?.((message) => sendRegistration(message, "credentials-changed")) ?? null;
 
   const stop = async (): Promise<void> => {
     stopped = true;
@@ -282,7 +294,7 @@ export function startRelayTransport({
         }
       }, CONTROL_PING_INTERVAL_MS);
       try {
-        sendRegistration(getRegistrationMessage());
+        refreshRegistration("control-open");
         socket.ping();
       } catch (error) {
         relayLogger.warn({ err: error, connectionId }, "relay_control_ping_send_failed");
@@ -446,7 +458,7 @@ export function startRelayTransport({
 
   connectControl();
 
-  return { stop };
+  return { stop, refreshRegistration };
 }
 
 async function attachEncryptedSocket(

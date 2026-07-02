@@ -6,8 +6,8 @@
 2. Top next action: `NTH-TD-002`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
 4. Active blockers: None
-5. Current branch: `port/from-old-thoth-plugin`
-6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; Thoth/Paseo parallel runtime isolation is verified with Thoth daemon on `127.0.0.1:6688`, local Paseo daemon preserved on `127.0.0.1:6767`, real web review on `8082 -> 8148`, independent test relay deployment at `relay.test.thoth.seeles.ai`, Linux AppImage, Android Debug APK and Codex provider smoke. New Thoth product behavior is still not implemented.
+5. Current branch: `agent/dev/ui`
+6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; Thoth/Paseo parallel runtime isolation is verified with Thoth daemon on `127.0.0.1:6688`, local Paseo daemon preserved on `127.0.0.1:6767`, real web review on `8082 -> 8148`, independent test relay deployment at `relay.test.thoth.seeles.ai`, Linux AppImage, Android Debug APK and Codex provider smoke. The latest web workspace white-screen regression is fixed, but New Thoth product behavior is still not implemented.
 
 ## Objective Summary
 
@@ -50,6 +50,9 @@ None.
 16. `NTH-CD-021`: Relay is v3-only with daemon-first room registration and role-scoped subprotocol tokens; local web preview and 200-client local relay load test passed, while the earlier Code4Agent mirror deployment path was blocked by protected paths.
 17. `NTH-CD-022`: Runtime isolation is locked and verified: Thoth uses `127.0.0.1:6688`, local Paseo/legacy keeps `127.0.0.1:6767`, human web review uses `8082 -> 8148`, relay test service is deployed from independent `SeeleAI/Thoth-Relay`, and local desktop/mobile artifacts are produced without becoming releases.
 18. `NTH-EV-006`: Thoth/Paseo isolation verification passed for daemon ports, web smoke, relay health/action/load test, Codex provider smoke, desktop AppImage smoke, Android Debug APK permission/package identity, foundation gate and git hygiene.
+19. `NTH-EV-007`: Web workspace white-screen regression is fixed. Workspace navigation and `hi` submission no longer crash the browser; the route now surfaces the expected current `Select model` validation.
+20. `NTH-CD-024`: Thoth UI icon system is locked to the final single-version `05-arcade-inventory` set under `packages/app/assets/icons/arcade-inventory/`.
+21. `NTH-CD-025`: UI development branch is renamed from `port/from-old-thoth-plugin` to `agent/dev/ui` before pushing the current UI shell/icon/runtime work.
 
 ## Read Next
 

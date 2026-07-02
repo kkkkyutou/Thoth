@@ -1679,6 +1679,7 @@ export const en = {
         removeErrorTitle: "Error",
         removeErrorMessage: "Unable to remove connection",
         timeout: "Timeout",
+        pairAgain: "Pair again",
       },
       pairDevices: {
         title: "Pair devices",

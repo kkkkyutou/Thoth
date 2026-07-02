@@ -1,5 +1,74 @@
 # Run Log
 
+## 2026-07-02 [UI branch rename requested]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Rename the current branch to `agent/dev/ui`, commit the full current working tree, and push using the repo-local Royalvice GitHub token.
+- State changes: Recorded `NTH-CD-025` and updated current-branch recovery facts in `AGENTS.md` and `.agent-os/project-index.md`.
+- Evidence intent: Commit and push evidence will be reported in the final response after branch rename, commit and upstream push complete.
+
+## 2026-07-02 [Final arcade-inventory icon set locked]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Make the final icon selection directly, delete all non-final candidates, and keep only one final icon version instead of candidate sets.
+- State changes: Recorded `NTH-CD-024`. Promoted the final 52-icon `05-arcade-inventory` set into the app package at `packages/app/assets/icons/arcade-inventory/`, grouped by `brand`, `composer`, `mode-clarify-loop`, `task`, `workspace-connection` and `navigation-settings`.
+- State changes: The final selection uses the prior `selected-v1` choices as the locked final version. The provider loadout icon intentionally keeps the "capability equipment chest" metaphor; `model-brain`, `no-provider`, `connection-health` and other previously-noted weak spots are now accepted as final for this UI shell pass rather than treated as open candidates.
+- Cleanup intent: All generated exploration/candidate material under `.dev/thoth-icon-generation/` is removed after promotion. Existing provider icons such as `packages/app/assets/icons/claude.svg` and `packages/app/assets/icons/codex.svg` are not part of the generated candidate set and are not removed.
+- Evidence produced: Final package asset scan found 52 PNG icons under `packages/app/assets/icons/arcade-inventory/`.
+- Next likely action: Wire these final package-local icons into the real Thoth UI shell without reopening icon selection.
+
+## 2026-07-02 [Full arcade-inventory icon candidates generated]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Use the preferred `05-arcade-inventory` direction and generate all UI icons, two candidates per role, so the final icon set can be selected.
+- State changes: Generated 104 preview-only full-role candidates under `.dev/thoth-icon-generation/arcade-inventory-full-01/images/`: 52 UI roles times `a-sprite` and `b-slot`. Roles cover brand, composer controls, mode/clarify/loop, task lifecycle, workspace/connection and navigation/settings.
+- State changes: Created category contact sheets plus a 64px overview. Also created `selected-v1`, a first-pass one-icon-per-role selection set under `.dev/thoth-icon-generation/arcade-inventory-full-01/selected-v1/`.
+- Evidence produced: All 104 generation jobs succeeded. Main overview is `.dev/thoth-icon-generation/arcade-inventory-full-01/arcade-inventory-full-01-overview-64.png`; category sheets are `arcade-inventory-full-01-brand.png`, `arcade-inventory-full-01-composer.png`, `arcade-inventory-full-01-mode-clarify-loop.png`, `arcade-inventory-full-01-task.png`, `arcade-inventory-full-01-workspace-connection.png` and `arcade-inventory-full-01-navigation-settings.png`.
+- Evidence produced: First-pass selection sheets are `.dev/thoth-icon-generation/arcade-inventory-full-01/selected-v1/selected-v1-overview.png` and `.dev/thoth-icon-generation/arcade-inventory-full-01/selected-v1/selected-v1-48-preview.png`; selection manifest is `.dev/thoth-icon-generation/arcade-inventory-full-01/selected-v1/manifest.json`.
+- Design note: The full arcade-inventory set is visually coherent and readable at 48px. Potential weak spots before package promotion are `provider-loadout` as treasure chest metaphor, `model-brain` being too literal/anatomical, `add-image` being small at 48px, and `no-provider` needing a clearer missing-capability symbol.
+- Next likely action: Human reviews `selected-v1`; after approval, promote selected PNGs into a package-local app UI asset directory and wire them into the Thoth shell.
+
+## 2026-07-02 [Arcade inventory icon direction deepened]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Take the preferred `05-arcade-inventory` icon style as the starting point and deepen it into 10 distinct substyles, 5 representative UI roles each.
+- State changes: Generated 50 preview-only i2i icon concepts under `.dev/thoth-icon-generation/arcade-inventory-deep-01/images/`, using the previous `05-arcade-inventory` row as the reference style parent. The five fixed roles remained `thoth-presence`, `provider-settings`, `clarify`, `loop-try` and `evidence`.
+- Evidence produced: All 50 generation jobs succeeded. Contact sheets are `.dev/thoth-icon-generation/arcade-inventory-deep-01/arcade-inventory-deep-01-contact.png` and `.dev/thoth-icon-generation/arcade-inventory-deep-01/arcade-inventory-deep-01-48-preview.png`; shortlist contact sheet is `.dev/thoth-icon-generation/arcade-inventory-deep-01/arcade-inventory-deep-01-shortlist-4.png`; raw job metadata is `.dev/thoth-icon-generation/arcade-inventory-deep-01/results.json`.
+- Design note: `05d-framed-item-tile` is the strongest candidate for a complete Thoth UI icon system because it is readable, contained, product-like and still game-inventory flavored. `05i-black-gold-sprite` is a strong dark/high-power variant; `05j-polished-indie` is a safe mainstream variant; `05c-isometric-relic` is attractive for larger empty states but less ideal for dense controls.
+- Known issue: Several generated evidence/clarify candidates still include pseudo-text despite no-text prompting. The next generation pass should enforce icon-only composition more aggressively and avoid document/card designs that invite fake labels.
+- Next likely action: If this direction is approved, regenerate the full 52-icon UI role list using `05d-framed-item-tile` as the primary style and `05i-black-gold-sprite` as the optional dark/high-power variant.
+
+## 2026-07-02 [Thoth UI icon candidate set converged]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Work backwards from the full current New Thoth UI design, identify the icon/button assets still needed to fully leave the Paseo-shaped shell, generate them with the local text-to-image service, and converge to a compact candidate set.
+- State changes: Generated and inspected icon candidates for brand/presence, composer controls, mode/clarify/loop controls, task lifecycle states, workspace/connection states, and navigation/settings. Earlier colorful/cartoon candidates were rejected in favor of a minimal pixel-line style with black outline, warm gold accent and tiny red Thoth marker.
+- State changes: Converged a local preview-only set of 52 PNG candidates under `.dev/thoth-icon-generation/final-candidates-v1/assets/`. These assets are not yet promoted into `packages/app`; promotion should happen after human visual approval of the contact sheets.
+- Evidence produced: Final contact sheets are `.dev/thoth-icon-generation/final-candidates-v1/final-candidates-v1-overview.png` and `.dev/thoth-icon-generation/final-candidates-v1/final-candidates-v1-48-preview.png`; manifest is `.dev/thoth-icon-generation/final-candidates-v1/manifest.json`.
+- Design note: The strongest candidates are the composer, task lifecycle, workspace/connection and mode icons. Weak-but-usable candidates are `provider-loadout`, `model-brain`, `connection-health`, `about-thoth` and `avatar-light`; regenerate only those if the next visual pass needs more polish.
+- Next likely action: Human reviews the final contact sheets, then selected assets can be promoted into a package-local UI icon directory and wired into the real app shell.
+
+## 2026-07-02 [Thoth icon style matrix generated]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Explore more possible Thoth icon styles while still staying within Thoth's product constraints; generate at least 10 distinct icon design styles with 5 representative UI roles each.
+- State changes: Generated 50 preview-only icon concepts under `.dev/thoth-icon-generation/style-exploration-01/images/`. The five fixed roles are `thoth-presence`, `provider-settings`, `clarify`, `loop-try` and `evidence`; the ten styles are `pixel-ink`, `flat-vector`, `enamel-pin`, `woodcut-seal`, `arcade-inventory`, `technical-glyph`, `neon-console`, `paper-cut`, `clay-token` and `ink-wash-minimal`.
+- Evidence produced: All 50 generation jobs succeeded. Contact sheets are `.dev/thoth-icon-generation/style-exploration-01/style-exploration-01-contact.png` and `.dev/thoth-icon-generation/style-exploration-01/style-exploration-01-48-preview.png`; raw job metadata is `.dev/thoth-icon-generation/style-exploration-01/results.json`.
+- Design note: Early visual read suggests `paper-cut`, `technical-glyph`, `neon-console` and `clay-token` are the most useful style directions. `flat-vector`, `woodcut-seal` and `ink-wash-minimal` have attractive individual images but are weaker as compact functional UI systems.
+- Next likely action: Choose one primary style family or hybrid rule, then regenerate only the chosen family against the full 52-icon UI role list before promoting assets into package-local app UI assets.
+
+## 2026-07-02 [Web workspace white-screen regression fixed]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-005`
+- User-visible issue: The real web review UI at `http://180.76.242.105:8148/open-project` could add a project/workspace, but clicking the workspace or sending `hi` turned the main app into a blank white page.
+- Diagnosis: Playwright reproduced the blank page on workspace click and captured `TypeError: (...).channel is not a function` from the web bundle. The workspace route imported the xterm ligatures addon; that addon brought an `lru-cache` path that calls Node `diagnostics_channel.channel()`, which is not available in the browser bundle.
+- State changes: Added a production web no-op `LigaturesAddon` stub at `packages/app/src/terminal/runtime/xterm-addon-ligatures-stub.ts`. Metro web export now aliases `@xterm/addon-ligatures` to the stub, the terminal webview esbuild script uses the same alias, and the app web build now regenerates terminal webview HTML before Expo export.
+- Evidence produced: `npm run build:web` passed and produced `packages/app/dist/_expo/static/js/web/index-82dc0d5713cdea0252baa9435ac46581.js`. Static scans confirmed the new web bundle and generated terminal webview HTML no longer contain `diagnostics_channel`, `hasSubscribers&&` or the real ligatures addon markers.
+- Evidence produced: Playwright local smoke clicked workspace `Greeting` and reached `/h/srv_Qd3ONVF7rQEHNW2PJTTBxA/workspace/wks_fe7ac40e0f64e5bb` with the real composer visible and `PAGE_ERRORS []`. A second Playwright smoke submitted `hi`; the page stayed on the workspace route with `PAGE_ERRORS []`, surfacing only the expected current `Select model` validation.
+- Evidence produced: Public `curl` confirmed `http://180.76.242.105:8148/open-project` now serves the new hashed web bundle. Public fresh-browser Playwright loaded the app with `PAGE_ERRORS []`; it showed `No projects yet` because that fresh origin has no paired host registry.
+- Evidence produced: `npm --workspace=@thoth/app run test -- --project unit src/terminal/runtime/terminal-emulator-runtime.test.ts` passed with 17 tests. `npm run format:check` and `git diff --check` passed.
+- Next likely action: Continue `NTH-TD-002`; provider/model selection is now the next visible product-path blocker for sending `hi`, separate from the fixed web white-screen crash.
+
 ## 2026-07-01 [Thoth/Paseo runtime isolation verified]
 
 - Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-004`, `NTH-WS-005`, `NTH-MS-010`, `NTH-MS-011`, `NTH-TD-014`
@@ -138,3 +207,52 @@
 - Decision detail: Humans use the dev UI as the real dogfood and review surface. Agents validate repository code through standard unit tests, typechecks, builds, root gates and explicit smoke commands.
 - State changes: Updated `AGENTS.md`, `docs/development.md`, `.agent-os/project-index.md` and `.agent-os/todo.md` so the first implementation slice includes a stable human dogfood entry without compromising the releasable UI experience.
 - Next likely action: `NTH-TD-002` - design and implement the first New Thoth slice around explicit task mode, provider-backed Router, Clarify, authority store, task lifecycle and product-identical dogfood UI entry.
+
+## 2026-07-02 [Relay pairing 1006/401 fixed in local Thoth]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-005`
+- User-visible issue: Pasting a valid `https://app.thoth.seeles.ai/#offer=...` pairing link in the web UI failed with `Transport closed (code 1006)`. CLI relay connection reproduced the same failure as relay HTTP `401`, so the issue was not only browser UI.
+- Diagnosis: The relay service accepted a manually registered current pairing ticket, proving the deployed relay, server id, token contents and expiry were valid. The remaining failures came from two Thoth-side issues: daemon pairing offer generation did not explicitly force relay room registration after minting a new ticket, and CLI `--host <offer-url>` did not pass the pairing token through `Sec-WebSocket-Protocol`.
+- State changes: Added `RelayTransportController.refreshRegistration()`, wired it through bootstrap, websocket server, session and daemon session, and call it after `daemon.get_pairing_offer.request`. Added safe `relay_registration_sent` logs without raw tokens. Updated CLI relay-offer connection to pass `buildRelayWebSocketProtocols(offer.pairingToken)`. Updated relay-host e2e to use real `thoth daemon pair --json`, pass token subprotocols in its probe, and resolve the current wrangler CLI entrypoint.
+- Evidence produced: `npm --workspace=@thoth/daemon run test:unit -- src/server/relay-transport.test.ts src/server/session/daemon/daemon-session.test.ts` passed with `2 passed, 14 passed`. `npm --workspace=@thoth/cli run build` passed. Live Thoth daemon on `127.0.0.1:6688` generated a fresh offer; `npm --workspace=@thoth/cli exec -- thoth ls --json --host <redacted-offer>` returned `[]` through `relay.test.thoth.seeles.ai` instead of 401. `npm --workspace=@thoth/cli exec -- vitest run tests/e2e/relay-host.test.ts` passed with `1 passed`. `lsof` confirmed Paseo remained on `127.0.0.1:6767` while Thoth listened on `127.0.0.1:6688`. `git diff --check` passed.
+- Next likely action: Continue `NTH-TD-002` with the now-working human dogfood pairing path and keep using fresh pairing links; do not reuse expired or pre-fix links.
+
+## 2026-07-02 [Relay timeout clarified in web Settings]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-WS-005`
+- User-visible issue: Web Settings showed `Relay (relay.test.thoth.seeles.ai:443) 超时` for the saved Thoth host even though `https://relay.test.thoth.seeles.ai/health` returned ok and a fresh CLI offer could connect through relay.
+- Diagnosis: The relay service and daemon room registration were healthy. Fresh browser relay smoke with a newly minted offer rendered a real latency value. The confusing timeout state came from saved relay credentials that may be missing/expired, especially older browser state that only stored a short-lived pairing token instead of a valid device token.
+- State changes: Added relay credential status helpers for missing/expired tokens. Frontend probe/config now rejects missing or expired relay credentials before opening a WebSocket, runtime probe marks those connections unavailable without waiting for a network timeout, and Settings renders `重新配对` / `Pair again` instead of generic `超时` / `Timeout` for that state.
+- Evidence produced: `npm --workspace=@thoth/app run test -- --project unit src/types/host-connection.test.ts src/utils/test-daemon-connection.test.ts src/runtime/host-runtime.test.ts` passed with `3 passed`, `62 passed`. `npm run build:web` passed and exported `packages/app/dist` with bundle `index-bd2eea9c3f96689bf10ee3208f830240.js`; both `http://127.0.0.1:8082/open-project` and `http://180.76.242.105:8148/open-project` returned that bundle. Playwright expired-token Settings smoke showed `Pair again`, no `Timeout`, and no page errors. Playwright fresh-offer Settings smoke through `relay.test.thoth.seeles.ai` showed a real latency value (`588ms` in the run), no timeout, no pair-again state, and no page errors. `npm run format:check` and `git diff --check` passed.
+- Next likely action: Continue `NTH-TD-002`; if an existing browser still shows the old host as timed out, remove/re-pair that host with a fresh offer so the browser stores a valid device token.
+
+## 2026-07-02 [Unsigned macOS desktop test zips produced]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-005`
+- User-visible request: Produce a macOS desktop package for human testing.
+- State changes: Built local unsigned macOS Electron zip artifacts for both x64 and arm64 from the current desktop package configuration. Created temporary download symlinks under `packages/app/dist/downloads/` so the already-running `8082 -> 8148` static server can serve them.
+- Limitation: A real `.dmg` installer could not be produced on this Linux host. `electron-builder --mac dmg` first required `dmg-license`, and `npm install --no-save --package-lock=false dmg-license@^1.0.11` failed with `EBADPLATFORM` because `dmg-license` is darwin-only. The macOS artifacts are unsigned and not notarized because code signing is supported only on macOS.
+- Evidence produced: `HTTPS_PROXY=http://10.0.3.5:7899 HTTP_PROXY=http://10.0.3.5:7899 npm --workspace=@thoth/desktop exec -- electron-builder --config electron-builder.yml --mac zip --publish never` produced `packages/desktop/release/Thoth-0.0.0-x64.zip`, sha256 `238e2cccce5dcddf2e221ef05a0994f951a06442348d4e048ee590223d4238a0`, size `121M`. `HTTPS_PROXY=http://10.0.3.5:7899 HTTP_PROXY=http://10.0.3.5:7899 npm --workspace=@thoth/desktop exec -- electron-builder --config electron-builder.yml --mac zip --arm64 --publish never` produced `packages/desktop/release/Thoth-0.0.0-arm64.zip`, sha256 `1f3de97f5af8caee25480bafaac93873b4e7cae701d855d3f44b935848d9c2f9`, size `116M`. `unzip -l` confirmed both archives contain `Thoth.app`. `curl -I` against `http://180.76.242.105:8148/downloads/Thoth-0.0.0-arm64.zip` and `http://180.76.242.105:8148/downloads/Thoth-0.0.0-x64.zip` returned `200 OK`.
+
+## 2026-07-02 [UI shell rebrand plan drafted]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Draft a plan Markdown that locks the goal, constraints and acceptance criteria for rebuilding the Thoth UI shell toward the final product surface before implementing deeper task/Clarify/Loop business logic.
+- State changes: Added `.agent-os/designs/new-thoth-ui-shell-rebrand-plan.md`.
+- Decision detail: The planned UI direction is not a Paseo recolor. It targets a final-form Thoth product surface with game-like, light, cute and cheerful visual personality; Thoth-specific navigation; final composer controls; app icon/desktop icon/menu/settings rework; honest unavailable states for unimplemented business capabilities; and preservation of current daemon/relay/web/desktop capabilities.
+- Next likely action: User reviews and edits the UI shell plan. If approved, promote it into a formal TODO/top next action and implement UI shell changes without entering formal task backend work.
+
+## 2026-07-02 [Thoth icon asset unified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Use the newly generated icon artwork as the Thoth icon everywhere, without making a transparent variant or separate favicon/tray design.
+- State changes: Recorded `NTH-CD-023`. Replaced the Expo/App icon, favicon status PNGs, splash icon, notification icon, Android foreground image, PWA icons, Desktop PNG sizes, Windows `.ico` and macOS `.icns` with opaque derivatives of the approved artwork. Removed the old favicon status SVG variants so the runtime favicon hook cannot fall back to a second visual language.
+- Evidence produced: Image inspection confirmed the approved source artwork is `1586x1586 RGB`; generated App/Desktop/Web icon PNG entrypoints are RGB and sized for their configured platform paths. `file` confirmed `packages/desktop/assets/icon.ico` is a Windows icon resource and `packages/desktop/assets/icon.icns` is a Mac OS X icon. `npm run build:web` passed and exported `packages/app/dist`; Expo output showed all six status favicon PNGs share the same hash. `git diff --check` passed.
+- Next likely action: Continue the UI shell rebrand implementation from the approved icon direction, replacing remaining Paseo-shaped UI language and navigation without changing Thoth task backend behavior.
+
+## 2026-07-02 [Old Paseo icon residue removed]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`
+- User-visible request: Delete the previous Paseo icons completely after locking the new package-local Thoth icon artwork.
+- State changes: Deleted the old Paseo butterfly brand assets `packages/app/assets/images/butterfly-green.svg` and `packages/app/assets/images/butterfly-white.svg`. Moved the approved source icon into `packages/app/assets/images/thoth-icon-source.png` and removed the duplicate root `assets/icon.png`. Kept `assets/thoth.png` because it is a Thoth wordmark asset, not a Paseo icon.
+- Evidence produced: Filesystem scan found no remaining `butterfly`, `paseo-logo`, old favicon SVG or `thoth-icon.svg` icon files outside ignored upstream cache. Text scan found no active source references to `PaseoLogo`, `paseo-logo`, `butterfly` or old favicon SVG assets outside historical `.agent-os` evidence entries. `git diff --check` passed.

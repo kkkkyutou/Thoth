@@ -8,6 +8,7 @@ const appRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(appRoot, "../..");
 const entry = path.join(appRoot, "src/terminal/webview/terminal-emulator-webview-entry.ts");
 const output = path.join(appRoot, "src/terminal/webview/terminal-emulator-webview-html.ts");
+const xtermLigaturesStub = path.join(appRoot, "src/terminal/runtime/xterm-addon-ligatures-stub.ts");
 
 async function resolveTsPath(basePath) {
   const candidates = [
@@ -35,6 +36,9 @@ async function resolveTsPath(basePath) {
 const aliasPlugin = {
   name: "thoth-alias",
   setup(build) {
+    build.onResolve({ filter: /^@xterm\/addon-ligatures(\/lib\/addon-ligatures\.mjs)?$/ }, () => ({
+      path: xtermLigaturesStub,
+    }));
     build.onResolve({ filter: /^@\// }, async (args) => ({
       path: await resolveTsPath(path.join(appRoot, "src", args.path.slice(2))),
     }));
