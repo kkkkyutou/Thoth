@@ -24,6 +24,7 @@
    - [`.agent-os/designs/最核心的设计理念.md`](.agent-os/designs/最核心的设计理念.md)
    - [`.agent-os/designs/new-thoth-high-level-design.md`](.agent-os/designs/new-thoth-high-level-design.md)
    - [`.agent-os/designs/new-thoth-mvp-user-journey.md`](.agent-os/designs/new-thoth-mvp-user-journey.md)
+   - [`.agent-os/designs/new-thoth-app-runtime-contract.md`](.agent-os/designs/new-thoth-app-runtime-contract.md)
    - [`.agent-os/designs/new-thoth-engineering-architecture.md`](.agent-os/designs/new-thoth-engineering-architecture.md)
    - [`.agent-os/designs/new-thoth-prompt-contract-seeds.md`](.agent-os/designs/new-thoth-prompt-contract-seeds.md)
 6. 需要执行开发、测试、打包、发布相关工作时，先读 `docs/`：
@@ -37,7 +38,7 @@
 ## 3. Current Truth
 
 1. 项目名：New Thoth。
-2. 当前分支：`agent/dev/ui`。
+2. 当前分支：`agent/dev/mvp`。
 3. 技术方向：TypeScript / Node，npm workspaces，`packages/` monorepo。
 4. Node/npm：Node `24.14.0`，npm `11.9.0`。
 5. License：`AGPL-3.0-or-later`。

@@ -177,7 +177,11 @@ try {
 }
 
 if (!stopping) {
-  spawnChild("electron", electron, [desktopDir], {
+  const electronArgs =
+    process.platform === "linux" && typeof process.getuid === "function" && process.getuid() === 0
+      ? ["--no-sandbox", desktopDir]
+      : [desktopDir];
+  spawnChild("electron", electron, electronArgs, {
     detached: true,
     env: {
       ...process.env,

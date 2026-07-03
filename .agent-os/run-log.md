@@ -452,3 +452,39 @@
 - Evidence produced: `npm run smoke:isolation` passed with Paseo/legacy on `127.0.0.1:6767`, Thoth on `127.0.0.1:6688` and different PIDs.
 - State documentation: Recorded `NTH-EV-021`, updated `docs/ui-review-scorecard.md`, `.agent-os/acceptance-report.md`, `.agent-os/project-index.md`, `.agent-os/lessons-learned.md` and this run log.
 - Next likely action: Continue `NTH-TD-002` by collecting Desktop scorecard screenshots/smoke evidence and then filling Web fresh relay / expired relay scorecard paths. The full New Thoth MVP task loop and final Web/Desktop/OpenTUI UI acceptance remain incomplete.
+
+## 2026-07-03 [Compact APP runtime contract locked]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-TD-002`
+- User-visible request: Preserve the latest APP design discussion as code contract and durable docs so later development follows it and does not lose information.
+- Product decision: The APP no longer has a General Chat / Today dashboard target. The MVP APP has exactly three user views: Settings, Workspace Secretary and Background Tasks.
+- Product decision: Workspace `New Agent` remains, but it means opening a new secretary topic/session for the current workspace. The user still faces the secretary; internal Clarify, PlanExec, Review and provider-role sessions stay hidden.
+- Product decision: `Quick` remains in the foreground secretary session. `Loop` creates a background task only after two confirmations: first a compact task overview card, then a compact linear goal contract card. Goal contracts contain only title, goal, constraints and acceptance; implementation planning belongs to later PlanExec sessions.
+- Product decision: Thoth must install hidden, non-optional, provider-compatible runtime skills `thoth.clarify` and `thoth.loop`. They are not user-selectable Paseo-style skills. Clarify controls secretary sessions; Loop controls PlanExec/Review sessions. Thoth daemon remains non-intelligent and only validates/repairs packets, enforces gates, lands authority and renders client state from packets.
+- State changes: Added `.agent-os/designs/new-thoth-app-runtime-contract.md` as canonical design authority for the compact APP model, built-in runtime skills, state-code tables, packet shape, provider input envelope, daemon responsibilities and front-end responsibilities.
+- State changes: Added `packages/protocol/src/thoth-runtime-contract.ts` as protocol code authority. It defines `THOTH_BUILTIN_RUNTIME_SKILLS`, 7 Clarify codes, 8 Loop codes, Clarify/Loop UI kinds, compact runtime packet schemas, compact loop cursor validation and provider input envelope validation.
+- State changes: Added `packages/protocol/src/thoth-runtime-contract.test.ts` to preserve the compactness and compatibility contract.
+- State changes: Updated `AGENTS.md` recovery order, `.agent-os/change-decisions.md` (`NTH-CD-027`), `.agent-os/acceptance-report.md` (`NTH-EV-022`), `.agent-os/project-index.md`, `.agent-os/lessons-learned.md` (`NTH-EXP-008`) and `docs/ui-review-scorecard.md`.
+- Evidence produced: `npm run test:protocol -- thoth-runtime-contract.test.ts` passed with `1` file and `12` tests.
+- Evidence produced: `npm run typecheck:protocol` passed.
+- Evidence produced: `npm run build:protocol` passed.
+- Current limitation: This locks the design and protocol contract only. It does not implement daemon runtime, provider skill injection, APP route/view refactor, background task execution, packet repair, permission gate wiring or evidence/review authority.
+- Next likely action: Continue `NTH-TD-002` by designing/implementing the first daemon and driver slice for `thoth.clarify` packet validation and Workspace Secretary `C_DIRECT` / `C_TASK_CARD` / `C_GOAL_CARD` flow before returning to UI polishing.
+
+## 2026-07-03 [Branch upgraded from UI to MVP]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-TD-002`
+- User-visible request: Rename the active branch from `agent/dev/ui` to `agent/dev/mvp`, update docs from UI-only implementation to MVP implementation, commit the current work and push.
+- State changes: Renamed the local branch to `agent/dev/mvp`. Updated current-branch facts in `AGENTS.md` and `.agent-os/project-index.md`.
+- State changes: Recorded `NTH-CD-028`, superseding the branch portion of `NTH-CD-025`. The active goal is now New Thoth MVP implementation rather than UI-only scorecard/productization.
+- State changes: Renamed `.agent-os/designs/new-thoth-ui-goal-prompt.md` to `.agent-os/designs/new-thoth-mvp-goal-prompt.md` and rewrote the prompt around Workspace Secretary, Background Tasks, Settings, hidden `thoth.clarify` / `thoth.loop` skills, compact packets, daemon authority and provider session integration.
+- State changes: Added `packages/app/test-results/` to `.gitignore` so Playwright transient attachments are not committed; durable review captures remain under `docs/ui-review-captures/`.
+- Evidence produced: `npm run format` completed.
+- Evidence produced: `npm run format:check` passed.
+- Evidence produced: `git diff --check` passed.
+- Evidence produced: `npm run test:protocol -- thoth-runtime-contract.test.ts` passed with `1` file and `12` tests.
+- Evidence produced: `npm --workspace=@thoth/desktop run test -- src/features/menu.test.ts src/open-project-routing.test.ts src/daemon/cli/passthrough.test.ts` passed with `3` files and `18` tests.
+- Evidence produced: `npm --workspace=@thoth/desktop run typecheck` passed.
+- Evidence produced: `npm --workspace=@thoth/desktop run build:main` passed.
+- Evidence produced: `npm run check:foundation` passed: repo validation, formatting, foundation lint, foundation build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `298` and client `110` tests.
+- Next likely action: After push, continue `NTH-TD-002` on `agent/dev/mvp` by implementing the first MVP runtime slice rather than returning to legacy UI scorecard polish.

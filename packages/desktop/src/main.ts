@@ -229,6 +229,7 @@ if (electronFlags) {
 let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   argv: process.argv,
   isDefaultApp: process.defaultApp,
+  ignoredPaths: process.defaultApp ? [path.resolve(__dirname, "..")] : [],
 });
 
 // Each window pulls its own pending open-project path on mount, keyed by
@@ -320,7 +321,7 @@ protocol.registerSchemesAsPrivileged([
 // ---------------------------------------------------------------------------
 
 function getPreloadPath(): string {
-  return path.join(__dirname, "preload.js");
+  return path.join(__dirname, "preload.cjs");
 }
 
 function getAppDistDir(): string {
@@ -565,6 +566,7 @@ function setupSingleInstanceLock(): boolean {
     const openProjectPath = parseOpenProjectPathFromArgv({
       argv: commandLine,
       isDefaultApp: false,
+      ignoredPaths: [],
     });
     log.info("[open-project] second-instance openProjectPath:", openProjectPath);
     // Relaunching the app (CLI `thoth [path]`, double-click, etc.) opens a new
@@ -581,7 +583,9 @@ function setupSingleInstanceLock(): boolean {
 }
 
 async function runCliPassthroughIfRequested(): Promise<boolean> {
-  const cliArgs = parsePassthroughCliArgsFromArgv(process.argv);
+  const cliArgs = parsePassthroughCliArgsFromArgv(process.argv, {
+    ignoredPaths: process.defaultApp ? [path.resolve(__dirname, "..")] : [],
+  });
   if (!cliArgs) {
     return false;
   }

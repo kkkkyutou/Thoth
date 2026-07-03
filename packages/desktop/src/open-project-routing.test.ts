@@ -32,6 +32,33 @@ describe("open-project-routing", () => {
     ).toBe(projectPath);
   });
 
+  it("ignores the dev Electron app path when flags appear before it", () => {
+    const appPath = mkdtempSync(path.join(tmpdir(), "thoth-desktop-app-"));
+    const projectPath = mkdtempSync(path.join(tmpdir(), "thoth-open-project-"));
+
+    expect(
+      parseOpenProjectPathFromArgv({
+        argv: [
+          "/path/to/electron",
+          "--remote-debugging-port=9223",
+          "--no-sandbox",
+          appPath,
+          projectPath,
+        ],
+        isDefaultApp: true,
+        ignoredPaths: [appPath],
+      }),
+    ).toBe(projectPath);
+
+    expect(
+      parseOpenProjectPathFromArgv({
+        argv: ["/path/to/electron", "--remote-debugging-port=9223", "--no-sandbox", appPath],
+        isDefaultApp: true,
+        ignoredPaths: [appPath],
+      }),
+    ).toBeNull();
+  });
+
   it("does not treat flags as project paths", () => {
     const projectPath = mkdtempSync(path.join(tmpdir(), "thoth-open-project-"));
     const flagLikeDirectory = path.join(projectPath, "--version");

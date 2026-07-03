@@ -65,6 +65,35 @@ describe("passthrough CLI", () => {
     ).toBeNull();
   });
 
+  it("ignores the dev Electron app path when Chromium flags appear before it", () => {
+    const appPath = "/repo/packages/desktop";
+
+    expect(
+      parsePassthroughCliArgs({
+        argv: ["/path/to/electron", "--remote-debugging-port=9223", "--no-sandbox", appPath],
+        isDefaultApp: true,
+        forceCli: false,
+        ignoredPaths: [appPath],
+      }),
+    ).toBeNull();
+
+    expect(
+      parsePassthroughCliArgs({
+        argv: [
+          "/path/to/electron",
+          "--remote-debugging-port=9223",
+          "--no-sandbox",
+          appPath,
+          "daemon",
+          "status",
+        ],
+        isDefaultApp: true,
+        forceCli: false,
+        ignoredPaths: [appPath],
+      }),
+    ).toEqual(["daemon", "status"]);
+  });
+
   it("preserves CLI flags for direct app invocations", () => {
     expect(
       parsePassthroughCliArgs({

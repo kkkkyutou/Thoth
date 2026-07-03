@@ -133,3 +133,31 @@ Retry condition:
 
 If a future Web scorecard run times out around Settings navigation, first check viewport, drawer
 state, visible route controls and current URL before treating it as a product UI regression.
+
+## `NTH-EXP-008` UI Shell Evidence Does Not Prove Thoth Product Direction
+
+Motivation:
+
+The Web/Desktop/OpenTUI scorecard work produced real screenshots, route smokes and terminal frames,
+but it kept optimizing the promoted Paseo-derived shell shape.
+
+Observed result:
+
+The user review on 2026-07-03 found the APP direction still too close to a Paseo skin: workspace,
+session, provider and settings surfaces existed, but the fundamental interaction model did not
+start from the New Thoth user journey. The missing product center is the workspace secretary
+session, hidden built-in clarify/loop runtime skills, compact state-code packets, two explicit Loop
+registration confirmations and a separate Background Tasks view.
+
+Conclusion:
+
+Do not continue polishing the old scorecard shell as the primary APP direction. Treat it as
+engineering evidence that the substrate can render, not as product acceptance. New APP work must
+start from `.agent-os/designs/new-thoth-app-runtime-contract.md` and
+`packages/protocol/src/thoth-runtime-contract.ts`.
+
+Retry condition:
+
+Only revisit the old scorecard shell to harvest reusable components, screenshots or smoke harness
+techniques. Do not preserve its information architecture unless a future user decision explicitly
+reopens the APP model.

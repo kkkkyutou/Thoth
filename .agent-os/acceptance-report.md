@@ -955,6 +955,55 @@ paths, the full task route/backend path is not implemented, provider/model editi
 unfinished, OpenTUI remains below the final threshold and the full New Thoth MVP task loop,
 Clarify runtime, Loop runtime and independent Review runtime remain unimplemented.
 
+### `NTH-EV-022` Compact APP Runtime Contract Verification
+
+Status: `passed-for-contract`
+
+Scope:
+
+1. Preserve the 2026-07-03 user decision that the APP direction must stop polishing the
+   Paseo-like shell and instead use exactly three MVP views: Settings, Workspace Secretary and
+   Background Tasks.
+2. Capture the workspace secretary model: `New Agent` remains, but means opening a new secretary
+   topic/session for the current workspace, not exposing internal roles.
+3. Capture the Quick/Loop transition rule: Quick remains foreground in the secretary session;
+   Loop registers a background task only after two confirmations.
+4. Capture the hidden built-in runtime skills: `thoth.clarify` for secretary sessions and
+   `thoth.loop` for PlanExec/Review sessions. They are installed with Thoth, hidden from users and
+   not optional.
+5. Add a compact protocol code contract for state codes, packets, provider input envelopes and
+   loop cursor validation.
+
+Evidence:
+
+1. Added `.agent-os/designs/new-thoth-app-runtime-contract.md` as canonical design authority for the
+   compact APP runtime model. It documents Settings, Workspace Secretary and Background Tasks;
+   hidden clarify/loop skills; Quick/Loop switching; two confirmation gates; compact state codes;
+   compact packets; provider input envelope; daemon mechanical responsibility; and front-end
+   rendering responsibility.
+2. Updated `AGENTS.md` recovery order so future agents read
+   `.agent-os/designs/new-thoth-app-runtime-contract.md` with the canonical design set.
+3. Recorded `NTH-CD-027` in `.agent-os/change-decisions.md`.
+4. Added `packages/protocol/src/thoth-runtime-contract.ts` with code authority for:
+   `THOTH_BUILTIN_RUNTIME_SKILLS`, 7 Clarify codes, 8 Loop codes, Clarify/Loop UI kinds, compact
+   runtime packet schemas, compact loop cursor schema and provider input envelope schema.
+5. Added `packages/protocol/src/thoth-runtime-contract.test.ts`. The tests assert the state code
+   sets remain under ten entries, the packet top-level fields remain compact, clarify packets reject
+   loop UI kinds, loop packets require valid cursor values, and provider input envelopes reject
+   mismatched skill/code combinations.
+6. Updated `docs/ui-review-scorecard.md` to mark the old scorecard as a rejected legacy-shell
+   baseline, not the current product target.
+7. Recorded `NTH-EXP-008` in `.agent-os/lessons-learned.md`.
+8. `npm run test:protocol -- thoth-runtime-contract.test.ts` passed with `1` file and `12` tests.
+9. `npm run typecheck:protocol` passed.
+10. `npm run build:protocol` passed.
+
+Current result:
+
+The compact APP runtime contract is now preserved in both design authority and protocol code. This
+does not implement the runtime, daemon authority, provider skill injection, APP views or background
+task execution; it only locks the shape future implementation must follow.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

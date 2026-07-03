@@ -19,10 +19,13 @@ function isExistingDirectoryAbsolutePath(candidate: string): boolean {
 export function parseOpenProjectPathFromArgv(input: {
   argv: string[];
   isDefaultApp: boolean;
+  ignoredPaths?: string[];
 }): string | null {
+  const ignoredPaths = new Set((input.ignoredPaths ?? []).map((item) => path.resolve(item)));
   const effectiveArgs = input.argv
     .slice(input.isDefaultApp ? 2 : 1)
-    .filter((arg) => !OPEN_PROJECT_IGNORED_ARG_PREFIXES.some((prefix) => arg.startsWith(prefix)));
+    .filter((arg) => !OPEN_PROJECT_IGNORED_ARG_PREFIXES.some((prefix) => arg.startsWith(prefix)))
+    .filter((arg) => !ignoredPaths.has(path.resolve(arg)));
 
   const positionalProjectPath = effectiveArgs.find(
     (arg) => !arg.startsWith("-") && isExistingDirectoryAbsolutePath(arg),

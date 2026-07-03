@@ -37,6 +37,7 @@
     "smoke:tui:cli:device-pairing": "npm run build --workspace=@thoth/tui && npm run build:cli && bash scripts/smoke-opentui-cli-device-pairing.sh",
     "smoke:tui:pty-stress": "npm run build --workspace=@thoth/tui && npm run build:cli && node scripts/smoke-opentui-pty-stress.mjs",
     "smoke:web:ui-scorecard": "node scripts/smoke-web-ui-scorecard.mjs",
+    "smoke:desktop:ui-scorecard": "npm --workspace=@thoth/desktop run test -- src/features/menu.test.ts && node scripts/smoke-desktop-ui-scorecard.mjs",
     "loadtest:relay:local": "node scripts/loadtest-relay-local.mjs",
     "build:foundation": "npm run build:highlight && npm run build:relay && npm run build:protocol && npm run build:client",
     "typecheck:highlight": "npm --prefix packages/app/highlight run typecheck",
