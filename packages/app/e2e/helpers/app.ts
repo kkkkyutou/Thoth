@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { escapeRegex } from "./regex";
 
 export const gotoAppShell = async (page: Page) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 };
 
 export const gotoHome = async (page: Page) => {
@@ -32,10 +32,35 @@ export const gotoHome = async (page: Page) => {
 
 export const openSettings = async (page: Page) => {
   // Navigate through the real app control so route changes stay aligned with UI behavior.
+  const viewport = page.viewportSize();
   const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
-  await expect(settingsButton).toBeVisible();
+  if ((viewport?.width ?? 0) > 0 && (viewport?.width ?? 0) < 800) {
+    const menuButton = page.locator('[data-testid="menu-button"]:visible').first();
+    const closeSidebarButton = page.locator('[data-testid="sidebar-close"]:visible').first();
+    if (!(await closeSidebarButton.isVisible().catch(() => false))) {
+      await expect(menuButton).toBeVisible({ timeout: 10_000 });
+      await menuButton.click();
+    }
+    await expect(closeSidebarButton).toBeVisible({ timeout: 10_000 });
+    await expect(settingsButton).toBeVisible({ timeout: 10_000 });
+    await settingsButton.evaluate((button) => {
+      if (!(button instanceof HTMLElement)) {
+        throw new Error("Settings control is not an HTMLElement");
+      }
+      button.click();
+    });
+    await expect(page).toHaveURL(/\/settings(?:\/general)?$/);
+    return;
+  }
+
+  if (!(await settingsButton.isVisible().catch(() => false))) {
+    const menuButton = page.locator('[data-testid="menu-button"]:visible').first();
+    await expect(menuButton).toBeVisible({ timeout: 10_000 });
+    await menuButton.click();
+  }
+  await expect(settingsButton).toBeVisible({ timeout: 10_000 });
   await settingsButton.click();
-  await expect(page).toHaveURL(/\/settings\/general$/);
+  await expect(page).toHaveURL(/\/settings(?:\/general)?$/);
 };
 
 export const setWorkingDirectory = async (page: Page, directory: string) => {

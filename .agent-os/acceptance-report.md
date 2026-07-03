@@ -884,6 +884,77 @@ Desktop still need current screenshot/stress evidence, and the full New Thoth MV
 provider/model editing path, Clarify runtime, Loop runtime and independent Review runtime remain
 unimplemented.
 
+### `NTH-EV-021` Web Scorecard Static Export Smoke Verification
+
+Status: `passed-for-slice`
+
+Scope:
+
+1. Add a reproducible Web scorecard smoke for the real static web export rather than Metro-only
+   development UI.
+2. Build the current web bundle with the root `npm run build:web` entrypoint.
+3. Serve `packages/app/dist` through the repository static server and run Playwright against the
+   served export through `E2E_BASE_URL`.
+4. Capture current review screenshots for Home desktop, Home mobile, Workspace composer, Settings
+   About, Settings Providers and Settings Connections.
+5. Stress rapid Workspace, Settings, composer control and viewport transitions without relying on a
+   mock/debug-only UI surface.
+6. Reject visible legacy Paseo/daemon fallback material and sensitive relay credential material from
+   the Web surface under test.
+
+Evidence:
+
+1. Added root `npm run smoke:web:ui-scorecard`, backed by
+   `scripts/smoke-web-ui-scorecard.mjs`. The script runs `npm run build:web`, serves
+   `packages/app/dist` on an ephemeral `127.0.0.1` port with `scripts/serve-static.mjs`, sets
+   `E2E_BASE_URL`, and runs `npm --workspace=@thoth/app run test:e2e -- thoth-ui-scorecard.spec.ts`.
+2. Added `packages/app/e2e/thoth-ui-scorecard.spec.ts`. The spec verifies Home / One Thoth,
+   Workspace composer/task/evidence preview slots, Settings About, host Providers and host
+   Connections, then churns Settings/Workspace/composer/viewport paths.
+3. The spec captures six screenshot artifacts:
+   `docs/ui-review-captures/web-scorecard/web-home-desktop.png`,
+   `docs/ui-review-captures/web-scorecard/web-home-mobile.png`,
+   `docs/ui-review-captures/web-scorecard/web-workspace-composer.png`,
+   `docs/ui-review-captures/web-scorecard/web-settings-about.png`,
+   `docs/ui-review-captures/web-scorecard/web-settings-providers.png` and
+   `docs/ui-review-captures/web-scorecard/web-settings-connections.png`.
+4. Screenshot sizes from the local artifact check were `68775`, `39004`, `92514`, `42747`,
+   `118783` and `37881` bytes respectively.
+5. `packages/app/e2e/fixtures.ts` now lets `E2E_BASE_URL` override the Metro base URL so the same app
+   e2e fixtures can target the static export.
+6. `packages/app/e2e/global-setup.ts` now uses ESM-safe path resolution, resolves `wrangler` from
+   app/root workspace install locations, starts the current `packages/daemon` package instead of
+   the obsolete server path, validates relay v3 pairing offer shape and includes the static export
+   origin in `THOTH_CORS_ORIGINS`.
+7. `packages/app/e2e/helpers/app.ts` now opens Settings through the real responsive UI: desktop
+   sidebar when available and mobile drawer when needed. The helper accepts both Settings root and
+   General sub-route URLs because the current responsive route can land on either form.
+8. `packages/app/e2e/helpers/daemon-client-loader.ts` now uses ESM-safe path resolution for loading
+   the built daemon client and app version metadata.
+9. `npm run smoke:web:ui-scorecard` passed with Playwright result `1 passed (18.6s)`.
+10. The smoke uses isolated app e2e daemon/workspace setup through daemon/client authority. It does
+    not create task authority in the Web UI and does not claim provider-backed Router, Clarify,
+    PlanExec, Loop or Review behavior exists.
+11. `docs/ui-review-scorecard.md` now records this evidence, raises Web's working score from `72` to
+    `80`, raises the overall working score from `78` to `80`, and keeps final scorecard status
+    failing.
+12. `npm run format:check` passed after applying root `npm run format`.
+13. `git diff --check` passed.
+14. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation
+    build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`,
+    relay `29`, protocol `286` and client `110` tests.
+15. `npm run smoke:isolation` passed: Paseo/legacy remained on `127.0.0.1:6767`, Thoth remained on
+    `127.0.0.1:6688`, and the PIDs differed.
+
+Current result:
+
+Web now has current static export screenshot and route/composer/settings stress evidence for the
+scorecard. This still does not complete final Web/Desktop/OpenTUI UI acceptance: Desktop still needs
+fresh packaged/dev scorecard evidence, Web still needs fresh relay and expired relay scorecard
+paths, the full task route/backend path is not implemented, provider/model editing remains
+unfinished, OpenTUI remains below the final threshold and the full New Thoth MVP task loop,
+Clarify runtime, Loop runtime and independent Review runtime remain unimplemented.
+
 ## Failed Or Not-Yet-Passed Checks
 
 1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.

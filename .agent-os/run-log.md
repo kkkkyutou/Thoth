@@ -437,3 +437,18 @@
 - Evidence produced: The PTY stress assertions rejected legacy `6767`, raw relay offer material, pairing tokens, relay subprotocol token prefixes, QR text, `undefined`, `[object Object]` and common crash traces.
 - State documentation: Recorded `NTH-EV-020` and updated `project-index.md`.
 - Next likely action: Continue `NTH-TD-002` by collecting current Web/Desktop scorecard screenshots and stress evidence, or close the remaining OpenTUI score gap with provider/model editing or an explicit final unavailable-state design. The full New Thoth MVP task loop remains unimplemented.
+
+## 2026-07-03 [Web static export scorecard evidence verified]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-002`, `NTH-TD-002`
+- State changes: Added root `npm run smoke:web:ui-scorecard`, backed by `scripts/smoke-web-ui-scorecard.mjs`. The script builds the real Web export, serves `packages/app/dist` through the repository static server, sets `E2E_BASE_URL` and runs the app Playwright scorecard spec against the static export.
+- State changes: Added `packages/app/e2e/thoth-ui-scorecard.spec.ts` to verify Home / One Thoth, mobile Home, Workspace composer/task/evidence preview slots, Settings About, host Providers and host Connections, then stress rapid Settings/Workspace/composer/viewport transitions while rejecting legacy endpoint and sensitive relay credential material in the visible surface.
+- State changes: Updated app e2e helpers so static export tests can reuse the existing daemon/workspace fixtures: `fixtures.ts` honors `E2E_BASE_URL`; `global-setup.ts` uses ESM-safe paths, resolves `wrangler` from app/root install locations, starts `packages/daemon`, validates relay v3 offer shape and includes the static export origin in CORS; `helpers/app.ts` opens Settings through the real responsive sidebar/drawer path; `daemon-client-loader.ts` uses ESM-safe paths.
+- Failed exploration recorded: early scorecard attempts treated mobile Settings navigation like desktop Settings navigation. Narrow viewports use a drawer and can remain on the Settings host root route, so the test timed out waiting for desktop-only visible controls. This is now captured as `NTH-EXP-007`.
+- Evidence produced: `npm run smoke:web:ui-scorecard` passed. It ran `npm run build:web`, exported the module-marked web bundle from `packages/app/dist`, served it on an ephemeral localhost port and completed Playwright with `1 passed (18.6s)`.
+- Evidence produced: Current Web scorecard screenshots exist at `docs/ui-review-captures/web-scorecard/web-home-desktop.png` (`68775` bytes), `web-home-mobile.png` (`39004` bytes), `web-workspace-composer.png` (`92514` bytes), `web-settings-about.png` (`42747` bytes), `web-settings-providers.png` (`118783` bytes) and `web-settings-connections.png` (`37881` bytes).
+- Evidence produced: `npm run format:check` passed after root `npm run format`; `git diff --check` passed.
+- Evidence produced: `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
+- Evidence produced: `npm run smoke:isolation` passed with Paseo/legacy on `127.0.0.1:6767`, Thoth on `127.0.0.1:6688` and different PIDs.
+- State documentation: Recorded `NTH-EV-021`, updated `docs/ui-review-scorecard.md`, `.agent-os/acceptance-report.md`, `.agent-os/project-index.md`, `.agent-os/lessons-learned.md` and this run log.
+- Next likely action: Continue `NTH-TD-002` by collecting Desktop scorecard screenshots/smoke evidence and then filling Web fresh relay / expired relay scorecard paths. The full New Thoth MVP task loop and final Web/Desktop/OpenTUI UI acceptance remain incomplete.

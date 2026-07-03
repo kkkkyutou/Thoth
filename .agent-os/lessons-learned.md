@@ -107,3 +107,29 @@ Thoth direct daemon default is `127.0.0.1:6688`, with isolated dev state under `
 Retry condition:
 
 If future app/CLI/desktop behavior unexpectedly connects to the wrong daemon, first run `npm run smoke:isolation`, inspect endpoint fallback code, and check for newly introduced `6767` defaults before debugging provider behavior.
+
+## `NTH-EXP-007` Web Scorecard Settings Paths Must Respect Responsive Layout
+
+Motivation:
+
+The Web scorecard smoke needs to stress rapid Home, Workspace, Settings and composer transitions
+without confusing responsive navigation differences with product regressions.
+
+Observed result:
+
+Early Web scorecard attempts treated the Settings sidebar/back path as identical on desktop and
+mobile. On narrow viewports the real app uses the menu drawer and can stay on the Settings host root
+route instead of the desktop General sub-route. The test then waited for desktop-only visible
+controls and hit global timeouts even though the app surface was not blank.
+
+Conclusion:
+
+Scorecard helpers should enter Settings through the real visible control for the current viewport,
+accept both Settings root and General sub-route when the app allows either, and run deep
+Settings-to-Workspace back loops from desktop width unless the mobile-specific back path is the
+behavior being tested.
+
+Retry condition:
+
+If a future Web scorecard run times out around Settings navigation, first check viewport, drawer
+state, visible route controls and current URL before treating it as a product UI regression.

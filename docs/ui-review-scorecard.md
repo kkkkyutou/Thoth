@@ -1,7 +1,7 @@
 # New Thoth UI Review Scorecard
 
 Status: working scorecard, not final acceptance
-Last updated: 2026-07-02
+Last updated: 2026-07-03
 
 This document is the durable UI review ledger for the New Thoth multi-endpoint product surface.
 It must not be used to claim final UI acceptance until Web, Desktop and OpenTUI all have current
@@ -43,12 +43,12 @@ Each endpoint is scored on 10 dimensions, 10 points each:
 These are current working scores, not final acceptance scores. They intentionally include
 penalties for missing current screenshots, missing stress artifacts and unfinished backend slots.
 
-| Endpoint | Score | Status      | Current evidence                                                                                                          | Main gaps                                                                                                                                   |
-| -------- | ----: | ----------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web      |    72 | In progress | `NTH-EV-008`, `NTH-EV-009`, prior web build and relay timeout smokes                                                      | Needs current screenshot set, Playwright UI stress, complete Home/Workspace/Task/Provider/Relay/Evidence/Settings audit, and score above 90 |
-| Desktop  |    76 | In progress | Desktop wrapper/package substrate, `NTH-EV-006`, unsigned macOS zip evidence, Thoth semantic menu slice                   | Needs current packaged/dev smoke after menu change, screenshot set, Desktop menu visual/behavior smoke, and score above 90                  |
-| OpenTUI  |    87 | In progress | `NTH-EV-010` through `NTH-EV-018`, `NTH-EV-020`, renderer/navigation/CLI/recovery/workspace/provider/device/stress smokes | Needs final scorecard terminal capture ledger, provider/model editing path or honest final unavailable state, and score at least 88         |
-| Overall  |    78 | Failing     | Multi-endpoint slices exist, but final score evidence is incomplete                                                       | Needs full scorecard evidence and threshold pass                                                                                            |
+| Endpoint | Score | Status      | Current evidence                                                                                                          | Main gaps                                                                                                                           |
+| -------- | ----: | ----------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Web      |    80 | In progress | `NTH-EV-008`, `NTH-EV-009`, `NTH-EV-021`, static export scorecard smoke and current screenshot set                        | Needs fresh relay and expired relay scorecard paths, full task route/backend path, provider/model editing, and score above 90       |
+| Desktop  |    76 | In progress | Desktop wrapper/package substrate, `NTH-EV-006`, unsigned macOS zip evidence, Thoth semantic menu slice                   | Needs current packaged/dev smoke after menu change, screenshot set, Desktop menu visual/behavior smoke, and score above 90          |
+| OpenTUI  |    87 | In progress | `NTH-EV-010` through `NTH-EV-018`, `NTH-EV-020`, renderer/navigation/CLI/recovery/workspace/provider/device/stress smokes | Needs final scorecard terminal capture ledger, provider/model editing path or honest final unavailable state, and score at least 88 |
+| Overall  |    80 | Failing     | Multi-endpoint slices exist, but final score evidence is incomplete                                                       | Needs full Web/Desktop/OpenTUI scorecard evidence and threshold pass                                                                |
 
 ## Evidence Ledger
 
@@ -65,8 +65,20 @@ Required final captures:
 7. Settings / About and Providers / Connections routes.
 8. Rapid route/settings/composer Playwright stress output.
 
-Current status: incomplete in this scorecard. Earlier evidence exists in `.agent-os`, but final
-scorecard screenshots and stress artifacts have not been refreshed in this document.
+Current status: static web export scorecard smoke passed for the current slice. `NTH-EV-021`
+builds the real web export with `npm run build:web`, serves `packages/app/dist` through the static
+server, runs Playwright against `E2E_BASE_URL`, captures the current screenshot set and drives rapid
+Workspace/Settings/composer/viewport stress. The refreshed screenshot set is:
+
+1. `docs/ui-review-captures/web-scorecard/web-home-desktop.png`
+2. `docs/ui-review-captures/web-scorecard/web-home-mobile.png`
+3. `docs/ui-review-captures/web-scorecard/web-workspace-composer.png`
+4. `docs/ui-review-captures/web-scorecard/web-settings-about.png`
+5. `docs/ui-review-captures/web-scorecard/web-settings-providers.png`
+6. `docs/ui-review-captures/web-scorecard/web-settings-connections.png`
+
+Still missing for final Web acceptance: fresh relay scorecard path, expired relay recovery
+scorecard path, full task route/backend path, provider/model editing path and a score above `90`.
 
 ### Desktop
 
@@ -102,6 +114,16 @@ CLI/OpenTUI stress run across `72x34`, `96x34` and `132x34`. The final scorecard
 ledger and provider/model editing path or final honest unavailable state are not yet complete.
 
 ## Current Slice Result
+
+The 2026-07-03 Web scorecard slice adds a static export smoke for the real releasable web bundle.
+The new `npm run smoke:web:ui-scorecard` root script runs `npm run build:web`, serves
+`packages/app/dist` locally, points app e2e at that served bundle with `E2E_BASE_URL`, captures six
+review screenshots and stress-tests rapid Settings/Workspace/composer/viewport churn. The latest
+passing run reported `1 passed (18.6s)`. This improves Web's working score to `80` and the overall
+working score to `80`, but it is not a final UI pass because Desktop scorecard evidence, Web relay
+edge paths, full task/provider editing behavior and final threshold evidence are still missing.
+
+## Previous Slice Result
 
 The 2026-07-02 OpenTUI PTY stress slice improves OpenTUI cross-terminal resilience evidence. The
 new `npm run smoke:tui:pty-stress` root script builds the real TUI/CLI path, runs `thoth tui` under

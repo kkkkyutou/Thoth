@@ -10,6 +10,10 @@ import { createWithWorkspace, type WithWorkspace } from "./helpers/with-workspac
 // reliably for every test that uses this `test` object.
 const test = base.extend<{ thothE2ESetup: void; withWorkspace: WithWorkspace }>({
   baseURL: async ({}, provide) => {
+    if (process.env.E2E_BASE_URL) {
+      await provide(process.env.E2E_BASE_URL);
+      return;
+    }
     const metroPort = process.env.E2E_METRO_PORT;
     if (!metroPort) {
       throw new Error("E2E_METRO_PORT not set - globalSetup must run first");

@@ -6,12 +6,25 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { Buffer } from "node:buffer";
+import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { loadDaemonClientConstructor } from "./helpers/daemon-client-loader";
 import { createNodeWebSocketFactory, type NodeWebSocketFactory } from "./helpers/node-ws-factory";
 import { forkThothHomeMetadata, resolveThothHomePath } from "./helpers/thoth-home-fork";
 
-const wranglerCliPath = path.resolve(__dirname, "../node_modules/wrangler/bin/wrangler.js");
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+const repoRootDirectory = path.resolve(currentDirectory, "../../..");
+
+function resolveWorkspaceBinaryPath(relativePath: string): string {
+  const candidates = [
+    path.resolve(currentDirectory, "..", "node_modules", relativePath),
+    path.resolve(repoRootDirectory, "node_modules", relativePath),
+  ];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  return found ?? candidates[0];
+}
+
+const wranglerCliPath = resolveWorkspaceBinaryPath("wrangler/bin/wrangler.js");
 
 interface WaitForServerOptions {
   host?: string;
@@ -277,10 +290,12 @@ function resolveOptionalThothHomeEnv(value: string | undefined): string | null {
 }
 
 interface OfferPayload {
-  v: 2;
+  v: 3;
   serverId: string;
   daemonPublicKeyB64: string;
-  relay: { endpoint: string };
+  relay: { endpoint: string; protocolVersion: 3; useTls?: boolean };
+  pairingToken: string;
+  pairingExpiresAt: string;
 }
 
 interface DaemonClientConfig {
@@ -353,10 +368,13 @@ function decodeOfferFromFragmentUrl(url: string): OfferPayload {
   const encoded = url.slice(idx + marker.length);
   const json = Buffer.from(encoded, "base64url").toString("utf8");
   const offer = JSON.parse(json) as Partial<OfferPayload>;
-  if (offer.v !== 2) throw new Error("offer.v missing/invalid");
+  if (offer.v !== 3) throw new Error("offer.v missing/invalid");
   if (!offer.serverId) throw new Error("offer.serverId missing");
   if (!offer.daemonPublicKeyB64) throw new Error("offer.daemonPublicKeyB64 missing");
   if (!offer.relay?.endpoint) throw new Error("offer.relay.endpoint missing");
+  if (offer.relay.protocolVersion !== 3) throw new Error("offer.relay.protocolVersion missing");
+  if (!offer.pairingToken) throw new Error("offer.pairingToken missing");
+  if (!offer.pairingExpiresAt) throw new Error("offer.pairingExpiresAt missing");
   return offer as OfferPayload;
 }
 
@@ -565,7 +583,7 @@ async function getAvailablePortExcluding(excludedPorts: Set<number>): Promise<nu
 }
 
 async function startRelay(excludedPorts: Set<number>): Promise<number> {
-  const relayDir = path.resolve(__dirname, "..", "..", "relay");
+  const relayDir = path.resolve(currentDirectory, "..", "..", "relay");
   const maxRelayStartupAttempts = 5;
   let lastRelayStartupError: unknown = null;
 
@@ -620,7 +638,7 @@ function startMetro(input: {
   daemonPort: number;
   buffer: ReturnType<typeof createLineBuffer>;
 }): ChildProcess {
-  const appDir = path.resolve(__dirname, "..");
+  const appDir = path.resolve(currentDirectory, "..");
   const child = spawn("npx", ["expo", "start", "--web", "--port", String(input.metroPort)], {
     cwd: appDir,
     env: {
@@ -666,6 +684,7 @@ interface DaemonSpawnArgs {
   port: number;
   relayPort: number;
   metroPort: number;
+  appBaseUrl?: string;
   thothHome: string;
   fakeEditorBinDir: string;
   editorRecordPath: string;
@@ -673,7 +692,7 @@ interface DaemonSpawnArgs {
 }
 
 function startDaemon(args: DaemonSpawnArgs): ChildProcess {
-  const serverDir = path.resolve(__dirname, "../../..", "packages/server");
+  const serverDir = path.resolve(currentDirectory, "../../..", "packages/daemon");
   const tsxBin = execSync("which tsx").toString().trim();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -683,7 +702,13 @@ function startDaemon(args: DaemonSpawnArgs): ChildProcess {
     THOTH_SERVER_ID: "srv_e2e_test_daemon",
     THOTH_LISTEN: `0.0.0.0:${args.port}`,
     THOTH_RELAY_ENDPOINT: `127.0.0.1:${args.relayPort}`,
-    THOTH_CORS_ORIGINS: `http://localhost:${args.metroPort}`,
+    THOTH_CORS_ORIGINS: [
+      `http://localhost:${args.metroPort}`,
+      `http://127.0.0.1:${args.metroPort}`,
+      args.appBaseUrl,
+    ]
+      .filter((origin): origin is string => Boolean(origin))
+      .join(","),
     // Default app E2E does not cover speech flows. Keep these disabled so
     // unrelated tests never start background local-model downloads.
     THOTH_DICTATION_ENABLED: "0",
@@ -766,7 +791,7 @@ async function performCleanup(shouldRemoveThothHome: boolean): Promise<void> {
 }
 
 export default async function globalSetup() {
-  const repoRoot = path.resolve(__dirname, "../../..");
+  const repoRoot = path.resolve(currentDirectory, "../../..");
   ensureRelayBuildArtifact(repoRoot);
   await loadEnvTestFile(repoRoot);
 
@@ -797,6 +822,7 @@ export default async function globalSetup() {
       port,
       relayPort,
       metroPort,
+      appBaseUrl: process.env.E2E_BASE_URL,
       thothHome,
       fakeEditorBinDir,
       editorRecordPath,

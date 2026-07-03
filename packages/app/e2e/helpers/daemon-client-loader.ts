@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { getE2EDaemonPort } from "./daemon-port";
 import { createNodeWebSocketFactory, type NodeWebSocketFactory } from "./node-ws-factory";
+
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 export async function loadDaemonClientConstructor<ClientConfig, ClientInstance>(): Promise<
   new (config: ClientConfig) => ClientInstance
 > {
-  const repoRoot = path.resolve(__dirname, "../../../../");
+  const repoRoot = path.resolve(currentDirectory, "../../../../");
   const moduleUrl = pathToFileURL(
     path.join(repoRoot, "packages/client/dist/daemon-client.js"),
   ).href;
@@ -56,7 +58,7 @@ export async function connectDaemonClient<ClientInstance extends { connect(): Pr
 }
 
 function loadAppVersion(): string {
-  const packageJsonPath = path.resolve(__dirname, "../../package.json");
+  const packageJsonPath = path.resolve(currentDirectory, "../../package.json");
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
   if (typeof packageJson.version !== "string" || packageJson.version.length === 0) {
     throw new Error(`Missing app version in ${packageJsonPath}`);
