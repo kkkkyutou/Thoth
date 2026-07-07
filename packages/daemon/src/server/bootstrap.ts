@@ -370,6 +370,17 @@ export interface ThothDaemonConfig {
       thinkingOptionId?: string;
     }>;
   };
+  workspaceSecretary?: {
+    providerSession?: {
+      provider: string;
+      model?: string;
+      modeId?: string;
+      thinkingOptionId?: string;
+      featureValues?: Record<string, unknown>;
+    };
+    mode?: "quick" | "loop";
+    clarifyStrength?: "none" | "auto" | "light" | "balanced" | "dive";
+  };
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
@@ -454,6 +465,7 @@ export async function createThothDaemon(
       metadataGeneration: {
         providers: config.metadataGeneration?.providers ?? [],
       },
+      workspaceSecretary: config.workspaceSecretary ?? {},
       autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
       enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
       appendSystemPrompt: config.appendSystemPrompt ?? "",
@@ -973,7 +985,10 @@ export async function createThothDaemon(
   const createAgentToolCatalog = (runtime: ThothToolRuntimeContext) =>
     createThothToolCatalog(createAgentToolHostDependencies(runtime));
   agentManager.setThothToolCatalogFactory(createAgentToolCatalog);
-  agentManager.setThothToolsEnabled(config.mcpInjectIntoAgents !== false);
+  // Native Thoth runtime tools are provider-session tools, not MCP injection.
+  // Whether a specific agent sees them is guarded by AgentSessionConfig.extra;
+  // the MCP setting only controls the generic /mcp/agents URL injection below.
+  agentManager.setThothToolsEnabled(true);
 
   const mcpEnabled = config.mcpEnabled ?? true;
   let agentMcpBaseUrl: string | null = null;
@@ -1137,10 +1152,8 @@ export async function createThothDaemon(
             const mcpBaseUrl = mcpEnabled ? createAgentMcpBaseUrl(boundListenTarget) : null;
             agentMcpBaseUrl = config.mcpInjectIntoAgents === false ? null : mcpBaseUrl;
             agentManager.setMcpBaseUrl(agentMcpBaseUrl);
-            agentManager.setThothToolsEnabled(config.mcpInjectIntoAgents !== false);
             daemonConfigStore.onFieldChange("mcp.injectIntoAgents", (value) => {
               agentManager.setMcpBaseUrl(value ? mcpBaseUrl : null);
-              agentManager.setThothToolsEnabled(value !== false);
             });
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");

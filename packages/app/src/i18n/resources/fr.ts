@@ -168,6 +168,16 @@ export const fr: TranslationResources = {
       model: "Changer de modèle",
       mode: "Changer de mode",
     },
+    runtime: {
+      clarify: {
+        tooltip: "Clarify",
+        selectWithValue: "Clarify: {{value}}",
+      },
+      mode: {
+        tooltip: "Mode",
+        selectWithValue: "Mode: {{value}}",
+      },
+    },
   },
   agentStream: {
     empty: "Commencez à discuter avec cet agent...",
@@ -449,6 +459,7 @@ export const fr: TranslationResources = {
         terminal: "Terminal",
         browser: "Navigateur",
         agent: "Agent",
+        backgroundTasks: "Background tasks",
         workspace: "Workspace",
       },
       switcher: {
@@ -1228,7 +1239,7 @@ export const fr: TranslationResources = {
         description: "Connexion relais cryptée.",
       },
       pasteLink: {
-        title: "Coller le lien d'association",
+        title: "Paste pairing code",
         description: "Connexion relais cryptée.",
       },
     },
@@ -1276,14 +1287,15 @@ export const fr: TranslationResources = {
       },
     },
     link: {
-      title: "Coller le lien d'association",
-      helper: "Collez le lien d'appairage depuis votre serveur.",
-      label: "Lien d'appariement",
+      title: "Paste pairing code",
+      helper: "Paste the short pairing code from your server.",
+      label: "Pairing code",
+      placeholder: "Paste pairing code",
       errors: {
-        required: "Collez un lien d'appairage (.../#offer=...)",
-        missingOffer: "Le lien doit inclure#offer=...",
-        emptyOffer: "La charge utile de l'offre est vide",
-        invalid: "Lien d'association invalide",
+        required: "Paste a pairing code",
+        missingOffer: "Paste a pairing code",
+        emptyOffer: "Pairing code is empty",
+        invalid: "Invalid pairing code",
         unableToPair: "Impossible de coupler l'hôte",
       },
       alert: {
@@ -1718,6 +1730,7 @@ export const fr: TranslationResources = {
         removeErrorTitle: "Erreur",
         removeErrorMessage: "Impossible de supprimer la connexion",
         timeout: "Temps mort",
+        pairAgain: "Associer à nouveau",
       },
       pairDevices: {
         title: "Associer des appareils",

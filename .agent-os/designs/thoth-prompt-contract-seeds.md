@@ -1,21 +1,21 @@
-# New Thoth Prompt Contract Seeds
+# Thoth Prompt Contract Seeds
 
 ## Status
 
-1. 日期：`2026-06-28`
-2. 性质：旧 Thoth prompt 经验的 docs-only 提取
-3. 范围：只记录可迁移的 role contract seed，不保留旧 Python prompt runtime
+1. 日期：`2026-07-06`
+2. 性质：归档 plugin prompt 经验的 docs-only 提取
+3. 范围：只记录可迁移的 role contract seed，不保留归档 Python prompt runtime
 4. 边界：不写完整长 prompt，不生成 provider-specific prompt，不定义最终 wire schema
 
 ## 1. 提取原则
 
-旧 Thoth 的 `prompt_specs.py`、phase validators 和 runtime loop 里有三类值得保留的经验：
+归档 plugin 的 `prompt_specs.py`、phase validators 和 runtime loop 里有三类值得保留的经验：
 
 1. 不允许执行者重定义目标、验收或成功。
 2. 缺失证据本身是执行问题，不能被包装成自然语言失败总结。
 3. 下一轮 loop 必须针对上一轮没有解决的问题，而不是机械重复。
 
-这些经验在 New Thoth 中应转成角色合同，而不是保留旧 Python 文件。
+这些经验在 Thoth 中应转成角色合同，而不是保留归档 Python 文件。
 
 ## 2. Router Contract Seed
 
@@ -72,51 +72,59 @@ Forbidden behavior:
 
 ```text
 Purpose:
-- Compile vague intent into goal, non-goals, constraints, assumptions, risks, and acceptance.
-- Ask only material golden questions.
-- Apply the selected clarification strength to both quick and loop.
-- For quick, produce at most the material question, safe default, permission gap, or proceed decision needed before answering or acting.
-- For loop, prepare a contract freeze proposal.
+- This seed applies only after Thoth loads the hidden `thoth.clarify` skill in a Thoth-owned secretary provider session.
+- Do not load this seed for `Quick + none`; that path is bare provider/Paseo-like foreground chat or execution.
+- Compile vague intent into goal, constraints, assumptions, risks and acceptance through behavior-tree convergence.
+- Ask only material golden questions that change target route, risk, resource boundary, preference, acceptance or irreversible choice.
+- Drive phase transitions across `clarify`, `approval_task`, `approval_breakdown`, `quick_exec` and `repair`.
+- For Quick with Clarify, prepare two approval cards and then execute in the same session.
+- For Loop, prepare two approval cards and then hand off to background PlanExec/Review sessions.
 
 Input packet:
-- user_message
-- conversation_scope
-- workspace_summary
-- relevant_memory
-- draft_task_state
-- selected_task_mode
-- clarification_strength
-- known_constraints
-- known_acceptance_signals
+- turn_phase
+- current_code
+- mode
+- clarify_strength
+- effective_clarify_strength
+- user_message_or_answer
+- transcript_ref_or_delta
+- assumption_ledger_ref
+- decision_tree_frontier_ref
+- approved_task_card_ref
 
 Output packet:
-- goal
-- non_goals
-- constraints
-- assumptions
-- risks
-- acceptance_spec
-- clarification_cards
-- contract_freeze_proposal
-- quick_clarification_result
+- `clarify`, `approval_task`, `approval_breakdown` and `repair` phases: call `submit_clarify_packet` exactly once.
+- `quick_exec` phase: stream ordinary provider execution; do not submit a Clarify packet unless re-entering `clarify`.
+- `C_DIRECT`: active Clarify runtime decides direct response is enough.
+- `C_ASK`: titled behavior-tree decision card with 2-4 tightly related questions.
+- `C_TASK_CARD`: CEO overview approval card with verbatim Clarify Q&A provenance.
+- `C_GOAL_CARD`: breakdown approval card with verbatim Clarify Q&A plus approved CEO card provenance.
+- `C_REGISTER`: Loop only; daemon registers background task after two approvals.
+- `C_BLOCKED` / `C_REPAIR`: blocked or shape/provenance repair only.
 
 Hard stops:
 - Do not invent high-impact user decisions.
 - Do not mark a task ready when acceptance is unresolved.
-- Do not ask exhaustive boundary questions.
+- Do not ask exhaustive boundary questions unless `dive` still has material user-owned assumptions.
 - Do not push agent-discoverable facts back to the user.
-- Do not create a loop task from quick without an accepted mode switch.
-- Do not show a contract freeze card for quick.
+- Do not downgrade the user's target into an easier MVP, demo, mock, partial implementation or different target.
+- Do not provide default choices or recommendations unless the user asks.
+- Do not create a loop task from quick without two accepted cards and Loop mode.
+- Do not call `submit_clarify_packet` in `Quick + none`.
+- Do not expose raw packets, state codes, schema errors, skill names or MCP tool details to the user.
 
 Evidence requirements:
 - Each question must name the decision it changes.
-- Contract freeze must separate confirmed facts from assumptions.
-- Missing acceptance must remain visible.
+- Each answer must be preserved verbatim for final-card provenance.
+- Overview and breakdown cards must separate confirmed facts from assumptions.
+- Missing acceptance or contradictory authority must return to Clarify or blocked, not forced approval.
 
 Forbidden behavior:
 - Form-like interrogation.
 - Treating "sounds reasonable" as confirmation.
 - Creating executable tasks from unconfirmed high-impact assumptions.
+- Copying the full `SKILL.md`, tool schema or transition table into every user prompt.
+- Answering in prose after calling `submit_clarify_packet`.
 ```
 
 ## 4. Plan Contract Seed

@@ -54,8 +54,12 @@ import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import type { ToastApi } from "@/components/toast-host";
 import type { DaemonClient } from "@thoth/client/internal/daemon-client";
+import type { WorkspaceSecretaryTurnActionPayload } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
+import { ClarifyDecisionCard } from "@/components/clarify-decision-card";
+import { SecretaryApprovalCard } from "@/components/secretary-approval-card";
+import { RegisteredTaskCard } from "@/components/registered-task-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
@@ -235,6 +239,10 @@ export interface AgentStreamViewProps {
   isAuthoritativeHistoryReady?: boolean;
   toast?: ToastApi | null;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  onSubmitClarifyAnswer?: (
+    cardId: string,
+    answer: WorkspaceSecretaryTurnActionPayload,
+  ) => Promise<void> | void;
 }
 
 const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
@@ -313,6 +321,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       isAuthoritativeHistoryReady = true,
       toast,
       onOpenWorkspaceFile,
+      onSubmitClarifyAnswer,
     },
     ref,
   ) {
@@ -432,6 +441,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const handleToolCallOpenFile = useStableEvent((filePath: string) => {
       handleInlinePathPress({ raw: filePath, path: filePath }, "main");
     });
+
+    const handleSubmitClarifyAnswer = useStableEvent(
+      async (cardId: string, answer: WorkspaceSecretaryTurnActionPayload) => {
+        try {
+          if (onSubmitClarifyAnswer) {
+            await onSubmitClarifyAnswer(cardId, answer);
+            return;
+          }
+          if (!client) {
+            throw new Error(t("workspace.terminal.hostDisconnected"));
+          }
+          await client.answerWorkspaceSecretaryClarify({ cardId, answer });
+        } catch (error) {
+          toast?.error(toErrorMessage(error));
+        }
+      },
+    );
 
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
       async ({ target, boundaryMessageId }) => {
@@ -706,6 +732,32 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           case "tool_call":
             return renderToolCallItem(layoutItem, item);
 
+          case "clarify_card":
+            return (
+              <ClarifyDecisionCard
+                card={item.card}
+                onSubmit={(answer) => handleSubmitClarifyAnswer(item.card.id, answer)}
+              />
+            );
+          case "task_card":
+            return (
+              <SecretaryApprovalCard
+                card={item.card}
+                kind="task"
+                onSubmit={(answer) => handleSubmitClarifyAnswer(item.card.id, answer)}
+              />
+            );
+          case "goal_card":
+            return (
+              <SecretaryApprovalCard
+                card={item.card}
+                kind="goal"
+                onSubmit={(answer) => handleSubmitClarifyAnswer(item.card.id, answer)}
+              />
+            );
+          case "registered_task":
+            return <RegisteredTaskCard task={item.task} />;
+
           case "activity_log":
             return (
               <ActivityLog
@@ -732,7 +784,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             return null;
         }
       },
-      [renderUserMessageItem, renderAssistantMessageItem, renderThoughtItem, renderToolCallItem],
+      [
+        handleSubmitClarifyAnswer,
+        renderUserMessageItem,
+        renderAssistantMessageItem,
+        renderThoughtItem,
+        renderToolCallItem,
+      ],
     );
 
     const bottomTurnFooterHost = streamLayout.auxiliaryTurnFooter;
@@ -1021,6 +1079,9 @@ function agentStreamViewPropsEqual(
   }
   if (left.toast !== right.toast) reasons.push("toast");
   if (left.onOpenWorkspaceFile !== right.onOpenWorkspaceFile) reasons.push("onOpenWorkspaceFile");
+  if (left.onSubmitClarifyAnswer !== right.onSubmitClarifyAnswer) {
+    reasons.push("onSubmitClarifyAnswer");
+  }
   recordRenderProfileReasons(`AgentStreamView:${right.agentId}`, reasons);
   return reasons.length === 0;
 }

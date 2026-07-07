@@ -132,7 +132,7 @@ Evidence:
 
 Current result:
 
-The promoted source structure is verified as the formal implementation substrate. This evidence does not claim that any package builds, typechecks, launches or implements the New Thoth MVP behavior.
+The promoted source structure is verified as the formal implementation substrate. This evidence does not claim that any package builds, typechecks, launches or implements the Thoth MVP behavior.
 
 ### `NTH-EV-004` First-Day Development Infrastructure Verification
 
@@ -197,7 +197,7 @@ Evidence:
 
 Current result:
 
-The first-day development infrastructure is verified. This evidence proves the foundation gate and local packaging infrastructure, not any New Thoth MVP product behavior.
+The first-day development infrastructure is verified. This evidence proves the foundation gate and local packaging infrastructure, not any Thoth MVP product behavior.
 
 ### `NTH-EV-005` Relay V3 Security And Local Preview Verification
 
@@ -232,7 +232,7 @@ Evidence:
 15. Local relay load test passed with 200 clients / 10 minutes / 5 second interval: 24000 attempted pings, 24000 pongs, failures `0`, error rate `0`, p50 `18ms`, p95 `24ms`, p99 `31ms`; receipt `/mnt/cfs/5vr0p6/yzy/thoth/.dev/relay-load-test-1782889793822.json`.
 16. `npm run sync:code4agent-relay -- .dev/code4agent-thoth-relay-export` generated a Code4Agent-style `apps/thoth-relay` mirror under ignored `.dev/`.
 17. Code4Agent dry-run using current remote `packages/config/apps.yml` and `.github/workflows/_deploy-isolated.yml` showed the mirror script can add `thoth-relay` to app registry and emits `CODE4AGENT_WORKFLOW_REQUIRED.md` because `_deploy-isolated.yml` hard-codes per-app jobs.
-18. `npm --silent run gh -- api user --jq .login` reported `Royalvice`.
+18. `npm --silent run gh -- api user --jq .login` confirmed the repo-local authenticated identity.
 19. `npm --silent run gh -- repo view SeeleAI/Code4Agent --json nameWithOwner,defaultBranchRef,isPrivate,viewerPermission,url` reported private repo access, default branch `master` and `viewerPermission=WRITE`.
 20. Code4Agent ruleset query reported active `protected-paths` push ruleset restricting `.github/**/*`, `scripts/**/*`, `docs/**/*`, `AGENTS.md`, `**/AGENTS.md`, `packages/presets/**/*` and `**/*/wrangler.jsonc`.
 
@@ -321,7 +321,7 @@ Evidence:
 
 Current result:
 
-Thoth services can now run in parallel with the user's local Paseo daemon. This evidence proves development/runtime isolation and packaging/smoke readiness, not the New Thoth MVP task workflow.
+Thoth services can now run in parallel with the user's local Paseo daemon. This evidence proves development/runtime isolation and packaging/smoke readiness, not the Thoth MVP task workflow.
 
 ### `NTH-EV-007` Web Workspace White-Screen Regression Verification
 
@@ -880,7 +880,7 @@ Current result:
 OpenTUI now has a reproducible pseudo-terminal stress smoke for route/focus/composer/provider/device
 churn across narrow, default and wide terminal widths. This still does not complete final
 Web/Desktop/OpenTUI UI acceptance: OpenTUI is still below the final `88` score threshold, Web and
-Desktop still need current screenshot/stress evidence, and the full New Thoth MVP task loop,
+Desktop still need current screenshot/stress evidence, and the full Thoth MVP task loop,
 provider/model editing path, Clarify runtime, Loop runtime and independent Review runtime remain
 unimplemented.
 
@@ -952,7 +952,7 @@ Web now has current static export screenshot and route/composer/settings stress 
 scorecard. This still does not complete final Web/Desktop/OpenTUI UI acceptance: Desktop still needs
 fresh packaged/dev scorecard evidence, Web still needs fresh relay and expired relay scorecard
 paths, the full task route/backend path is not implemented, provider/model editing remains
-unfinished, OpenTUI remains below the final threshold and the full New Thoth MVP task loop,
+unfinished, OpenTUI remains below the final threshold and the full Thoth MVP task loop,
 Clarify runtime, Loop runtime and independent Review runtime remain unimplemented.
 
 ### `NTH-EV-022` Compact APP Runtime Contract Verification
@@ -976,13 +976,13 @@ Scope:
 
 Evidence:
 
-1. Added `.agent-os/designs/new-thoth-app-runtime-contract.md` as canonical design authority for the
+1. Added `.agent-os/designs/thoth-app-runtime-contract.md` as canonical design authority for the
    compact APP runtime model. It documents Settings, Workspace Secretary and Background Tasks;
    hidden clarify/loop skills; Quick/Loop switching; two confirmation gates; compact state codes;
    compact packets; provider input envelope; daemon mechanical responsibility; and front-end
    rendering responsibility.
 2. Updated `AGENTS.md` recovery order so future agents read
-   `.agent-os/designs/new-thoth-app-runtime-contract.md` with the canonical design set.
+   `.agent-os/designs/thoth-app-runtime-contract.md` with the canonical design set.
 3. Recorded `NTH-CD-027` in `.agent-os/change-decisions.md`.
 4. Added `packages/protocol/src/thoth-runtime-contract.ts` with code authority for:
    `THOTH_BUILTIN_RUNTIME_SKILLS`, 7 Clarify codes, 8 Loop codes, Clarify/Loop UI kinds, compact
@@ -1004,9 +1004,782 @@ The compact APP runtime contract is now preserved in both design authority and p
 does not implement the runtime, daemon authority, provider skill injection, APP views or background
 task execution; it only locks the shape future implementation must follow.
 
+### `NTH-EV-023` Clarify Agent Harness And Golden Judge Verification
+
+Status: `passed`
+
+Scope:
+
+1. Implement the first `thoth.clarify` hidden skill harness for provider-backed secretary sessions.
+2. Preserve the boundary that semantic judgment belongs inside provider sessions, while local code
+   builds envelopes, validates packet shape, preserves transcript/provenance and runs fixture evals.
+3. Add prompt contract, compact preset prompt, convergence rubric and behavior-tree question rubric.
+4. Add protocol-level `C_ASK` question-card, Clarify answer packet and final-card provenance schemas.
+5. Add golden data and deterministic eval for Quick, Clarify, Task Card, Goal Card and blocked
+   behavior.
+6. Run an independent `codex exec` judge over the golden transcripts and packets.
+
+Evidence:
+
+1. Added `packages/drivers/src/clarify/contract.ts` with `thoth.clarify` prompt contract,
+   per-round compact preset, convergence rubric, behavior-tree question rubric,
+   `composeClarifyProviderPrompt` and `buildClarifyProviderInputEnvelope`.
+2. Added `packages/drivers/src/clarify/golden.ts` with 15 golden scenarios covering `hi`, vague
+   large task, low-risk small task, unclear acceptance, missing risk/resource boundary, repeated
+   ambiguity, enough information, "you decide", high-risk confirmation, unsafe blocked, contradictory
+   demands, anti-downgrade, `C_ASK` compact preset, note-only answer packet and final Goal Card
+   provenance.
+3. Added `packages/drivers/src/clarify/eval.ts` and `packages/drivers/src/clarify/eval.test.ts`.
+   Deterministic eval validates packet schemas, compact preset guard phrases, forbidden visible
+   question text, repeated-question avoidance, answer packet shape and final-card provenance.
+4. Added `scripts/judge-clarify-golden.mjs` and root `npm run judge:clarify:golden`; the script
+   runs deterministic eval, launches an independent read-only `codex exec` judge and writes ignored
+   evidence artifacts under `.agent-os/artifacts/`.
+5. Updated `packages/protocol/src/thoth-runtime-contract.ts` so `C_ASK` packets must carry a valid
+   question card in both `content` and `ui`, `C_TASK_CARD` must carry
+   `content.provenance.clarify_transcript_verbatim`, and `C_GOAL_CARD` must carry both the full
+   transcript and `approved_ceo_task_card_verbatim`.
+6. Updated `packages/protocol/src/thoth-runtime-contract.test.ts` for question card validation,
+   note-only answer packets, label length rejection, `C_ASK` content/ui card requirements and final
+   card provenance rejection.
+7. First independent judge run after adding blocked coverage failed on semantic quality: the
+   `you-decide` Task Card was too generic, note-only answer handling looked like repeated Clarify,
+   Task Card provenance lacked the original user goal and the cleanup branch had slight partial-scope
+   downgrade risk. The golden data was corrected before acceptance.
+8. Second independent judge run failed because the Goal Card provenance fixture mixed a settings-page
+   transcript with an unrelated Clarify-backend CEO Task Card and goal split. The fixture was corrected
+   so transcript, approved CEO Task Card and goal split all refer to the same settings-page task before
+   acceptance.
+9. Final `npm run eval:clarify` passed with 15 scenarios:
+   `hi-direct`, `vague-large-task`, `low-risk-small-task`, `unclear-acceptance`,
+   `risk-resource-boundary`, `repeated-ambiguity`, `enough-information-task-card`,
+   `you-decide-agent-owned`, `high-risk-confirmation`, `unsafe-blocked`, `contradiction`,
+   `anti-downgrade`, `compact-preset-cask`, `answer-packet-note-only` and
+   `goal-card-provenance`.
+10. Final `npm run judge:clarify:golden` passed. Evidence artifacts:
+    `.agent-os/artifacts/clarify-golden-eval-2026-07-03T17-41-06-546Z.json` and
+    `.agent-os/artifacts/clarify-golden-codex-judge-2026-07-03T17-41-06-546Z.md`. The judge found
+    that the golden scenarios satisfy secretary-like behavior, behavior-tree convergence, original
+    target preservation, anti-downgrade, no repeated low-value questions, no agent-discoverable fact
+    pushback, no unsolicited defaults, `C_ASK` card constraints, `C_TASK_CARD` transcript provenance
+    and `C_GOAL_CARD` transcript plus approved CEO Task Card provenance.
+11. `npm run test:protocol` passed: 33 files and 303 tests.
+12. `npm run test:drivers` passed: 1 file and 3 tests.
+13. `npm run typecheck:drivers` passed.
+14. `npm run format:check` passed.
+15. `git diff --check` passed.
+16. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation
+    build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`,
+    relay `29`, protocol `303` and client `110` tests.
+
+Current result:
+
+`NTH-TD-015` / `NTH-MS-012` is verified for the backend Clarify Agent Harness and Convergence
+Contract scope. The implementation provides a provider-session prompt harness, schemas, golden
+fixtures, deterministic eval and independent judge workflow. It does not yet render the Workspace
+Secretary UI, start live provider-backed secretary sessions from the daemon, or register real
+background tasks; those remain for `NTH-TD-016` and later loop goals.
+
+Supersession note:
+
+This was the first Loop-1 acceptance. The 2026-07-04 user revision replaced the TS prompt-constant
+source model and per-round compact-preset packet model with standard `SKILL.md` artifacts,
+session-scoped mounting and compact runtime packets. The current accepted Loop-1 evidence is
+`NTH-EV-024`.
+
+### `NTH-EV-024` Revised Clarify Standard Skill Artifact And User Simulation Verification
+
+Status: `passed`
+
+Scope:
+
+1. Convert `thoth.clarify` from TS-only prompt constants into a standard cross-provider internal
+   Skill artifact with `SKILL.md` as canonical source.
+2. Create reserved `thoth.loop` as the same standard internal Skill artifact form, without claiming
+   Loop execution / Review runtime exists.
+3. Keep runtime skills inside Thoth-owned internal bundles and mount them only into Thoth-owned
+   provider session scope.
+4. Prove mounting does not write to bare/global provider skill homes:
+   `~/.codex/skills`, `~/.claude/skills` or `~/.agents/skills`.
+5. Replace per-round rule repetition with compact runtime packets: normal same-state turns carry
+   runtime data only; session start and transition packets may carry `skill_ref` / digest markers;
+   repair packets only repair shape/state/provenance.
+6. Separate provider semantic transition rules in `SKILL.md` from daemon/protocol mechanical
+   transition validation.
+7. Upgrade deterministic eval and independent `codex exec` judge coverage to include standard Skill
+   artifact, session-scoped mount, bare-provider invisibility, compact packets, repair boundary and
+   user simulation.
+
+Evidence:
+
+1. Created standard Skill artifacts through the standard skill-creator init flow and removed generated
+   Codex-only UI metadata:
+   - `packages/drivers/src/runtime-skills/thoth-clarify/SKILL.md`
+   - `packages/drivers/src/runtime-skills/thoth-loop/SKILL.md`
+2. `thoth-clarify/SKILL.md` has YAML frontmatter with `name: thoth.clarify`,
+   `description`, `user-invocable: false`, `x-thoth-runtime: hidden`,
+   `x-thoth-required: true` and `x-thoth-scope: provider-session`. Its Markdown body contains
+   Role, Runtime Arguments, State Codes, Transition Rules, Question Rules, Output Contract, Repair
+   Contract, Good Cases and Bad Cases.
+3. `thoth-loop/SKILL.md` exists as a reserved standard artifact only. It explicitly says
+   `thoth.loop` execution, Review, retry, evidence, permission and task completion behavior remain
+   unfinished.
+4. `packages/drivers/src/clarify/contract.ts` now loads the canonical `SKILL.md`, parses
+   frontmatter, computes a `sha256:` digest, validates required Clarify sections, mounts the Skill
+   under `provider-sessions/<sessionId>/skills/thoth-clarify/SKILL.md`, rejects global provider skill
+   dirs and exposes fallback prompt rendering only as compatibility path.
+5. `packages/protocol/src/thoth-runtime-contract.ts` now defines Clarify session-start, normal turn,
+   transition and repair input packets; `THOTH_CLARIFY_MECHANICAL_TRANSITIONS`; and
+   `isAllowedClarifyMechanicalTransition`. Normal turn packets reject `skill_ref`; transition packets
+   require `skill_ref`, digest and `basis: "according_to_loaded_skill"`; repair packets require
+   shape-only / no semantic reinterpretation / no fabricated transcript / no approved-card mutation
+   instructions.
+6. `packages/drivers/src/clarify/user-simulation.ts` provides the deterministic multi-turn user
+   simulation covering `hi`, vague large task, Three.js PathTracing, branch choice answer, note-only
+   answer, `you decide`, unclear acceptance, risk/delete boundary, contradictory demand, Task Card
+   confirmation, Goal Card confirmation and repair packet boundary.
+7. `packages/drivers/src/clarify/eval.ts` now keeps the original 15 behavior golden scenarios and
+   adds revised checks:
+   `skill-created-by-standard-skill-create`, `skill-not-global-installed`,
+   `session-scoped-skill-visible`, `bare-provider-skill-invisible`,
+   `normal-turn-does-not-repeat-skill-rules`, `transition-turn-carries-skill-reference`,
+   `repair-packet-shape-only`, `skill-rules-live-in-skill-md` and
+   `codex-exec-user-simulation`.
+8. `scripts/judge-clarify-golden.mjs` now sends the independent judge the canonical `SKILL.md`,
+   session-scoped mount evidence, normal turn envelope, transition packet, repair packet and golden
+   scenarios.
+9. Added `scripts/judge-clarify-user-simulation.mjs` and root
+   `npm run judge:clarify:user-simulation`. The script constructs a clean temp Thoth runtime home,
+   mounts the installed internal Skill artifact into session scope, verifies fake bare provider
+   global skill dirs remain unpolluted, validates the multi-turn simulation and launches an
+   independent read-only `codex exec` judge.
+10. `npm run test:protocol -- thoth-runtime-contract.test.ts` passed with `1` file and `23` tests.
+11. `npm run test:drivers` passed with `1` file and `4` tests.
+12. `npm run typecheck:drivers` passed.
+13. `npm run eval:clarify` passed with 15 behavior scenarios plus all revised skill/session/packet
+    checks.
+14. `npm run judge:clarify:golden` passed. Evidence artifacts:
+    `.agent-os/artifacts/clarify-golden-eval-2026-07-04T02-09-17-693Z.json` and
+    `.agent-os/artifacts/clarify-golden-codex-judge-2026-07-04T02-09-17-693Z.md`.
+15. `npm run judge:clarify:user-simulation` passed. Evidence artifact:
+    `.agent-os/artifacts/clarify-user-simulation-2026-07-04T02-11-39-269Z.md`.
+16. `npm run format:check` passed.
+17. `git diff --check` passed.
+18. `npm run check:foundation` passed: repo validation, format check, foundation lint,
+    foundation build, foundation typecheck and foundation tests. Foundation tests passed with
+    highlight `66`, relay `29`, protocol `309` and client `110` tests.
+
+Current result:
+
+The revised `NTH-TD-015` / `NTH-MS-012` acceptance is verified for the backend Clarify standard Skill
+artifact, Thoth internal session-scoped skill invocation/mount contract, no global provider skill
+pollution, compact runtime/transition/repair packets, repair boundary, golden eval, independent
+golden judge and independent user-simulation judge.
+
+Not completed by this evidence:
+
+1. Full daemon live provider orchestration.
+2. Workspace Secretary frontend rendering.
+3. Real background task registration.
+4. `thoth.loop` execution / review runtime.
+
+### `NTH-EV-025` Clarify Strength And Decision Frontier Revision Verification
+
+Status: `passed`
+
+Scope:
+
+1. Extend the canonical `thoth.clarify` `SKILL.md` with clarify strength strategy, assumption
+   owner classification, decision-tree frontier handling, multi-question `C_ASK` card rules,
+   hidden output meta and stop conditions such as "够了/不要再问".
+2. Extend protocol and driver contracts so inner Clarify input packets carry controls /
+   `clarify_strength` / `effective_clarify_strength`, transcript refs, assumption ledger refs and
+   decision-tree frontier refs without repeating Skill rules.
+3. Extend transition packets with `controls_changed` for strength changes while keeping
+   `skill_ref` / digest markers limited to session start, transition, context loss and repair paths.
+4. Update `C_ASK` schema from a single-question card to a standard-compatible card with one title,
+   one primary behavior-tree node, 2-4 tightly related question items, short choices, note support
+   and hidden `content.meta`.
+5. Prove `none` / `light` / `balanced` / `dive` produce different behavior for the same Three.js
+   PathTracing prompt, and that agent-discoverable facts are not pushed to the user.
+
+Evidence:
+
+1. Updated `packages/drivers/src/runtime-skills/thoth-clarify/SKILL.md` with Mental Model,
+   Clarify Strength Strategy, Assumption Ledger, Decision Tree Frontier, multi-question Output
+   Contract, hidden internal meta and updated Good/Bad cases.
+2. Updated `packages/protocol/src/thoth-runtime-contract.ts` with `dive` strength support, legacy
+   `deep` compatibility, `ClarifyInputControlsSchema`, `ClarifyControlsChangedSchema`,
+   multi-question card schemas, multi-answer packet schemas, assumption owner schemas and
+   `ClarifyOutputMetaSchema`.
+3. Updated `packages/drivers/src/clarify/contract.ts` so normal turn builders emit controls,
+   effective strength, assumption ledger refs and decision-tree frontier refs, transition builders
+   can emit `controls_changed`, and legacy `deep` normalizes to effective `dive`.
+4. Updated `packages/drivers/src/clarify/golden.ts` and `eval.ts` to 21 deterministic scenarios,
+   including `strength-none-pathtracing`, `strength-light-pathtracing`,
+   `strength-balanced-pathtracing`, `strength-dive-pathtracing`, `agent-can-discover` and
+   `stop-clarify-task-card`.
+5. Updated `packages/drivers/src/clarify/user-simulation.ts` to use multi-question cards, `dive`
+   controls, hidden meta, controls validation and a `stop-clarify-enough` user turn.
+6. Updated both independent judge scripts so `codex exec` reviews strength behavior, assumption
+   ownership, decision frontier behavior, multi-question cards, hidden meta and stop conditions.
+7. `npm run test:protocol -- thoth-runtime-contract.test.ts` passed with `1` file and `23` tests.
+8. `npm run test:drivers` passed with `1` file and `4` tests.
+9. `npm run typecheck:drivers` passed.
+10. `npm run eval:clarify` passed with `21` behavior scenarios plus skill/session/packet/repair /
+    strength checks.
+11. `npm run judge:clarify:golden` passed. Evidence artifacts:
+    `.agent-os/artifacts/clarify-golden-eval-2026-07-04T03-10-56-860Z.json` and
+    `.agent-os/artifacts/clarify-golden-codex-judge-2026-07-04T03-10-56-860Z.md`.
+12. `npm run judge:clarify:user-simulation` passed. Evidence artifact:
+    `.agent-os/artifacts/clarify-user-simulation-2026-07-04T03-13-04-820Z.md`.
+13. `npm run format:check` passed.
+14. `git diff --check` passed.
+15. `npm run check:foundation` passed: repo validation, format check, foundation lint,
+    foundation build, foundation typecheck and foundation tests. Foundation tests passed with
+    highlight `66`, relay `29`, protocol `309` and client `110` tests.
+
+Current result:
+
+The current `NTH-TD-015` / `NTH-MS-012` acceptance is verified for the revised Clarify strength
+strategy, assumption-owner contract, decision-tree frontier refs, compact runtime controls,
+multi-question `C_ASK` cards, hidden internal meta, deterministic golden eval, independent golden
+judge and independent user-simulation judge.
+
+Not completed by this evidence:
+
+1. Full daemon live provider orchestration.
+2. Workspace Secretary frontend rendering.
+3. Real background task registration.
+4. `thoth.loop` execution / review runtime.
+
+### `NTH-EV-026` Loop-2 Workspace Secretary Frontend Refactor Slice
+
+Status: `historical_only`
+
+Scope:
+
+1. Replace the root web/app entry with the compact three-view Thoth APP shell:
+   Workspace Secretary, Background Tasks and Settings.
+2. Add a protocol/client/daemon/app typed clean UI model boundary for Workspace Secretary, Clarify
+   cards, Settings relay state and Background Tasks.
+3. Render Clarify output as secretary decision cards with multi-question choices,
+   per-option notes, note-only, "you recommend" and "you decide" actions.
+4. Replace the development fixture APP slice with daemon-backed `workspace_secretary.*` RPC
+   authority and remove app-local Clarify/relay model construction from the production path.
+5. Exercise the real `relay.test.thoth.seeles.ai` health endpoint through daemon clean UI model
+   authority without displaying
+   tokens, raw pairing offers or credentials.
+6. Prove the web static export path, Loop-2 user journey, desktop/mobile screenshots, Playwright
+   trace/video and independent UI mental-model review.
+
+Evidence:
+
+1. Added `packages/protocol/src/workspace-secretary/rpc-schemas.ts` with
+   `ThothCleanUiModel`, `WorkspaceSecretaryModel`, `ThothClarifyCardModel`,
+   `RelayServiceModel`, `BackgroundTasksModel`, structured answer payload schemas and
+   `workspace_secretary.snapshot/send/answer/topic.create` RPC schemas. The clean model authority
+   source is `daemon_clean_ui_model`.
+2. Wired the new RPC schemas into `packages/protocol/src/messages.ts` and added client methods in
+   `packages/client/src/daemon-client.ts`: `fetchWorkspaceSecretarySnapshot`,
+   `sendWorkspaceSecretaryMessage`, `answerWorkspaceSecretaryClarify` and
+   `createWorkspaceSecretaryTopic`.
+3. Added `packages/daemon/src/server/session/workspace-secretary/workspace-secretary-session.ts`
+   and mounted it from `packages/daemon/src/server/session.ts`. The daemon owns the current
+   Workspace Secretary clean UI model, Quick replies, Loop Clarify card append, submitted readonly
+   state, multi-round history, `stop` intent and Settings relay status.
+4. Daemon relay authority calls `https://relay.test.thoth.seeles.ai/health` and only marks healthy
+   when the response is exactly `{"status":"ok","protocol":"3","service":"thoth-relay"}`. Every
+   `workspace_secretary.*` response refreshes `model.settings.relay` before schema verification and
+   emit.
+5. Reworked `packages/app/src/thoth-app/clean-ui-model.ts` into app presentation helpers plus
+   protocol type re-exports only. The app no longer exports or calls a relay model factory; Settings
+   consumes `model.settings.relay` from daemon clean UI authority.
+6. Deleted the old app-local Clarify fixture/adapter path from the active product surface:
+   `packages/app/src/thoth-app/protocol-authority-adapter.ts` and
+   `packages/app/src/thoth-app/development-fixture-adapter.ts` are absent from the final path.
+7. Added `packages/app/src/thoth-app/thoth-app-shell.tsx` and changed
+   `packages/app/src/app/index.tsx` so `/` renders Thoth Workspace Secretary by default. The shell
+   exposes exactly Workspace Secretary, Background Tasks and Settings; `New Agent` is replaced by
+   `新秘书话题` and submitted through daemon authority.
+8. Clarify card behavior covers title, why-now, 2 tightly related questions, 3 choices per question,
+   short labels/explanations, per-option notes, per-question notes, note-only submission, recommend,
+   decide, stop, readonly submitted summaries, multi-round append without replacing history and
+   authority-driven return to Quick after the user stops Clarify.
+9. Composer behavior covers `hi` without Clarify, Quick foreground chat without Clarify, Loop
+   Clarify creation and `Quick -> Loop -> Clarify -> Quick`.
+10. Added and updated unit/component tests:
+
+- `packages/protocol/src/workspace-secretary/rpc-schemas.test.ts`
+- `packages/daemon/src/server/session/workspace-secretary/workspace-secretary-session.test.ts`
+- `packages/app/src/thoth-app/clean-ui-model.test.ts`
+- `packages/app/src/thoth-app/thoth-app-shell.test.tsx`
+- `packages/app/src/test/jsdom-shim.d.ts`
+
+11. Reworked `packages/app/e2e/thoth-ui-scorecard.spec.ts` into the Loop-2 static-export scorecard
+    covering three views, Workspace Secretary default, `hi`, Quick/no-card, Loop Clarify,
+    choice+note, note-only, recommend, decide, stop Clarify, Background Tasks, Settings real relay
+    state and mobile composer visibility.
+12. `curl -sS --max-time 10 https://relay.test.thoth.seeles.ai/health` returned
+    `{"status":"ok","protocol":"3","service":"thoth-relay"}` on 2026-07-04.
+13. `npm --workspace=@thoth/daemon run test:unit -- workspace-secretary-session.test.ts` passed
+    with `1` file and `4` tests, including the regression that `stop` returns the composer to
+    Quick through daemon clean UI model authority.
+14. `npm --workspace=@thoth/app run test -- thoth-app` passed with `2` files and `11` tests.
+15. `npm --workspace=@thoth/app run test` passed with `315` files and `2617` tests. The only
+    reported warnings were existing `@vitest/browser/context` deprecation warnings.
+16. `npm run build:web` passed and exported `packages/app/dist`; the latest web bundle is
+    `index-29d0748e2e9e1994ebe1c4f2534a7d0a.js`, and `packages/app/dist/index.html` marks Expo web
+    bundle scripts as modules.
+17. Loop-2 narrow e2e passed with `1` Playwright test using the static export:
+    `E2E_BASE_URL=http://127.0.0.1:4173 E2E_RECORD_VIDEO=1 npm --workspace=@thoth/app run test:e2e -- thoth-ui-scorecard.spec.ts --trace on`.
+    The daemon metrics recorded `workspace_secretary.send.request: 7`,
+    `workspace_secretary.answer.request: 5`, `workspace_secretary.snapshot.request: 2` and
+    `workspace_secretary.topic.create.request: 1`. The final e2e also asserts that stopping
+    Clarify returns the visible composer action to `Send` rather than leaving the Loop action active.
+18. Latest screenshot evidence was refreshed under
+    `docs/ui-review-captures/loop2-workspace-secretary/` on 2026-07-04 after the stop-to-Quick
+    refinement:
+    `desktop-workspace-secretary.png`, `desktop-hi-no-card.png`, `desktop-clarify-card.png`,
+    `desktop-clarify-readonly-next-round.png`, `desktop-background-tasks.png`,
+    `desktop-settings-real-relay.png` and `mobile-workspace-secretary-composer.png`.
+19. Electron desktop app screenshot evidence was refreshed through
+    `npm run smoke:desktop:ui-scorecard` after updating the desktop smoke to load the current
+    Loop-2 static export in the Electron shell. The command passed `packages/desktop`
+    `src/features/menu.test.ts` with `3` tests, built the web export and desktop main process,
+    launched an isolated daemon on `127.0.0.1:46409`, verified the desktop bridge, and captured
+    `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
+    `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
+    `desktop-app-settings-real-relay.png` under
+    `docs/ui-review-captures/loop2-workspace-secretary/`.
+20. Manual `view_image` review passed for the Electron desktop app Workspace Secretary root, `hi`
+    with no Clarify card, Clarify decision card, Background Tasks and Settings real relay state.
+    The older `docs/ui-review-captures/desktop-scorecard/` screenshots still show the pre-Loop-2
+    One Thoth / New Agent scorecard and are historical, not the current Loop-2 desktop evidence.
+21. Latest Playwright evidence is
+    `packages/app/test-results/thoth-ui-scorecard-Loop-2--d4592--card-and-real-relay-status-Desktop-Chrome/trace.zip`
+    and
+    `packages/app/test-results/thoth-ui-scorecard-Loop-2--d4592--card-and-real-relay-status-Desktop-Chrome/video.webm`,
+    refreshed on 2026-07-04 after the final Loop-2 e2e rerun.
+22. Manual `view_image` review passed for default Workspace Secretary, `hi` with no Clarify card,
+    Clarify card, readonly/next-round Clarify, Settings real relay, Background Tasks and mobile
+    composer visibility. The refreshed mobile screenshot shows Quick selected and `Send` visible
+    after stopping Clarify.
+23. Focused anti-residual scan over the active Loop-2 app/protocol/client/daemon paths found only
+    negative assertion hits for forbidden terms such as `Paseo`, `request_user_input`,
+    `permission question`, `agent manager`, `raw JSON`, `state code`, `repair`, `provider role`,
+    `6767`, `offer`, `pairingToken` and `credential`.
+24. Icon/accessibility inventory found the active shell uses the locked `ThothInventoryIcon` system
+    for main navigation, composer, Clarify actions and state icons, with `accessibilityLabel` on
+    main navigation, new topic, composer inputs/actions, mode/strength controls, choices, notes and
+    Clarify action buttons.
+25. Independent read-only `codex exec` mental-model review wrote
+    `docs/ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
+    verdict `PASS`. It found no blocking evidence that the UI still reads as Paseo agent manager,
+    questionnaire or permission prompt.
+26. `git diff --check` passed after the final Loop-2 edits.
+27. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation
+    build, foundation typecheck and foundation tests. Foundation tests passed with highlight `66`,
+    relay `29`, protocol `312` and client `110` tests.
+28. Composer controls were refined after the Loop-2 acceptance pass so Mode, Clarify strength and
+    Loop strength are collapsed into bottom composer pills instead of always-visible segmented
+    controls. The app still consumes only the typed `ThothComposerModel`; selecting Loop strength
+    updates `mode: "loop"` and `loop` through `onComposerChange` without creating task authority,
+    Task Cards, Goal Cards or local convergence state.
+29. `packages/app/src/thoth-app/thoth-app-shell.test.tsx` now proves the composer controls are
+    collapsed by default, the old option test IDs are absent until the corresponding menu is open,
+    and selecting Loop / Clarify / Loop-strength options updates the visible composer state.
+30. The Loop-2 scorecard now captures dropdown-open states in addition to the existing journey:
+    `desktop-composer-clarify-menu.png` and `mobile-composer-loop-menu.png` under
+    `docs/ui-review-captures/loop2-workspace-secretary/`. Manual `view_image` review passed for
+    both. The mobile screenshot verifies the menu overlays upward and keeps the bottom Mode /
+    Clarify / Loop controls visible rather than pushing them off-screen.
+31. The latest composer-refinement `npm run build:web` passed and exported
+    `packages/app/dist/_expo/static/js/web/index-504256249c2eed522f2d536b7c118e28.js`.
+32. The latest composer-refinement Loop-2 narrow e2e passed with `1` Playwright test:
+    `E2E_BASE_URL=http://127.0.0.1:4173 E2E_RECORD_VIDEO=1 npm --workspace=@thoth/app run test:e2e -- thoth-ui-scorecard.spec.ts --trace on`.
+    The refreshed trace/video artifacts are
+    `packages/app/test-results/thoth-ui-scorecard-Loop-2--d4592--card-and-real-relay-status-Desktop-Chrome/trace.zip`
+    and `video.webm`.
+33. `npm run smoke:desktop:ui-scorecard` passed after the collapsed-menu selector update. The smoke
+    ran desktop `src/features/menu.test.ts` with `3` tests, rebuilt the web export and desktop main
+    process, launched an isolated daemon on `127.0.0.1:34773`, verified the Electron bridge and
+    refreshed `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
+    `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
+    `desktop-app-settings-real-relay.png`. Manual `view_image` review passed for the refreshed
+    Electron Workspace Secretary and Clarify composer states.
+34. `npm --workspace=@thoth/app run test -- thoth-app`, `npm run format:check` and
+    `git diff --check` passed after the final composer overlay adjustment.
+35. `npm run check:foundation` passed after the composer refinement and evidence ledger updates:
+    repo validation, format check, foundation lint, foundation build, foundation typecheck and
+    foundation tests. Foundation tests passed with highlight `66`, relay `29`, protocol `312` and
+    client `110` tests.
+36. Public web review entry recovery was repaired after a real browser report still showed
+    `本机 Thoth host 未连接` at `http://180.76.242.105:8148/`. The app runtime now always probes and
+    upserts the explicit injected initial daemon connection hint instead of short-circuiting when
+    the same connection already exists in the persisted host registry. This refreshes stale daemon
+    `serverId` values after daemon restarts while still using the real same-origin `/ws` daemon
+    proxy, not a fake relay, localhost relay or offline fixture.
+37. Public review recovery evidence passed: `npm --workspace=@thoth/app run test --
+host-runtime.test.ts` passed with `1` file and `46` tests; `npm run build:web` passed and
+    exported `index-af71fdae85603a93d009de4a5d707155.js`; the 8082 public static server was
+    restarted with `THOTH_DAEMON_PROXY_TARGET=127.0.0.1:6689`; `curl
+http://180.76.242.105:8148/` showed the injected `__THOTH_INITIAL_DAEMON_CONNECTION__` and the
+    new bundle; Playwright verified fresh desktop, stale-registry desktop and stale-registry mobile
+    public URL journeys all had `本机 Thoth host 未连接 = false`, `Clarify card count after hi = 0`,
+    and local storage rewritten from stale `srv_stale_public_review` to current real daemon
+    `srv_0Ryud1K1J1zRYj7eylwnsg`.
+38. Public review screenshots were captured and manually reviewed with `view_image`:
+    `public-web-fresh-desktop.png`, `public-web-stale-desktop.png` and
+    `public-web-stale-mobile.png` under `docs/ui-review-captures/loop2-workspace-secretary/`.
+    Electron desktop smoke was also rerun and passed, refreshing
+    `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
+    `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
+    `desktop-app-settings-real-relay.png`; manual `view_image` review passed for desktop Workspace
+    Secretary and Clarify card states.
+39. Public review recovery gates passed: `git diff --check`, `npm run format:check`,
+    `npm run smoke:desktop:ui-scorecard` and `npm run check:foundation`. Foundation tests passed
+    with highlight `66`, relay `29`, protocol `312` and client `110` tests. Runtime isolation was
+    preserved: 8082 served the web entry, 6689 served the current Thoth daemon, and Paseo/legacy
+    remained only as the separate existing listener on `127.0.0.1:6767`.
+40. A follow-up real-browser report showed the same dark-theme host-unavailable screen after
+    hard-refresh. The second root cause was broader persisted host state: the app shell selected
+    `hosts[0]` for Workspace Secretary authority. If the user's browser had an older failed host
+    first and the public same-origin daemon later in the registry, the public daemon could be online
+    while the visible Workspace Secretary still rendered from the first stale host.
+41. The active app shell now selects Workspace Secretary authority by product-relevant runtime
+    status: online host matching the injected same-origin daemon hint first, then any online host,
+    then a matching hinted host while it is still connecting, and only then the first persisted host.
+    Regression coverage in `packages/app/src/thoth-app/thoth-app-shell.test.tsx` proves the public
+    same-origin host is selected ahead of stale persisted hosts.
+42. Follow-up public review evidence passed: `npm --workspace=@thoth/app run test -- thoth-app
+host-runtime.test.ts` passed with `3` files and `58` tests; `npm run build:web` passed and
+    exported `index-2435eae53f002855c8ae5143a30e36b4.js`; 8082 was restarted with the new bundle;
+    Playwright reproduced a dark-theme public browser with three persisted hosts where the stale
+    hosts remain and fail WebSocket probes, while the visible Workspace Secretary selects the real
+    public same-origin daemon, shows `前台 Quick 可用`, answers `hi` in Quick and keeps Clarify card
+    count at `0`. Screenshot: `public-web-multihost-dark-ready.png`.
+
+Current result:
+
+This evidence is preserved as the historical frontend refactor pass that established the three-view
+Workspace Secretary product shell, typed clean UI model boundary, relay-safe Settings surface and
+independent UI mental-model review. After `NTH-CD-039`, it no longer verifies final Loop-2
+acceptance because the old Quick/`hi`/Clarify path still relied on deterministic daemon production
+behavior instead of the configured real provider session.
+
+Not completed by this evidence:
+
+1. Full provider-backed `thoth.clarify` runtime output; the daemon card generator is deterministic
+   Loop-2 UI authority, not the final provider-session Clarify harness.
+2. Real background task registration, loop execution, PlanExec and Review runtime.
+3. Task Card / Goal Card approval experience.
+4. Broader promoted-substrate cleanup for old voice/speech/dictation code and bootstrap logs outside
+   the active Loop-2 user-visible APP surface.
+
+### `NTH-EV-027` Loop-2 Provider-Backed Workspace Secretary Reopen
+
+Status: `partial_superseded_by_NTH-EV-028`
+
+Scope:
+
+1. Replace the deterministic Workspace Secretary production path with the real configured provider
+   session as the only authority for `hi`, Quick, Clarify cards, repair and the reopened Loop-2
+   narrow e2e.
+2. Keep the three-view APP shell and typed clean UI model, but make `authority.source`,
+   provider-missing blocking behavior, provider-native question handling and live clean events
+   truthful about provider authority.
+3. Reopen `NTH-TD-016` / `NTH-MS-013` / `NTH-EV-026` until a real provider + real relay + final
+   screenshot/trace/e2e run proves the full user journey.
+
+Evidence so far:
+
+1. `packages/daemon/src/server/session/workspace-secretary/workspace-secretary-session.ts` now uses
+   real internal provider sessions for Workspace Secretary turns, enforces provider-required
+   blocking on send/new-topic, emits clean provider progress events, treats provider-native question
+   requests as structured Clarify-card candidates and removes deterministic production greetings and
+   fixed Clarify-card generation from the active authority path.
+2. `packages/protocol/src/workspace-secretary/rpc-schemas.ts` already carried the provider runtime,
+   clean event and `provider_backed_clean_ui_model` boundaries required by `NTH-CD-039`; the new
+   daemon path now consumes them instead of only projecting ready-state cosmetics.
+3. `packages/app/src/thoth-app/thoth-app-shell.tsx` now renders clean provider progress events so
+   the user sees Thoth semantics such as waiting for provider, structured candidate receipt and
+   provider question convergence rather than raw packet/provider-role terms.
+4. Targeted tests passed on 2026-07-05:
+   `npm --workspace=@thoth/protocol run test -- workspace-secretary/rpc-schemas.test.ts thoth-runtime-contract.test.ts`,
+   `npm --workspace=@thoth/app run test -- src/thoth-app/thoth-app-shell.test.tsx src/thoth-app/clean-ui-model.test.ts`,
+   `npm --workspace=@thoth/daemon exec vitest run src/server/session/workspace-secretary/workspace-secretary-session.test.ts`.
+   The daemon test now proves snapshot authority stays daemon-owned until a provider-backed turn is
+   written, `hi` becomes provider-backed `C_DIRECT`, provider-native questions are converted into
+   Clarify-card candidates through Thoth ask-gate rules and repair still stops after 12 attempts
+   without local fallback.
+5. `npm run build:web` passed on 2026-07-05 and exported a new web bundle
+   `packages/app/dist/_expo/static/js/web/index-40a6555efdaf92ad7260f8dea7924577.js`, with
+   `packages/app/dist/index.html` still marking Expo bundle scripts as modules.
+6. Replayed Loop-2 Playwright against the static export by running
+   `E2E_BASE_URL=http://127.0.0.1:8093 npm --workspace=@thoth/app run test:e2e -- e2e/thoth-ui-scorecard.spec.ts`.
+   This reached the Workspace Secretary shell and connected to daemon authority, proving the
+   provider-backed refactor does not require the old deterministic APP fixture path. The original
+   Metro dev-server E2E path still failed earlier with browser error
+   `Cannot use 'import.meta' outside a module`, so the dev-path scorecard remains blocked for this
+   round.
+7. `git diff --check`, `npm run format:check` and `npm run check:foundation` all passed on
+   2026-07-05 after the provider-backed refactor and client config expectation update. Foundation
+   tests passed with highlight `66`, relay `29`, protocol `315` and client `110` tests.
+8. Public test app debug evidence on 2026-07-05 found and fixed a real-provider `hi` failure at
+   `http://180.76.242.105:8148/`. The provider's complete Codex native structured `C_DIRECT` packet
+   was schema-valid, but the daemon had been validating only the last assistant-message delta
+   fragment. `WorkspaceSecretarySession` now reassembles assistant message fragments by `messageId`
+   before native packet validation, and a regression test covers valid packet output split across
+   multiple Codex assistant deltas.
+9. Follow-up public Playwright verification against `http://180.76.242.105:8148/` passed after
+   restarting the Thoth daemon on `127.0.0.1:6688`: `hi` produced a real provider-backed secretary
+   reply, no Clarify card, no repair loop, no provider failure, no stale "waiting" flood, no
+   raw/schema leakage, and visible clean events `真实 provider 回合已开始` /
+   `真实 provider 回合完成`. Screenshot:
+   `docs/ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
+10. Additional gates for the public test bugfix passed on 2026-07-05:
+    `npm --workspace=@thoth/daemon exec vitest run src/server/session/workspace-secretary/workspace-secretary-session.test.ts`
+    with `1` file and `9` tests, `git diff --check`, and `npm run check:foundation` through repo
+    validation, format, foundation lint, foundation build, foundation typecheck and foundation tests
+    with highlight `66`, relay `29`, protocol `315` and client `111` tests.
+
+Current result:
+
+The provider-backed refactor implementation and public `hi` bugfix evidence are retained as the
+reopened partial record. The missing final screenshot/trace/e2e, real relay and independent review
+gates were completed later under `NTH-EV-028`, so this evidence no longer represents the current
+Loop-2 status by itself.
+
+### `NTH-EV-028` Loop-2 Provider-Backed Streaming And Atomic Card Verification
+
+Status: `historical_only_after_NTH-CD-041`
+
+Scope:
+
+1. Verify `NTH-TD-016` / `NTH-MS-013` after `NTH-CD-039` and `NTH-CD-040`: Quick, `hi`, Clarify,
+   repair and Loop-2 e2e must be owned by the daemon Settings configured real provider session.
+2. Prove ordinary provider progress / safe direct reply deltas enter Workspace Secretary through
+   typed clean stream updates, while `C_ASK` Clarify cards render atomically only after daemon
+   packet/schema/provenance/authority validation.
+3. Prove the deployed public test web app, real `relay.test.thoth.seeles.ai`, screenshots,
+   Playwright trace/video, source reviews and independent UI mental-model review all pass without
+   local fallback, text parsing, fake provider, fake relay or Paseo agent-manager semantics.
+
+Evidence:
+
+1. Protocol/client stream contract is implemented: `packages/protocol/src/workspace-secretary/rpc-schemas.ts`
+   defines `workspace_secretary.model.update`, clean `liveEvents`, `secretary_reply_delta`,
+   provider runtime status, bridge capability and `provider_backed_clean_ui_model`; `packages/client/src/daemon-client.ts`
+   exposes typed subscription to `workspace_secretary.model.update` instead of app-local WebSocket
+   parsing.
+2. Daemon runtime is provider-backed: `packages/daemon/src/server/session/workspace-secretary/workspace-secretary-session.ts`
+   creates/reuses internal provider sessions from `workspaceSecretary.providerSession`, requires a
+   supported structured bridge, blocks provider-missing send/new-topic, reassembles Codex
+   `assistant_message` deltas by `messageId`, validates `RuntimePacketCandidate` /
+   `ClarificationCardCandidate`, emits clean live progress/delta events and applies final provider
+   outcomes only through `applyProviderOutcome`.
+3. Atomic card source review passed: `C_ASK` provider question/card candidates do not enter
+   `turns` until daemon validation succeeds; Task/Goal Card rendering remains outside Loop-2 and is
+   still reserved for later milestones. APP code renders only typed clean model/events and does not
+   parse assistant text, markdown JSON, code fences or raw packets.
+4. Anti-Paseo residual scan passed for active Loop-2 app/protocol/client/daemon paths. Matches for
+   `Paseo`, `request_user_input`, `AskUserQuestion`, `permission question`, `agent manager`,
+   `raw JSON`, `state code`, `repair`, `provider role`, `6767`, `pairingToken`, `raw offer` and
+   `credential` are limited to negative assertions, tests, safe bridge normalization or hidden
+   prompt constraints, not user-visible product UI.
+5. Narrow protocol test passed:
+   `npm --workspace=@thoth/protocol run test -- workspace-secretary/rpc-schemas.test.ts` with
+   `1` file and `5` tests.
+6. Narrow client test passed:
+   `npm --workspace=@thoth/client run test -- daemon-client.test.ts` with `1` file and `95` tests.
+7. Narrow daemon test passed:
+   `npm --workspace=@thoth/daemon exec vitest run src/server/session/workspace-secretary/workspace-secretary-session.test.ts`
+   with `1` file and `10` tests, covering provider-backed `hi`, provider-native question candidate
+   conversion, safe `secretary_reply_delta`, assistant delta reassembly and repair failure without
+   local fallback.
+8. Narrow app component test passed:
+   `npm --workspace=@thoth/app run test -- src/thoth-app/thoth-app-shell.test.tsx` with `1` file
+   and `12` tests.
+9. Full app test passed:
+   `npm --workspace=@thoth/app run test` with `315` files and `2623` tests. The only noted warnings
+   were existing deprecated `@vitest/browser/context` imports in terminal browser tests.
+10. Real relay verification passed:
+    `curl -fsS --max-time 10 https://relay.test.thoth.seeles.ai/health` returned
+    `{"status":"ok","protocol":"3","service":"thoth-relay"}`.
+11. Web build passed: `npm run build:web` exported the current public-test bundle
+    `packages/app/dist/_expo/static/js/web/index-dc3970d4d5f1b889316602a4e34382e9.js`.
+12. Public test app is serving the current web export at `http://180.76.242.105:8148/`; live curl
+    evidence showed `__THOTH_INITIAL_DAEMON_CONNECTION__` and
+    `index-dc3970d4d5f1b889316602a4e34382e9.js`.
+13. Public real-provider Playwright journey passed against `http://180.76.242.105:8148/`. Summary:
+    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
+    records all steps as `ok`: ready Workspace Secretary shell, `hi` completed with no card,
+    Clarify card appeared atomically, submitted card became readonly, Settings relay captured and
+    mobile composer captured.
+14. Screenshot evidence was saved and manually reviewed with `view_image`:
+    `desktop-workspace-secretary-ready.png`, `workspace-secretary-streaming-quick-live.png`,
+    `workspace-secretary-hi-no-card-final.png`, `workspace-secretary-loop-live-before-card.png`,
+    `workspace-secretary-clarify-card-atomic.png`, `workspace-secretary-clarify-card-readonly.png`,
+    `settings-real-relay-status.png` and `mobile-workspace-secretary-composer.png` under
+    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`.
+15. Playwright trace/video evidence was saved:
+    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-trace.zip`,
+    `videos/page@0e81e70a7ef3f02ebfc7a717d13ae278.webm` and
+    `videos/page@8b34a58568759844da9b3c8ab63b7f39.webm`.
+16. Independent read-only `codex exec` UI mental-model review passed with verdict `PASS` in
+    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
+    It found no blocking evidence of Paseo agent manager, questionnaire, permission prompt, fake
+    provider, fake relay, local fallback, non-streaming Quick or non-atomic QA card behavior.
+17. `git diff --check` and `npm run format:check` passed after the implementation/formatting pass.
+18. `npm run check:foundation` passed after the provider-backed streaming implementation and
+    visual evidence run: repo validation, format, foundation lint, foundation build, foundation
+    typecheck and foundation tests all passed. Foundation test totals were highlight `66`,
+    relay `29`, protocol `316` and client `112`.
+
+Current result:
+
+This evidence is retained as historical evidence for the rejected three-view Workspace Secretary /
+toy-shell direction. After `NTH-CD-041`, it no longer verifies `NTH-TD-016` / `NTH-MS-013`.
+It may be reused only as implementation evidence for provider-backed streaming and atomic-card
+mechanics, not as evidence that the current Paseo-surface frontend target is satisfied. `NTH-TD-016`
+is reopened and must produce new Paseo-surface retention, anti-toy, real-provider, real-relay,
+screenshot/trace/video and independent-review evidence.
+
+Residual non-blocking risks:
+
+1. Codex native `outputSchema` does not expose safe token-level prose streaming in all cases. Current
+   evidence proves clean progress streaming plus final provider reply, and source supports
+   `secretary_reply_delta` only when provider text is safe and non-structured.
+2. The mobile screenshot proves composer non-overlap and reachability but does not show every
+   possible scroll position of the full Clarify card; keep mobile full-card layout as a regression
+   watch item for future frontend changes.
+
+### `NTH-EV-029` Loop-2 Runtime Tool Bridge And AgentTimeline Evidence
+
+Status: `passed`
+
+Scope:
+
+1. Verify `NTH-TD-016` / `NTH-MS-013` after `NTH-CD-041`, `NTH-CD-042` and `NTH-CD-043`: the restored
+   production-grade Paseo app surface is the primary frontend path and the toy Workspace Secretary shell
+   is no longer the acceptance path.
+2. Prove Paseo capability retention: agent-stream, timeline, bottom anchor, turn boundary,
+   virtualization, original composer, attachments, markdown/code/diff rendering, adaptive cards,
+   settings, host/provider, relay pairing, diagnostics, workspace/session layout, terminal/browser/file
+   panes, responsive layout and e2e/test substrate remain used by the main path.
+3. Prove authority boundary: app renders typed models and AgentTimeline items only; it does not parse
+   assistant markdown JSON, raw packets or state codes, does not choose defaults, does not synthesize
+   Task/Pyramid cards locally and does not fake provider/relay success.
+4. Prove the runtime phase split: `Quick + none` is bare Codex/Paseo foreground stream; `Quick + clarify`
+   uses Codex app-server `dynamicTools` / `item/tool/call` semantic Thoth runtime tools for Clarify /
+   Task / Pyramid cards and same-session `quick_exec`; `Loop` registers `registered_pending` after two
+   approvals without starting fake PlanExec / Review.
+
+Evidence:
+
+1. Restored Paseo surface/source review passed for route chrome, sidebar/mobile sidebar,
+   selected-agent state, PushNotificationRouter, OfferLinkListener, OpenProjectListener and
+   no-`6767` fallback.
+2. Composer controls render in the restored composer area: Provider updates
+   `workspaceSecretary.providerSession`, Clarify updates `workspaceSecretary.clarifyStrength`, and Mode
+   updates `workspaceSecretary.mode`.
+3. Protocol/app models include Clarify Card, compact Task Card, Pyramid Plan Card and registered-task
+   shapes; wire compatibility fields remain internal and do not drive user copy.
+4. Codex app-server runtime tool bridge is implemented: structured sessions register
+   `thoth_submit_clarify_card`, `thoth_submit_task_card`, `thoth_submit_pyramid_plan` and
+   `thoth_report_blocked` as `dynamicTools`; the provider adapter handles `item/tool/call` and returns
+   `DynamicToolCallResponse` after the pending authority decision is answered.
+5. Runtime tool decisions create persisted pending authority records with provider/session/topic/call/
+   phase/card metadata. User answers resolve the pending decision and return tool-result content to
+   Codex; silent defaults and first-option fallback are not used.
+6. AgentTimeline is the realtime stream surface. Codex command/file/web/tool thread items map to
+   lifecycle `tool_call` items by call id, and app stream rendering includes assistant text, thought,
+   tool_call, Clarify Card, Task Card, Pyramid Plan Card and registered-task items in the same topic.
+7. Clarify cards are Paseo-style paginated cards with submitted readonly summaries; Task Card is a
+   compact CEO overview; Pyramid Plan Card is hierarchical; registered task cards and Background Tasks
+   detail show honest `registered_pending` state only.
+8. Quick+none real-provider evidence passed on `2026-07-07` in throwaway workspace
+   `/tmp/thoth-loop2-quick-none-K8g4vp`: report
+   `docs/ui-review-captures/loop2-runtime-tool-bridge/1783414416734-quick-none-report.json` records
+   prompt `hi`, `hasClarifyCard: 0` and screenshots
+   `1783414371390-quick-none-start.png` / `1783414416665-quick-none-result.png`. `view_image` review
+   confirmed ordinary provider reply with no Clarify card or raw packet/schema text.
+9. Quick+Dive runtime-tool evidence passed on public `http://180.76.242.105:8148/` in
+   `/tmp/thoth-loop2-runtime-tools-6eO72B`: report
+   `docs/ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` records prompt
+   `实现一个高性能快速排序`, Provider=Codex, Mode=Quick, Clarify=Dive, three Clarify rounds, Task
+   approval `accept_quick`, Pyramid approval `accept_quick`, same-session quick_exec and generated
+   files `bench/bench_fast_quicksort.cpp`, `include/fast_quicksort.hpp` and
+   `tests/test_fast_quicksort.cpp`.
+10. Quick+Dive screenshots include `1783416553652-clarify-round-1.png`, submitted readonly card
+    screenshots, `1783416614492-task-card.png`, `1783416643620-pyramid-plan-card.png` and
+    `1783416762955-quick-exec.png`. `view_image` review confirmed tabbed Clarify cards, compact Task
+    Card, hierarchical Pyramid Plan and real Shell/Edit timeline rows during quick_exec rather than
+    spinner-only output.
+11. Loop+Dive registration evidence passed on public `http://180.76.242.105:8148/` in
+    `/tmp/thoth-loop2-runtime-tools-wDRNa4`: report
+    `docs/ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` records three Clarify
+    rounds, Task approval `accept_loop`, Pyramid approval `accept_loop` and
+    `registeredTaskVisible: true`. Screenshot `1783415185038-registered-pending.png` shows honest
+    registration without fake running, fake review or fake evidence.
+12. Background Tasks list/detail recovery passed:
+    `docs/ui-review-captures/loop2-runtime-tool-bridge/1783415406577-background-tasks-success-report.json`
+    records `passed_visual_and_text_recovery`, observed `Background tasks`, `registered_pending`, task
+    title and source topic. Screenshot `1783415406577-background-tasks-panel-success.png` shows list and
+    detail in the independent panel.
+13. Mobile deep-link recovery passed:
+    `docs/ui-review-captures/loop2-runtime-tool-bridge/1783416247271-mobile-loop-recovery-success-report.json`
+    records `passed_mobile_deep_link_recovery` for
+    `http://180.76.242.105:8148/h/srv_Qd3ONVF7rQEHNW2PJTTBxA/workspace/wks_9429345588e40559`.
+    Screenshot `1783416247271-mobile-loop-registered-recovery.png` shows the registered task card and
+    does not fall back to Open Project.
+14. Earlier `2026-07-06` Quick+Dive repair/recovery evidence remains historical support: it proved
+    multi-card Clarify, same-session quick_exec, Pyramid Plan label correction and durable topic/history
+    recovery. The `2026-07-07` runtime-tool evidence closes its remaining Quick+none and Loop gaps.
+15. Focused tests passed after runtime-tool-bridge implementation:
+    `npm --workspace=@thoth/protocol run test -- src/thoth-runtime-contract.test.ts
+src/workspace-secretary/rpc-schemas.test.ts` passed 33 tests;
+    `npm --workspace=@thoth/client run test -- src/daemon-client.test.ts` passed 95 tests;
+    `npm --workspace=@thoth/daemon run test:unit --
+src/server/agent/tools/thoth-tools.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts
+src/server/agent/agent-manager.test.ts
+src/server/agent/providers/codex-app-server-agent.test.ts
+src/server/agent/runtime-tool-decisions.test.ts` passed 5 files / 200 tests.
+16. App/build gates passed: `npm --workspace=@thoth/app run test -- src/runtime/host-runtime.test.ts
+src/navigation/host-runtime-bootstrap.test.ts` passed 77 tests;
+    `npm --workspace=@thoth/app run test` passed 316 files / 2621 tests; `npm run build:web` passed.
+17. Final closeout gates passed on `2026-07-07`: `npm --workspace=@thoth/daemon run typecheck`,
+    `npm run check:foundation` and `git diff --check`. Foundation totals were highlight 66, relay 29,
+    protocol 320 and client 112.
+18. Independent read-only `codex exec` UI/runtime mental-model review passed with verdict `PASS` and no
+    blocking findings in
+    `docs/ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md`.
+
+Current result:
+
+`NTH-EV-029` passes Loop-2. It verifies restored Paseo surface, Codex runtime-tool Clarify bridge,
+AgentTimeline authority-card rendering, Quick+none bare provider stream, Quick+Dive same-session
+quick_exec, Loop `registered_pending`, Background Tasks recovery, mobile recovery and required gates.
+It does not verify Loop-5 PlanExec / Review execution, real background running/review evidence,
+non-Codex provider runtime-tool adapters or a release build.
+
+Residual risks:
+
+1. The real-provider journey is opt-in and outside `check:foundation`; keep the `.dev` Playwright
+   runbook/script as a guarded acceptance tool until promoted to a stable `*.real.e2e.test.ts`.
+2. Older failed screenshots/reports remain in the evidence directory as debug history; the success
+   reports above are the acceptance authority.
+3. User-visible internal-symbol hygiene is proven by source review, screenshots, reports and independent
+   review, not by a full OCR scan over every generated screenshot.
+4. The Background Tasks panel is a Loop-2 registered-task browser, not the final Loop-6 dogfood task
+   system.
+
 ## Failed Or Not-Yet-Passed Checks
 
-1. No runtime MVP check exists yet because task authority, provider-backed Router, Clarify, PlanExec, Review, daemon orchestration, TUI, desktop and mobile product behavior are not implemented.
+1. The full MVP loop remains open because Task Contract Compiler hardening, full Task/Pyramid edit
+   workflows, PlanExec, Review and final Background Tasks dogfood behavior are later milestones.
 2. Full daemon/app/desktop/CLI/driver build and test suites are still outside the foundation gate and may remain expected-broken until their dedicated migration milestones.
 3. Some old `.tmp_pytest` fixture entries could not be unlinked promptly on NFS and were moved under ignored `.agent-os/.trash/tmp_pytest-nfs-stale-20260628`; this is not part of the committed source tree.
 4. Android build currently emits upstream Expo/React Native/Gradle deprecation warnings; the Debug APK is still produced successfully.

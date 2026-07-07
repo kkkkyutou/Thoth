@@ -2,124 +2,163 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TestInfo } from "@playwright/test";
-import { buildOpenProjectRoute } from "@/utils/host-routes";
 import { expect, test, type Page } from "./fixtures";
-import { gotoAppShell, openSettings } from "./helpers/app";
-import {
-  expectAboutContent,
-  expectHostProvidersCard,
-  openSettingsHostSection,
-  openSettingsSection,
-} from "./helpers/settings";
+import { buildSettingsSectionRoute } from "../src/utils/host-routes";
+import { gotoAppShell } from "./helpers/app";
+import { expectComposerVisible } from "./helpers/composer";
+import { clickNewChat, gotoWorkspace } from "./helpers/launcher";
 import { getServerId } from "./helpers/server-id";
-import { expectAppRoute } from "./helpers/route-assertions";
 
 const captureDirectory = fileURLToPath(
-  new URL("../../../docs/ui-review-captures/web-scorecard/", import.meta.url),
+  new URL("../../../docs/ui-review-captures/loop2-paseo-surface/", import.meta.url),
 );
 
 const forbiddenVisiblePatterns = [
   /Paseo/i,
+  /WORKSPACE SECRETARY/i,
+  /Workspace Secretary/i,
+  /当前需求收敛/,
+  /Quick 前台/,
+  /真实 provider 已连接/,
+  /Quick 和 Loop 都会通过真实 provider 结果写入历史/,
+  /当前秘书话题/,
+  /新秘书话题/,
+  /provider-backed clean UI model/i,
+  /C_DIRECT|C_ASK/,
+  /\bpacket\b/i,
+  /\brepair\b/i,
+  /\bschema\b/i,
+  /raw JSON/i,
+  /provider role/i,
+  /request_user_input/i,
+  /AskUserQuestion/i,
   /127\.0\.0\.1:6767/,
   /localhost:6767/,
   /offer=/,
   /#offer=/,
   /pairingToken/,
-  /thoth-relay-v3-client\./,
-  /thoth\.relay\.token\./,
+  /credential/i,
 ];
 
-test.describe("New Thoth Web UI scorecard smoke", () => {
+const forbiddenToyTestIds = [
+  "thoth-loop2-shell",
+  "workspace-secretary-view",
+  "thoth-main-navigation",
+  "thoth-view-background-tasks",
+  "background-tasks-view",
+  "secretary-new-topic",
+];
+
+test.describe("Loop-2 restored Paseo surface scorecard", () => {
   test.beforeAll(() => {
     mkdirSync(captureDirectory, { recursive: true });
   });
 
-  test("captures Home, Workspace and Settings surfaces without legacy or relay-token leakage", async ({
+  test("keeps the original open-project tile surface and removes toy shell entrypoints", async ({
     page,
-    withWorkspace,
   }, testInfo) => {
-    test.setTimeout(360_000);
+    test.setTimeout(120_000);
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.setViewportSize({ width: 1440, height: 960 });
     await gotoAppShell(page);
-    await expectAppRoute(page, buildOpenProjectRoute(), { timeout: 30_000 });
-    await expect(page.getByText("One Thoth", { exact: true })).toBeVisible();
-    await expect(page.getByText("Task control plane", { exact: true })).toBeVisible();
-    await expect(page.getByText("Needs a registered workspace", { exact: true })).toBeVisible();
-    await expect(page.getByText("Select a model first", { exact: true })).toBeVisible();
-    await expect(page.getByText("Fresh pairing supported", { exact: true })).toBeVisible();
-    await expect(page.getByText("Preview surface", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("open-project-submit")).toBeVisible();
+
+    await expect(page.getByTestId("open-project-submit")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("open-project-import-session")).toBeVisible();
     await expect(page.getByTestId("open-project-setup-providers")).toBeVisible();
+    await expect(page.getByText("Add a project", { exact: true })).toBeVisible();
+    await expect(page.getByText("Task control plane", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Preview surface", { exact: true })).toHaveCount(0);
+    await expectNoToyShell(page);
     await expectHealthySurface(page);
-    await capture(page, testInfo, "web-home-desktop.png");
+    await capture(page, testInfo, "desktop-open-project-paseo-layout.png");
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await gotoAppShell(page);
-    await expectAppRoute(page, buildOpenProjectRoute(), { timeout: 30_000 });
-    await expect(page.getByText("One Thoth", { exact: true })).toBeVisible();
-    await expect(page.getByText("Task control plane", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("open-project-submit")).toBeVisible();
+    await expect(page.getByTestId("open-project-submit")).toBeVisible({ timeout: 10_000 });
     await expectHealthySurface(page);
-    await capture(page, testInfo, "web-home-mobile.png");
+    await capture(page, testInfo, "mobile-open-project-paseo-layout.png");
+
+    expect(pageErrors).toEqual([]);
+  });
+
+  test("retains workspace composer, provider controls, attachments and settings main path", async ({
+    page,
+    withWorkspace,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    const workspace = await withWorkspace({ prefix: "loop2-surface-" });
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await gotoWorkspace(page, workspace.workspaceId);
+    await expect(page.getByTestId("sidebar-sessions")).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("workspace-tabs-row").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await clickNewChat(page);
+    await expectComposerVisible(page, { timeout: 30_000 });
+
+    await expect(
+      page.getByTestId("message-input-root").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("message-input-attach-button").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("combined-model-selector").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Provider", { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("thoth-clarify-control").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("thoth-mode-control").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await page.getByTestId("thoth-clarify-control").filter({ visible: true }).first().click();
+    await page.getByTestId("thoth-clarify-menu-light").click();
+    await expect(
+      page.getByTestId("thoth-clarify-control").filter({ visible: true }).first(),
+    ).toContainText("Light");
+    await page.getByTestId("thoth-mode-control").filter({ visible: true }).first().click();
+    await page.getByTestId("thoth-mode-menu-loop").click();
+    await expect(
+      page.getByTestId("thoth-mode-control").filter({ visible: true }).first(),
+    ).toContainText("Loop");
+    await expect(page.getByRole("textbox", { name: "Message agent..." }).first()).toBeVisible();
+    await expectNoToyShell(page);
+    await expectHealthySurface(page);
+    await capture(page, testInfo, "desktop-workspace-composer-paseo-surface.png");
+    await capture(page, testInfo, "desktop-composer-provider-clarify-mode.png");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoWorkspace(page, workspace.workspaceId);
+    await expectComposerVisible(page, { timeout: 30_000 });
+    await expect(
+      page.getByTestId("message-input-root").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("thoth-clarify-control").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("thoth-mode-control").filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expectHealthySurface(page);
+    await capture(page, testInfo, "mobile-workspace-composer-paseo-surface.png");
 
     await page.setViewportSize({ width: 1440, height: 960 });
-    const workspace = await withWorkspace({ prefix: "thoth-web-scorecard-" });
-    await workspace.navigateTo();
-    await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
-    await expect(page.getByTestId("workspace-thoth-surface-preview")).toBeVisible({
+    await page.goto(buildSettingsSectionRoute("general"));
+    await expect(page.getByTestId("settings-sidebar").or(page.getByText("Settings"))).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText("One Thoth workspace", { exact: true })).toBeVisible();
-    await expect(page.getByText("Active task", { exact: true })).toBeVisible();
-    await expect(page.getByText("No frozen task yet", { exact: true })).toBeVisible();
-    await expect(page.getByText("Contract", { exact: true })).toBeVisible();
-    await expect(page.getByText("Needs Clarify session", { exact: true })).toBeVisible();
-    await expect(page.getByText("Evidence", { exact: true })).toBeVisible();
-    await expect(page.getByText("Review receipts will land here", { exact: true })).toBeVisible();
-    await expectThothComposerControls(page);
-    await exerciseComposerControls(page);
-    await expect(page.getByText("Needs provider before execution", { exact: true })).toBeVisible();
     await expectHealthySurface(page);
-    await capture(page, testInfo, "web-workspace-composer.png");
-
-    await openSettings(page);
-    await openSettingsSection(page, "about");
-    await expectAboutContent(page);
-    await expectHealthySurface(page);
-    await capture(page, testInfo, "web-settings-about.png");
-
-    const serverId = getServerId();
-    await expectHostProvidersCard(page, serverId);
-    await expect(page.getByTestId("host-page-providers-card")).toBeVisible();
-    await expectHealthySurface(page);
-    await capture(page, testInfo, "web-settings-providers.png");
-
-    await openSettingsHostSection(page, serverId, "connections");
-    await expect(page.getByTestId("host-page-connections-card")).toBeVisible();
-    await expectHealthySurface(page);
-    await capture(page, testInfo, "web-settings-connections.png");
-
-    for (let index = 0; index < 4; index += 1) {
-      await page.setViewportSize({ width: 1440, height: 960 });
-      await openSettingsHostSection(page, serverId, index % 2 === 0 ? "providers" : "connections");
-      await expectHealthySurface(page);
-      await page.getByTestId("settings-back-to-workspace").click();
-      await expect(page).toHaveURL(/\/workspace\//, { timeout: 30_000 });
-      await expectThothComposerControls(page);
-      await page.getByTestId("thoth-control-mode").click();
-      await page.getByTestId("thoth-control-clarify").click();
-      if (index % 2 === 1) {
-        await page.setViewportSize({ width: 390, height: 844 });
-      } else {
-        await page.setViewportSize({ width: 1440, height: 960 });
-      }
-      await expectHealthySurface(page);
-      await openSettings(page);
-    }
+    await capture(page, testInfo, "desktop-settings-paseo-surface.png");
 
     expect(pageErrors).toEqual([]);
   });
@@ -134,26 +173,10 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
   });
 }
 
-async function expectThothComposerControls(page: Page) {
-  const controls = page.getByTestId("thoth-composer-controls");
-  await expect(controls).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("thoth-control-attach")).toContainText("Images/files <10MB");
-  await expect(page.getByTestId("thoth-control-provider")).toContainText("Provider");
-  await expect(page.getByTestId("thoth-control-provider")).toContainText("Select model first");
-  await expect(page.getByTestId("thoth-control-mode")).toContainText("Mode");
-  await expect(page.getByTestId("thoth-control-clarify")).toContainText("Clarify");
-  await expect(page.getByTestId("thoth-control-loop")).toContainText("Loop");
-  await expect(page.getByText("Needs provider before execution", { exact: true })).toBeVisible();
-}
-
-async function exerciseComposerControls(page: Page) {
-  await page.getByTestId("thoth-control-mode").click();
-  await expect(page.getByTestId("thoth-control-mode")).toContainText("Loop");
-  await expect(page.getByTestId("thoth-control-loop")).toContainText("Auto");
-  await page.getByTestId("thoth-control-clarify").click();
-  await expect(page.getByTestId("thoth-control-clarify")).toContainText("Don't Ask");
-  await page.getByTestId("thoth-control-loop").click();
-  await expect(page.getByTestId("thoth-control-loop")).toContainText("Single Pass");
+async function expectNoToyShell(page: Page) {
+  for (const testId of forbiddenToyTestIds) {
+    await expect(page.getByTestId(testId)).toHaveCount(0);
+  }
 }
 
 async function expectHealthySurface(page: Page) {
@@ -168,7 +191,7 @@ async function expectHealthySurface(page: Page) {
       },
       { timeout: 30_000 },
     )
-    .toBeGreaterThan(80);
+    .toBeGreaterThan(40);
 
   const visibleText = await page.locator("body").innerText();
   for (const pattern of forbiddenVisiblePatterns) {

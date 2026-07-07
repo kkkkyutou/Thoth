@@ -130,6 +130,86 @@ function parseSentFrame(
     .parse(JSON.parse(assertStr(data))).message;
 }
 
+function createWorkspaceSecretaryModelForClientTest() {
+  const provider = {
+    configured: true,
+    ready: true,
+    state: "ready",
+    bridge: "native_output_schema",
+    provider: "codex",
+    model: "gpt-5.1",
+    safeLabel: "codex / gpt-5.1",
+    detail: "使用原生 outputSchema。",
+  };
+  return {
+    authority: {
+      source: "provider_backed_clean_ui_model",
+      schemaVerified: true,
+      label: "Provider-backed Workspace Secretary clean UI model",
+    },
+    activeView: "workspace-secretary",
+    secretary: {
+      workspaceName: "Thoth workspace",
+      workspacePath: "/workspace/thoth",
+      topics: [
+        { id: "topic-main", title: "当前秘书话题", status: "current", updatedLabel: "刚刚" },
+      ],
+      activeTopicId: "topic-main",
+      status: {
+        kind: "loading",
+        title: "秘书正在等待真实 provider",
+        detail: "这轮回复会在真实 provider 结果通过校验后写入历史。",
+      },
+      turns: [{ id: "user-1", kind: "message", speaker: "user", text: "hi" }],
+      composer: {
+        mode: "quick",
+        clarifyStrength: "balanced",
+        loop: null,
+        authorityLabel: "codex / gpt-5.1",
+        authorityReady: true,
+      },
+      provider,
+      liveEvents: [
+        {
+          id: "event-draft",
+          kind: "secretary_reply_delta",
+          title: "秘书正在起草回复",
+          detail: "我在，继续说你想推进的事。",
+          status: "running",
+        },
+      ],
+    },
+    settings: {
+      runtime: [
+        {
+          id: "workspace-secretary-provider",
+          title: "Workspace Secretary provider",
+          value: "codex / gpt-5.1",
+        },
+      ],
+      relay: {
+        endpoint: "relay.test.thoth.seeles.ai",
+        healthUrl: "https://relay.test.thoth.seeles.ai/health",
+        status: "healthy",
+        safeSummary: "真实测试服务健康，未显示 token 或配对凭证",
+        checkedAtLabel: "2026-07-05T00:00:00Z",
+      },
+      requiredRuntime: [
+        {
+          id: "clarify-secretary",
+          title: "Clarify secretary",
+          value: "必需，不能关闭",
+          locked: true,
+        },
+      ],
+      workspaceSecretaryProvider: provider,
+    },
+    backgroundTasks: {
+      tasks: [{ id: "empty", title: "还没有后台任务", status: "empty", summary: "等待确认" }],
+    },
+  };
+}
+
 const clients: DaemonClient[] = [];
 
 afterEach(async () => {
@@ -567,6 +647,106 @@ test("defaults session RPC waiters to sixty seconds", async () => {
 
   await vi.advanceTimersByTimeAsync(1);
   await expect(responsePromise).rejects.toThrow("Timeout waiting for message (60000ms)");
+});
+
+test("lets Workspace Secretary provider turns outlive the default session RPC timeout", async () => {
+  useHeartbeatClock();
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const responsePromise = client.sendWorkspaceSecretaryMessage({
+    requestId: "req-secretary-hi",
+    text: "hi",
+    composer: {
+      mode: "quick",
+      clarifyStrength: "balanced",
+      loop: null,
+      authorityLabel: "codex / gpt-5.5",
+      authorityReady: true,
+    },
+  });
+  let settled = false;
+  void responsePromise.then(
+    () => {
+      settled = true;
+      return undefined;
+    },
+    () => {
+      settled = true;
+      return undefined;
+    },
+  );
+
+  expect(parseSentFrame(mock.sent[0])).toMatchObject({
+    type: "workspace_secretary.send.request",
+    requestId: "req-secretary-hi",
+    text: "hi",
+  });
+
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(settled).toBe(false);
+
+  await vi.advanceTimersByTimeAsync(240_000);
+  await expect(responsePromise).rejects.toThrow("Timeout waiting for message (300000ms)");
+});
+
+test("subscribes to Workspace Secretary clean model updates", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const updates: unknown[] = [];
+  const events: string[] = [];
+  client.subscribeWorkspaceSecretaryModelUpdates((payload) => updates.push(payload));
+  client.subscribe((event) => {
+    if (event.type === "workspace_secretary_model_update") {
+      events.push(event.payload.reason ?? "unknown");
+    }
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "workspace_secretary.model.update",
+      payload: {
+        model: createWorkspaceSecretaryModelForClientTest(),
+        reason: "provider_reply_delta",
+      },
+    }),
+  );
+
+  expect(updates).toHaveLength(1);
+  const update = updates[0] as {
+    reason?: string;
+    model: { secretary: { liveEvents?: Array<{ kind: string }> } };
+  };
+  expect(update.reason).toBe("provider_reply_delta");
+  expect(update.model.secretary.liveEvents?.[0]?.kind).toBe("secretary_reply_delta");
+  expect(events).toEqual(["provider_reply_delta"]);
 });
 
 test("honors explicit fetchAgent timeout below the session RPC default", async () => {

@@ -110,5 +110,13 @@ interface ThothInventoryIconProps {
 
 export function ThothInventoryIcon({ name, size = 24, style }: ThothInventoryIconProps) {
   const imageStyle = useMemo(() => [{ width: size, height: size }, style], [size, style]);
-  return <Image source={THOTH_INVENTORY_IMAGES[name]} style={imageStyle} resizeMode="contain" />;
+  return (
+    <Image
+      source={THOTH_INVENTORY_IMAGES[name]}
+      style={imageStyle}
+      resizeMode="contain"
+      accessible={false}
+      accessibilityIgnoresInvertColors
+    />
+  );
 }

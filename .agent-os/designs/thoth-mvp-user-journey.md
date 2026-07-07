@@ -1,4 +1,4 @@
-# New Thoth MVP User Journey
+# Thoth MVP User Journey
 
 ## Status
 
@@ -6,7 +6,7 @@
 2. 性质：全新版本 Thoth 的 MVP 用户视角使用文档
 3. 范围：只描述用户在桌面 app、手机 app、TUI、CLI、relay、Claude、Codex、ACP 入口中看到什么、输入什么、点击什么、得到什么结果
 4. 边界：不解释架构原因，不写代码、工程接口、目录、数据结构、对象类型、适配层或参考项目文件路径
-5. 原始归档：`.agent-os/designs/new-thoth-migration-architecture-20260625.md`
+5. 原始归档：`.agent-os/designs/thoth-migration-architecture-20260625.md`
 
 ## 1. 第一次打开桌面 app
 
@@ -231,7 +231,7 @@
 11. Clarify 选项：
 
 - `auto`: 由 provider-backed session 根据输入、workspace、风险和用户历史偏好选择澄清力度。
-- `Don't Bother Me`: 不主动追问，尽量使用可验证默认值；遇到无法安全默认的高影响缺口时必须停下汇报。
+- `Don't Bother Me`: 不主动追问；技术细节由 agent 自行判断并记录假设；遇到必须由用户拍板的高影响分叉时必须停下汇报。
 - `light`: 少问，只问会明显改变方向、权限或验收的问题。
 - `Balanced`: 平衡模式，问少数黄金问题。
 - `deep`: 深度澄清，适合高成本、高风险、验收复杂或用户想先设计清楚的任务。
@@ -241,8 +241,9 @@
 14. Clarify provider session 的权限是只读。
 15. Clarify 可以读取文件、查看 git 状态、搜索代码、查看日志、联网查资料和整理资料。
 16. Clarify 不能修改文件、安装依赖、提交代码、删除文件或启动会改变 workspace 的动作。
-17. Clarify 中途的用户讨论、关键回答、默认值、假设和决策点都会被记录。
-18. 对 `Loop`，这些记录会被整理成一份执行前 handoff packet，后续 Plan+Exec 一次性读取它。
+17. Clarify 中途的用户讨论、关键回答、agent 假设和用户决策点都会被记录。
+18. 最新 Loop 1/2 口径见 `NTH-CD-033` 和 `NTH-CD-034`：Clarify 不主动提供默认推荐，不问目标降级式兜底问题，问题卡使用标题、2-4 个行为树分支选择和 note 回答；`thoth.clarify` 规则住在标准 `SKILL.md` 中，普通 packet 不重复 Skill 规则。
+19. 对 `Loop`，这些记录会被整理成一份执行前 handoff packet，后续 Plan+Exec 一次性读取它。
 
 ## 11. 合同冻结卡
 

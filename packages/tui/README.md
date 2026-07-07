@@ -1,6 +1,6 @@
 # @thoth/tui
 
-Terminal UI package for New Thoth.
+Terminal UI package for Thoth.
 
 Fixed decision:
 

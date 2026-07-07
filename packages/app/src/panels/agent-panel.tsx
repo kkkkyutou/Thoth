@@ -14,6 +14,7 @@ import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
+import { dispatchWorkspaceSecretaryAnswer, type AgentStreamWriter } from "@/composer/actions";
 import { AgentModeControl } from "@/composer/agent-controls/mode-control";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -72,6 +73,7 @@ import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/
 import { SubagentsTrack } from "@/subagents/track";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
+import type { WorkspaceSecretaryTurnActionPayload } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -1237,6 +1239,9 @@ const AgentStreamSection = memo(function AgentStreamSection({
   const streamItemsRaw = useSessionStore((state) =>
     agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
   );
+  const client = useHostRuntimeClient(serverId);
+  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
+  const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
   const streamItems = streamItemsRaw ?? EMPTY_STREAM_ITEMS;
   const pendingPermissionList = useStoreWithEqualityFn(
     useSessionStore,
@@ -1264,6 +1269,27 @@ const AgentStreamSection = memo(function AgentStreamSection({
     }
     return new Map(pendingPermissionList.map((permission) => [permission.key, permission]));
   }, [pendingPermissionList]);
+  const handleSubmitClarifyAnswer = useCallback(
+    async (cardId: string, answer: WorkspaceSecretaryTurnActionPayload) => {
+      if (!client) {
+        throw new Error("Thoth host disconnected");
+      }
+      const stream: AgentStreamWriter = {
+        getTail: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamTail?.get(id),
+        getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
+        setHead: (updater) => setAgentStreamHead(serverId, updater),
+        setTail: (updater) => setAgentStreamTail(serverId, updater),
+      };
+      await dispatchWorkspaceSecretaryAnswer({
+        client,
+        agentId: agent.id,
+        cardId,
+        answer,
+        stream,
+      });
+    },
+    [agent.id, client, serverId, setAgentStreamHead, setAgentStreamTail],
+  );
 
   return (
     <AgentStreamView
@@ -1277,6 +1303,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
       toast={toast}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
+      onSubmitClarifyAnswer={handleSubmitClarifyAnswer}
     />
   );
 });

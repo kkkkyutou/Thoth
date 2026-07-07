@@ -95,6 +95,11 @@ import type {
   AgentProvider,
   AgentSessionConfig,
 } from "@thoth/protocol/agent-types";
+import type {
+  WorkspaceSecretaryTurnActionPayload,
+  ThothComposerModel,
+  WorkspaceSecretarySendRequest,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@thoth/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@thoth/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@thoth/protocol/terminal-subscription-key";
@@ -219,6 +224,10 @@ export type DaemonEvent =
       type: "providers_snapshot_update";
       payload: Extract<SessionOutboundMessage, { type: "providers_snapshot_update" }>["payload"];
     }
+  | {
+      type: "workspace_secretary_model_update";
+      payload: WorkspaceSecretaryModelUpdatePayload;
+    }
   | { type: "error"; message: string };
 
 export type DaemonEventHandler = (event: DaemonEvent) => void;
@@ -324,6 +333,14 @@ type CreateThothWorktreePayload = Extract<
 type WorkspaceCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.create.response" }
+>["payload"];
+type WorkspaceSecretaryPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace_secretary.snapshot.response" }
+>["payload"];
+type WorkspaceSecretaryModelUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workspace_secretary.model.update" }
 >["payload"];
 type FileExplorerPayload = FileExplorerResponse["payload"];
 export type FileExplorerDirectoryPayload = NonNullable<FileExplorerPayload["directory"]>;
@@ -827,6 +844,7 @@ function toTimeoutError(error: unknown, label: string, timeoutMs: number): Error
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1500;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30000;
 const DEFAULT_SESSION_RPC_TIMEOUT_MS = 60_000;
+const WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 const DEFAULT_LIVENESS_TIMEOUT_MS = 5000;
 const LIVENESS_HEARTBEAT_INTERVAL_MS = 10_000;
@@ -2008,6 +2026,97 @@ export class DaemonClient {
       },
       responseType: "workspace_setup_status_response",
     });
+  }
+
+  async fetchWorkspaceSecretarySnapshot(
+    input: { workspaceId?: string; workspacePath?: string; workspaceName?: string } = {},
+    requestId?: string,
+  ): Promise<WorkspaceSecretaryPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "workspace_secretary.snapshot.request",
+        workspaceId: input.workspaceId,
+        workspacePath: input.workspacePath,
+        workspaceName: input.workspaceName,
+      },
+      responseType: "workspace_secretary.snapshot.response",
+    });
+  }
+
+  async sendWorkspaceSecretaryMessage(input: {
+    text: string;
+    composer: ThothComposerModel;
+    uiAgentId?: string;
+    messageId?: string;
+    images?: Array<{ data: string; mimeType: string }>;
+    attachments?: WorkspaceSecretarySendRequest["attachments"];
+    requestId?: string;
+  }): Promise<WorkspaceSecretaryPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "workspace_secretary.send.request",
+        text: input.text,
+        ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
+        ...(input.messageId ? { messageId: input.messageId } : {}),
+        ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
+        ...(input.attachments && input.attachments.length > 0
+          ? { attachments: input.attachments }
+          : {}),
+        composer: input.composer,
+      },
+      responseType: "workspace_secretary.send.response",
+      timeout: WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS,
+    });
+  }
+
+  async answerWorkspaceSecretaryClarify(input: {
+    cardId: string;
+    answer: WorkspaceSecretaryTurnActionPayload;
+    uiAgentId?: string;
+    requestId?: string;
+  }): Promise<WorkspaceSecretaryPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "workspace_secretary.answer.request",
+        cardId: input.cardId,
+        ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
+        answer: input.answer,
+      },
+      responseType: "workspace_secretary.answer.response",
+      timeout: WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS,
+    });
+  }
+
+  async createWorkspaceSecretaryTopic(
+    input?:
+      | string
+      | {
+          requestId?: string;
+          workspaceId?: string;
+          workspacePath?: string;
+          workspaceName?: string;
+        },
+  ): Promise<WorkspaceSecretaryPayload> {
+    const request = typeof input === "string" ? { requestId: input } : input;
+    return this.sendCorrelatedSessionRequest({
+      requestId: request?.requestId,
+      message: {
+        type: "workspace_secretary.topic.create.request",
+        ...(request?.workspaceId ? { workspaceId: request.workspaceId } : {}),
+        ...(request?.workspacePath ? { workspacePath: request.workspacePath } : {}),
+        ...(request?.workspaceName ? { workspaceName: request.workspaceName } : {}),
+      },
+      responseType: "workspace_secretary.topic.create.response",
+    });
+  }
+
+  subscribeWorkspaceSecretaryModelUpdates(
+    handler: (payload: WorkspaceSecretaryModelUpdatePayload) => void,
+  ): () => void {
+    return this.on("workspace_secretary.model.update", (message) => handler(message.payload));
   }
 
   async fetchAgent(options: FetchAgentOptions): Promise<FetchAgentResult | null>;
@@ -5152,6 +5261,11 @@ export class DaemonClient {
       case "providers_snapshot_update":
         return {
           type: "providers_snapshot_update",
+          payload: msg.payload,
+        };
+      case "workspace_secretary.model.update":
+        return {
+          type: "workspace_secretary_model_update",
           payload: msg.payload,
         };
       default:

@@ -160,6 +160,64 @@ describe("shared messages stream parsing", () => {
     }
   });
 
+  it("parses clean clarify card timeline events", () => {
+    const parsed = AgentStreamMessageSchema.parse({
+      type: "agent_stream",
+      payload: {
+        agentId: "agent_live",
+        timestamp: "2026-07-05T20:10:00.000Z",
+        event: {
+          type: "timeline",
+          provider: "codex",
+          item: {
+            type: "clarify_card",
+            card: {
+              id: "clarify-card-1",
+              roundLabel: "Clarify",
+              title: "确认方向",
+              whyNow: "先确认关键分叉。",
+              continuesClarify: true,
+              submitted: false,
+              card: {
+                question_id: "clarify-card-1",
+                title: "确认方向",
+                behavior_tree_node: "delivery-path",
+                why_now: "路线会影响验收。",
+                allow_choice_notes: true,
+                allow_note_only: true,
+                questions: [
+                  {
+                    id: "scope",
+                    question: "优先哪条路线？",
+                    behavior_tree_node: "delivery-path/scope",
+                    choices: [
+                      { id: "ship", label: "上线", description: "真实发布" },
+                      { id: "demo", label: "演示", description: "先做演示" },
+                    ],
+                  },
+                  {
+                    id: "risk",
+                    question: "风险边界？",
+                    behavior_tree_node: "delivery-path/risk",
+                    choices: [
+                      { id: "safe", label: "保守", description: "少改动" },
+                      { id: "bold", label: "激进", description: "可重构" },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(parsed.payload.event.type).toBe("timeline");
+    if (parsed.payload.event.type === "timeline") {
+      expect(parsed.payload.event.item.type).toBe("clarify_card");
+    }
+  });
+
   it("parses representative sub_agent tool_call event", () => {
     const parsed = AgentStreamMessageSchema.parse({
       type: "agent_stream",

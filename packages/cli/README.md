@@ -1,6 +1,6 @@
 # @thoth/cli
 
-CLI package for New Thoth.
+CLI package for Thoth.
 
 Intended responsibilities:
 

@@ -116,6 +116,8 @@ export interface MessageInputProps {
   beforeVoiceContent?: React.ReactNode;
   /** Content to render on the right side after voice button (e.g., realtime button, cancel button) */
   rightContent?: React.ReactNode;
+  /** Voice/dictation is not part of the current Thoth MVP surface. */
+  showVoiceButton?: boolean;
   voiceServerId?: string;
   voiceAgentId?: string;
   /** When true and there's sendable content, calls onQueue instead of onSubmit */
@@ -1164,6 +1166,7 @@ interface ResolvedMessageInputProps {
   leftContent: React.ReactNode;
   beforeVoiceContent: React.ReactNode;
   rightContent: React.ReactNode;
+  showVoiceButton: boolean;
   voiceServerId: string | undefined;
   voiceAgentId: string | undefined;
   isAgentRunning: boolean;
@@ -1206,6 +1209,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     leftContent: props.leftContent,
     beforeVoiceContent: props.beforeVoiceContent,
     rightContent: props.rightContent,
+    showVoiceButton: props.showVoiceButton ?? false,
     voiceServerId: props.voiceServerId,
     voiceAgentId: props.voiceAgentId,
     isAgentRunning: props.isAgentRunning ?? false,
@@ -1256,6 +1260,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       leftContent,
       beforeVoiceContent,
       rightContent,
+      showVoiceButton,
       voiceServerId,
       voiceAgentId,
       isAgentRunning,
@@ -1867,20 +1872,22 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               {leftContent}
             </View>
 
-            {/* Right: voice button, contextual button (realtime/send/cancel) */}
+            {/* Right: contextual content and send/cancel actions. */}
             <View style={styles.rightButtonGroup}>
               {beforeVoiceContent}
-              <VoiceButtonTooltip
-                onVoicePress={handleVoicePress}
-                isDictationStartEnabled={isDictationStartEnabled}
-                voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
-                voiceButtonStyle={voiceButtonStyle}
-                renderVoiceButtonIcon={renderVoiceButtonIcon}
-                voiceTooltipText={voiceTooltipText}
-                isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
-                voiceMuteToggleKeys={voiceMuteToggleKeys}
-                dictationToggleKeys={dictationToggleKeys}
-              />
+              {showVoiceButton ? (
+                <VoiceButtonTooltip
+                  onVoicePress={handleVoicePress}
+                  isDictationStartEnabled={isDictationStartEnabled}
+                  voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
+                  voiceButtonStyle={voiceButtonStyle}
+                  renderVoiceButtonIcon={renderVoiceButtonIcon}
+                  voiceTooltipText={voiceTooltipText}
+                  isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
+                  voiceMuteToggleKeys={voiceMuteToggleKeys}
+                  dictationToggleKeys={dictationToggleKeys}
+                />
+              ) : null}
               {rightContent}
               <SendButtonTooltip
                 shouldShow={shouldShowSendButton}
@@ -1979,7 +1986,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   buttonRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     marginHorizontal: -6,
   },
@@ -1988,7 +1996,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexShrink: 1,
     flexGrow: 1,
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
+    flexWrap: "wrap",
     gap: theme.spacing[0],
   },
   rightButtonGroup: {

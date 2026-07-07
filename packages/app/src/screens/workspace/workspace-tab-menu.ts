@@ -135,6 +135,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "browser") {
     return `workspace-browser-close-${tab.target.browserId}`;
   }
+  if (tab.target.kind === "background_tasks") {
+    return `workspace-background-tasks-close-${encodeWorkspaceIdForPathSegment(tab.target.workspaceId)}`;
+  }
   if (tab.target.kind === "setup") {
     return `workspace-setup-close-${encodeWorkspaceIdForPathSegment(tab.target.workspaceId)}`;
   }

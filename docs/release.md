@@ -1,6 +1,6 @@
 # Release
 
-New Thoth currently has no authorized release flow from this branch.
+Thoth currently has no authorized release flow from this branch.
 
 ## Manual Authorization Rule
 

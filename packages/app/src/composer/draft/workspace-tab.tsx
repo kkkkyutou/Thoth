@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -9,11 +9,12 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
 import {
-  ThothInventoryIcon,
-  type ThothInventoryIconName,
-} from "@/components/icons/thoth-inventory-icon";
+  applyWorkspaceSecretaryModelToStream,
+  dispatchWorkspaceSecretaryAnswer,
+  dispatchWorkspaceSecretaryMessage,
+  type AgentStreamWriter,
+} from "@/composer/actions";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
-import { DraftAgentModeControl } from "@/composer/agent-controls/mode-control";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
 import { AgentStreamView } from "@/agent-stream/view";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
@@ -21,11 +22,12 @@ import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
-import type { Agent } from "@/stores/session-store";
+import { useSessionStore, type Agent } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { encodeImages } from "@/utils/encode-images";
@@ -44,7 +46,15 @@ import {
   useWorkspaceAttachmentScopeKey,
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
-import type { UserMessageImageAttachment } from "@/types/stream";
+import type { StreamItem, UserMessageImageAttachment } from "@/types/stream";
+import type {
+  ThothComposerModel,
+  WorkspaceSecretaryTurnActionPayload,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type {
+  ThothRuntimeClarifyStrength,
+  ThothRuntimeMode,
+} from "@thoth/protocol/thoth-runtime-contract";
 import {
   COMPACT_FORM_FACTOR_WIDTH,
   MAX_CONTENT_WIDTH,
@@ -55,6 +65,7 @@ import type { WorkspaceDraftTabSetup } from "@/stores/workspace-tabs-store";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const EMPTY_ONLINE_SERVER_IDS: string[] = [];
+const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: false,
@@ -63,6 +74,72 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsReasoningStream: false,
   supportsToolInvocations: false,
 };
+
+function buildWorkspaceSecretaryComposerModel(config: {
+  workspaceSecretary?: {
+    mode?: string;
+    clarifyStrength?: string;
+  };
+}): ThothComposerModel {
+  const rawMode = config.workspaceSecretary?.mode;
+  const mode: ThothRuntimeMode = rawMode === "loop" ? "loop" : "quick";
+  const rawClarify = config.workspaceSecretary?.clarifyStrength;
+  const clarifyStrength: Exclude<ThothRuntimeClarifyStrength, "deep"> =
+    rawClarify === "none" ||
+    rawClarify === "auto" ||
+    rawClarify === "light" ||
+    rawClarify === "dive"
+      ? rawClarify
+      : "balanced";
+  return {
+    mode,
+    clarifyStrength,
+    loop: mode === "loop" ? ("balanced" as const) : null,
+    authorityLabel: "真实 provider",
+    authorityReady: true,
+  };
+}
+
+function buildWorkspaceSecretaryDraftAgent(input: {
+  serverId: string;
+  tabId: string;
+  workspaceDirectory: string;
+  workspaceId: string | null;
+  provider: string;
+  model: string | null;
+  status: Agent["status"];
+}): Agent {
+  const now = new Date();
+  return {
+    serverId: input.serverId,
+    id: input.tabId,
+    provider: input.provider,
+    status: input.status,
+    createdAt: now,
+    updatedAt: now,
+    lastUserMessageAt: now,
+    lastActivityAt: now,
+    capabilities: DRAFT_CAPABILITIES,
+    currentModeId: null,
+    availableModes: [],
+    pendingPermissions: [],
+    persistence: null,
+    runtimeInfo: {
+      provider: input.provider,
+      sessionId: null,
+      model: input.model,
+      modeId: null,
+    },
+    title: "Workspace Secretary",
+    cwd: input.workspaceDirectory,
+    workspaceId: input.workspaceId ?? undefined,
+    model: input.model,
+    features: [],
+    thinkingOptionId: null,
+    parentAgentId: null,
+    labels: {},
+  };
+}
 
 interface AutoSubmitConfig {
   provider: string;
@@ -311,155 +388,6 @@ function resolveImportPillPress(
   return onOpenImportSheet ?? null;
 }
 
-interface WorkspaceSurfacePreviewStatus {
-  label: string;
-  value: string;
-  icon: ThothInventoryIconName;
-  state: "ready" | "pending" | "preview";
-}
-
-function getSurfaceStatusChipStyle(state: WorkspaceSurfacePreviewStatus["state"]) {
-  if (state === "ready") {
-    return [styles.surfaceStatusChip, styles.surfaceStatusChipReady];
-  }
-  if (state === "preview") {
-    return [styles.surfaceStatusChip, styles.surfaceStatusChipPreview];
-  }
-  return [styles.surfaceStatusChip, styles.surfaceStatusChipPending];
-}
-
-function WorkspaceSurfacePreviewStatusChip({ status }: { status: WorkspaceSurfacePreviewStatus }) {
-  return (
-    <View style={getSurfaceStatusChipStyle(status.state)}>
-      <ThothInventoryIcon name={status.icon} size={18} style={styles.surfaceStatusIcon} />
-      <View style={styles.surfaceStatusTextGroup}>
-        <Text style={styles.surfaceStatusLabel} numberOfLines={1}>
-          {status.label}
-        </Text>
-        <Text style={styles.surfaceStatusValue} numberOfLines={1} ellipsizeMode="tail">
-          {status.value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-interface WorkspaceSurfacePreviewCardProps {
-  title: string;
-  value: string;
-  icon: ThothInventoryIconName;
-  tone?: "normal" | "warning";
-}
-
-function WorkspaceSurfacePreviewCard({
-  title,
-  value,
-  icon,
-  tone = "normal",
-}: WorkspaceSurfacePreviewCardProps) {
-  return (
-    <View style={[styles.surfaceCard, tone === "warning" ? styles.surfaceCardWarning : null]}>
-      <ThothInventoryIcon name={icon} size={30} style={styles.surfaceCardIcon} />
-      <View style={styles.surfaceCardTextGroup}>
-        <Text style={styles.surfaceCardTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={styles.surfaceCardValue} numberOfLines={2}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function WorkspaceSurfacePreview({
-  workspaceDirectory,
-  providerLabel,
-  providerReady,
-  isConnected,
-}: {
-  workspaceDirectory: string | null;
-  providerLabel: string | null;
-  providerReady: boolean;
-  isConnected: boolean;
-}) {
-  const statuses = useMemo<WorkspaceSurfacePreviewStatus[]>(
-    () => [
-      {
-        label: "Workspace",
-        value: workspaceDirectory ? "Registered" : "Needs workspace",
-        icon: workspaceDirectory ? "workspace-connected" : "empty-workspace",
-        state: workspaceDirectory ? "ready" : "pending",
-      },
-      {
-        label: "Provider",
-        value: providerReady ? (providerLabel ?? "Ready") : "Select model first",
-        icon: providerReady ? "provider-loadout" : "no-provider",
-        state: providerReady ? "ready" : "pending",
-      },
-      {
-        label: "Host",
-        value: isConnected ? "Connected" : "Offline",
-        icon: isConnected ? "local-thoth" : "relay-offline",
-        state: isConnected ? "ready" : "pending",
-      },
-      {
-        label: "Loop",
-        value: "Preview",
-        icon: "loop-mode",
-        state: "preview",
-      },
-    ],
-    [isConnected, providerLabel, providerReady, workspaceDirectory],
-  );
-
-  return (
-    <View style={styles.surfacePreview} testID="workspace-thoth-surface-preview">
-      <View style={styles.surfaceHero}>
-        <View style={styles.surfaceHeroIconWrap}>
-          <ThothInventoryIcon name="open-workspace" size={44} />
-        </View>
-        <View style={styles.surfaceHeroText}>
-          <Text style={styles.surfaceEyebrow}>One Thoth workspace</Text>
-          <Text style={styles.surfaceTitle} numberOfLines={1}>
-            Task control plane
-          </Text>
-          <Text style={styles.surfaceSubtitle} numberOfLines={2} ellipsizeMode="tail">
-            {workspaceDirectory ?? "Register a workspace before creating recoverable tasks."}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.surfaceStatusRow}>
-        {statuses.map((status) => (
-          <WorkspaceSurfacePreviewStatusChip key={status.label} status={status} />
-        ))}
-      </View>
-
-      <View style={styles.surfaceCardGrid}>
-        <WorkspaceSurfacePreviewCard
-          title="Active task"
-          value="No frozen task yet"
-          icon="draft"
-          tone={providerReady ? "normal" : "warning"}
-        />
-        <WorkspaceSurfacePreviewCard
-          title="Contract"
-          value="Needs Clarify session"
-          icon="contract-frozen"
-          tone="warning"
-        />
-        <WorkspaceSurfacePreviewCard
-          title="Evidence"
-          value="Review receipts will land here"
-          icon="evidence"
-          tone="warning"
-        />
-      </View>
-    </View>
-  );
-}
-
 export function WorkspaceDraftAgentTab({
   serverId,
   workspaceId,
@@ -474,6 +402,7 @@ export function WorkspaceDraftAgentTab({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
+  const { config: daemonConfig } = useDaemonConfig(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const workspaceFields = useWorkspaceFields(serverId, workspaceId, (w) => ({
     workspaceDirectory: w.workspaceDirectory,
@@ -514,9 +443,102 @@ export function WorkspaceDraftAgentTab({
   if (!composerState) {
     throw new Error("Workspace draft composer state is required");
   }
+  const workspaceSecretaryComposer = useMemo(
+    () => buildWorkspaceSecretaryComposerModel(daemonConfig ?? {}),
+    [daemonConfig],
+  );
+  const workspaceSecretaryProvider = daemonConfig?.workspaceSecretary?.providerSession;
+  const secretaryProvider =
+    workspaceSecretaryProvider?.provider ?? composerState.selectedProvider ?? "codex";
+  const secretaryModel =
+    workspaceSecretaryProvider?.model ?? composerState.effectiveModelId ?? null;
   const clearDraftInput = draftInput.clear;
   const setDraftText = draftInput.setText;
   const setDraftAttachments = draftInput.setAttachments;
+  const [secretarySubmitted, setSecretarySubmitted] = useState(false);
+  const [secretarySubmitting, setSecretarySubmitting] = useState(false);
+  const [secretaryErrorMessage, setSecretaryErrorMessage] = useState("");
+  const secretaryTopicCreatedRef = useRef(false);
+  const secretaryStreamItems =
+    useSessionStore((state) => state.sessions[serverId]?.agentStreamTail?.get(tabId)) ??
+    EMPTY_STREAM_ITEMS;
+  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
+  const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
+  const secretaryDraftAgent = useMemo(
+    () =>
+      draftWorkingDirectory
+        ? buildWorkspaceSecretaryDraftAgent({
+            serverId,
+            tabId,
+            workspaceDirectory: draftWorkingDirectory,
+            workspaceId: workspaceFields?.id ?? null,
+            provider: secretaryProvider,
+            model: secretaryModel,
+            status: secretarySubmitting ? "running" : "idle",
+          })
+        : null,
+    [
+      draftWorkingDirectory,
+      secretaryModel,
+      secretaryProvider,
+      secretarySubmitting,
+      serverId,
+      tabId,
+      workspaceFields?.id,
+    ],
+  );
+  const getSecretaryStreamWriter = useCallback(
+    (): AgentStreamWriter => ({
+      getTail: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamTail?.get(id),
+      getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
+      setHead: (updater) => setAgentStreamHead(serverId, updater),
+      setTail: (updater) => setAgentStreamTail(serverId, updater),
+    }),
+    [serverId, setAgentStreamHead, setAgentStreamTail],
+  );
+  const secretarySnapshotHydratedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!client || !draftWorkingDirectory || !workspaceFields?.id) {
+      return;
+    }
+    const hydrateKey = `${serverId}:${workspaceFields.id}:${draftWorkingDirectory}:${tabId}`;
+    if (secretarySnapshotHydratedRef.current === hydrateKey) {
+      return;
+    }
+    secretarySnapshotHydratedRef.current = hydrateKey;
+    let cancelled = false;
+    void client
+      .fetchWorkspaceSecretarySnapshot({
+        workspaceId: workspaceFields.id,
+        workspacePath: draftWorkingDirectory,
+      })
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        if (!payload.model) {
+          return;
+        }
+        applyWorkspaceSecretaryModelToStream(tabId, payload.model, getSecretaryStreamWriter());
+        if (payload.model.secretary.turns.length > 0) {
+          setSecretarySubmitted(true);
+        }
+      })
+      .catch((error) => {
+        secretarySnapshotHydratedRef.current = null;
+        console.warn("[WorkspaceSecretary] failed to hydrate snapshot", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    client,
+    draftWorkingDirectory,
+    getSecretaryStreamWriter,
+    serverId,
+    tabId,
+    workspaceFields?.id,
+  ]);
   const pendingAutoSubmit = useWorkspaceDraftSubmissionStore((state) => {
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
@@ -656,6 +678,95 @@ export function WorkspaceDraftAgentTab({
       onCreated(result);
     },
   });
+  const handleWorkspaceSecretarySubmit = useCallback(
+    async ({
+      text,
+      attachments,
+    }: {
+      text: string;
+      attachments: Parameters<typeof handleCreateFromInput>[0]["attachments"];
+      cwd: string;
+    }) => {
+      if (secretarySubmitting) {
+        throw new Error(t("composer.errors.alreadyLoading"));
+      }
+      if (!client) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      if (!draftWorkingDirectory) {
+        throw new Error("Workspace directory is required");
+      }
+      const trimmedPrompt = text.trim();
+      if (!trimmedPrompt && attachments.length === 0) {
+        throw new Error(t("composer.errors.initialPromptRequired"));
+      }
+
+      setSecretaryErrorMessage("");
+      setSecretarySubmitting(true);
+      try {
+        await composerState.persistFormPreferences();
+        if (isWeb) {
+          (document.activeElement as HTMLElement | null)?.blur?.();
+        }
+        Keyboard.dismiss();
+        if (!secretaryTopicCreatedRef.current) {
+          await client.createWorkspaceSecretaryTopic({
+            workspaceId: workspaceFields?.id ?? undefined,
+            workspacePath: draftWorkingDirectory,
+          });
+          secretaryTopicCreatedRef.current = true;
+        }
+        setSecretarySubmitted(true);
+        await dispatchWorkspaceSecretaryMessage({
+          client,
+          agentId: tabId,
+          text: trimmedPrompt,
+          attachments,
+          composer: workspaceSecretaryComposer,
+          encodeImages,
+          stream: getSecretaryStreamWriter(),
+        });
+        clearDraftInput("sent");
+        clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
+        useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setSecretaryErrorMessage(message);
+        throw error;
+      } finally {
+        setSecretarySubmitting(false);
+      }
+    },
+    [
+      clearDraftInput,
+      clearWorkspaceAttachments,
+      client,
+      composerState,
+      draftAttachmentScopeKey,
+      draftId,
+      draftWorkingDirectory,
+      getSecretaryStreamWriter,
+      secretarySubmitting,
+      t,
+      tabId,
+      workspaceSecretaryComposer,
+    ],
+  );
+  const handleWorkspaceSecretaryAnswer = useCallback(
+    async (cardId: string, answer: WorkspaceSecretaryTurnActionPayload) => {
+      if (!client) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      await dispatchWorkspaceSecretaryAnswer({
+        client,
+        agentId: tabId,
+        cardId,
+        answer,
+        stream: getSecretaryStreamWriter(),
+      });
+    },
+    [client, getSecretaryStreamWriter, t, tabId],
+  );
 
   const isReadyForPendingAutoSubmit = Boolean(
     pendingAutoSubmit &&
@@ -806,22 +917,26 @@ export function WorkspaceDraftAgentTab({
       isSubmitting,
     ],
   );
-  const composerFooter = useMemo(
-    () =>
-      isCompactComposerLayout ? (
-        <DraftAgentModeControl
-          placement="footer"
-          {...composerAgentControls}
-          isCompactLayout={isCompactComposerLayout}
-        />
-      ) : undefined,
-    [isCompactComposerLayout, composerAgentControls],
-  );
-
+  const showWorkspaceSecretaryStream =
+    Boolean(secretaryDraftAgent) && (secretarySubmitted || secretaryStreamItems.length > 0);
+  const visibleFormErrorMessage = secretaryErrorMessage || formErrorMessage;
+  const visibleSubmitLoading = isSubmitting || secretarySubmitting;
   return (
     <FileDropZone style={styles.container}>
       <View style={styles.contentContainer}>
-        {isSubmitting && draftAgent ? (
+        {showWorkspaceSecretaryStream && secretaryDraftAgent ? (
+          <View style={styles.streamContainer}>
+            <AgentStreamView
+              agentId={tabId}
+              serverId={serverId}
+              agent={secretaryDraftAgent}
+              streamItems={secretaryStreamItems}
+              pendingPermissions={EMPTY_PENDING_PERMISSIONS}
+              onOpenWorkspaceFile={onOpenWorkspaceFile}
+              onSubmitClarifyAnswer={handleWorkspaceSecretaryAnswer}
+            />
+          </View>
+        ) : isSubmitting && draftAgent ? (
           <View style={styles.streamContainer}>
             <AgentStreamView
               agentId={tabId}
@@ -835,17 +950,9 @@ export function WorkspaceDraftAgentTab({
         ) : (
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
             <View style={styles.configSection}>
-              <WorkspaceSurfacePreview
-                workspaceDirectory={workspaceDirectory}
-                providerLabel={composerState.selectedProvider}
-                providerReady={Boolean(
-                  composerState.selectedProvider && composerState.effectiveModelId,
-                )}
-                isConnected={isConnected}
-              />
-              {formErrorMessage ? (
+              {visibleFormErrorMessage ? (
                 <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{formErrorMessage}</Text>
+                  <Text style={styles.errorText}>{visibleFormErrorMessage}</Text>
                 </View>
               ) : null}
             </View>
@@ -866,8 +973,8 @@ export function WorkspaceDraftAgentTab({
           serverId={serverId}
           externalKeyboardShift
           isPaneFocused={isPaneFocused}
-          onSubmitMessage={handleCreateFromInput}
-          isSubmitLoading={isSubmitting}
+          onSubmitMessage={handleWorkspaceSecretarySubmit}
+          isSubmitLoading={visibleSubmitLoading}
           blurOnSubmit={true}
           value={draftInput.text}
           onChangeText={draftInput.setText}
@@ -881,7 +988,6 @@ export function WorkspaceDraftAgentTab({
           onFocusInput={handleFocusInputCallback}
           commandDraftConfig={composerState.commandDraftConfig}
           agentControls={composerAgentControls}
-          footer={composerFooter}
           isCompactLayout={isCompactComposerLayout}
         />
       </ReanimatedAnimated.View>
@@ -911,143 +1017,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   configSection: {
     gap: theme.spacing[3],
-  },
-  surfacePreview: {
-    width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
-    alignSelf: "center",
-    gap: theme.spacing[3],
-  },
-  surfaceHero: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[3],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
-  },
-  surfaceHeroIconWrap: {
-    width: 54,
-    height: 54,
-    flexShrink: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface0,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-  },
-  surfaceHeroText: {
-    minWidth: 0,
-    flex: 1,
-  },
-  surfaceEyebrow: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.25),
-  },
-  surfaceTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xl,
-    lineHeight: Math.round(theme.fontSize.xl * 1.2),
-    fontWeight: theme.fontWeight.semibold,
-  },
-  surfaceSubtitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: Math.round(theme.fontSize.sm * 1.35),
-  },
-  surfaceStatusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing[2],
-  },
-  surfaceStatusChip: {
-    minHeight: 40,
-    minWidth: 142,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-  },
-  surfaceStatusChipReady: {
-    backgroundColor: theme.colors.surface1,
-    borderColor: theme.colors.success,
-  },
-  surfaceStatusChipPending: {
-    backgroundColor: theme.colors.surface1,
-    borderColor: theme.colors.destructive,
-  },
-  surfaceStatusChipPreview: {
-    backgroundColor: theme.colors.surface2,
-    borderColor: theme.colors.borderAccent,
-  },
-  surfaceStatusIcon: {
-    flexShrink: 0,
-  },
-  surfaceStatusTextGroup: {
-    minWidth: 0,
-    flex: 1,
-  },
-  surfaceStatusLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.2),
-  },
-  surfaceStatusValue: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    lineHeight: Math.round(theme.fontSize.sm * 1.25),
-    fontWeight: theme.fontWeight.semibold,
-  },
-  surfaceCardGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing[2],
-  },
-  surfaceCard: {
-    minHeight: 78,
-    minWidth: 176,
-    flexGrow: 1,
-    flexBasis: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    padding: theme.spacing[3],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface0,
-  },
-  surfaceCardWarning: {
-    backgroundColor: theme.colors.surface1,
-    borderColor: theme.colors.borderAccent,
-  },
-  surfaceCardIcon: {
-    flexShrink: 0,
-  },
-  surfaceCardTextGroup: {
-    minWidth: 0,
-    flex: 1,
-  },
-  surfaceCardTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    lineHeight: Math.round(theme.fontSize.sm * 1.25),
-    fontWeight: theme.fontWeight.semibold,
-  },
-  surfaceCardValue: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.35),
   },
   inputAreaWrapper: {
     width: "100%",

@@ -1,8 +1,8 @@
 # @thoth/daemon
 
-Local authority daemon package for New Thoth.
+Local authority daemon package for Thoth.
 
-This package now contains promoted upstream-derived server implementation material. It is intentionally expected to be temporarily broken while the New Thoth authority model, provider drivers, task lifecycle and app protocol are reconciled.
+This package now contains promoted upstream-derived server implementation material. It is intentionally expected to be temporarily broken while the Thoth authority model, provider drivers, task lifecycle and app protocol are reconciled.
 
 Current boundaries:
 

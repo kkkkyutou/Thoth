@@ -1,6 +1,6 @@
 # @thoth/core
 
-Pure domain package for New Thoth.
+Pure domain package for Thoth.
 
 Intended responsibilities:
 

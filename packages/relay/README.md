@@ -1,6 +1,6 @@
 # @thoth/relay
 
-Relay package for New Thoth.
+Relay package for Thoth.
 
 Intended responsibilities:
 

@@ -49,11 +49,11 @@ describe("syncSkills", () => {
 
   it("overwrites on-disk skill content when the bundle differs", async () => {
     await writeBundleSkill(sandbox.sourceDir, "thoth", {
-      "SKILL.md": "new thoth content",
+      "SKILL.md": "thoth content",
     });
     const onDiskSkill = path.join(sandbox.agentsDir, "thoth");
     await fs.mkdir(onDiskSkill, { recursive: true });
-    await fs.writeFile(path.join(onDiskSkill, "SKILL.md"), "old thoth content");
+    await fs.writeFile(path.join(onDiskSkill, "SKILL.md"), "archived plugin content");
 
     const result = await syncSkills({
       sourceDir: sandbox.sourceDir,
@@ -69,17 +69,17 @@ describe("syncSkills", () => {
       path.join(sandbox.agentsDir, "thoth", "SKILL.md"),
       "utf-8",
     );
-    expect(agentsContent).toBe("new thoth content");
+    expect(agentsContent).toBe("thoth content");
     const claudeContent = await fs.readFile(
       path.join(sandbox.claudeDir, "thoth", "SKILL.md"),
       "utf-8",
     );
-    expect(claudeContent).toBe("new thoth content");
+    expect(claudeContent).toBe("thoth content");
     const codexContent = await fs.readFile(
       path.join(sandbox.codexDir, "thoth", "SKILL.md"),
       "utf-8",
     );
-    expect(codexContent).toBe("new thoth content");
+    expect(codexContent).toBe("thoth content");
   });
 
   it("installs new bundled skills, including references/, when not present on disk", async () => {

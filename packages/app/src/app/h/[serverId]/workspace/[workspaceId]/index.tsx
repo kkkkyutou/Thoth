@@ -49,6 +49,9 @@ function getOpenIntentTarget(openIntent: WorkspaceOpenIntent): WorkspaceTabTarge
   if (openIntent.kind === "terminal") {
     return { kind: "terminal", terminalId: openIntent.terminalId };
   }
+  if (openIntent.kind === "background_tasks") {
+    return { kind: "background_tasks", workspaceId: openIntent.workspaceId };
+  }
   if (openIntent.kind === "file") {
     return { kind: "file", path: openIntent.path };
   }

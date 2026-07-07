@@ -2,7 +2,38 @@
   "name": "@thoth/drivers",
   "version": "0.0.0",
   "private": true,
-  "description": "Harness driver adapters for New Thoth",
+  "description": "Harness driver adapters for Thoth",
   "license": "AGPL-3.0-or-later",
-  "type": "module"
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./clarify": {
+      "types": "./dist/clarify/index.d.ts",
+      "default": "./dist/clarify/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "node ../../scripts/clean-package-dist.mjs",
+    "build": "tsc -p tsconfig.json --incremental false",
+    "build:clean": "npm run clean && npm run build",
+    "prepack": "npm run build:clean",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "eval:clarify": "node dist/clarify/eval.js"
+  },
+  "dependencies": {
+    "@thoth/protocol": "file:../protocol"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "typescript": "^5.2.2",
+    "vitest": "^4.1.6"
+  }
 }

@@ -72,6 +72,7 @@ import { runDesktopStartup } from "./desktop-startup.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
+const LOAD_STATIC_EXPORT_IN_DEV = process.env.THOTH_DESKTOP_LOAD_STATIC_EXPORT === "1";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_SCHEME = "thoth";
 const THOTH_DEBUG = process.env.THOTH_DEBUG === "1";
@@ -524,7 +525,7 @@ async function createWindow(
     mainWindow.show();
   });
 
-  if (!app.isPackaged) {
+  if (!app.isPackaged && !LOAD_STATIC_EXPORT_IN_DEV) {
     const { loadReactDevTools } = await import("./features/react-devtools.js");
     await loadReactDevTools();
     await mainWindow.loadURL(DEV_SERVER_URL);

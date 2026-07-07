@@ -140,18 +140,18 @@ export const en = {
       select: "Select agent provider",
     },
     thinking: {
-      title: "Thinking",
+      title: "Clarify",
       unknown: "Unknown",
       extraHigh: "Extra high",
-      select: "Select thinking option",
-      selectWithValue: "Select thinking option ({{value}})",
+      select: "Select clarify level",
+      selectWithValue: "Select clarify level ({{value}})",
     },
     model: {
       unknown: "Unknown model",
     },
     features: {
-      title: "Features",
-      open: "Open agent features",
+      title: "Mode",
+      open: "Open mode controls",
       on: "On",
       off: "Off",
     },
@@ -161,9 +161,19 @@ export const en = {
       selectWithValue: "Select agent mode ({{value}})",
     },
     hints: {
-      thinking: "Thinking mode",
-      model: "Change model",
+      thinking: "Clarify level",
+      model: "Change provider",
       mode: "Change mode",
+    },
+    runtime: {
+      clarify: {
+        tooltip: "Clarify",
+        selectWithValue: "Clarify: {{value}}",
+      },
+      mode: {
+        tooltip: "Mode",
+        selectWithValue: "Mode: {{value}}",
+      },
     },
   },
   agentStream: {
@@ -444,6 +454,7 @@ export const en = {
         workspaceSetup: "Workspace setup",
         terminal: "Terminal",
         browser: "Browser",
+        backgroundTasks: "Background tasks",
         agent: "Agent",
         workspace: "Workspace",
       },
@@ -1134,8 +1145,8 @@ export const en = {
   },
   modelSelector: {
     title: "Select provider",
-    selectModel: "Select model",
-    selectedModel: "Select model ({{model}})",
+    selectModel: "Select provider",
+    selectedModel: "Provider: {{model}}",
     loading: "Loading...",
     loadingShort: "Loading",
     loadingSelector: "Loading model selector...",
@@ -1170,7 +1181,7 @@ export const en = {
   },
   providerSelection: {
     defaultModel: "Default",
-    selectModel: "Select model",
+    selectModel: "Select provider",
     loading: "Loading...",
     error: "Error",
     unavailable: "Unavailable",
@@ -1196,7 +1207,7 @@ export const en = {
         description: "Encrypted relay connection.",
       },
       pasteLink: {
-        title: "Paste pairing link",
+        title: "Paste pairing code",
         description: "Encrypted relay connection.",
       },
     },
@@ -1243,14 +1254,15 @@ export const en = {
       },
     },
     link: {
-      title: "Paste pairing link",
-      helper: "Paste the pairing link from your server.",
-      label: "Pairing link",
+      title: "Paste pairing code",
+      helper: "Paste the short pairing code from your server.",
+      label: "Pairing code",
+      placeholder: "Paste pairing code",
       errors: {
-        required: "Paste a pairing link (.../#offer=...)",
-        missingOffer: "Link must include #offer=...",
-        emptyOffer: "Offer payload is empty",
-        invalid: "Invalid pairing link",
+        required: "Paste a pairing code",
+        missingOffer: "Paste a pairing code",
+        emptyOffer: "Pairing code is empty",
+        invalid: "Invalid pairing code",
         unableToPair: "Unable to pair host",
       },
       alert: {

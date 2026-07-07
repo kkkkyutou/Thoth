@@ -151,6 +151,7 @@ import { WorkspaceFilesSession } from "./session/files/workspace-files-session.j
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
+import { WorkspaceSecretarySession } from "./session/workspace-secretary/workspace-secretary-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
@@ -592,6 +593,7 @@ export class Session {
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
+  private readonly workspaceSecretarySession: WorkspaceSecretarySession;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
@@ -801,6 +803,14 @@ export class Session {
       listProjects: () => this.projectRegistry.list(),
       listWorkspaces: () => this.workspaceRegistry.list(),
       logger: this.sessionLogger,
+    });
+    this.workspaceSecretarySession = new WorkspaceSecretarySession({
+      host: {
+        emit: (msg) => this.emit(msg),
+        listWorkspaces: () => this.workspaceRegistry.list(),
+      },
+      agentManager: this.agentManager,
+      daemonConfigStore,
     });
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
@@ -1637,6 +1647,14 @@ export class Session {
         return this.handleWorkspaceClearAttentionRequest(msg);
       case "workspace.title.set.request":
         return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
+      case "workspace_secretary.snapshot.request":
+        return this.workspaceSecretarySession.handleSnapshotRequest(msg);
+      case "workspace_secretary.send.request":
+        return this.workspaceSecretarySession.handleSendRequest(msg);
+      case "workspace_secretary.answer.request":
+        return this.workspaceSecretarySession.handleAnswerRequest(msg);
+      case "workspace_secretary.topic.create.request":
+        return this.workspaceSecretarySession.handleTopicCreateRequest(msg);
       case "file_explorer_request":
         return this.workspaceFilesSession.handleFileExplorerRequest(msg);
       case "project_icon_request":

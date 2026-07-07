@@ -1,5 +1,5 @@
 import { router, usePathname } from "expo-router";
-import { FolderPlus, History, Plus, Search, Server, X } from "lucide-react-native";
+import { FolderPlus, History, ListTodo, Plus, Search, Server, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -54,12 +54,14 @@ import {
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { canCloseLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
+  buildHostWorkspaceOpenRoute,
   buildOpenProjectRoute,
   buildNewWorkspaceRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsHostSectionRoute,
   buildSettingsRoute,
+  encodeWorkspaceIdForPathSegment,
 } from "@/utils/host-routes";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
@@ -104,6 +106,7 @@ interface SidebarSharedProps {
 interface SidebarLabels {
   addProject: string;
   newWorkspace: string;
+  backgroundTasks: string;
   home: string;
   settings: string;
   switchHost: string;
@@ -230,6 +233,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     (): SidebarLabels => ({
       addProject: t("sidebar.actions.addProject"),
       newWorkspace: t("sidebar.actions.newWorkspace"),
+      backgroundTasks: "Background tasks",
       home: t("sidebar.actions.home"),
       settings: t("sidebar.actions.settings"),
       switchHost: t("sidebar.host.switchTitle"),
@@ -474,6 +478,50 @@ const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow(
       testID={testID}
       variant={variant}
       shortcutKeys={shortcutKeys}
+    />
+  );
+});
+
+const SidebarBackgroundTasksHeaderRow = memo(function SidebarBackgroundTasksHeaderRow({
+  label,
+  testID,
+  variant,
+  onBeforeNavigate,
+}: {
+  label: string;
+  testID: string;
+  variant: "header" | "compact";
+  onBeforeNavigate?: () => void;
+}) {
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
+  const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
+  const pathname = usePathname();
+  const isActive = pathname.includes("background_tasks");
+
+  const handlePress = useCallback(() => {
+    onBeforeNavigate?.();
+    if (!activeWorkspaceServerId || !activeWorkspaceId) {
+      router.push(buildSessionsRoute());
+      return;
+    }
+    router.push(
+      buildHostWorkspaceOpenRoute(
+        activeWorkspaceServerId,
+        activeWorkspaceId,
+        `background_tasks:${encodeWorkspaceIdForPathSegment(activeWorkspaceId)}`,
+      ),
+    );
+  }, [activeWorkspaceId, activeWorkspaceServerId, onBeforeNavigate]);
+
+  return (
+    <SidebarHeaderRow
+      icon={ListTodo}
+      label={label}
+      onPress={handlePress}
+      isActive={isActive}
+      testID={testID}
+      variant={variant}
     />
   );
 });
@@ -751,6 +799,12 @@ function MobileSidebar({
                 shortcutKeys={newWorkspaceKeys}
                 onBeforeNavigate={closeSidebar}
               />
+              <SidebarBackgroundTasksHeaderRow
+                label={labels.backgroundTasks}
+                testID="sidebar-background-tasks"
+                variant="compact"
+                onBeforeNavigate={closeSidebar}
+              />
               <SidebarHeaderRow
                 icon={History}
                 label={labels.sessions}
@@ -912,6 +966,11 @@ function DesktopSidebar({
               testID="sidebar-global-new-workspace"
               variant="compact"
               shortcutKeys={newWorkspaceKeys}
+            />
+            <SidebarBackgroundTasksHeaderRow
+              label={labels.backgroundTasks}
+              testID="sidebar-background-tasks"
+              variant="compact"
             />
             <SidebarHeaderRow
               icon={History}

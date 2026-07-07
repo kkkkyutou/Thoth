@@ -99,7 +99,7 @@ describe("buildTuiSurfaceLines", () => {
       .map((line) => line.text)
       .join("\n");
     expect(settingsText).toContain("Settings / About: One Thoth identity and runtime guard");
-    expect(settingsText).toContain("No Textual, no old plugin TUI, no hidden LLM API");
+    expect(settingsText).toContain("No Textual, no archived plugin TUI, no hidden LLM API");
   });
 
   test("formats safe pairing detail without raw offer credentials", () => {

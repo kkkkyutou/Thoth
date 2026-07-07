@@ -1,16 +1,16 @@
-# New Thoth UI Review Scorecard
+# Thoth UI Review Scorecard
 
 Status: rejected legacy-shell baseline, not current product target
 Last updated: 2026-07-03
 
-This document is the durable UI review ledger for the New Thoth multi-endpoint product surface.
+This document is the durable UI review ledger for the Thoth multi-endpoint product surface.
 It must not be used to claim final UI acceptance until Web, Desktop and OpenTUI all have current
 rendered evidence, stress evidence and score evidence that meet the final threshold.
 
 2026-07-03 product review result: this scorecard proved that the promoted Web/Desktop/OpenTUI shell
 can render and pass selected smokes, but the APP direction is still too close to a Paseo-like
 workspace/session/settings shell. The current APP target is superseded by
-`.agent-os/designs/new-thoth-app-runtime-contract.md`: exactly three APP views, Settings,
+`.agent-os/designs/thoth-app-runtime-contract.md`: exactly three APP views, Settings,
 Workspace Secretary and Background Tasks, with hidden built-in `thoth.clarify` / `thoth.loop`
 runtime skills and compact packet contracts. Do not continue polishing this scorecard as the
 primary product direction.
@@ -51,7 +51,7 @@ Each endpoint is scored on 10 dimensions, 10 points each:
 These are legacy-shell working scores, not final acceptance scores. They intentionally include
 penalties for missing current screenshots, missing stress artifacts and unfinished backend slots,
 but the more important issue is that the underlying APP information architecture has been rejected
-as the current New Thoth target.
+as the current Thoth target.
 
 | Endpoint | Score | Status      | Current evidence                                                                                                          | Main gaps                                                                                                                           |
 | -------- | ----: | ----------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |

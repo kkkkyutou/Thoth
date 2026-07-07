@@ -1,6 +1,6 @@
 # AGENTS.md — packages/core
 
-This package is reserved for headless New Thoth domain logic: authority types, task lifecycle policy, memory/context packets and deterministic runtime helpers.
+This package is reserved for headless Thoth domain logic: authority types, task lifecycle policy, memory/context packets and deterministic runtime helpers.
 
 ## Rules
 

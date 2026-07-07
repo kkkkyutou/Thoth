@@ -167,6 +167,16 @@ export const ru: TranslationResources = {
       model: "Изменить модель",
       mode: "Изменить режим",
     },
+    runtime: {
+      clarify: {
+        tooltip: "Clarify",
+        selectWithValue: "Clarify: {{value}}",
+      },
+      mode: {
+        tooltip: "Mode",
+        selectWithValue: "Mode: {{value}}",
+      },
+    },
   },
   agentStream: {
     empty: "Начните общаться с этим агентом...",
@@ -449,6 +459,7 @@ export const ru: TranslationResources = {
         terminal: "Terminal",
         browser: "Браузер",
         agent: "Agent",
+        backgroundTasks: "Background tasks",
         workspace: "Workspace",
       },
       switcher: {
@@ -1217,7 +1228,7 @@ export const ru: TranslationResources = {
         description: "Зашифрованное релейное соединение.",
       },
       pasteLink: {
-        title: "Вставьте ссылку на сопряжение",
+        title: "Paste pairing code",
         description: "Зашифрованное релейное соединение.",
       },
     },
@@ -1265,14 +1276,15 @@ export const ru: TranslationResources = {
       },
     },
     link: {
-      title: "Вставьте ссылку на сопряжение",
-      helper: "Вставьте ссылку на сопряжение с вашего сервера.",
-      label: "Ссылка на сопряжение",
+      title: "Paste pairing code",
+      helper: "Paste the short pairing code from your server.",
+      label: "Pairing code",
+      placeholder: "Paste pairing code",
       errors: {
-        required: "Вставьте ссылку для сопряжения (.../#offer=...)",
-        missingOffer: "Ссылка должна содержать #offer=...",
-        emptyOffer: "Полезная нагрузка предложения пуста.",
-        invalid: "Неверная ссылка для сопряжения",
+        required: "Paste a pairing code",
+        missingOffer: "Paste a pairing code",
+        emptyOffer: "Pairing code is empty",
+        invalid: "Invalid pairing code",
         unableToPair: "Невозможно подключить хост",
       },
       alert: {
@@ -1704,6 +1716,7 @@ export const ru: TranslationResources = {
         removeErrorTitle: "Ошибка",
         removeErrorMessage: "Невозможно удалить соединение",
         timeout: "Тайм- аут",
+        pairAgain: "Сопрячь снова",
       },
       pairDevices: {
         title: "Сопряжение устройств",

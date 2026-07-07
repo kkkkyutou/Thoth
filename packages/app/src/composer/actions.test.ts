@@ -10,6 +10,7 @@ import type { StreamItem } from "@/types/stream";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
+  dispatchWorkspaceSecretaryMessage,
   editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
@@ -27,6 +28,10 @@ import {
   type QueueWriter,
   type QueuedComposerMessage,
 } from "./actions";
+import type {
+  ThothCleanUiModel,
+  WorkspaceSecretaryResponsePayload,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 
 const imageMetadata: AttachmentMetadata = {
   id: "img-1",
@@ -180,6 +185,71 @@ function createFakeSendClient(
       }
     },
     uploadFile: async () => ({ requestId: "test", file: null, error: null }),
+  };
+}
+
+function createSecretaryModel(): ThothCleanUiModel {
+  return {
+    authority: {
+      source: "provider_backed_clean_ui_model",
+      schemaVerified: true,
+      label: "test",
+    },
+    activeView: "workspace-secretary",
+    secretary: {
+      workspaceName: "Thoth",
+      workspacePath: "/repo",
+      topics: [{ id: "topic-main", title: "当前话题", status: "current", updatedLabel: "刚刚" }],
+      activeTopicId: "topic-main",
+      status: { kind: "ready", title: "ready", detail: "ready" },
+      turns: [
+        { id: "user-1", kind: "message", speaker: "user", text: "ignored duplicate user" },
+        { id: "assistant-1", kind: "message", speaker: "secretary", text: "需要先确认目标。" },
+      ],
+      composer: {
+        mode: "quick",
+        clarifyStrength: "light",
+        loop: null,
+        authorityLabel: "codex",
+        authorityReady: true,
+      },
+      liveEvents: [],
+    },
+    settings: {
+      runtime: [],
+      relay: {
+        endpoint: "relay.test.thoth.seeles.ai",
+        healthUrl: "https://relay.test.thoth.seeles.ai/health",
+        status: "checking",
+        safeSummary: "checking",
+        checkedAtLabel: "now",
+      },
+      requiredRuntime: [],
+    },
+    backgroundTasks: { tasks: [] },
+  };
+}
+
+function createFakeSecretaryClient(model = createSecretaryModel()) {
+  const calls: Array<{
+    text: string;
+    messageId?: string;
+    images?: Array<{ data: string; mimeType: string }>;
+    attachments?: unknown[];
+  }> = [];
+  const payload: WorkspaceSecretaryResponsePayload = { model };
+  return {
+    calls,
+    sendWorkspaceSecretaryMessage: async (input: {
+      text: string;
+      messageId?: string;
+      images?: Array<{ data: string; mimeType: string }>;
+      attachments?: unknown[];
+    }) => {
+      calls.push(input);
+      return payload;
+    },
+    answerWorkspaceSecretaryClarify: async () => payload,
   };
 }
 
@@ -442,6 +512,99 @@ describe("dispatchComposerAgentMessage", () => {
         text: browserElement.attachment.formatted,
       },
     ]);
+  });
+});
+
+describe("dispatchWorkspaceSecretaryMessage", () => {
+  it("sends text, images, and structured attachments through Workspace Secretary and merges clean turns", async () => {
+    const client = createFakeSecretaryClient();
+    const stream = createFakeStream();
+    const image = imageWithId("img-secretary");
+
+    await dispatchWorkspaceSecretaryMessage({
+      client,
+      agentId: "agent",
+      text: "clarify this",
+      attachments: [
+        { kind: "image", metadata: image },
+        { kind: "github_pr", item: prItem },
+      ],
+      composer: {
+        mode: "quick",
+        clarifyStrength: "light",
+        loop: null,
+        authorityLabel: "codex",
+        authorityReady: true,
+      },
+      encodeImages: passthroughEncodeImages,
+      stream,
+    });
+
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toMatchObject({
+      text: "clarify this",
+      images: [{ data: image.id, mimeType: image.mimeType }],
+      attachments: [
+        expect.objectContaining({
+          type: "github_pr",
+          number: 202,
+        }),
+      ],
+    });
+    expect(client.calls[0]?.messageId).toBeTruthy();
+    const tail = stream.tail.get("agent") ?? [];
+    expect(tail.map((item) => item.kind)).toEqual(["user_message", "assistant_message"]);
+    expect((tail[1] as Extract<StreamItem, { kind: "assistant_message" }>).text).toBe(
+      "需要先确认目标。",
+    );
+  });
+
+  it("does not use Workspace Secretary liveEvents as the realtime timeline source", async () => {
+    const model = createSecretaryModel();
+    model.secretary.turns = [];
+    model.secretary.liveEvents = [
+      {
+        id: "evt-start",
+        kind: "provider_turn_started",
+        title: "真实 provider 回合已开始",
+        detail: "正在处理用户输入。",
+        status: "running",
+      },
+      {
+        id: "evt-tool",
+        kind: "provider_tool",
+        title: "provider 正在调用工具",
+        detail: "npm test",
+        status: "running",
+      },
+      {
+        id: "evt-draft",
+        kind: "secretary_reply_delta",
+        title: "秘书正在起草回复",
+        detail: "我正在检查边界。",
+        status: "running",
+      },
+    ];
+    const client = createFakeSecretaryClient(model);
+    const stream = createFakeStream();
+
+    await dispatchWorkspaceSecretaryMessage({
+      client,
+      agentId: "agent",
+      text: "clarify this",
+      attachments: [],
+      composer: {
+        mode: "quick",
+        clarifyStrength: "dive",
+        loop: null,
+        authorityLabel: "codex",
+        authorityReady: true,
+      },
+      encodeImages: passthroughEncodeImages,
+      stream,
+    });
+
+    expect(stream.tail.get("agent")?.map((item) => item.kind)).toEqual(["user_message"]);
   });
 });
 

@@ -1302,6 +1302,11 @@ test("createAgent passes native Thoth tools through launch context without inter
   const snapshot = await manager.createAgent({
     provider: "codex",
     cwd: workdir,
+    extra: {
+      codex: {
+        thothClarifyRuntimeTools: true,
+      },
+    },
     mcpServers: {
       custom: {
         type: "stdio",
@@ -1787,7 +1792,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     metadata: {
       provider: "codex",
       cwd: workdir,
-      systemPrompt: "old prompt",
+      systemPrompt: "previous prompt",
       mcpServers: {
         legacy: {
           type: "stdio",
@@ -4000,6 +4005,113 @@ test("autonomous events arriving during foreground run are processed via subscri
     type: "assistant_message",
     text: "AUTONOMOUS_DURING_FOREGROUND",
   });
+});
+
+test("appendTimelineItem emits to active foreground stream", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-append-foreground-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const releaseForeground = deferred<void>();
+
+  class ForegroundSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "fg-turn-append";
+      setTimeout(async () => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        await releaseForeground.promise;
+        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+  }
+
+  class ForegroundClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new ForegroundSession(config);
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: {
+      codex: new ForegroundClient(),
+    },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000128",
+  });
+
+  const snapshot = await manager.createAgent({
+    provider: "codex",
+    cwd: workdir,
+  });
+
+  const foreground = manager.streamAgent(snapshot.id, "foreground run");
+  const foregroundResults = (async () => {
+    const events: AgentStreamEvent[] = [];
+    for await (const event of foreground) {
+      events.push(event);
+    }
+    return events;
+  })();
+
+  await new Promise<void>((resolve) => {
+    const unsub = manager.subscribe(
+      (event) => {
+        if (
+          event.type === "agent_state" &&
+          event.agent.id === snapshot.id &&
+          event.agent.lifecycle === "running"
+        ) {
+          unsub();
+          resolve();
+        }
+      },
+      { agentId: snapshot.id, replayState: true },
+    );
+  });
+
+  await manager.appendTimelineItem(snapshot.id, {
+    type: "clarify_card",
+    card: {
+      id: "clarify-card-append-foreground",
+      roundLabel: "Clarify",
+      title: "Runtime Card",
+      whyNow: "Runtime authority card should appear in the foreground stream.",
+      continuesClarify: true,
+      submitted: false,
+      card: {
+        question_id: "q-runtime",
+        title: "Runtime Card",
+        behavior_tree_node: "runtime_tool_bridge",
+        why_now: "Runtime authority card should appear in the foreground stream.",
+        questions: [
+          {
+            id: "q1",
+            question: "Choose a route?",
+            behavior_tree_node: "route",
+            choices: [
+              { id: "a", label: "A", description: "First route" },
+              { id: "b", label: "B", description: "Second route" },
+            ],
+          },
+        ],
+        allow_choice_notes: true,
+        allow_note_only: true,
+      },
+    },
+  });
+  releaseForeground.resolve();
+
+  const foregroundEvents = await foregroundResults;
+  expect(
+    foregroundEvents.some(
+      (event) =>
+        event.type === "timeline" &&
+        event.item.type === "clarify_card" &&
+        event.item.card.id === "clarify-card-append-foreground" &&
+        event.turnId === "fg-turn-append",
+    ),
+  ).toBe(true);
 });
 
 test("subscribe error isolation: throwing subscriber does not break event flow", async () => {

@@ -33,7 +33,7 @@ The APK is not committed. The packaging script writes a local receipt under `.ag
 - byte size
 - timestamp
 
-Current verified debug artifact from the Thoth/Paseo isolation run:
+Current verified debug artifact from the runtime isolation run:
 
 - Path: `/mnt/cfs/5vr0p6/yzy/thoth/packages/app/android/app/build/outputs/apk/debug/app-debug.apk`
 - sha256: `9579e3cb43637b6380faf2890eb496d43d7a7cc9779c787afdf16f9d98a70fa0`
@@ -119,7 +119,7 @@ Current verified local artifact:
 
 ## Runtime Isolation Packaging Rule
 
-Packaged desktop smoke, Android debug builds and web preview must not stop or reuse the local Paseo daemon on `127.0.0.1:6767`. Thoth direct daemon defaults to `127.0.0.1:6688`; packaged smoke should use an isolated temporary home and port when it launches a managed daemon.
+Packaged desktop smoke, Android debug builds and web preview must not stop or reuse the reserved local legacy daemon on `127.0.0.1:6767`. Thoth direct daemon defaults to `127.0.0.1:6688`; packaged smoke should use an isolated temporary home and port when it launches a managed daemon.
 
 ## Voice/Audio Policy
 

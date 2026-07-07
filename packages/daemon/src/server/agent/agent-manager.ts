@@ -930,7 +930,12 @@ export class AgentManager {
     const client = await this.requireAvailableClient({
       provider: storedConfig.provider,
     });
-    const launchContext = await this.buildLaunchContext(resolvedAgentId, client, options?.env);
+    const launchContext = await this.buildLaunchContext(
+      resolvedAgentId,
+      client,
+      launchConfig,
+      options?.env,
+    );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
     const session = await client.createSession(providerLaunchConfig, launchContext, createOptions);
@@ -985,7 +990,7 @@ export class AgentManager {
         `Provider '${handle.provider}' is not available. Please ensure the CLI is installed.`,
       );
     }
-    const launchContext = await this.buildLaunchContext(resolvedAgentId, client);
+    const launchContext = await this.buildLaunchContext(resolvedAgentId, client, launchConfig);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const session = await client.resumeSession(handle, providerLaunchConfig, launchContext);
     return this.registerSession(session, storedConfig, resolvedAgentId, options);
@@ -1013,7 +1018,7 @@ export class AgentManager {
       },
       resolvedAgentId,
     );
-    const launchContext = await this.buildLaunchContext(resolvedAgentId, client);
+    const launchContext = await this.buildLaunchContext(resolvedAgentId, client, launchConfig);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const imported = await client.importSession(
       {
@@ -1068,7 +1073,7 @@ export class AgentManager {
       provider,
     } as AgentSessionConfig;
     const { storedConfig, launchConfig } = await this.prepareSessionConfig(refreshConfig, agentId);
-    const launchContext = await this.buildLaunchContext(agentId, client);
+    const launchContext = await this.buildLaunchContext(agentId, client, launchConfig);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
 
     const session = handle
@@ -1672,19 +1677,18 @@ export class AgentManager {
     const agent = this.requireAgent(agentId);
     this.touchUpdatedAt(agent);
     const row = this.recordTimeline(agentId, item);
-    this.dispatchStream(
-      agentId,
-      {
-        type: "timeline",
-        item,
-        provider: agent.provider,
-      },
-      {
-        seq: row.seq,
-        epoch: this.timelineStore.getEpoch(agentId),
-        timestamp: row.timestamp,
-      },
-    );
+    const event: AgentStreamEvent = {
+      type: "timeline",
+      item,
+      provider: agent.provider,
+      ...(agent.activeForegroundTurnId ? { turnId: agent.activeForegroundTurnId } : {}),
+    };
+    this.dispatchStream(agentId, event, {
+      seq: row.seq,
+      epoch: this.timelineStore.getEpoch(agentId),
+      timestamp: row.timestamp,
+    });
+    this.notifyForegroundTurnWaiters(agentId, event);
     await this.persistSnapshot(agent);
   }
 
@@ -3746,6 +3750,7 @@ export class AgentManager {
   private async buildLaunchContext(
     agentId: string,
     client: AgentClient,
+    launchConfig: AgentSessionConfig,
     env?: Record<string, string>,
   ): Promise<AgentLaunchContext> {
     const context: AgentLaunchContext = {
@@ -3758,11 +3763,16 @@ export class AgentManager {
     if (
       this.thothToolsEnabled &&
       client.capabilities.supportsNativeThothTools &&
+      this.shouldUseNativeThothTools(launchConfig) &&
       this.thothToolCatalogFactory
     ) {
       context.thothTools = await this.thothToolCatalogFactory({ callerAgentId: agentId });
     }
     return context;
+  }
+
+  private shouldUseNativeThothTools(config: AgentSessionConfig): boolean {
+    return config.extra?.codex?.thothClarifyRuntimeTools === true;
   }
 
   private resolveProviderLaunchConfig(

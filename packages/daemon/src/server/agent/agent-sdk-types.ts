@@ -1,6 +1,12 @@
 import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentProviderNotice } from "@thoth/protocol/agent-types";
 import type { AgentAttachment } from "@thoth/protocol/messages";
+import type {
+  RegisteredTaskModel,
+  ThothClarifyCardModel,
+  ThothGoalCardModel,
+  ThothTaskCardModel,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import type { ThothToolCatalog } from "./tools/types.js";
 
 export type { AgentProviderNotice };
@@ -369,6 +375,10 @@ export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string }
   | { type: "assistant_message"; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
+  | { type: "clarify_card"; card: ThothClarifyCardModel }
+  | { type: "task_card"; card: ThothTaskCardModel }
+  | { type: "goal_card"; card: ThothGoalCardModel }
+  | { type: "registered_task"; task: RegisteredTaskModel }
   | ToolCallTimelineItem
   | { type: "todo"; items: { text: string; completed: boolean }[] }
   | { type: "error"; message: string }

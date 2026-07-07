@@ -1,6 +1,6 @@
 # Upstream Transplant Ledger
 
-本文件记录 New Thoth 当前 upstream-derived implementation substrate 的来源、边界和预期状态。它是迁移账本，不是产品设计文档。
+本文件记录 Thoth 当前 upstream-derived implementation substrate 的来源、边界和预期状态。它是迁移账本，不是产品设计文档。
 
 ## Current Import
 
@@ -83,7 +83,7 @@ Tracked `_paseo` seed directories have been promoted into formal source trees an
 
 ## Expected Broken State
 
-1. Imports may point at packages or files that do not exist in the New Thoth monorepo yet.
+1. Imports may point at packages or files that do not exist in the Thoth monorepo yet.
 2. Tests may not run.
 3. Scripts may reference build outputs, missing dependencies or source paths that are not reconciled yet.
 4. Some broad source files may still contain broken voice/audio/speech/dictation references, but those features are not product scope.

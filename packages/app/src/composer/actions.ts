@@ -1,5 +1,12 @@
 import type { GitHubSearchItem } from "@thoth/protocol/messages";
 import type {
+  SecretaryTurn,
+  ThothCleanUiModel,
+  ThothComposerModel,
+  WorkspaceSecretaryResponsePayload,
+  WorkspaceSecretaryTurnActionPayload,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type {
   AttachmentMetadata,
   ComposerAttachment,
   UserComposerAttachment,
@@ -61,6 +68,22 @@ export interface ComposerSendClient {
     } | null;
     error: string | null;
   }>;
+}
+
+export interface WorkspaceSecretarySendClient {
+  sendWorkspaceSecretaryMessage: (input: {
+    text: string;
+    composer: ThothComposerModel;
+    uiAgentId?: string;
+    messageId?: string;
+    images?: Array<{ data: string; mimeType: string }>;
+    attachments?: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
+  }) => Promise<WorkspaceSecretaryResponsePayload>;
+  answerWorkspaceSecretaryClarify: (input: {
+    cardId: string;
+    answer: WorkspaceSecretaryTurnActionPayload;
+    uiAgentId?: string;
+  }) => Promise<WorkspaceSecretaryResponsePayload>;
 }
 
 export interface ComposerCancelClient {
@@ -181,6 +204,138 @@ export async function dispatchComposerAgentMessage(
     images: imagesData ?? [],
     attachments: wirePayload.attachments,
   });
+}
+
+export interface DispatchWorkspaceSecretaryMessageInput {
+  client: WorkspaceSecretarySendClient;
+  agentId: string;
+  text: string;
+  attachments: ComposerAttachment[];
+  composer: ThothComposerModel;
+  encodeImages: (
+    images: AttachmentMetadata[],
+  ) => Promise<Array<{ data: string; mimeType: string }> | undefined>;
+  stream: AgentStreamWriter;
+}
+
+export async function dispatchWorkspaceSecretaryMessage(
+  input: DispatchWorkspaceSecretaryMessageInput,
+): Promise<void> {
+  const wirePayload = splitComposerAttachmentsForSubmit(input.attachments);
+  const messageId = generateMessageId();
+  const userMessage = buildOptimisticUserMessage({
+    id: messageId,
+    text: input.text,
+    timestamp: new Date(),
+    images: wirePayload.images,
+    attachments: wirePayload.attachments,
+  });
+  appendUserMessageToStream(input.agentId, userMessage, input.stream);
+  const imagesData = await input.encodeImages(wirePayload.images);
+  const payload = await input.client.sendWorkspaceSecretaryMessage({
+    text: input.text,
+    composer: input.composer,
+    uiAgentId: input.agentId,
+    messageId,
+    images: imagesData ?? [],
+    attachments: wirePayload.attachments,
+  });
+  if (payload.model) {
+    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
+  }
+}
+
+export async function dispatchWorkspaceSecretaryAnswer(input: {
+  client: WorkspaceSecretarySendClient;
+  agentId: string;
+  cardId: string;
+  answer: WorkspaceSecretaryTurnActionPayload;
+  stream: AgentStreamWriter;
+}): Promise<void> {
+  const payload = await input.client.answerWorkspaceSecretaryClarify({
+    cardId: input.cardId,
+    answer: input.answer,
+    uiAgentId: input.agentId,
+  });
+  if (payload.model) {
+    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
+  }
+}
+
+export function applyWorkspaceSecretaryModelToStream(
+  agentId: string,
+  model: ThothCleanUiModel,
+  stream: AgentStreamWriter,
+): void {
+  const items = model.secretary.turns.flatMap(secretaryTurnToStreamItem);
+  if (items.length === 0) {
+    return;
+  }
+  stream.setTail((prev) => {
+    const next = new Map(prev);
+    const current = next.get(agentId) ?? [];
+    next.set(agentId, mergeStreamItemsById(current, items));
+    return next;
+  });
+  stream.setHead((prev) => {
+    if (!prev.has(agentId)) {
+      return prev;
+    }
+    const next = new Map(prev);
+    next.delete(agentId);
+    return next;
+  });
+}
+
+function secretaryTurnToStreamItem(turn: SecretaryTurn): StreamItem[] {
+  const timestamp = new Date();
+  switch (turn.kind) {
+    case "message":
+      if (turn.speaker === "user") {
+        return [];
+      }
+      return [
+        {
+          kind: "assistant_message",
+          id: `secretary_message_${turn.id}`,
+          messageId: turn.id,
+          text: turn.text,
+          timestamp,
+        },
+      ];
+    case "clarify_card":
+      return [{ kind: "clarify_card", id: `clarify_${turn.card.id}`, timestamp, card: turn.card }];
+    case "task_card":
+      return [{ kind: "task_card", id: `task_card_${turn.card.id}`, timestamp, card: turn.card }];
+    case "goal_card":
+      return [{ kind: "goal_card", id: `goal_card_${turn.card.id}`, timestamp, card: turn.card }];
+    case "registered_task":
+      return [
+        {
+          kind: "registered_task",
+          id: `registered_task_${turn.task.id}`,
+          timestamp,
+          task: turn.task,
+        },
+      ];
+    default:
+      return [];
+  }
+}
+
+function mergeStreamItemsById(current: StreamItem[], incoming: StreamItem[]): StreamItem[] {
+  let next = current;
+  for (const item of incoming) {
+    const existingIndex = next.findIndex((entry) => entry.id === item.id);
+    if (existingIndex >= 0) {
+      const updated = [...next];
+      updated[existingIndex] = item;
+      next = updated;
+      continue;
+    }
+    next = [...next, item];
+  }
+  return next;
 }
 
 function appendUserMessageToStream(

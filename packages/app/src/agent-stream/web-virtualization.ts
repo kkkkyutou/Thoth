@@ -50,6 +50,14 @@ export function estimateStreamItemHeight(item: StreamItem): number {
       return estimateAssistantMessageHeightFromCache(item.text) ?? 220;
     case "tool_call":
       return COLLAPSED_TOOL_SEQUENCE_ROW_HEIGHT_ESTIMATE;
+    case "clarify_card":
+      return 360;
+    case "task_card":
+      return 340;
+    case "goal_card":
+      return 380;
+    case "registered_task":
+      return 220;
     case "thought":
       return COLLAPSED_TOOL_SEQUENCE_ROW_HEIGHT_ESTIMATE;
     case "todo_list":

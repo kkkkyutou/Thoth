@@ -114,6 +114,52 @@ function compactionTimeline(
   };
 }
 
+function clarifyCardTimeline(cardId = "clarify-card-1"): AgentStreamEventPayload {
+  return {
+    type: "timeline",
+    provider: "codex",
+    item: {
+      type: "clarify_card",
+      card: {
+        id: cardId,
+        roundLabel: "Clarify",
+        title: "确认方向",
+        whyNow: "先确认分叉，再继续执行。",
+        continuesClarify: true,
+        submitted: false,
+        card: {
+          question_id: cardId,
+          title: "确认方向",
+          behavior_tree_node: "delivery-path",
+          why_now: "路线会影响验收。",
+          allow_choice_notes: true,
+          allow_note_only: true,
+          questions: [
+            {
+              id: "scope",
+              question: "优先哪条路线？",
+              behavior_tree_node: "delivery-path/scope",
+              choices: [
+                { id: "ship", label: "上线", description: "真实发布" },
+                { id: "demo", label: "演示", description: "先做演示" },
+              ],
+            },
+            {
+              id: "risk",
+              question: "风险边界？",
+              behavior_tree_node: "delivery-path/risk",
+              choices: [
+                { id: "safe", label: "保守", description: "少改动" },
+                { id: "bold", label: "激进", description: "可重构" },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  };
+}
+
 function findToolByCallId(state: StreamItem[], callId: string): AgentToolCallItem | undefined {
   return state.find(
     (item): item is AgentToolCallItem =>
@@ -1201,6 +1247,49 @@ describe("turn lifecycle events", () => {
     assert.strictEqual(userMessages.length, 1);
     assert.strictEqual(userMessages[0]?.id, "provider-owned-head");
     assert.strictEqual(userMessages[0]?.optimistic, undefined);
+  });
+
+  it("flushes active assistant text before atomically appending a clarify card", () => {
+    const started = applyStreamEvent({
+      tail: [],
+      head: [],
+      event: assistantTimeline("hello ", "codex", "msg-direct-1"),
+      timestamp: new Date("2025-01-01T15:03:00Z"),
+      source: "live",
+    });
+    const streamed = applyStreamEvent({
+      tail: started.tail,
+      head: started.head,
+      event: assistantTimeline("boss", "codex", "msg-direct-1"),
+      timestamp: new Date("2025-01-01T15:03:01Z"),
+      source: "live",
+    });
+
+    assert.strictEqual(streamed.tail.length, 0);
+    assert.strictEqual(streamed.head.length, 1);
+    assert.strictEqual(
+      streamed.head[0]?.kind === "assistant_message" ? streamed.head[0].text : null,
+      "hello boss",
+    );
+
+    const withCard = applyStreamEvent({
+      tail: streamed.tail,
+      head: streamed.head,
+      event: clarifyCardTimeline("card-atomic"),
+      timestamp: new Date("2025-01-01T15:03:02Z"),
+      source: "live",
+    });
+
+    assert.strictEqual(withCard.head.length, 0);
+    assert.deepStrictEqual(
+      withCard.tail.map((item) => item.kind),
+      ["assistant_message", "clarify_card"],
+    );
+    const clarifyCard = withCard.tail[1];
+    invariant(clarifyCard?.kind === "clarify_card");
+    assert.strictEqual(clarifyCard.card.id, "card-atomic");
+    invariant("questions" in clarifyCard.card.card);
+    assert.strictEqual(clarifyCard.card.card.questions.length, 2);
   });
 
   it("replaces multiple optimistic user messages in FIFO order", () => {

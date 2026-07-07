@@ -167,6 +167,16 @@ export const ptBR: TranslationResources = {
       model: "Alterar modelo",
       mode: "Alterar modo de permissão",
     },
+    runtime: {
+      clarify: {
+        tooltip: "Clarify",
+        selectWithValue: "Clarify: {{value}}",
+      },
+      mode: {
+        tooltip: "Mode",
+        selectWithValue: "Mode: {{value}}",
+      },
+    },
   },
   agentStream: {
     empty: "Comece a conversar com este agente...",
@@ -449,6 +459,7 @@ export const ptBR: TranslationResources = {
         terminal: "Terminal",
         browser: "Navegador",
         agent: "Agente",
+        backgroundTasks: "Background tasks",
         workspace: "Workspace",
       },
       switcher: {
@@ -1211,7 +1222,7 @@ export const ptBR: TranslationResources = {
         description: "Conexão relay criptografada.",
       },
       pasteLink: {
-        title: "Colar link de pareamento",
+        title: "Paste pairing code",
         description: "Conexão relay criptografada.",
       },
     },
@@ -1259,14 +1270,15 @@ export const ptBR: TranslationResources = {
       },
     },
     link: {
-      title: "Colar link de pareamento",
-      helper: "Cole o link de pareamento do seu servidor.",
-      label: "Link de pareamento",
+      title: "Paste pairing code",
+      helper: "Paste the short pairing code from your server.",
+      label: "Pairing code",
+      placeholder: "Paste pairing code",
       errors: {
-        required: "Cole um link de pareamento (.../#offer=...)",
-        missingOffer: "O link deve incluir #offer=...",
-        emptyOffer: "O payload da oferta está vazio",
-        invalid: "Link de pareamento inválido",
+        required: "Paste a pairing code",
+        missingOffer: "Paste a pairing code",
+        emptyOffer: "Pairing code is empty",
+        invalid: "Invalid pairing code",
         unableToPair: "Não foi possível parear host",
       },
       alert: {
@@ -1698,6 +1710,7 @@ export const ptBR: TranslationResources = {
         removeErrorTitle: "Erro",
         removeErrorMessage: "Não foi possível remover a conexão",
         timeout: "Timeout",
+        pairAgain: "Parear novamente",
       },
       pairDevices: {
         title: "Parear dispositivos",

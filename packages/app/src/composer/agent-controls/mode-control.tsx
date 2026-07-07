@@ -103,7 +103,7 @@ function normalizeSearchQuery(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function AgentModeControlView({
+export function AgentModeControlView({
   provider,
   providerDefinitions,
   modeOptions,

@@ -1,13 +1,88 @@
 import { describe, expect, it } from "vitest";
 import {
+  ClarifyAnswerPacketSchema,
+  ClarificationCardCandidateSchema,
+  ClarifyRepairInputPacketSchema,
+  ClarifyQuestionCardSchema,
   ClarifyRuntimePacketSchema,
+  ClarifySessionStartInputPacketSchema,
+  ClarifyTransitionInputPacketSchema,
+  ClarifyTurnInputPacketSchema,
   LoopRuntimePacketSchema,
+  ProviderQuestionEventSchema,
+  RuntimePacketCandidateSchema,
   THOTH_CLARIFY_CODES,
   THOTH_LOOP_CODES,
   THOTH_RUNTIME_PACKET_FIELDS,
   ThothProviderInputEnvelopeSchema,
   ThothRuntimePacketSchema,
+  isAllowedClarifyMechanicalTransition,
 } from "./thoth-runtime-contract.js";
+
+const clarifyQuestionCard = {
+  question_id: "card_goal_route",
+  title: "先定目标路线",
+  behavior_tree_node: "goal_route",
+  why_now: "先排除最容易做偏的路线。",
+  questions: [
+    {
+      id: "q_goal_route",
+      question: "这次最需要我优先切掉哪条错误路线？",
+      behavior_tree_node: "goal_route",
+      choices: [
+        {
+          id: "production",
+          label: "生产落地",
+          description: "按真实交付闭环",
+        },
+        {
+          id: "research",
+          label: "研究验证",
+          description: "先证明关键假设",
+        },
+      ],
+    },
+    {
+      id: "q_owner",
+      question: "哪些判断应该由我直接决定？",
+      behavior_tree_node: "assumption_owner",
+      choices: [
+        {
+          id: "agent",
+          label: "你决定",
+          description: "技术细节你定",
+        },
+        {
+          id: "ask",
+          label: "先问我",
+          description: "偏好风险问我",
+        },
+      ],
+    },
+  ],
+  allow_choice_notes: true,
+  allow_note_only: true,
+};
+
+const clarifyAskMeta = {
+  effective_clarify_strength: "balanced",
+  decision_tree_depth: 1,
+  qa_round_count: 1,
+  remaining_material_assumptions: [
+    {
+      id: "goal_route",
+      owner: "user_must_decide",
+      summary: "目标路线会改变后续 Task Card。",
+      impact: "high",
+    },
+  ],
+  question_value_reason: "当前最高价值分叉会排除做偏路线。",
+};
+
+const skillRef = {
+  id: "thoth.clarify",
+  digest: `sha256:${"a".repeat(64)}`,
+};
 
 describe("thoth runtime contract", () => {
   it("keeps clarify and loop state code sets under ten entries", () => {
@@ -55,32 +130,397 @@ describe("thoth runtime contract", () => {
     });
   });
 
-  it("parses a two-step background task goal contract card", () => {
+  it("keeps provider questions separate from permission and packet candidates", () => {
+    const providerQuestion = ProviderQuestionEventSchema.parse({
+      type: "provider_question_event",
+      provider: "claude",
+      provider_session_id: "provider-session-1",
+      transport: "claude_ask_user_question",
+      authority_kind: "question",
+      prompt: "这次验收更偏真实设备还是源码边界？",
+      choices: [
+        { id: "device", label: "真实设备", description: "先看端上结果" },
+        { id: "source", label: "源码边界", description: "先看约束落实" },
+      ],
+    });
+
+    expect(
+      ClarificationCardCandidateSchema.parse({
+        type: "clarification_card_candidate",
+        source: "provider_question_event",
+        provider_event: providerQuestion,
+        card: clarifyQuestionCard,
+        accepted: true,
+      }).accepted,
+    ).toBe(true);
+
+    expect(() =>
+      ClarificationCardCandidateSchema.parse({
+        type: "clarification_card_candidate",
+        source: "provider_question_event",
+        provider_event: {
+          ...providerQuestion,
+          authority_kind: "permission",
+        },
+        card: clarifyQuestionCard,
+        accepted: false,
+      }),
+    ).toThrow(/only provider question events/);
+  });
+
+  it("parses runtime packet candidates from structured provider channels", () => {
+    const packet = ClarifyRuntimePacketSchema.parse({
+      type: "clarify",
+      code: "C_DIRECT",
+      session_id: "sec_123",
+      task_id: null,
+      content: {
+        message: "我在。继续说你想推进的事。",
+      },
+      ui: {
+        kind: "message",
+        text: "我在。继续说你想推进的事。",
+      },
+      next: "C_DIRECT",
+      errors: [],
+    });
+
+    expect(
+      RuntimePacketCandidateSchema.parse({
+        type: "runtime_packet_candidate",
+        source: "native_output_schema",
+        provider: "codex",
+        provider_session_id: "provider-session-2",
+        packet,
+        schema_verified: true,
+      }).schema_verified,
+    ).toBe(true);
+  });
+
+  it("parses a pyramid plan card after task overview approval", () => {
     const parsed = ClarifyRuntimePacketSchema.parse({
       type: "clarify",
       code: "C_GOAL_CARD",
       session_id: "sec_123",
       task_id: null,
       content: {
-        title: "整理设置页账号安全区域",
-        goals: [
-          {
-            title: "梳理当前安全入口",
-            goal: "找出账号安全相关入口和分散点。",
-            constraints: ["只读分析"],
-            acceptance: ["列出入口、问题和归并建议"],
-          },
-        ],
+        goal_card: {
+          title: "整理设置页账号安全区域",
+          summary: "按金字塔层次拆出目标、阶段和验收。",
+          pyramid: [
+            {
+              id: "stage-1",
+              title: "安全入口归因",
+              goal: "找出账号安全相关入口和分散点。",
+              acceptance: ["列出入口、问题和归并建议"],
+              subgoals: [
+                {
+                  id: "subgoal-1",
+                  title: "入口清单",
+                  goal: "形成当前入口清单。",
+                  acceptance: ["每个入口都有来源和用途说明"],
+                },
+              ],
+            },
+          ],
+        },
+        provenance: {
+          clarify_transcript_verbatim: "Q: 验收到什么程度才算完成？\nA: 列出入口、问题和归并建议。",
+          approved_ceo_task_card_verbatim:
+            "Task Card: 整理设置页账号安全区域；验收为列出入口、问题和归并建议。",
+        },
       },
       ui: {
         kind: "goal_contract_card",
-        title: "确认线性目标拆分",
+        title: "确认金字塔计划",
       },
       next: "C_REGISTER",
       errors: [],
     });
 
-    expect(parsed.content.goals).toHaveLength(1);
+    expect(parsed.content.goal_card.pyramid).toHaveLength(1);
+  });
+
+  it("parses a clarify question card with branch choices and note-only support", () => {
+    expect(ClarifyQuestionCardSchema.parse(clarifyQuestionCard)).toMatchObject({
+      question_id: "card_goal_route",
+      questions: expect.arrayContaining([
+        expect.objectContaining({
+          choices: expect.arrayContaining([expect.objectContaining({ label: "生产落地" })]),
+        }),
+      ]),
+      allow_choice_notes: true,
+      allow_note_only: true,
+    });
+  });
+
+  it("accepts 15-character choice labels and 30-character descriptions", () => {
+    const card = structuredClone(clarifyQuestionCard);
+    card.questions[0].choices[0] = {
+      id: "longer-choice",
+      label: "高性能库函数交付路径",
+      description: "以复用接口和可验证性能结果作为验收",
+    };
+
+    expect(ClarifyQuestionCardSchema.parse(card).questions[0].choices[0]).toMatchObject({
+      label: "高性能库函数交付路径",
+      description: "以复用接口和可验证性能结果作为验收",
+    });
+  });
+
+  it("rejects risk as a Task Card contract field", () => {
+    expect(() =>
+      ClarifyRuntimePacketSchema.parse({
+        type: "clarify",
+        code: "C_TASK_CARD",
+        session_id: "sec_123",
+        task_id: null,
+        content: {
+          task_card: {
+            title: "实现高性能排序",
+            goal: "实现可复用的高性能排序能力。",
+            constraints: ["不降级成 demo"],
+            acceptance: ["有正确性和性能证据"],
+            risk: "Python 可能不适合绝对性能竞赛。",
+          },
+          provenance: {
+            clarify_transcript_verbatim: "Q: 用什么语言？\nA: Python。",
+          },
+        },
+        ui: {
+          kind: "task_registration_card",
+          title: "任务总览确认",
+        },
+        next: "C_GOAL_CARD",
+        errors: [],
+      }),
+    ).toThrow();
+  });
+
+  it("parses a note-only clarify answer packet", () => {
+    expect(
+      ClarifyAnswerPacketSchema.parse({
+        question_card_id: "card_goal_route",
+        title: "先定目标路线",
+        answers: [
+          {
+            question_id: "q_goal_route",
+            choice_ids: [],
+            choice_notes: {},
+            note: "你决定，但不要降级目标。",
+          },
+        ],
+        note: "你决定，但不要降级目标。",
+        raw_answer: "你决定，但不要降级目标。",
+      }),
+    ).toMatchObject({
+      question_card_id: "card_goal_route",
+      answers: [expect.objectContaining({ question_id: "q_goal_route" })],
+    });
+  });
+
+  it("parses a normal clarify turn input packet without skill rules", () => {
+    const parsed = ClarifyTurnInputPacketSchema.parse({
+      type: "clarify_turn",
+      session_id: "sec_123",
+      current_state: "C_ASK",
+      controls: {
+        mode: "loop",
+        clarify_strength: "balanced",
+        effective_clarify_strength: "balanced",
+        loop: "balanced",
+      },
+      user_input: "继续",
+      transcript_ref: "transcript:sec_123:v4",
+      assumption_ledger_ref: "assumptions:sec_123:v4",
+      decision_tree_frontier_ref: "frontier:sec_123:v4",
+      context_summary: "workspace facts already discovered",
+    });
+
+    expect(parsed).toMatchObject({
+      type: "clarify_turn",
+      current_state: "C_ASK",
+    });
+  });
+
+  it("parses a first-session clarify packet with a skill digest", () => {
+    const parsed = ClarifySessionStartInputPacketSchema.parse({
+      type: "clarify_session_start",
+      session_id: "sec_123",
+      skill_ref: skillRef,
+      current_state: "C_DIRECT",
+      controls: {
+        mode: "quick",
+        clarify_strength: "none",
+        effective_clarify_strength: "none",
+        loop: null,
+      },
+      user_input: "hi",
+      transcript_ref: "transcript:sec_123:v0",
+      basis: "session_scoped_skill_loaded",
+    });
+
+    expect(parsed.skill_ref.digest).toBe(skillRef.digest);
+    expect(parsed.basis).toBe("session_scoped_skill_loaded");
+  });
+
+  it("rejects skill references on normal same-state clarify turns", () => {
+    expect(() =>
+      ClarifyTurnInputPacketSchema.parse({
+        type: "clarify_turn",
+        session_id: "sec_123",
+        current_state: "C_ASK",
+        controls: {
+          mode: "loop",
+          clarify_strength: "balanced",
+          effective_clarify_strength: "balanced",
+          loop: "balanced",
+        },
+        user_input: "继续",
+        transcript_ref: "transcript:sec_123:v4",
+        skill_ref: skillRef,
+      }),
+    ).toThrow();
+  });
+
+  it("parses a clarify transition packet with skill digest and no copied rules", () => {
+    const parsed = ClarifyTransitionInputPacketSchema.parse({
+      type: "clarify_transition",
+      session_id: "sec_123",
+      skill_ref: skillRef,
+      from: "C_ASK",
+      to: "C_TASK_CARD",
+      basis: "according_to_loaded_skill",
+      controls: {
+        mode: "loop",
+        clarify_strength: "dive",
+        effective_clarify_strength: "dive",
+        loop: "balanced",
+      },
+      controls_changed: {
+        clarify_strength_from: "balanced",
+        clarify_strength_to: "dive",
+        reason: "user asked to go deeper before Task Card",
+      },
+      transcript_ref: "transcript:sec_123:v5",
+      user_input: "按刚才说的注册后台任务",
+    });
+
+    expect(parsed.skill_ref.digest).toBe(skillRef.digest);
+    expect(parsed.basis).toBe("according_to_loaded_skill");
+  });
+
+  it("rejects mechanically impossible clarify transitions", () => {
+    expect(isAllowedClarifyMechanicalTransition("C_DIRECT", "C_GOAL_CARD")).toBe(false);
+    expect(() =>
+      ClarifyTransitionInputPacketSchema.parse({
+        type: "clarify_transition",
+        session_id: "sec_123",
+        skill_ref: skillRef,
+        from: "C_DIRECT",
+        to: "C_GOAL_CARD",
+        basis: "according_to_loaded_skill",
+        controls: {
+          mode: "loop",
+          clarify_strength: "balanced",
+          effective_clarify_strength: "balanced",
+          loop: "balanced",
+        },
+        transcript_ref: "transcript:sec_123:v1",
+        user_input: "确认",
+      }),
+    ).toThrow();
+  });
+
+  it("parses repair packets that repair shape only", () => {
+    expect(
+      ClarifyRepairInputPacketSchema.parse({
+        type: "clarify_repair",
+        session_id: "sec_123",
+        skill_ref: skillRef,
+        previous_state: "C_ASK",
+        intended_output_state: "C_ASK",
+        controls: {
+          mode: "loop",
+          clarify_strength: "balanced",
+          effective_clarify_strength: "balanced",
+          loop: "balanced",
+        },
+        bad_output: "{}",
+        schema_errors: ["C_ASK packets must include content.question_card"],
+        transition_errors: [],
+        repair_instruction:
+          "repair packet shape only; do not reinterpret user intent; do not change transcript; do not fabricate transcript; do not change approved CEO Task Card; do not downgrade target",
+      }).intended_output_state,
+    ).toBe("C_ASK");
+  });
+
+  it("rejects oversized clarify choice labels", () => {
+    expect(() =>
+      ClarifyQuestionCardSchema.parse({
+        ...clarifyQuestionCard,
+        questions: [
+          {
+            ...clarifyQuestionCard.questions[0],
+            choices: [
+              {
+                id: "long",
+                label: "这是一个明确超过十五个字符的选项标签",
+                description: "太长",
+              },
+              {
+                id: "ok",
+                label: "保留目标",
+                description: "继续按原目标",
+              },
+            ],
+          },
+          clarifyQuestionCard.questions[1],
+        ],
+      }),
+    ).toThrow();
+  });
+
+  it("requires C_ASK packets to carry the question card in content and ui", () => {
+    const parsed = ClarifyRuntimePacketSchema.parse({
+      type: "clarify",
+      code: "C_ASK",
+      session_id: "sec_123",
+      task_id: null,
+      content: {
+        question_card: clarifyQuestionCard,
+        meta: clarifyAskMeta,
+      },
+      ui: {
+        kind: "clarify_card",
+        title: "先定目标路线",
+        question_card: clarifyQuestionCard,
+      },
+      next: "C_ASK",
+      errors: [],
+    });
+
+    expect(parsed.content.question_card).toMatchObject({ title: "先定目标路线" });
+  });
+
+  it("rejects C_TASK_CARD without transcript provenance", () => {
+    expect(() =>
+      ClarifyRuntimePacketSchema.parse({
+        type: "clarify",
+        code: "C_TASK_CARD",
+        session_id: "sec_123",
+        task_id: null,
+        content: {
+          title: "整理设置页账号安全区域",
+        },
+        ui: {
+          kind: "task_registration_card",
+          title: "确认后台任务",
+        },
+        next: "C_GOAL_CARD",
+        errors: [],
+      }),
+    ).toThrow();
   });
 
   it("rejects extra runtime packet top-level fields", () => {
@@ -192,6 +632,7 @@ describe("thoth runtime contract", () => {
         clarify: "none",
         loop: null,
       },
+      turn_phase: "clarify",
       input: "hi",
       inject: "none",
       expect: "clarify",

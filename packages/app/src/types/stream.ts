@@ -1,5 +1,11 @@
 import type { AgentProvider, ToolCallDetail } from "@thoth/protocol/agent-types";
 import type { AgentAttachment, AgentStreamEventPayload } from "@thoth/protocol/messages";
+import type {
+  RegisteredTaskModel,
+  ThothClarifyCardModel,
+  ThothGoalCardModel,
+  ThothTaskCardModel,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
@@ -48,6 +54,10 @@ export type StreamItem =
   | AssistantMessageItem
   | ThoughtItem
   | ToolCallItem
+  | ClarifyCardItem
+  | TaskCardItem
+  | GoalCardItem
+  | RegisteredTaskItem
   | TodoListItem
   | ActivityLogItem
   | CompactionItem;
@@ -125,6 +135,34 @@ export interface ToolCallItem {
   id: string;
   timestamp: Date;
   payload: ToolCallPayload;
+}
+
+export interface ClarifyCardItem {
+  kind: "clarify_card";
+  id: string;
+  timestamp: Date;
+  card: ThothClarifyCardModel;
+}
+
+export interface TaskCardItem {
+  kind: "task_card";
+  id: string;
+  timestamp: Date;
+  card: ThothTaskCardModel;
+}
+
+export interface GoalCardItem {
+  kind: "goal_card";
+  id: string;
+  timestamp: Date;
+  card: ThothGoalCardModel;
+}
+
+export interface RegisteredTaskItem {
+  kind: "registered_task";
+  id: string;
+  timestamp: Date;
+  task: RegisteredTaskModel;
 }
 
 export type AgentToolCallItem = ToolCallItem & {
@@ -616,6 +654,86 @@ function appendActivityLog(state: StreamItem[], entry: ActivityLogItem): StreamI
   return [...state, entry];
 }
 
+function appendClarifyCard(
+  state: StreamItem[],
+  card: ThothClarifyCardModel,
+  timestamp: Date,
+): StreamItem[] {
+  const item: ClarifyCardItem = {
+    kind: "clarify_card",
+    id: `clarify_${card.id}`,
+    timestamp,
+    card,
+  };
+  const existingIndex = state.findIndex((entry) => entry.id === item.id);
+  if (existingIndex >= 0) {
+    const next = [...state];
+    next[existingIndex] = item;
+    return next;
+  }
+  return [...state, item];
+}
+
+function appendTaskCard(
+  state: StreamItem[],
+  card: ThothTaskCardModel,
+  timestamp: Date,
+): StreamItem[] {
+  const item: TaskCardItem = {
+    kind: "task_card",
+    id: `task_card_${card.id}`,
+    timestamp,
+    card,
+  };
+  const existingIndex = state.findIndex((entry) => entry.id === item.id);
+  if (existingIndex >= 0) {
+    const next = [...state];
+    next[existingIndex] = item;
+    return next;
+  }
+  return [...state, item];
+}
+
+function appendGoalCard(
+  state: StreamItem[],
+  card: ThothGoalCardModel,
+  timestamp: Date,
+): StreamItem[] {
+  const item: GoalCardItem = {
+    kind: "goal_card",
+    id: `goal_card_${card.id}`,
+    timestamp,
+    card,
+  };
+  const existingIndex = state.findIndex((entry) => entry.id === item.id);
+  if (existingIndex >= 0) {
+    const next = [...state];
+    next[existingIndex] = item;
+    return next;
+  }
+  return [...state, item];
+}
+
+function appendRegisteredTask(
+  state: StreamItem[],
+  task: RegisteredTaskModel,
+  timestamp: Date,
+): StreamItem[] {
+  const item: RegisteredTaskItem = {
+    kind: "registered_task",
+    id: `registered_task_${task.id}`,
+    timestamp,
+    task,
+  };
+  const existingIndex = state.findIndex((entry) => entry.id === item.id);
+  if (existingIndex >= 0) {
+    const next = [...state];
+    next[existingIndex] = item;
+    return next;
+  }
+  return [...state, item];
+}
+
 function appendTodoList(
   state: StreamItem[],
   provider: AgentProvider,
@@ -762,6 +880,14 @@ function reduceTimelineEvent(
       );
     case "reasoning":
       return appendThought(state, item.text, timestamp);
+    case "clarify_card":
+      return finalizeActiveThoughts(appendClarifyCard(state, item.card, timestamp));
+    case "task_card":
+      return finalizeActiveThoughts(appendTaskCard(state, item.card, timestamp));
+    case "goal_card":
+      return finalizeActiveThoughts(appendGoalCard(state, item.card, timestamp));
+    case "registered_task":
+      return finalizeActiveThoughts(appendRegisteredTask(state, item.task, timestamp));
     case "tool_call":
       return finalizeActiveThoughts(reduceTimelineToolCall(state, event, item, timestamp));
     case "todo": {
@@ -877,6 +1003,14 @@ function getEventItemKind(event: AgentStreamEventPayload): StreamItem["kind"] | 
       return "assistant_message";
     case "reasoning":
       return "thought";
+    case "clarify_card":
+      return "clarify_card";
+    case "task_card":
+      return "task_card";
+    case "goal_card":
+      return "goal_card";
+    case "registered_task":
+      return "registered_task";
     case "tool_call":
       return "tool_call";
     case "todo":

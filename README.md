@@ -2,21 +2,21 @@
 
 Thoth is being rebuilt as a local-first task control plane for AI work.
 
-The old Claude Code / Codex plugin runtime has been archived and is no longer maintained on this branch. This repository now contains the New Thoth design authority and promoted TypeScript / Node implementation substrate. There is no runnable CLI, daemon, TUI, desktop app, mobile app, relay, or harness driver in the current checkout yet.
+The archived Claude Code / Codex plugin runtime has been archived and is no longer maintained on this branch. This repository now contains the Thoth design authority and promoted TypeScript / Node implementation substrate. There is no runnable CLI, daemon, TUI, desktop app, mobile app, relay, or harness driver in the current checkout yet.
 
 ## Current Status
 
-- Current branch focus: New Thoth reset and MVP architecture.
+- Current branch focus: Thoth reset and MVP architecture.
 - Current implementation: promoted upstream-derived implementation substrate under the formal `packages/*` source trees, expected to be temporarily broken.
 - Current license: `AGPL-3.0-or-later`.
 - Copyright holder: `SeeleAI`.
 - Current public surface: documentation, package boundaries, and non-runnable promoted source substrate only.
-- Old plugin archive release: <https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
-- Old plugin archive branch: `archive/main-20260627`
+- Archived plugin release: <https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
+- Archived plugin branch: `archive/main-20260627`
 
-## What New Thoth Is For
+## What Thoth Is For
 
-New Thoth is designed to reduce the user’s cognitive burden and entry barrier. The user should be able to describe intent naturally; Thoth should clarify only the few decisions that matter, register durable tasks when needed, run asynchronous loops, review results adversarially, and report with evidence.
+Thoth is designed to reduce the user’s cognitive burden and entry barrier. The user should be able to describe intent naturally; Thoth should clarify only the few decisions that matter, register durable tasks when needed, run asynchronous loops, review results adversarially, and report with evidence.
 
 The core product direction is:
 
@@ -49,16 +49,16 @@ The formal package source trees now contain promoted implementation substrate. T
 Start here:
 
 - [Core Principles](.agent-os/designs/最核心的设计理念.md)
-- [High-Level Design](.agent-os/designs/new-thoth-high-level-design.md)
-- [MVP User Journey](.agent-os/designs/new-thoth-mvp-user-journey.md)
-- [Engineering Architecture](.agent-os/designs/new-thoth-engineering-architecture.md)
-- [Prompt Contract Seeds](.agent-os/designs/new-thoth-prompt-contract-seeds.md)
+- [High-Level Design](.agent-os/designs/thoth-high-level-design.md)
+- [MVP User Journey](.agent-os/designs/thoth-mvp-user-journey.md)
+- [Engineering Architecture](.agent-os/designs/thoth-engineering-architecture.md)
+- [Prompt Contract Seeds](.agent-os/designs/thoth-prompt-contract-seeds.md)
 
-The old long-form migration note remains available at `.agent-os/designs/new-thoth-migration-architecture-20260625.md` for historical traceability.
+The historical long-form migration note remains available at `.agent-os/designs/thoth-migration-architecture-20260625.md` for historical traceability.
 
 ## Development Note
 
-This checkout is not a working product. Do not install it as the old plugin runtime. Do not expect `thoth`, `/thoth:*`, or `$thoth` commands to exist from this branch.
+This checkout is not a working product. Do not install it as the archived plugin runtime. Do not expect `thoth`, `/thoth:*`, or `$thoth` commands to exist from this branch.
 
 Future implementation should follow `.agent-os/project-index.md`, `.agent-os/todo.md`, and the canonical design documents above.
 

@@ -11,6 +11,10 @@ import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-co
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 import { TerminalProfileSchema } from "@thoth/protocol/messages";
 import { DEFAULT_DIRECT_DAEMON_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
+import {
+  SecretaryTopicModelSchema,
+  SecretaryTurnSchema,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -163,6 +167,43 @@ const StructuredGenerationProviderConfigSchema = z
   })
   .strict();
 
+const WorkspaceSecretaryProviderSessionSchema = z
+  .object({
+    provider: z.string().min(1),
+    model: z.string().min(1).optional(),
+    modeId: z.string().min(1).optional(),
+    thinkingOptionId: z.string().min(1).optional(),
+    featureValues: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+const WorkspaceSecretaryConfigSchema = z
+  .object({
+    providerSession: WorkspaceSecretaryProviderSessionSchema.optional(),
+    mode: z.enum(["quick", "loop"]).optional(),
+    clarifyStrength: z.enum(["none", "auto", "light", "balanced", "dive"]).optional(),
+    registeredTasks: z.array(z.unknown()).optional(),
+    selectedBackgroundTaskId: z.string().min(1).nullable().optional(),
+    topicSnapshots: z
+      .array(
+        z
+          .object({
+            workspacePath: z.string().min(1),
+            workspaceName: z.string().min(1),
+            activeTopicId: z.string().min(1),
+            topics: z.array(SecretaryTopicModelSchema).min(1),
+            turns: z.array(SecretaryTurnSchema),
+            nextTopicIndex: z.number().int().min(1),
+            currentClarifyState: z.string().min(1),
+            activeTurnPhase: z.string().min(1),
+            activeTopicProviderBacked: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
 const AgentMetadataGenerationSchema = z
   .object({
     providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
@@ -288,6 +329,7 @@ export const PersistedConfigSchema = z
       .optional(),
 
     providers: ProvidersSchema.optional(),
+    workspaceSecretary: WorkspaceSecretaryConfigSchema.optional(),
     worktrees: WorktreesConfigSchema.optional(),
     agents: z
       .object({

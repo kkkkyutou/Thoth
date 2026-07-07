@@ -2067,6 +2067,42 @@ describe("readInitialDaemonConnectionHint", () => {
 });
 
 describe("HostRuntimeStore initial connection hint bootstrap", () => {
+  it("keeps the host registry loading until a fresh initial hint probe resolves", async () => {
+    const probeStarted = createDeferred<void>();
+    const releaseProbe = createDeferred<void>();
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async () => {
+          probeStarted.resolve();
+          await releaseProbe.promise;
+          return {
+            client: makeConnectedProbeClient(4) as unknown as DaemonClient,
+            serverId: "srv_hint",
+            hostname: "hint host",
+          };
+        },
+        getClientId: async () => "cid_test_runtime",
+        readInitialConnectionHint: () => ({
+          listen: "daemon-origin:8148",
+          useTls: false,
+        }),
+      },
+      storage: createMemoryHostRuntimeStorage(),
+    });
+
+    store.boot();
+    await probeStarted.promise;
+
+    expect(store.getHostRegistryStatus()).toBe("loading");
+
+    const hostReady = onceHostListMatches(store, () => store.getHostRegistryStatus() === "ready");
+    releaseProbe.resolve();
+    await hostReady;
+
+    expect(store.getHosts()[0]?.serverId).toBe("srv_hint");
+  });
+
   it("attempts the explicit initial connection hint before default localhost bootstrap", async () => {
     const seenProbes: { endpoint: string; useTls?: boolean }[] = [];
     const store = new HostRuntimeStore({
@@ -2105,6 +2141,62 @@ describe("HostRuntimeStore initial connection hint bootstrap", () => {
     );
 
     store.syncHosts([]);
+  });
+
+  it("refreshes a persisted matching hint connection when the daemon server id changed", async () => {
+    const hintedConnection: HostConnection = {
+      id: "direct:review-host:8148",
+      type: "directTcp",
+      endpoint: "review-host:8148",
+      useTls: false,
+    };
+    const staleHost = makeHost({
+      serverId: "srv_stale_review",
+      label: "stale review host",
+      connections: [hintedConnection],
+      preferredConnectionId: hintedConnection.id,
+    });
+    const seenProbes: Array<{ serverId: string; endpoint: string }> = [];
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host, connection }) => {
+          if (connection.type === "directTcp") {
+            seenProbes.push({ serverId: host.serverId, endpoint: connection.endpoint });
+          }
+          return {
+            client: makeConnectedProbeClient(6) as unknown as DaemonClient,
+            serverId: "srv_current_review",
+            hostname: "current review host",
+          };
+        },
+        getClientId: async () => "cid_test_runtime",
+        readInitialConnectionHint: () => ({
+          listen: "review-host:8148",
+          useTls: false,
+        }),
+      },
+      storage: createMemoryHostRuntimeStorage({
+        "@thoth:daemon-registry": JSON.stringify([staleHost]),
+      }),
+    });
+
+    const refreshed = onceHostListMatches(store, () =>
+      store.getHosts().some((host) => host.serverId === "srv_current_review"),
+    );
+    store.boot();
+    await refreshed;
+
+    expect(seenProbes).toContainEqual({ serverId: "", endpoint: "review-host:8148" });
+    expect(store.getHosts()).toHaveLength(1);
+    expect(store.getHosts()[0]).toMatchObject({
+      serverId: "srv_current_review",
+      label: "current review host",
+      preferredConnectionId: hintedConnection.id,
+    });
+    expect(store.getHosts()[0]?.connections).toEqual(
+      expect.arrayContaining([expect.objectContaining(hintedConnection)]),
+    );
   });
 
   it("does not infer window.location.host when no explicit hint is present", async () => {

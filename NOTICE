@@ -1,13 +1,13 @@
-New Thoth
+Thoth
 Copyright (C) SeeleAI
 
 ## License
 
-New Thoth is licensed under the GNU Affero General Public License version 3
+Thoth is licensed under the GNU Affero General Public License version 3
 or later: AGPL-3.0-or-later.
 
-The active repository is a new implementation line. The old Thoth plugin
-runtime is archived and is not maintained on this branch.
+The active repository is the TypeScript implementation line. The archived plugin
+runtime remains available only for historical traceability.
 
 ## Upstream Implementation Seeds
 
@@ -20,7 +20,7 @@ This repository contains tracked implementation seed material derived from:
 - Upstream copyright: upstream contributors as recorded in that project
 
 The seed material is imported as implementation reference and migration
-substrate for New Thoth. It is intentionally allowed to be incomplete,
+substrate for Thoth. It is intentionally allowed to be incomplete,
 unwired and temporarily non-compiling until future migration tasks digest it.
 
 The raw upstream cache is local-only and ignored at:
@@ -32,5 +32,5 @@ It is not part of the tracked source tree and is not project authority.
 ## Excluded Material
 
 Voice, speech, dictation and audio-specific upstream material is excluded from
-the active raw cache and from tracked implementation seeds. New Thoth does not
+the active raw cache and from tracked implementation seeds. Thoth does not
 target voice features in the current MVP line.

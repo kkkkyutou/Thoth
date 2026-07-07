@@ -45,7 +45,7 @@ describe("workspace route parsing", () => {
   });
 
   it("decodes non-canonical base64url workspace IDs used by older links", () => {
-    expect(decodeWorkspaceIdFromPathSegment("L1VzZXJzL21vYm91ZHJhL2Rldi9wYXNlby")).toBe(
+    expect(decodeWorkspaceIdFromPathSegment("L1VzZXJzL21vYm91ZHJhL2Rldi90aG90aA")).toBe(
       "/Users/moboudra/dev/thoth",
     );
   });

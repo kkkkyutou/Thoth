@@ -13,6 +13,12 @@ import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adapt
 import { Button } from "@/components/ui/button";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
+const OFFER_FRAGMENT_MARKER = "#offer=";
+
+function extractPairingCode(raw: string): string {
+  const idx = raw.indexOf(OFFER_FRAGMENT_MARKER);
+  return idx >= 0 ? raw.slice(idx + OFFER_FRAGMENT_MARKER.length).trim() : raw.trim();
+}
 
 const styles = StyleSheet.create((theme) => ({
   helper: {
@@ -102,15 +108,9 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
       setErrorMessage(t("pairing.link.errors.required"));
       return;
     }
-    if (!raw.includes("#offer=")) {
-      setErrorMessage(t("pairing.link.errors.missingOffer"));
-      return;
-    }
-
     const parsedOffer = (() => {
       try {
-        const idx = raw.indexOf("#offer=");
-        const encoded = raw.slice(idx + "#offer=".length).trim();
+        const encoded = extractPairingCode(raw);
         if (!encoded) {
           throw new Error(t("pairing.link.errors.emptyOffer"));
         }
@@ -203,7 +203,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           nativeID="pair-link-input"
           accessibilityLabel={t("pairing.link.label")}
           onChangeText={handleChangeOfferUrl}
-          placeholder="https://app.thoth.seeles.ai/#offer=..."
+          placeholder={t("pairing.link.placeholder")}
           placeholderTextColor={theme.colors.foregroundMuted}
           style={styles.input}
           autoFocus

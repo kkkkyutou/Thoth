@@ -1,8 +1,8 @@
 # External Source Governance
 
-## New Thoth Reset Note
+## Thoth Reset Note
 
-This directory is now a historical cache from the old Thoth plugin line. It remains useful as a source map, but it is not current product truth for New Thoth. Any new implementation decision must revalidate the relevant official page, local source checkout, or live tool behavior before relying on these notes.
+This directory is now a historical cache from the archived plugin line. It remains useful as a source map, but it is not current product truth for Thoth. Any new implementation decision must revalidate the relevant official page, local source checkout, or live tool behavior before relying on these notes.
 
 ## Purpose
 

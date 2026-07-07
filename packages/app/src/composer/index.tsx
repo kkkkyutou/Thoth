@@ -40,7 +40,6 @@ import {
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
-import { ThothComposerControls } from "@/composer/thoth-composer-controls";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
@@ -54,7 +53,7 @@ import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
 import {
   cancelComposerAgent,
-  dispatchComposerAgentMessage,
+  dispatchWorkspaceSecretaryMessage,
   editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
@@ -69,6 +68,7 @@ import {
   type QueueWriter,
   type QueuedComposerMessage,
 } from "@/composer/actions";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useVoiceOptional } from "@/contexts/disabled-voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -95,7 +95,12 @@ import { submitAgentInput } from "@/composer/submit";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
-import type { GitHubSearchItem } from "@thoth/protocol/messages";
+import type { GitHubSearchItem, MutableDaemonConfig } from "@thoth/protocol/messages";
+import type {
+  ThothRuntimeClarifyStrength,
+  ThothRuntimeMode,
+} from "@thoth/protocol/thoth-runtime-contract";
+import type { ThothComposerModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -211,6 +216,28 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
   };
 }
 
+function buildWorkspaceSecretaryComposerModel(
+  config: MutableDaemonConfig | null,
+): ThothComposerModel {
+  const rawMode = config?.workspaceSecretary?.mode;
+  const mode: ThothRuntimeMode = rawMode === "loop" ? "loop" : "quick";
+  const rawClarify = config?.workspaceSecretary?.clarifyStrength;
+  const clarifyStrength: Exclude<ThothRuntimeClarifyStrength, "deep"> =
+    rawClarify === "none" ||
+    rawClarify === "auto" ||
+    rawClarify === "light" ||
+    rawClarify === "dive"
+      ? rawClarify
+      : "balanced";
+  return {
+    mode,
+    clarifyStrength,
+    loop: mode === "loop" ? "balanced" : null,
+    authorityLabel: "真实 provider",
+    authorityReady: true,
+  };
+}
+
 function renderContextWindowMeter(
   contextWindowMaxTokens: number | null,
   contextWindowUsedTokens: number | null,
@@ -237,31 +264,25 @@ function renderContextWindowMeter(
   );
 }
 
-function resolveContextWindowPlacement(
-  meter: ReactElement | null,
-  isMobile: boolean,
-): { beforeVoiceContent: ReactNode; footerInlineContent: ReactNode } {
-  if (isMobile) {
-    return { beforeVoiceContent: null, footerInlineContent: meter };
-  }
-  return {
-    beforeVoiceContent: <View style={styles.contextWindowMeterSlot}>{meter}</View>,
-    footerInlineContent: null,
-  };
-}
-
 interface RenderLeftContentArgs {
   agentControls: DraftAgentControlsProps | undefined;
   agentId: string;
   serverId: string;
   focusInput: () => void;
   isCompactLayout: boolean;
+  controlExtras: ReactNode;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
-  const { agentControls, agentId, serverId, focusInput, isCompactLayout } = args;
+  const { agentControls, agentId, serverId, focusInput, isCompactLayout, controlExtras } = args;
   if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
-    return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
+    return (
+      <DraftAgentControls
+        {...agentControls}
+        isCompactLayout={isCompactLayout}
+        controlExtras={controlExtras}
+      />
+    );
   }
   return (
     <AgentControls
@@ -269,6 +290,7 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement {
       serverId={serverId}
       onDropdownClose={focusInput}
       isCompactLayout={isCompactLayout}
+      controlExtras={controlExtras}
     />
   );
 }
@@ -806,25 +828,6 @@ function resolveContextWindowValues(
   return { contextWindowMaxTokens: null, contextWindowUsedTokens: null };
 }
 
-function resolveThothProviderState(input: {
-  agentProvider: string | null;
-  agentModel: string | null;
-  draftControls: DraftAgentControlsProps | undefined;
-}): { label: string; ready: boolean } {
-  const draftProvider = input.draftControls?.selectedProvider ?? null;
-  const draftModel = input.draftControls?.selectedModel ?? "";
-  if (draftProvider && draftModel.trim().length > 0) {
-    return { label: draftProvider, ready: true };
-  }
-  if (input.agentProvider) {
-    return { label: input.agentProvider, ready: Boolean(input.agentModel) };
-  }
-  if (draftProvider) {
-    return { label: draftProvider, ready: false };
-  }
-  return { label: "Provider", ready: false };
-}
-
 interface ComposerCancelButtonProps {
   buttonIconSize: number;
   cancelButtonStyle: (object | undefined)[];
@@ -922,9 +925,13 @@ function ComposerRightControlsSlot({
   cancelButton,
   ...voiceProps
 }: ComposerRightControlsSlotProps) {
-  const hideVoiceForCompactInput = isCompact && hasSendableContent;
+  const mvpVoiceEnabled = false;
   const showVoiceModeButton =
-    !isVoiceModeForAgent && hasAgent && !isAgentRunning && !hideVoiceForCompactInput;
+    mvpVoiceEnabled &&
+    !isVoiceModeForAgent &&
+    hasAgent &&
+    !isAgentRunning &&
+    !(isCompact && hasSendableContent);
   const shouldShowCancelButton = isAgentRunning && !hasSendableContent && !isProcessing;
   if (!showVoiceModeButton && !shouldShowCancelButton) return null;
   return (
@@ -1015,6 +1022,7 @@ export function Composer({
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
+  const { config: daemonConfig } = useDaemonConfig(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
   const toast = useToast();
@@ -1032,6 +1040,10 @@ export function Composer({
   const { settings: appSettings } = useAppSettings();
 
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
+  const workspaceSecretaryComposer = useMemo(
+    () => buildWorkspaceSecretaryComposerModel(daemonConfig),
+    [daemonConfig],
+  );
 
   const queuedMessagesRaw = useSessionStore((state) =>
     state.sessions[serverId]?.queuedMessages?.get(agentId),
@@ -1227,17 +1239,26 @@ export function Composer({
         setHead: (updater) => setAgentStreamHead(serverId, updater),
         setTail: (updater) => setAgentStreamTail(serverId, updater),
       };
-      await dispatchComposerAgentMessage({
+      await dispatchWorkspaceSecretaryMessage({
         client,
         agentId: targetAgentId,
         text,
         attachments: sendAttachments,
+        composer: workspaceSecretaryComposer,
         encodeImages,
         stream,
       });
       onAttentionPromptSend?.();
     };
-  }, [client, onAttentionPromptSend, serverId, setAgentStreamTail, setAgentStreamHead, t]);
+  }, [
+    client,
+    onAttentionPromptSend,
+    serverId,
+    setAgentStreamTail,
+    setAgentStreamHead,
+    t,
+    workspaceSecretaryComposer,
+  ]);
 
   useEffect(() => {
     onSubmitMessageRef.current = onSubmitMessage;
@@ -1719,11 +1740,6 @@ export function Composer({
       contextWindowPending,
     ],
   );
-  const { beforeVoiceContent, footerInlineContent } = useMemo(
-    () => resolveContextWindowPlacement(contextWindowMeter, isCompactLayout),
-    [contextWindowMeter, isCompactLayout],
-  );
-
   const githubSearchQueryTrimmed = githubSearchQuery.trim();
   const githubSearchResultsQuery = useGithubSearchQuery({
     client,
@@ -1803,8 +1819,9 @@ export function Composer({
         serverId,
         focusInput,
         isCompactLayout,
+        controlExtras: contextWindowMeter,
       }),
-    [agentControls, agentId, focusInput, isCompactLayout, serverId],
+    [agentControls, agentId, contextWindowMeter, focusInput, isCompactLayout, serverId],
   );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
@@ -1903,15 +1920,6 @@ export function Composer({
   );
 
   const messageInputContainerRef = useRef<View>(null);
-  const thothProviderState = useMemo(
-    () =>
-      resolveThothProviderState({
-        agentProvider: agentState.provider,
-        agentModel: agentState.model,
-        draftControls: agentControls,
-      }),
-    [agentControls, agentState.model, agentState.provider],
-  );
 
   const isSubmitBusy = isProcessing || isSubmitLoading || isUploadingFile;
 
@@ -1941,10 +1949,6 @@ export function Composer({
         {/* Input area */}
         <View style={inputAreaContainerStyle}>
           <View style={styles.inputAreaContent}>
-            <ThothComposerControls
-              providerLabel={thothProviderState.label}
-              providerReady={thothProviderState.ready}
-            />
             {queueList}
             {sendErrorNode}
 
@@ -1988,7 +1992,7 @@ export function Composer({
                 disabled={isSubmitLoading}
                 isPaneFocused={isPaneFocused}
                 leftContent={leftContent}
-                beforeVoiceContent={beforeVoiceContent}
+                beforeVoiceContent={null}
                 rightContent={rightContent}
                 voiceServerId={serverId}
                 voiceAgentId={agentId}
@@ -2022,7 +2026,7 @@ export function Composer({
             </View>
           </View>
         </View>
-        {renderComposerFooter(footer, footerInlineContent)}
+        {renderComposerFooter(footer, null)}
       </Animated.View>
     </ComposerKeyboardScopeProvider>
   );

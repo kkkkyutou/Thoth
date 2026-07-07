@@ -810,6 +810,7 @@ export function CombinedModelSelector({
           {ProviderIcon ? (
             <ProviderIcon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
           ) : null}
+          <Text style={styles.triggerPrefix}>Provider</Text>
           <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
             {triggerLabel}
           </Text>
@@ -880,6 +881,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  triggerPrefix: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
   customTriggerWrapper: {
     paddingHorizontal: 0,

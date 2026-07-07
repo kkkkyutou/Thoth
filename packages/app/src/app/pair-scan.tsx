@@ -128,7 +128,7 @@ export default function PairScanScreen() {
     source?: string;
   }>();
   const source = typeof params.source === "string" ? params.source : "settings";
-  const { upsertRelayConnection } = useHostMutations();
+  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
@@ -189,30 +189,20 @@ export default function PairScanScreen() {
           },
           { serverId: offer.serverId },
         );
-        const issued = await client.issueRelayDeviceToken().catch(() => null);
         await client.close().catch(() => undefined);
 
-        const profile = await upsertRelayConnection({
-          serverId: offer.serverId,
-          relayEndpoint: offer.relay.endpoint,
-          useTls: offer.relay.useTls,
-          daemonPublicKeyB64: offer.daemonPublicKeyB64,
-          relayToken: issued?.relayToken ?? offer.pairingToken,
-          relayTokenExpiresAt: issued?.relayTokenExpiresAt ?? offer.pairingExpiresAt,
-          pairingExpiresAt: offer.pairingExpiresAt,
-          label: hostname ?? undefined,
-        });
+        const profile = await upsertDaemonFromOfferUrl(offerUrl, hostname ?? undefined);
 
         navigateToPairedHost(profile.serverId);
-      } catch (error) {
+      } catch {
         lastScannedRef.current = null;
-        const message = error instanceof Error ? error.message : t("pairing.scan.unableToPair");
-        Alert.alert(t("pairing.scan.errorTitle"), message);
+        console.warn("[PairScan] Failed to pair scanned offer");
+        Alert.alert(t("pairing.scan.errorTitle"), t("pairing.scan.unableToPair"));
       } finally {
         setIsPairing(false);
       }
     },
-    [isPairing, navigateToPairedHost, t, upsertRelayConnection],
+    [isPairing, navigateToPairedHost, t, upsertDaemonFromOfferUrl],
   );
 
   const handleRouterBack = useCallback(() => router.back(), [router]);

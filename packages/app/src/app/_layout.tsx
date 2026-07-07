@@ -97,7 +97,6 @@ import { usePanelStore } from "@/stores/panel-store";
 import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
-import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
   buildOpenProjectRoute,
   parseHostAgentRouteFromPathname,
@@ -111,6 +110,7 @@ import {
   WEB_NOTIFICATION_CLICK_EVENT,
   type WebNotificationClickDetail,
 } from "@/utils/os-notifications";
+import { canOpenLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 
 polyfillCrypto();
 
@@ -199,7 +199,6 @@ function PushNotificationRouter() {
 
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        // When the app is open, don't show OS banners.
         shouldShowAlert: false,
         shouldShowBanner: false,
         shouldShowList: false,
@@ -452,10 +451,6 @@ function AppContainer({
         }),
     });
   }, [closeDesktopAgentList, closeDesktopFileExplorer, openDesktopAgentList]);
-  // TODO: stop matching pathname here as a branch. `chromeEnabled` should not
-  // conflate workspace/project-specific chrome (sidebar, mobile gesture) with
-  // global concerns like keyboard shortcuts. Split those out so settings (and
-  // other non-workspace routes) don't need a special-case to keep shortcuts alive.
   const keyboardShortcutsEnabled = chromeEnabled || pathname.startsWith("/settings");
 
   useKeyboardShortcuts({
@@ -735,9 +730,9 @@ function OfferLinkListener({
           router.replace(buildOpenProjectRoute());
           return;
         })
-        .catch((error) => {
+        .catch(() => {
           if (cancelled) return;
-          console.warn("[Linking] Failed to import pairing offer", error);
+          console.warn("[Linking] Failed to import pairing offer");
         });
     };
 
@@ -822,13 +817,8 @@ function OpenProjectListener() {
         return null;
       }
 
-      if (!result.ok) {
-        setRequest((current) => (current?.id === request.id ? null : current));
-        return null;
-      }
-
       setRequest((current) => (current?.id === request.id ? null : current));
-      return null;
+      return result.ok ? result : null;
     });
     return () => {
       cancelled = true;
@@ -848,7 +838,6 @@ function OpenProjectListener() {
       })
       .catch(() => undefined);
 
-    // Listen for hot-start paths relayed via the second-instance event.
     void listenToDesktopEvent<OpenProjectEventPayload>("open-project", (payload) => {
       if (disposed) {
         return;
@@ -890,8 +879,6 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       pathname === "/sessions" ||
       routeHasKnownHost);
 
-  // Parse selectedAgentKey directly from pathname
-  // useLocalSearchParams doesn't update when navigating between same-pattern routes
   const selectedAgentKey = useMemo(() => {
     const workspaceMatch = pathname.match(/^\/h\/([^/]+)\/workspace\/[^/]+(?:\/|$)/);
     const workspaceServerId = workspaceMatch?.[1]?.trim() ?? "";

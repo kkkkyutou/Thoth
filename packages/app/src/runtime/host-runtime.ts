@@ -1448,20 +1448,23 @@ export class HostRuntimeStore {
 
   private async runBoot(): Promise<void> {
     const override = readConfiguredLocalDaemonOverride();
-    await this.loadFromStorage();
+    await this.loadFromStorage({ markReady: false });
     this.markHostRegistryLoaded();
 
     let isE2E: string | null = null;
     try {
       isE2E = await this.storage.getItem(E2E_STORAGE_KEY);
     } catch {
+      this.markHostRegistryReady();
       return;
     }
     if (isE2E) {
+      this.markHostRegistryReady();
       return;
     }
 
     if (shouldUseDesktopDaemon()) {
+      this.markHostRegistryReady();
       return;
     }
 
@@ -1469,10 +1472,18 @@ export class HostRuntimeStore {
       ? this.deps.readInitialConnectionHint()
       : readInitialDaemonConnectionHint();
     if (initialHint) {
+      if (this.hosts.length === 0) {
+        this.setHostRegistryStatus("loading");
+      } else {
+        this.markHostRegistryReady();
+      }
       const bootstrapped = await this.bootstrapInitialConnectionHint(initialHint);
+      this.markHostRegistryReady();
       if (bootstrapped) {
         return;
       }
+    } else {
+      this.markHostRegistryReady();
     }
 
     if (override) {
@@ -1482,7 +1493,7 @@ export class HostRuntimeStore {
     }
   }
 
-  private async loadFromStorage(): Promise<void> {
+  private async loadFromStorage(input?: { markReady?: boolean }): Promise<void> {
     let shouldPersistHosts = false;
     try {
       const stored = await this.storage.getItem(REGISTRY_STORAGE_KEY);
@@ -1505,12 +1516,26 @@ export class HostRuntimeStore {
     } catch (error) {
       console.error("[HostRuntime] Failed to load host registry from storage", error);
     } finally {
-      this.hostRegistryStatus = "ready";
+      if (input?.markReady !== false) {
+        this.hostRegistryStatus = "ready";
+      }
       this.emitHostList();
       if (shouldPersistHosts) {
         void this.persistHosts();
       }
     }
+  }
+
+  private setHostRegistryStatus(status: HostRegistryStatus): void {
+    if (this.hostRegistryStatus === status) {
+      return;
+    }
+    this.hostRegistryStatus = status;
+    this.emitHostList();
+  }
+
+  private markHostRegistryReady(): void {
+    this.setHostRegistryStatus("ready");
   }
 
   private markHostRegistryLoaded(): void {
@@ -1597,9 +1622,6 @@ export class HostRuntimeStore {
       connection.type === "directTcp"
         ? { ...connection, useTls: hint.useTls ?? connection.useTls ?? false }
         : connection;
-    if (registryHasConnection(this.hosts, connectionWithHint)) {
-      return true;
-    }
 
     try {
       await this.probeAndUpsertConnection({
@@ -1785,12 +1807,10 @@ export class HostRuntimeStore {
   ): Promise<HostProfile> {
     const marker = "#offer=";
     const idx = offerUrlOrFragment.indexOf(marker);
-    if (idx === -1) {
-      throw new Error("Missing #offer= fragment");
-    }
-    const encoded = offerUrlOrFragment.slice(idx + marker.length).trim();
+    const encoded =
+      idx === -1 ? offerUrlOrFragment.trim() : offerUrlOrFragment.slice(idx + marker.length).trim();
     if (!encoded) {
-      throw new Error("Offer payload is empty");
+      throw new Error("Pairing code is empty");
     }
     const payload = decodeOfferFragmentPayload(encoded);
     const offer = ConnectionOfferSchema.parse(payload);

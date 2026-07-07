@@ -649,7 +649,7 @@ function buildRouteDetails(input: {
         },
         {
           label: "Runtime boundary",
-          value: "No Textual, no old plugin TUI, no hidden LLM API",
+          value: "No Textual, no archived plugin TUI, no hidden LLM API",
           tone: "ready",
         },
         {

@@ -1,6 +1,6 @@
 # Development
 
-This document is the executable development guide for New Thoth. Product truth and decisions live in `.agent-os/`; this file explains how to work in the repository.
+This document is the executable development guide for Thoth. Product truth and decisions live in `.agent-os/`; this file explains how to work in the repository.
 
 ## Environment
 
@@ -34,21 +34,21 @@ The first development gate is the foundation set:
 - `packages/protocol`
 - `packages/client`
 
-The daemon, web app export, desktop packaged smoke, Android Debug APK, test relay deployment and Codex provider smoke now have verified development entrypoints. The New Thoth MVP business chain is still not implemented, and broader non-foundation packages may still contain incomplete wiring. Do not delete promoted code simply because some broader paths remain expected-broken.
+The daemon, web app export, desktop packaged smoke, Android Debug APK, test relay deployment and Codex provider smoke now have verified development entrypoints. The Thoth MVP business chain is still not implemented, and broader non-foundation packages may still contain incomplete wiring. Do not delete promoted code simply because some broader paths remain expected-broken.
 
 ## Runtime Isolation
 
-Thoth and the local Paseo daemon must run side by side.
+Thoth must run without taking over the reserved local legacy service port.
 
 - Thoth direct daemon default: `127.0.0.1:6688`
-- Local Paseo/legacy daemon reserved port: `127.0.0.1:6767`
+- Reserved local legacy daemon port: `127.0.0.1:6767`
 - Thoth dev home: `.dev/thoth-runtime/home`
 - Thoth desktop dev user data: `.dev/thoth-runtime/user-data`
 - Relay test endpoint: `relay.test.thoth.seeles.ai`
 - Human web review local entry: `http://127.0.0.1:8082/`
 - Human web review public mapping: `http://180.76.242.105:8148/`
 
-Do not stop, restart, migrate or reuse the Paseo daemon on `6767`. Thoth runtime code must not automatically probe `localhost:6767` or `127.0.0.1:6767`; those addresses are allowed only in tests, historical examples or explicit guards that prove Thoth avoids the legacy service.
+Do not stop, restart, migrate or reuse the service on `6767`. Thoth runtime code must not automatically probe `localhost:6767` or `127.0.0.1:6767`; those addresses are allowed only in tests, historical examples or explicit guards that prove Thoth avoids the reserved legacy service.
 
 Use the dev profile helper when starting a local daemon:
 
@@ -71,7 +71,7 @@ npm run smoke:isolation
 curl -sS http://127.0.0.1:6688/api/health
 ```
 
-The smoke must show `6767` owned by the local Paseo/legacy daemon and `6688` owned by Thoth.
+The smoke must show `6767` owned by the reserved local legacy daemon and `6688` owned by Thoth.
 
 ## Human Dogfood UI
 

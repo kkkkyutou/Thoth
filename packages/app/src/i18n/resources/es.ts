@@ -167,6 +167,16 @@ export const es: TranslationResources = {
       model: "Cambiar modelo",
       mode: "Cambiar modo",
     },
+    runtime: {
+      clarify: {
+        tooltip: "Clarify",
+        selectWithValue: "Clarify: {{value}}",
+      },
+      mode: {
+        tooltip: "Mode",
+        selectWithValue: "Mode: {{value}}",
+      },
+    },
   },
   agentStream: {
     empty: "Comience a chatear con este agente...",
@@ -449,6 +459,7 @@ export const es: TranslationResources = {
         terminal: "Terminal",
         browser: "Navegador",
         agent: "Agent",
+        backgroundTasks: "Background tasks",
         workspace: "Workspace",
       },
       switcher: {
@@ -1225,7 +1236,7 @@ export const es: TranslationResources = {
         description: "Conexión de retransmisión cifrada.",
       },
       pasteLink: {
-        title: "Pegar enlace de emparejamiento",
+        title: "Paste pairing code",
         description: "Conexión de retransmisión cifrada.",
       },
     },
@@ -1273,14 +1284,15 @@ export const es: TranslationResources = {
       },
     },
     link: {
-      title: "Pegar enlace de emparejamiento",
-      helper: "Pegue el enlace de emparejamiento de su servidor.",
-      label: "Enlace de emparejamiento",
+      title: "Paste pairing code",
+      helper: "Paste the short pairing code from your server.",
+      label: "Pairing code",
+      placeholder: "Paste pairing code",
       errors: {
-        required: "Pegue un enlace de emparejamiento (.../#offer=...)",
-        missingOffer: "El enlace debe incluir#offer=...",
-        emptyOffer: "La carga útil de la oferta está vacía",
-        invalid: "Enlace de emparejamiento no válido",
+        required: "Paste a pairing code",
+        missingOffer: "Paste a pairing code",
+        emptyOffer: "Pairing code is empty",
+        invalid: "Invalid pairing code",
         unableToPair: "No se puede emparejar el host",
       },
       alert: {
@@ -1713,6 +1725,7 @@ export const es: TranslationResources = {
         removeErrorTitle: "Error",
         removeErrorMessage: "No se puede eliminar la conexión",
         timeout: "Se acabó el tiempo",
+        pairAgain: "Emparejar de nuevo",
       },
       pairDevices: {
         title: "Emparejar dispositivos",

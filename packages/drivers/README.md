@@ -1,6 +1,6 @@
 # @thoth/drivers
 
-Harness driver package for New Thoth.
+Harness driver package for Thoth.
 
 Intended responsibilities:
 

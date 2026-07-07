@@ -1,8 +1,10 @@
+import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
 import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
 
-import type { AgentMode, AgentProvider } from "../agent-sdk-types.js";
+import type { AgentMode, AgentProvider, AgentTimelineItem } from "../agent-sdk-types.js";
 import type { AgentManager, WaitForAgentResult } from "../agent-manager.js";
 import {
   AgentFeatureSchema,
@@ -54,8 +56,28 @@ import {
   toScheduleSummary,
   waitForAgentWithTimeout,
 } from "../mcp-shared.js";
+import {
+  ThothReportBlockedInputSchema,
+  ThothSubmitClarifyCardInputSchema,
+  ThothSubmitPyramidPlanInputSchema,
+  ThothSubmitTaskCardInputSchema,
+  type ThothReportBlockedInput,
+  type ThothSubmitClarifyCardInput,
+  type ThothSubmitPyramidPlanInput,
+  type ThothSubmitTaskCardInput,
+} from "@thoth/protocol/thoth-runtime-contract";
+import type {
+  ThothClarifyCardModel,
+  ThothGoalCardModel,
+  ThothTaskCardModel,
+  WorkspaceSecretaryTurnActionPayload,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import { sendPromptToAgent, setupFinishNotification } from "../agent-prompt.js";
 import { respondToAgentPermission } from "../permission-response.js";
+import {
+  configureRuntimeAuthorityDecisionPersistence,
+  createRuntimeAuthorityDecision,
+} from "../runtime-tool-decisions.js";
 import {
   archiveAgentCommand,
   cancelAgentRunCommand,
@@ -188,6 +210,126 @@ function compareAgentListItems(a: AgentListItemPayload, b: AgentListItemPayload)
   }
 
   return resolveAgentListActivityTime(b) - resolveAgentListActivityTime(a);
+}
+
+function sha256Digest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function resolveRuntimeToolCallContext(context: ThothToolExecutionContext): {
+  provider: string;
+  threadId: string;
+  turnId: string;
+  callId: string;
+  toolName: string;
+} {
+  const call = context.providerToolCall;
+  if (!call) {
+    return {
+      provider: "unknown",
+      threadId: "unknown-thread",
+      turnId: "unknown-turn",
+      callId: `runtime-call-${randomUUID()}`,
+      toolName: "thoth_runtime_tool",
+    };
+  }
+  return {
+    provider: call.provider,
+    threadId: call.threadId,
+    turnId: call.turnId,
+    callId: call.callId,
+    toolName: call.toolName,
+  };
+}
+
+function summarizeRuntimeAuthorityAnswer(answer: WorkspaceSecretaryTurnActionPayload): string {
+  switch (answer.intent) {
+    case "accept_quick":
+      return "accepted_quick";
+    case "accept_loop":
+      return "accepted_loop_registered_pending";
+    case "annotate":
+      return `annotated: ${answer.note ?? answer.raw_answer}`;
+    case "cancel":
+      return "canceled";
+    case "stop":
+      return "stopped";
+    case "recommend":
+      return "user asked secretary to recommend";
+    case "decide":
+      return "user authorized secretary to decide";
+    default:
+      return answer.raw_answer;
+  }
+}
+
+function runtimeToolResultText(input: {
+  answer: WorkspaceSecretaryTurnActionPayload;
+  submittedSummary: string;
+  cardKind: "clarify_card" | "task_card" | "pyramid_plan_card" | "blocked_card";
+}): string {
+  const answerSummary = summarizeRuntimeAuthorityAnswer(input.answer);
+  if (input.cardKind === "task_card" && input.answer.intent === "accept_quick") {
+    return [
+      "User approved the Task Card and chose the Quick foreground path.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      `Answer: ${answerSummary}`,
+      "Next required runtime tool: thoth_submit_pyramid_plan.",
+      "Submit the Pyramid Plan as the second approval card, grounded in the clarify transcript and the approved Task Card.",
+      "Do not execute yet. Do not answer in prose. Do not submit another Task Card unless the user requested revisions.",
+    ].join("\n");
+  }
+  if (input.cardKind === "task_card" && input.answer.intent === "accept_loop") {
+    return [
+      "User approved the Task Card and chose the Loop registration path.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      `Answer: ${answerSummary}`,
+      "Next required runtime tool: thoth_submit_pyramid_plan.",
+      "Submit the Pyramid Plan as the second approval card, grounded in the clarify transcript and the approved Task Card.",
+      "Do not register, execute, or review yet. Registration is allowed only after the Pyramid Plan is approved.",
+    ].join("\n");
+  }
+  if (input.answer.intent === "accept_quick") {
+    return [
+      "User approved this card for Quick foreground execution.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      `Answer: ${answerSummary}`,
+      "Continue in the same provider turn by executing the approved task in the current workspace.",
+      "Use normal provider tools and timeline events such as shell, edit, read, write, search, fetch, and tests as needed.",
+      "If the approved task requires implementation, create or edit the necessary files and verify the result instead of only summarizing in prose.",
+      "Do not submit another authority card unless a new high-impact user decision appears.",
+    ].join("\n");
+  }
+  if (input.answer.intent === "accept_loop") {
+    return [
+      "User approved this card for Loop registration.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      "The task has been registered as registered_pending. Do not start background execution or review.",
+    ].join("\n");
+  }
+  if (input.answer.intent === "annotate") {
+    return [
+      "User requested revisions.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      `Answer: ${answerSummary}`,
+      "Continue by submitting a revised authority card or a new clarify card if the annotation reopens a material decision.",
+    ].join("\n");
+  }
+  if (input.answer.intent === "cancel" || input.answer.intent === "stop") {
+    return [
+      "User stopped this authority flow.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      "Stop the structured flow and do not execute hidden work.",
+    ].join("\n");
+  }
+  return [
+    "User answered this clarify card.",
+    `Visible answer summary: ${input.submittedSummary}`,
+    `Answer: ${answerSummary}`,
+    "Continue according to the loaded Thoth Clarify Skill.",
+    "If the current clarify strength is dive, do not converge after a single Clarify card on a nontrivial implementation request unless the material decision frontier is exhausted.",
+    "Submit another Clarify card if material user-owned decisions remain; otherwise submit the next authority card.",
+  ].join("\n");
 }
 
 function resolveScheduleProviderAndModel(params: {
@@ -428,6 +570,11 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
   const childLogger = logger.child({ module: "agent", component: "thoth-tool-catalog" });
   const waitTracker = new WaitForAgentTracker(logger);
   const callerContext = callerAgentId ? (resolveCallerContext?.(callerAgentId) ?? null) : null;
+  if (options.thothHome) {
+    configureRuntimeAuthorityDecisionPersistence({
+      filePath: path.join(options.thothHome, "runtime-authority-decisions.json"),
+    });
+  }
 
   const parseToolInput = async (tool: ThothToolDefinition, input: unknown): Promise<unknown> => {
     const inputSchema = tool.inputSchema;
@@ -635,6 +782,332 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       },
     };
   };
+
+  const resolveRuntimeAuthorityTopicId = (): string | null => {
+    const caller = resolveCallerAgent();
+    return typeof caller?.labels?.topicId === "string" ? caller.labels.topicId : null;
+  };
+
+  const appendRuntimeAuthorityToolCall = async (input: {
+    callId: string;
+    safeName: string;
+    label: string;
+    text: string;
+    status: "running" | "completed" | "failed" | "canceled";
+    error?: unknown;
+    metadata?: Record<string, unknown>;
+  }) => {
+    if (!callerAgentId) {
+      return;
+    }
+    const item = {
+      type: "tool_call",
+      callId: input.callId,
+      name: input.safeName,
+      status: input.status,
+      error: input.status === "failed" ? (input.error ?? { message: "Tool call failed" }) : null,
+      detail: {
+        type: "plain_text",
+        label: input.label,
+        text: input.text,
+        icon: input.status === "running" ? "brain" : "sparkles",
+      },
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    } as AgentTimelineItem;
+    await agentManager.appendTimelineItem(callerAgentId, item);
+  };
+
+  const waitForRuntimeAuthorityAnswer = async (input: {
+    context: ThothToolExecutionContext;
+    safeName: string;
+    label: string;
+    pendingText: string;
+    card:
+      | { kind: "clarify_card"; card: ThothClarifyCardModel }
+      | { kind: "task_card"; card: ThothTaskCardModel }
+      | { kind: "pyramid_plan_card"; card: ThothGoalCardModel }
+      | { kind: "blocked_card"; title: string; reason: string };
+    appendOpenCard: () => Promise<void>;
+    appendSubmittedCard?: (summary: string) => Promise<void>;
+  }): Promise<ThothToolResult> => {
+    if (!callerAgentId) {
+      throw new Error("Thoth runtime authority tools require an agent-scoped caller");
+    }
+    const call = resolveRuntimeToolCallContext(input.context);
+    const topicId = resolveRuntimeAuthorityTopicId();
+    await appendRuntimeAuthorityToolCall({
+      callId: call.callId,
+      safeName: input.safeName,
+      label: input.label,
+      text: input.pendingText,
+      status: "running",
+    });
+    await input.appendOpenCard();
+    const { record, waitForAnswer } = createRuntimeAuthorityDecision({
+      provider: call.provider,
+      agentId: callerAgentId,
+      topicId,
+      threadId: call.threadId,
+      turnId: call.turnId,
+      callId: call.callId,
+      toolName: call.toolName,
+      phase: topicId ? "workspace_secretary" : null,
+      card: input.card,
+      redactedRawInputHash: sha256Digest(
+        JSON.stringify({
+          toolName: call.toolName,
+          cardKind: input.card.kind,
+          topicId,
+        }),
+      ),
+    });
+    try {
+      const result = await waitForAnswer;
+      await input.appendSubmittedCard?.(result.submittedSummary);
+      await appendRuntimeAuthorityToolCall({
+        callId: call.callId,
+        safeName: input.safeName,
+        label: input.label,
+        text: result.submittedSummary,
+        status: "completed",
+        metadata: {
+          authorityDecisionId: record.id,
+          cardId: record.cardId,
+          status: "answered",
+        },
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: runtimeToolResultText({
+              answer: result.answer,
+              submittedSummary: result.submittedSummary,
+              cardKind: input.card.kind,
+            }),
+          },
+        ],
+        structuredContent: {
+          ok: true,
+          status: "answered",
+          authorityDecisionId: record.id,
+          cardId: record.cardId,
+        },
+      };
+    } catch (error) {
+      await appendRuntimeAuthorityToolCall({
+        callId: call.callId,
+        safeName: input.safeName,
+        label: input.label,
+        text: "Authority decision did not complete.",
+        status: "failed",
+        error: { message: error instanceof Error ? error.message : String(error) },
+        metadata: {
+          authorityDecisionId: record.id,
+          cardId: record.cardId,
+          status: "failed",
+        },
+      });
+      throw error;
+    }
+  };
+
+  registerTool(
+    "thoth_submit_clarify_card",
+    {
+      title: "Submit Thoth Clarify card",
+      description:
+        "Submit one high-value Thoth Clarify decision card. Use for user-owned route, scope, risk, acceptance, or irreversible decisions.",
+      inputSchema: ThothSubmitClarifyCardInputSchema,
+      outputSchema: z
+        .object({
+          ok: z.boolean(),
+          status: z.enum(["answered"]),
+          authorityDecisionId: z.string(),
+          cardId: z.string(),
+        })
+        .strict(),
+    },
+    async (input: ThothSubmitClarifyCardInput, context) => {
+      const card: ThothClarifyCardModel = {
+        id: `clarify-card-${randomUUID()}`,
+        roundLabel: "Clarify",
+        title: input.title,
+        whyNow: input.why_now,
+        continuesClarify: true,
+        submitted: false,
+        card: {
+          question_id: `question-card-${randomUUID()}`,
+          title: input.title,
+          behavior_tree_node: "runtime_tool_bridge",
+          why_now: input.why_now,
+          questions: input.questions.map((question, index) => ({
+            id: question.id || `q-${index + 1}`,
+            question: question.question,
+            behavior_tree_node: question.behavior_tree_node ?? `decision-${index + 1}`,
+            choices: question.choices,
+            ...(question.note ? { note: question.note } : {}),
+          })),
+          allow_choice_notes: true,
+          allow_note_only: true,
+        },
+      };
+      return waitForRuntimeAuthorityAnswer({
+        context,
+        safeName: "clarify",
+        label: "Clarify",
+        pendingText: input.decision_it_changes,
+        card: { kind: "clarify_card", card },
+        appendOpenCard: async () => {
+          if (callerAgentId) {
+            await agentManager.appendTimelineItem(callerAgentId, { type: "clarify_card", card });
+          }
+        },
+        appendSubmittedCard: async (summary) => {
+          if (callerAgentId) {
+            await agentManager.appendTimelineItem(callerAgentId, {
+              type: "clarify_card",
+              card: { ...card, submitted: true, submittedSummary: summary },
+            });
+          }
+        },
+      });
+    },
+  );
+
+  registerTool(
+    "thoth_submit_task_card",
+    {
+      title: "Submit Thoth Task card",
+      description:
+        "Submit the concise CEO Task Card after Clarify converges. It must contain only title, goal, constraints, and acceptance.",
+      inputSchema: ThothSubmitTaskCardInputSchema,
+      outputSchema: z
+        .object({
+          ok: z.boolean(),
+          status: z.enum(["answered"]),
+          authorityDecisionId: z.string(),
+          cardId: z.string(),
+        })
+        .strict(),
+    },
+    async (input: ThothSubmitTaskCardInput, context) => {
+      const card: ThothTaskCardModel = {
+        id: `task-card-${randomUUID()}`,
+        roundLabel: "Task",
+        title: input.task_card.title,
+        goal: input.task_card.goal,
+        constraints: input.task_card.constraints,
+        acceptance: input.task_card.acceptance,
+        provenanceSummary: "基于完整 Clarify 原文记录整理",
+        submitted: false,
+      };
+      return waitForRuntimeAuthorityAnswer({
+        context,
+        safeName: "task_approval",
+        label: "Task",
+        pendingText: "等待用户确认任务总览。",
+        card: { kind: "task_card", card },
+        appendOpenCard: async () => {
+          if (callerAgentId) {
+            await agentManager.appendTimelineItem(callerAgentId, { type: "task_card", card });
+          }
+        },
+        appendSubmittedCard: async (summary) => {
+          if (callerAgentId) {
+            await agentManager.appendTimelineItem(callerAgentId, {
+              type: "task_card",
+              card: { ...card, submitted: true, submittedSummary: summary },
+            });
+          }
+        },
+      });
+    },
+  );
+
+  registerTool(
+    "thoth_submit_pyramid_plan",
+    {
+      title: "Submit Thoth Pyramid Plan card",
+      description:
+        "Submit the second approval card as a pyramid-shaped target breakdown, not implementation steps, commands, or file paths.",
+      inputSchema: ThothSubmitPyramidPlanInputSchema,
+      outputSchema: z
+        .object({
+          ok: z.boolean(),
+          status: z.enum(["answered"]),
+          authorityDecisionId: z.string(),
+          cardId: z.string(),
+        })
+        .strict(),
+    },
+    async (input: ThothSubmitPyramidPlanInput, context) => {
+      const card: ThothGoalCardModel = {
+        id: `pyramid-plan-card-${randomUUID()}`,
+        roundLabel: "Pyramid Plan",
+        title: input.pyramid_plan.title,
+        summary: input.pyramid_plan.summary,
+        pyramid: input.pyramid_plan.pyramid,
+        provenanceSummary: "受 Clarify 原文和已确认 CEO Task Card 约束",
+        submitted: false,
+      };
+      return waitForRuntimeAuthorityAnswer({
+        context,
+        safeName: "pyramid_approval",
+        label: "Pyramid Plan",
+        pendingText: "等待用户确认目标分拆。",
+        card: { kind: "pyramid_plan_card", card },
+        appendOpenCard: async () => {
+          if (callerAgentId) {
+            await agentManager.appendTimelineItem(callerAgentId, { type: "goal_card", card });
+          }
+        },
+        appendSubmittedCard: async (summary) => {
+          if (callerAgentId) {
+            await agentManager.appendTimelineItem(callerAgentId, {
+              type: "goal_card",
+              card: { ...card, submitted: true, submittedSummary: summary },
+            });
+          }
+        },
+      });
+    },
+  );
+
+  registerTool(
+    "thoth_report_blocked",
+    {
+      title: "Report Thoth blocked state",
+      description:
+        "Report that the structured Workspace Secretary flow is blocked by a real user decision or external condition.",
+      inputSchema: ThothReportBlockedInputSchema,
+      outputSchema: z.object({ ok: z.boolean(), status: z.literal("blocked") }).strict(),
+    },
+    async (input: ThothReportBlockedInput, context) => {
+      if (!callerAgentId) {
+        throw new Error("thoth_report_blocked requires an agent-scoped caller");
+      }
+      const call = resolveRuntimeToolCallContext(context);
+      await appendRuntimeAuthorityToolCall({
+        callId: call.callId,
+        safeName: "blocked",
+        label: input.title,
+        text: input.reason,
+        status: "failed",
+        error: { message: input.reason },
+      });
+      await agentManager.appendTimelineItem(callerAgentId, {
+        type: "error",
+        message: input.reason,
+      });
+      return {
+        content: [{ type: "text", text: `Blocked: ${input.reason}` }],
+        structuredContent: { ok: true, status: "blocked" },
+        isError: true,
+      };
+    },
+  );
+
   const ProviderModelInputSchema = AgentProviderEnum.trim()
     .refine((value) => value.includes("/"), {
       message: "provider must be provider/model, for example codex/gpt-5.4",
@@ -733,21 +1206,21 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           .describe("Optional base branch. Defaults to the repository default branch."),
       })
       .strict()
-      .describe("Create a new branch in a new Thoth worktree."),
+      .describe("Create a new branch in a Thoth-managed worktree."),
     z
       .object({
         kind: z.literal("checkout-branch"),
         branch: z.string().min(1).describe("Existing branch to check out."),
       })
       .strict()
-      .describe("Check out an existing branch in a new Thoth worktree."),
+      .describe("Check out an existing branch in a Thoth-managed worktree."),
     z
       .object({
         kind: z.literal("checkout-pr"),
         githubPrNumber: z.number().int().positive().describe("GitHub pull request number."),
       })
       .strict()
-      .describe("Check out a GitHub pull request in a new Thoth worktree."),
+      .describe("Check out a GitHub pull request in a Thoth-managed worktree."),
   ]);
   const AgentWorkspaceInputSchema = z.discriminatedUnion("kind", [
     z

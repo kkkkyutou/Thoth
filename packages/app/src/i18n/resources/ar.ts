@@ -167,6 +167,16 @@ export const ar: TranslationResources = {
       model: "تغيير النموذج",
       mode: "تغيير الوضع",
     },
+    runtime: {
+      clarify: {
+        tooltip: "Clarify",
+        selectWithValue: "Clarify: {{value}}",
+      },
+      mode: {
+        tooltip: "Mode",
+        selectWithValue: "Mode: {{value}}",
+      },
+    },
   },
   agentStream: {
     empty: "ابدأ الدردشة مع هذا الوكيل...",
@@ -445,6 +455,7 @@ export const ar: TranslationResources = {
         terminal: "Terminal",
         browser: "المتصفح",
         agent: "Agent",
+        backgroundTasks: "Background tasks",
         workspace: "Workspace",
       },
       switcher: {
@@ -1188,7 +1199,7 @@ export const ar: TranslationResources = {
         description: "اتصال التتابع المشفر.",
       },
       pasteLink: {
-        title: "الصق رابط الاقتران",
+        title: "Paste pairing code",
         description: "اتصال التتابع المشفر.",
       },
     },
@@ -1236,14 +1247,15 @@ export const ar: TranslationResources = {
       },
     },
     link: {
-      title: "الصق رابط الاقتران",
-      helper: "الصق رابط الاقتران من الخادم الخاص بك.",
-      label: "رابط الاقتران",
+      title: "Paste pairing code",
+      helper: "Paste the short pairing code from your server.",
+      label: "Pairing code",
+      placeholder: "Paste pairing code",
       errors: {
-        required: "الصق رابط الاقتران (.../#offer=...)",
-        missingOffer: "يجب أن يتضمن الرابط #offer=...",
-        emptyOffer: "حمولة العرض فارغة",
-        invalid: "رابط الاقتران غير صالح",
+        required: "Paste a pairing code",
+        missingOffer: "Paste a pairing code",
+        emptyOffer: "Pairing code is empty",
+        invalid: "Invalid pairing code",
         unableToPair: "غير قادر على إقران المضيف",
       },
       alert: {
@@ -1671,6 +1683,7 @@ export const ar: TranslationResources = {
         removeErrorTitle: "خطأ",
         removeErrorMessage: "غير قادر على إزالة الاتصال",
         timeout: "نفذ الوقت",
+        pairAgain: "إقران مرة أخرى",
       },
       pairDevices: {
         title: "إقران الأجهزة",

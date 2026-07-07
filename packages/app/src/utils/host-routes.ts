@@ -121,6 +121,7 @@ function isCleanLegacyPathDecode(value: string): boolean {
 export type WorkspaceOpenIntent =
   | { kind: "agent"; agentId: string }
   | { kind: "terminal"; terminalId: string }
+  | { kind: "background_tasks"; workspaceId: string }
   | { kind: "file"; path: string }
   | { kind: "draft"; draftId: string }
   | { kind: "setup"; workspaceId: string };
@@ -149,6 +150,10 @@ export function parseWorkspaceOpenIntent(
   }
   if (kind === "terminal") {
     return { kind: "terminal", terminalId: payload };
+  }
+  if (kind === "background_tasks") {
+    const workspaceId = decodeWorkspaceIdFromPathSegment(payload);
+    return workspaceId ? { kind: "background_tasks", workspaceId } : null;
   }
   if (kind === "draft") {
     return { kind: "draft", draftId: payload };

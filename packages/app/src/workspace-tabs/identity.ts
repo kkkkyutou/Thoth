@@ -29,6 +29,10 @@ export function normalizeWorkspaceTabTarget(
     const browserId = trimNonEmpty(value.browserId);
     return browserId ? { kind: "browser", browserId } : null;
   }
+  if (value.kind === "background_tasks") {
+    const workspaceId = trimNonEmpty(value.workspaceId);
+    return workspaceId ? { kind: "background_tasks", workspaceId } : null;
+  }
   if (value.kind === "file") {
     return normalizeFileTabTarget(value);
   }
@@ -81,6 +85,9 @@ export function workspaceTabTargetsEqual(
   }
   if (left.kind === "browser" && right.kind === "browser") {
     return left.browserId === right.browserId;
+  }
+  if (left.kind === "background_tasks" && right.kind === "background_tasks") {
+    return left.workspaceId === right.workspaceId;
   }
   if (left.kind === "file" && right.kind === "file") {
     return workspaceFileLocationsEqual(left, right);
@@ -136,6 +143,9 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "browser") {
     return `browser_${target.browserId}`;
+  }
+  if (target.kind === "background_tasks") {
+    return `background_tasks_${target.workspaceId}`;
   }
   if (target.kind === "setup") {
     return `setup_${target.workspaceId}`;

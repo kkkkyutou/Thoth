@@ -167,6 +167,16 @@ export const ja: TranslationResources = {
       model: "モデルを変更",
       mode: "権限モードを変更",
     },
+    runtime: {
+      clarify: {
+        tooltip: "Clarify",
+        selectWithValue: "Clarify: {{value}}",
+      },
+      mode: {
+        tooltip: "Mode",
+        selectWithValue: "Mode: {{value}}",
+      },
+    },
   },
   agentStream: {
     empty: "このエージェントとチャットを始めましょう...",
@@ -449,6 +459,7 @@ export const ja: TranslationResources = {
         terminal: "ターミナル",
         browser: "ブラウザ",
         agent: "エージェント",
+        backgroundTasks: "Background tasks",
         workspace: "ワークスペース",
       },
       switcher: {
@@ -1203,7 +1214,7 @@ export const ja: TranslationResources = {
         description: "暗号化されたリレー接続。",
       },
       pasteLink: {
-        title: "ペアリングリンクを貼り付け",
+        title: "Paste pairing code",
         description: "暗号化されたリレー接続。",
       },
     },
@@ -1250,14 +1261,15 @@ export const ja: TranslationResources = {
       },
     },
     link: {
-      title: "ペアリングリンクを貼り付け",
-      helper: "サーバーからのペアリングリンクを貼り付けてください。",
-      label: "ペアリングリンク",
+      title: "Paste pairing code",
+      helper: "Paste the short pairing code from your server.",
+      label: "Pairing code",
+      placeholder: "Paste pairing code",
       errors: {
-        required: "ペアリングリンクを貼り付けてください（.../#offer=...）",
-        missingOffer: "リンクには#offer=...が必要です",
-        emptyOffer: "オファーのペイロードが空です",
-        invalid: "無効なペアリングリンク",
+        required: "Paste a pairing code",
+        missingOffer: "Paste a pairing code",
+        emptyOffer: "Pairing code is empty",
+        invalid: "Invalid pairing code",
         unableToPair: "ホストをペアリングできません",
       },
       alert: {
@@ -1690,6 +1702,7 @@ export const ja: TranslationResources = {
         removeErrorTitle: "エラー",
         removeErrorMessage: "接続を削除できません",
         timeout: "タイムアウト",
+        pairAgain: "再ペアリング",
       },
       pairDevices: {
         title: "デバイスをペアリング",

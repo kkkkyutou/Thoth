@@ -2,6 +2,14 @@ import type { z } from "zod";
 
 export interface ThothToolExecutionContext {
   signal?: AbortSignal;
+  providerToolCall?: {
+    provider: string;
+    threadId: string;
+    turnId: string;
+    callId: string;
+    toolName: string;
+    namespace?: string | null;
+  };
 }
 
 export interface ThothToolResult {

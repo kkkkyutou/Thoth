@@ -2,7 +2,7 @@
   "name": "@thoth/tui",
   "version": "0.0.0",
   "private": true,
-  "description": "OpenTUI workspace control surface for New Thoth",
+  "description": "OpenTUI workspace control surface for Thoth",
   "license": "AGPL-3.0-or-later",
   "files": [
     "dist",

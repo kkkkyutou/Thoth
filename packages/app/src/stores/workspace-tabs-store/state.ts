@@ -21,6 +21,7 @@ export type WorkspaceTabTarget =
   | { kind: "agent"; agentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
+  | { kind: "background_tasks"; workspaceId: string }
   | WorkspaceFileTabTarget
   | { kind: "setup"; workspaceId: string };
 
@@ -513,6 +514,9 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   }
   if (kind === "browser" && typeof raw.browserId === "string") {
     return normalizeWorkspaceTabTarget({ kind: "browser", browserId: raw.browserId });
+  }
+  if (kind === "background_tasks" && typeof raw.workspaceId === "string") {
+    return normalizeWorkspaceTabTarget({ kind: "background_tasks", workspaceId: raw.workspaceId });
   }
   if (kind === "file" && typeof raw.path === "string") {
     return normalizeWorkspaceTabTarget({

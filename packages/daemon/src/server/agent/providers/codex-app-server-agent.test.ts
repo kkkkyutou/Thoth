@@ -15,6 +15,7 @@ import type {
   AgentSlashCommand,
   AgentStreamEvent,
 } from "../agent-sdk-types.js";
+import type { ThothToolCatalog } from "../tools/types.js";
 import {
   buildCodexAppServerEnv,
   CodexAppServerAgentClient,
@@ -46,6 +47,8 @@ interface CollaborationModeRecord {
 
 interface CodexSessionTestAccess {
   ensureThreadLoaded(): Promise<void>;
+  ensureThread(): Promise<void>;
+  handleDynamicToolCall(params: unknown): Promise<unknown>;
   handleToolApprovalRequest(params: unknown): Promise<unknown>;
   handleNotification(method: string, params: unknown): void;
   loadPersistedHistory(): Promise<void>;
@@ -105,6 +108,38 @@ function createSession(
 
 function asInternals(session: CodexTestSession): CodexSessionTestAccess {
   return castInternals<CodexSessionTestAccess>(session);
+}
+
+function createRuntimeToolCatalogStub(input?: {
+  execute?: (
+    name: string,
+    args: unknown,
+    context: unknown,
+  ) => Promise<{ text: string; isError?: boolean }>;
+}): ThothToolCatalog {
+  const tools = new Map([
+    [
+      "thoth_submit_clarify_card",
+      {
+        name: "thoth_submit_clarify_card",
+        title: "Clarify",
+        description: "Submit a Thoth Clarify card",
+        handler: async () => ({ content: [{ type: "text", text: "ok" }] }),
+      },
+    ],
+  ]);
+  return {
+    tools,
+    getTool: (name) => tools.get(name),
+    executeTool: async (name, args, context) => {
+      const result = await (input?.execute?.(name, args, context) ??
+        Promise.resolve({ text: "runtime tool result" }));
+      return {
+        content: [{ type: "text", text: result.text }],
+        isError: result.isError,
+      };
+    },
+  };
 }
 
 function markdownImageSource(markdown: string): string {
@@ -473,6 +508,111 @@ describe("Codex app-server provider", () => {
     const startCall = requests.find((req) => req.method === "thread/start");
     expect(startCall).toBeDefined();
     expect((startCall!.params as Record<string, unknown>).ephemeral).toBeUndefined();
+  });
+
+  test("registers Thoth semantic dynamic tools on thread/start when catalog is provided", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const fakeClient: CodexClientLike = {
+      async request(method: string, params?: unknown) {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "dynamic-tool-thread" } };
+        }
+        return null;
+      },
+    };
+    const session = new CodexAppServerAgentSession(
+      createConfig({ thinkingOptionId: "medium" }),
+      null,
+      createTestLogger(),
+      () => {
+        throw new Error("Test session cannot spawn Codex app-server");
+      },
+      {},
+      false,
+      false,
+      false,
+      "agent-dynamic-tools",
+      createRuntimeToolCatalogStub(),
+    );
+    castInternals<{ client: CodexClientLike }>(session).client = fakeClient;
+
+    await asInternals(session as CodexTestSession).ensureThread();
+
+    const startCall = requests.find((req) => req.method === "thread/start");
+    const params = startCall?.params as Record<string, unknown> | undefined;
+    expect(params?.dynamicTools).toEqual([
+      expect.objectContaining({
+        name: "thoth_submit_clarify_card",
+        description: expect.stringContaining("Clarify"),
+        inputSchema: expect.objectContaining({
+          type: "object",
+          required: expect.arrayContaining([
+            "title",
+            "why_now",
+            "decision_it_changes",
+            "questions",
+          ]),
+        }),
+      }),
+    ]);
+  });
+
+  test("handles Codex item/tool/call through the Thoth runtime catalog", async () => {
+    const execute = vi.fn(async (name: string, args: unknown) => ({
+      text: `handled ${name} ${JSON.stringify(args)}`,
+    }));
+    const session = createSession() as CodexTestSession;
+    const withTools = new CodexAppServerAgentSession(
+      createConfig({ thinkingOptionId: "medium" }),
+      null,
+      createTestLogger(),
+      () => {
+        throw new Error("Test session cannot spawn Codex app-server");
+      },
+      {},
+      false,
+      false,
+      false,
+      "agent-dynamic-tools",
+      createRuntimeToolCatalogStub({ execute }),
+    ) as CodexTestSession;
+    withTools.connected = true;
+    withTools.currentThreadId = "thread-1";
+    withTools.activeForegroundTurnId = "turn-local";
+
+    const response = await asInternals(withTools).handleDynamicToolCall({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      callId: "call-1",
+      namespace: null,
+      tool: "thoth_submit_clarify_card",
+      arguments: { title: "Boundary" },
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      "thoth_submit_clarify_card",
+      { title: "Boundary" },
+      expect.objectContaining({
+        providerToolCall: expect.objectContaining({
+          provider: "codex",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          callId: "call-1",
+          toolName: "thoth_submit_clarify_card",
+        }),
+      }),
+    );
+    expect(response).toEqual({
+      success: true,
+      contentItems: [
+        {
+          type: "inputText",
+          text: 'handled thoth_submit_clarify_card {"title":"Boundary"}',
+        },
+      ],
+    });
+    expect(session).toBeDefined();
   });
 
   test("disposes an unresponsive app-server child with SIGKILL", async () => {

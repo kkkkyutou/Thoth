@@ -6,6 +6,18 @@ import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@thoth/protocol/agent-title-limi
 import { AgentProviderSchema } from "@thoth/protocol/provider-manifest";
 import { normalizeAgentModelDefinition, TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
+  ThothRuntimeClarifyStrengthSchema,
+  ThothRuntimeModeSchema,
+} from "./thoth-runtime-contract.js";
+import { RegisteredTaskModelSchema } from "./workspace-secretary/rpc-schemas.js";
+import {
+  SecretaryTopicModelSchema,
+  SecretaryTurnSchema,
+  ThothClarifyCardModelSchema,
+  ThothGoalCardModelSchema,
+  ThothTaskCardModelSchema,
+} from "./workspace-secretary/rpc-schemas.js";
+import {
   ChatCreateRequestSchema,
   ChatListRequestSchema,
   ChatInspectRequestSchema,
@@ -53,6 +65,17 @@ import {
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
 } from "@thoth/protocol/loop/rpc-schemas";
+import {
+  WorkspaceSecretarySnapshotRequestSchema,
+  WorkspaceSecretarySendRequestSchema,
+  WorkspaceSecretaryAnswerRequestSchema,
+  WorkspaceSecretaryTopicCreateRequestSchema,
+  WorkspaceSecretarySnapshotResponseSchema,
+  WorkspaceSecretarySendResponseSchema,
+  WorkspaceSecretaryAnswerResponseSchema,
+  WorkspaceSecretaryTopicCreateResponseSchema,
+  WorkspaceSecretaryModelUpdateSchema,
+} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import {
   ThothConfigRawSchema,
   ThothLifecycleCommandRawSchema,
@@ -111,6 +134,43 @@ const MutableStructuredGenerationProviderSchema = z
   })
   .passthrough();
 
+const MutableWorkspaceSecretaryProviderSessionSchema = z
+  .object({
+    provider: z.string().min(1),
+    model: z.string().min(1).optional(),
+    modeId: z.string().min(1).optional(),
+    thinkingOptionId: z.string().min(1).optional(),
+    featureValues: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+const MutableWorkspaceSecretaryConfigSchema = z
+  .object({
+    providerSession: MutableWorkspaceSecretaryProviderSessionSchema.optional(),
+    mode: ThothRuntimeModeSchema.optional(),
+    clarifyStrength: ThothRuntimeClarifyStrengthSchema.exclude(["deep"]).optional(),
+    registeredTasks: z.array(RegisteredTaskModelSchema).optional(),
+    selectedBackgroundTaskId: z.string().min(1).nullable().optional(),
+    topicSnapshots: z
+      .array(
+        z
+          .object({
+            workspacePath: z.string().min(1),
+            workspaceName: z.string().min(1),
+            activeTopicId: z.string().min(1),
+            topics: z.array(SecretaryTopicModelSchema).min(1),
+            turns: z.array(SecretaryTurnSchema),
+            nextTopicIndex: z.number().int().min(1),
+            currentClarifyState: z.string().min(1),
+            activeTurnPhase: z.string().min(1),
+            activeTopicProviderBacked: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .passthrough();
+
 const MutableMetadataGenerationConfigSchema = z
   .object({
     providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
@@ -138,6 +198,7 @@ export const MutableDaemonConfigSchema = z
       .passthrough(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
+    workspaceSecretary: MutableWorkspaceSecretaryConfigSchema.default({}),
     autoArchiveAfterMerge: z.boolean().default(false),
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
@@ -152,6 +213,7 @@ export const MutableDaemonConfigPatchSchema = z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
       .optional(),
     metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
+    workspaceSecretary: MutableWorkspaceSecretaryConfigSchema.partial().optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
     enableTerminalAgentHooks: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
@@ -562,6 +624,22 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   z.object({
     type: z.literal("reasoning"),
     text: z.string(),
+  }),
+  z.object({
+    type: z.literal("clarify_card"),
+    card: ThothClarifyCardModelSchema,
+  }),
+  z.object({
+    type: z.literal("task_card"),
+    card: ThothTaskCardModelSchema,
+  }),
+  z.object({
+    type: z.literal("goal_card"),
+    card: ThothGoalCardModelSchema,
+  }),
+  z.object({
+    type: z.literal("registered_task"),
+    task: RegisteredTaskModelSchema,
   }),
   ToolCallTimelineItemPayloadSchema,
   z.object({
@@ -2163,6 +2241,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
+  WorkspaceSecretarySnapshotRequestSchema,
+  WorkspaceSecretarySendRequestSchema,
+  WorkspaceSecretaryAnswerRequestSchema,
+  WorkspaceSecretaryTopicCreateRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -4304,6 +4386,11 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectResponseSchema,
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
+  WorkspaceSecretarySnapshotResponseSchema,
+  WorkspaceSecretarySendResponseSchema,
+  WorkspaceSecretaryAnswerResponseSchema,
+  WorkspaceSecretaryTopicCreateResponseSchema,
+  WorkspaceSecretaryModelUpdateSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
 ]);

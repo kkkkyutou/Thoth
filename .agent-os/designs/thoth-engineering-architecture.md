@@ -1,4 +1,4 @@
-# New Thoth Engineering Architecture
+# Thoth Engineering Architecture
 
 ## Status
 
@@ -6,14 +6,14 @@
 2. 性质：全新版本 Thoth 的工程架构文档
 3. 范围：工程结构、运行拓扑、协议、daemon、authority、driver、ACP、多端打包、relay、git 模型、角色运行模型、参考项目映射
 4. 边界：不重复 high-level 产品论证，不写用户点击教程，不放完整长 prompt
-5. 原始归档：`.agent-os/designs/new-thoth-migration-architecture-20260625.md`
+5. 原始归档：`.agent-os/designs/thoth-migration-architecture-20260625.md`
 6. Reference HEADs:
    - Paseo: `507345dbee4a76df0b0ce42b98765c067623f28e`
    - Multica: `343ace89a7df30af42557e3fadd167db6196d30d`
 
 ## 1. Architecture Snapshot
 
-New Thoth is a local-first task control-plane runtime with shared protocol clients and multiple UI shells.
+Thoth is a local-first task control-plane runtime with shared protocol clients and multiple UI shells.
 
 Engineering inputs fixed for MVP:
 
@@ -527,9 +527,9 @@ Context resolution:
 Multica comparison:
 
 1. Multica exposes agent, squad and mode choices as product objects.
-2. New Thoth does not expose those objects to the user.
-3. New Thoth borrows the durable short-action record and notification idea, not the visible team-management model.
-4. Terms such as `run_only`, `quick_create` and `squad leader` are reference vocabulary only, not New Thoth user-facing concepts.
+2. Thoth does not expose those objects to the user.
+3. Thoth borrows the durable short-action record and notification idea, not the visible team-management model.
+4. Terms such as `run_only`, `quick_create` and `squad leader` are reference vocabulary only, not Thoth user-facing concepts.
 
 ## 9. Role Runtime Model
 
@@ -1317,61 +1317,61 @@ Reference files and extracted lessons:
 
 1. `/mnt/cfs/5vr0p6/yzy/harness/multica/README.md`
    - Product framing for managed agents, teams, autonomous execution and multi-workspace usage.
-   - New Thoth should absorb the control-plane framing, not copy product terminology.
+   - Thoth should absorb the control-plane framing, not copy product terminology.
 2. `/mnt/cfs/5vr0p6/yzy/harness/multica/CLI_AND_DAEMON.md`
    - Shows daemon-centered CLI and task execution model.
-   - New Thoth should keep daemon as control point while making UI shells first-class.
+   - Thoth should keep daemon as control point while making UI shells first-class.
 3. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/migrations/001_init.up.sql`
    - Shows relational tables for workspace, agent, issue, comment, inbox, queue, daemon connection and activity log.
-   - New Thoth should use this as evidence that task control-plane data benefits from durable relational modeling.
+   - Thoth should use this as evidence that task control-plane data benefits from durable relational modeling.
 4. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/pkg/agent/agent.go`
    - Defines unified backend shape around `Backend.Execute`, `ExecOptions`, `Session`, message stream and result stream.
-   - New Thoth should absorb the idea of a small upper interface with explicit capability differences.
+   - Thoth should absorb the idea of a small upper interface with explicit capability differences.
 5. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/pkg/agent/claude.go`
    - Shows Claude Code CLI execution, stream JSON handling, prompt input and environment isolation concerns.
-   - New Thoth should not use this as its Claude main path, but should learn from its runtime isolation and permission handling.
+   - Thoth should not use this as its Claude main path, but should learn from its runtime isolation and permission handling.
 6. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/pkg/agent/codex.go`
    - Shows Codex app-server behavior, session/thread handling, MCP config materialization, timeout diagnostics and token usage scanning.
-   - New Thoth should use app-server as Codex main path and keep diagnostics first-class.
+   - Thoth should use app-server as Codex main path and keep diagnostics first-class.
 7. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/pkg/agent/opencode.go`
    - Shows provider-specific project discovery and config injection needs.
-   - New Thoth should model provider materialization as driver-owned behavior.
+   - Thoth should model provider materialization as driver-owned behavior.
 8. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/pkg/agent/hermes.go`
    - Shows ACP-style session/new and session/resume behavior, MCP translation and provider edge cases.
-   - New Thoth should use this as a cautionary reference for ACP session semantics and provider-specific quirks.
+   - Thoth should use this as a cautionary reference for ACP session semantics and provider-specific quirks.
 9. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/daemon/execenv/runtime_config.go`
    - Shows runtime configuration injection for different harnesses.
-   - New Thoth should keep provider setup in drivers, not in task authority.
+   - Thoth should keep provider setup in drivers, not in task authority.
 10. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/daemon/execenv/execenv.go`
     - Shows execution environment preparation.
-    - New Thoth should keep workspace execution environment explicit and auditable.
+    - Thoth should keep workspace execution environment explicit and auditable.
 11. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/daemon/local_directory.go`
     - Shows local directory execution model.
-    - New Thoth MVP uses a similar linear local-directory-like workspace model.
+    - Thoth MVP uses a similar linear local-directory-like workspace model.
 12. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/daemon/daemon.go`
     - Shows daemon orchestration responsibilities.
-    - New Thoth daemon should own queue, process orchestration and timeline truth.
+    - Thoth daemon should own queue, process orchestration and timeline truth.
 13. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/daemon/repocache/cache.go`
     - Shows repository cache/worktree concerns.
-    - New Thoth should avoid over-expanding this in MVP and keep one local directory as one workspace.
+    - Thoth should avoid over-expanding this in MVP and keep one local directory as one workspace.
 14. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/service/task.go`
     - Shows quick-create task context, enqueue, completion and failure inbox handling.
-    - New Thoth should absorb the idea that short natural-language work can be queued and recorded without creating a full loop task.
+    - Thoth should absorb the idea that short natural-language work can be queued and recorded without creating a full loop task.
 15. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/handler/issue.go`
     - Shows quick-create request validation, actor resolution and immediate 202 response.
-    - New Thoth should keep server-side trust boundaries for quick actions, but should not require the user to pick an actor.
+    - Thoth should keep server-side trust boundaries for quick actions, but should not require the user to pick an actor.
 16. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/handler/squad_briefing.go`
     - Shows squad leader briefing, routing protocol and no-action evaluation.
-    - New Thoth should translate this into an internal private-secretary Router, not a visible squad UI.
+    - Thoth should translate this into an internal private-secretary Router, not a visible squad UI.
 17. `/mnt/cfs/5vr0p6/yzy/harness/multica/server/internal/daemon/execenv/context.go`
     - Shows distinct context rendering for normal task, quick-create and run-only autopilot.
-    - New Thoth should keep `quick` requests and `loop` tasks distinct, while allowing `QuickOutcome` to separate answer results, action results and loop suggestions internally.
+    - Thoth should keep `quick` requests and `loop` tasks distinct, while allowing `QuickOutcome` to separate answer results, action results and loop suggestions internally.
 18. `/mnt/cfs/5vr0p6/yzy/harness/multica/docs/product-overview.md`
     - Shows the product distinction between issue-backed work and run-only background work.
-    - New Thoth should use user-facing words such as 直接处理 and 正式任务, not Multica's internal mode names.
+    - Thoth should use user-facing words such as 直接处理 and 正式任务, not Multica's internal mode names.
 19. `/mnt/cfs/5vr0p6/yzy/harness/multica/docs/docs-outline.md`
     - Shows the documentation decision to describe internal run-only/create-issue modes with user mental-model words.
-    - New Thoth should follow that principle and keep internal routing terms out of user-facing copy.
+    - Thoth should follow that principle and keep internal routing terms out of user-facing copy.
 
 ## 23. Reference Map: Paseo
 
@@ -1384,58 +1384,58 @@ Reference files and extracted lessons:
 
 1. `/mnt/cfs/5vr0p6/yzy/harness/paseo/docs/architecture.md`
    - Defines client/server daemon architecture, mobile app, CLI, desktop app, relay, protocol and provider layout.
-   - New Thoth should absorb the daemon/client/relay topology and shared WebSocket protocol approach.
+   - Thoth should absorb the daemon/client/relay topology and shared WebSocket protocol approach.
 2. `/mnt/cfs/5vr0p6/yzy/harness/paseo/docs/providers.md`
    - Distinguishes ACP provider path and direct provider path.
-   - New Thoth should implement both: ACP as first-version adapter path, direct providers for Claude/Codex.
+   - Thoth should implement both: ACP as first-version adapter path, direct providers for Claude/Codex.
 3. `/mnt/cfs/5vr0p6/yzy/harness/paseo/docs/custom-providers.md`
    - Shows how user-defined ACP-compatible providers can be configured.
-   - New Thoth should use this as reference for future OpenCode/Hermes/QwenCode style extensibility.
+   - Thoth should use this as reference for future OpenCode/Hermes/QwenCode style extensibility.
 4. `/mnt/cfs/5vr0p6/yzy/harness/paseo/docs/data-model.md`
    - Shows daemon identity, daemon keypair, persisted data, provider handles and client-side storage.
-   - New Thoth should adapt daemon identity and E2EE keypair ideas while using SQLite as authority store.
+   - Thoth should adapt daemon identity and E2EE keypair ideas while using SQLite as authority store.
 5. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/protocol/src/messages.ts`
    - Source of protocol messages.
-   - New Thoth should keep protocol as shared source of truth for clients and daemon.
+   - Thoth should keep protocol as shared source of truth for clients and daemon.
 6. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/client/src/daemon-client-websocket-transport.ts`
    - Direct daemon WebSocket transport reference.
-   - New Thoth should provide equivalent direct transport in `packages/client`.
+   - Thoth should provide equivalent direct transport in `packages/client`.
 7. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/client/src/daemon-client-relay-e2ee-transport.ts`
    - Relay E2EE transport reference.
-   - New Thoth should provide equivalent encrypted relay transport.
+   - Thoth should provide equivalent encrypted relay transport.
 8. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/server/src/server/agent/agent-sdk-types.ts`
    - Defines `AgentClient` and `AgentSession` interfaces.
-   - New Thoth should adapt this style into `HarnessDriver` and role runtime abstractions.
+   - Thoth should adapt this style into `HarnessDriver` and role runtime abstractions.
 9. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/server/src/server/agent/provider-registry.ts`
    - Provider registry reference.
-   - New Thoth should keep driver registration centralized and capability-aware.
+   - Thoth should keep driver registration centralized and capability-aware.
 10. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/server/src/server/agent/providers/claude/agent.ts`
     - Claude direct provider using Anthropic Agent SDK.
-    - New Thoth Claude driver should follow this main path.
+    - Thoth Claude driver should follow this main path.
 11. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/server/src/server/agent/providers/codex-app-server-agent.ts`
     - Codex app-server provider.
-    - New Thoth Codex driver should follow this main path.
+    - Thoth Codex driver should follow this main path.
 12. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/server/src/server/agent/providers/acp-agent.ts`
     - ACP base provider.
-    - New Thoth should implement an ACP adapter with comparable session, streaming and permission responsibilities.
+    - Thoth should implement an ACP adapter with comparable session, streaming and permission responsibilities.
 13. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/server/src/server/agent/providers/generic-acp-agent.ts`
     - Generic ACP provider.
-    - New Thoth should use this as reference for user-defined or future ACP harnesses.
+    - Thoth should use this as reference for user-defined or future ACP harnesses.
 14. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/server/src/server/agent/providers/opencode-agent.ts`
     - OpenCode provider.
-    - New Thoth should use this as a direct-provider reference for non-ACP provider-specific differences.
+    - Thoth should use this as a direct-provider reference for non-ACP provider-specific differences.
 15. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/relay/src/`
     - Relay implementation directory.
-    - New Thoth should use this as source reference for E2EE relay shape.
+    - Thoth should use this as source reference for E2EE relay shape.
 16. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/relay/wrangler.toml`
     - Cloudflare Worker relay deployment reference.
-    - New Thoth MVP relay prototype should follow this deployment route.
+    - Thoth MVP relay prototype should follow this deployment route.
 17. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/app/package.json`
     - Expo / React Native app package reference.
-    - New Thoth app should follow this multi-platform package style.
+    - Thoth app should follow this multi-platform package style.
 18. `/mnt/cfs/5vr0p6/yzy/harness/paseo/packages/desktop/electron-builder.yml`
     - Desktop app packaging reference.
-    - New Thoth desktop app should follow the Electron packaging route.
+    - Thoth desktop app should follow the Electron packaging route.
 
 ## 24. MVP Implementation Order
 
@@ -1470,7 +1470,7 @@ Reference files and extracted lessons:
 
 MVP priority note:
 
-1. Surface software development is not the hardest part of New Thoth.
+1. Surface software development is not the hardest part of Thoth.
 2. The two hardest product/architecture gates are Clarify and aggressive loop behavior.
 3. UI shells and harness drivers must not pull focus away from those two gates.
 

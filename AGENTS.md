@@ -1,12 +1,12 @@
 # AGENTS.md
 
-本文件是 New Thoth 仓库的项目操作合同。它面向 Codex、Claude Code 和其他 AI coding agents，目标是让后续长程开发可以从文件恢复，而不是依赖聊天记录。
+本文件是 Thoth 仓库的项目操作合同。它面向 Codex、Claude Code 和其他 AI coding agents，目标是让后续长程开发可以从文件恢复，而不是依赖聊天记录。
 
-当前分支来自旧 Thoth plugin 形态的迁移线。旧 plugin runtime 已封存为 archive，不再作为当前实现继续维护。
+当前分支来自归档 plugin 形态的迁移线。归档 plugin runtime 已封存为 archive，不再作为当前实现继续维护。
 
 ## 1. Mission
 
-1. New Thoth 是任务控制平面，不是 harness 工具，不是隐藏 LLM API wrapper。
+1. Thoth 是任务控制平面，不是 harness 工具，不是隐藏 LLM API wrapper。
 2. 核心产品目标是最大程度降低用户心智负担和使用门槛，把模糊意图编译成可验证、可恢复、可异步执行、可审查的 task loop。
 3. 所有 AI/agent 能力必须来自配置的 provider session：ACP adapter、harness runtime、app-server、官方 harness SDK/control surface 或本地 harness CLI。
 4. Thoth 自身负责流程、prompt contract、任务 authority、冻结验收、证据、session 记录和多端控制；不得私自调用通用模型 API 替代 provider session。
@@ -22,28 +22,28 @@
 4. 读 [`.agent-os/run-log.md`](.agent-os/run-log.md) 最新条目。
 5. 需要理解产品设计时，按顺序读：
    - [`.agent-os/designs/最核心的设计理念.md`](.agent-os/designs/最核心的设计理念.md)
-   - [`.agent-os/designs/new-thoth-high-level-design.md`](.agent-os/designs/new-thoth-high-level-design.md)
-   - [`.agent-os/designs/new-thoth-mvp-user-journey.md`](.agent-os/designs/new-thoth-mvp-user-journey.md)
-   - [`.agent-os/designs/new-thoth-app-runtime-contract.md`](.agent-os/designs/new-thoth-app-runtime-contract.md)
-   - [`.agent-os/designs/new-thoth-engineering-architecture.md`](.agent-os/designs/new-thoth-engineering-architecture.md)
-   - [`.agent-os/designs/new-thoth-prompt-contract-seeds.md`](.agent-os/designs/new-thoth-prompt-contract-seeds.md)
+   - [`.agent-os/designs/thoth-high-level-design.md`](.agent-os/designs/thoth-high-level-design.md)
+   - [`.agent-os/designs/thoth-mvp-user-journey.md`](.agent-os/designs/thoth-mvp-user-journey.md)
+   - [`.agent-os/designs/thoth-app-runtime-contract.md`](.agent-os/designs/thoth-app-runtime-contract.md)
+   - [`.agent-os/designs/thoth-engineering-architecture.md`](.agent-os/designs/thoth-engineering-architecture.md)
+   - [`.agent-os/designs/thoth-prompt-contract-seeds.md`](.agent-os/designs/thoth-prompt-contract-seeds.md)
 6. 需要执行开发、测试、打包、发布相关工作时，先读 `docs/`：
    - [`docs/development.md`](docs/development.md)
    - [`docs/testing.md`](docs/testing.md)
    - [`docs/packaging.md`](docs/packaging.md)
    - [`docs/release.md`](docs/release.md)
 
-`.agent-os/designs/new-thoth-migration-architecture-20260625.md` 是早期长文归档，只用于追溯，不覆盖 canonical docs。
+`.agent-os/designs/thoth-migration-architecture-20260625.md` 是早期长文归档，只用于追溯，不覆盖 canonical docs。
 
 ## 3. Current Truth
 
-1. 项目名：New Thoth。
+1. 项目名：Thoth。
 2. 当前分支：`agent/dev/mvp`。
 3. 技术方向：TypeScript / Node，npm workspaces，`packages/` monorepo。
 4. Node/npm：Node `24.14.0`，npm `11.9.0`。
 5. License：`AGPL-3.0-or-later`。
-6. 当前实现状态：promoted source substrate；foundation packages 必须绿；daemon、web、desktop packaged smoke、Android Debug APK、relay test service 和 Codex provider smoke 已具备并行隔离验证入口，但不能声称 New Thoth MVP 业务链路已实现。
-7. 旧 plugin archive：
+6. 当前实现状态：promoted source substrate；foundation packages 必须绿；daemon、web、desktop packaged smoke、Android Debug APK、relay test service 和 Codex provider smoke 已具备并行隔离验证入口，但不能声称 Thoth MVP 业务链路已实现。
+7. 归档 plugin：
    - Release: `https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive`
    - Branch: `archive/main-20260627`
 8. `.agent-os/upstreams/` 是 ignored local raw cache，不是项目 authority，不得 stage/commit。
@@ -90,15 +90,15 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 
 ## 6. Non-Negotiable Rules
 
-1. 不允许在没有用户决定的情况下改写 New Thoth 核心目标、约束或验收含义。
-2. 长期跟踪条目必须使用 New Thoth ID，例如 `NTH-OBJ-001`、`NTH-REQ-001`、`NTH-MS-001`、`NTH-TD-001`、`NTH-EV-001`、`NTH-CD-001`。
+1. 不允许在没有用户决定的情况下改写 Thoth 核心目标、约束或验收含义。
+2. 长期跟踪条目必须使用 Thoth ID，例如 `NTH-OBJ-001`、`NTH-REQ-001`、`NTH-MS-001`、`NTH-TD-001`、`NTH-EV-001`、`NTH-CD-001`。
 3. 没有证据不得声称完成、通过、已实现或满足目标。
 4. `done` 不等于 `verified`；实现、验证、文档记账都完成后才能关闭 TODO。
 5. 失败探索必须保留在 `lessons-learned.md`，不能为保持整洁而删除。
 6. `project-index.md` 中必须始终只有一个全局 top next action。
 7. 项目状态文档主语言为中文；代码注释与脚本输出使用英文。
-8. 不允许重新引入旧 Python runtime、旧 Claude/Codex plugin projection、旧 dashboard template 或旧 Textual TUI。
-9. `packages/tui` 必须使用 OpenTUI；不得引入 Textual 或旧 plugin TUI。
+8. 不允许重新引入归档 Python runtime、归档 Claude/Codex plugin projection、归档 dashboard template 或归档 Textual TUI。
+9. `packages/tui` 必须使用 OpenTUI；不得引入 Textual 或归档 plugin TUI。
 10. Voice、speech、dictation、audio 不是当前 MVP 产品能力；不得新增权限、依赖、UI 或 runtime 能力。
 11. Multica 源码禁止 copy 到本仓库。Multica 只能作为设计和工程治理参考。
 12. 不得 stage/commit `.agent-os/upstreams/`、`.agent-os/artifacts/`、`.dev/`、`packages/app/android/`、`packages/app/ios/`、`packages/desktop/release/`。
@@ -182,7 +182,7 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 
 ## 13. 通用工程行为准则
 
-以下规则整合自 `multica-ai/andrej-karpathy-skills` 的工程准则，并按 New Thoth 当前仓库语境收敛。若与本文件前文的项目真相、用户决定或 New Thoth design authority 冲突，以上文和用户当轮指令为准。
+以下规则整合自 `multica-ai/andrej-karpathy-skills` 的工程准则，并按 Thoth 当前仓库语境收敛。若与本文件前文的项目真相、用户决定或 Thoth design authority 冲突，以上文和用户当轮指令为准。
 
 ### 13.1 Think Before Coding
 
@@ -222,7 +222,7 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 2. 多步任务默认采用“步骤 -> 验证方式”的思维。
 3. 对 bugfix，优先形成可复现证据，再修复并复验。
 4. 对重构，优先保护既有行为和测试边界，避免把重写伪装成整理。
-5. 对 New Thoth substrate 工作，必须明确区分“目录/文档/门禁已落地”和“产品能力已实现”；不得用基础设施验证替代 MVP 行为验证。
+5. 对 Thoth substrate 工作，必须明确区分“目录/文档/门禁已落地”和“产品能力已实现”；不得用基础设施验证替代 MVP 行为验证。
 
 推荐的最小计划格式：
 

@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { WebSocket } from "ws";
 
 const repoRoot = process.cwd();
-const captureDir = path.join(repoRoot, "docs/ui-review-captures/desktop-scorecard");
+const captureDir = path.join(repoRoot, "docs/ui-review-captures/loop2-workspace-secretary");
 const forbiddenSurfacePatterns = [
   /Paseo/i,
   /127\.0\.0\.1:6767/,
@@ -17,6 +17,15 @@ const forbiddenSurfacePatterns = [
   /offer=/,
   /#offer=/,
   /pairingToken/,
+  /credential/i,
+  /request_user_input/i,
+  /AskUserQuestion/i,
+  /permission question/i,
+  /agent manager/i,
+  /raw JSON/i,
+  /state code/i,
+  /repair/i,
+  /provider role/i,
   /thoth-relay-v3-client\./,
   /thoth\.relay\.token\./,
 ];
@@ -223,9 +232,13 @@ async function findElectronPageTarget(cdpPort, appPort) {
     try {
       const targetListText = await fetchText(`http://127.0.0.1:${cdpPort}/json/list`);
       const targets = JSON.parse(targetListText);
+      let firstPageTarget = null;
       for (const target of targets) {
         if (!target || target.type !== "page" || typeof target.url !== "string") {
           continue;
+        }
+        if (!firstPageTarget && typeof target.webSocketDebuggerUrl === "string") {
+          firstPageTarget = target;
         }
         const isExpectedAppUrl =
           target.url.includes(`localhost:${appPort}`) ||
@@ -237,6 +250,9 @@ async function findElectronPageTarget(cdpPort, appPort) {
         ) {
           return target;
         }
+      }
+      if (firstPageTarget?.webSocketDebuggerUrl) {
+        return firstPageTarget;
       }
     } catch {
       // Electron may expose /json/version before the page target is ready.
@@ -469,6 +485,22 @@ async function clickTestId(cdp, testId) {
   );
 }
 
+async function fillTestId(cdp, testId, text) {
+  await expectTestId(cdp, testId);
+  const selector = `[data-testid="${testId}"]`;
+  await cdp.evaluate(`(() => {
+    const root = document.querySelector(${JSON.stringify(selector)});
+    const input = root?.matches("input,textarea,[contenteditable=true]")
+      ? root
+      : root?.querySelector("input,textarea,[contenteditable=true]");
+    if (!input) {
+      throw new Error("Input not found for test id ${testId}");
+    }
+    input.focus();
+  })()`);
+  await cdp.send("Input.insertText", { text });
+}
+
 async function expectHealthySurface(cdp) {
   const text = await cdp.evaluate("document.body?.innerText ?? ''");
   const pageUrl = await cdp.evaluate("window.location.href");
@@ -504,7 +536,6 @@ async function main() {
   const tempRoot = mkdtempSync(path.join(os.tmpdir(), "thoth-desktop-scorecard-"));
   const thothHome = path.join(tempRoot, "home");
   const userData = path.join(tempRoot, "user-data");
-  const repoPath = createTempGitRepo("thoth-desktop-scorecard-repo-");
   mkdirSync(thothHome, { recursive: true });
   mkdirSync(userData, { recursive: true });
 
@@ -521,12 +552,16 @@ async function main() {
     THOTH_ELECTRON_USER_DATA_DIR: userData,
     THOTH_DISABLE_SINGLE_INSTANCE_LOCK: "1",
     THOTH_ELECTRON_REMOTE_DEBUGGING_PORT: String(cdpPort),
-    THOTH_ELECTRON_FLAGS:
-      `${process.env.THOTH_ELECTRON_FLAGS ?? ""} --remote-debugging-port=${cdpPort} --no-sandbox`.trim(),
+    THOTH_ELECTRON_FLAGS: `${
+      process.env.THOTH_ELECTRON_FLAGS ?? ""
+    } --remote-debugging-port=${cdpPort} --no-sandbox --no-proxy-server`.trim(),
+    THOTH_DESKTOP_LOAD_STATIC_EXPORT: "1",
     EXPO_PORT: String(appPort),
     EXPO_DEV_URL: appBaseUrl,
     EXPO_PUBLIC_LOCAL_DAEMON: `127.0.0.1:${daemonPort}`,
     THOTH_WEB_PLATFORM: "electron",
+    NO_PROXY: "127.0.0.1,localhost",
+    no_proxy: "127.0.0.1,localhost",
     BROWSER: "none",
     FORCE_COLOR: "0",
     NO_COLOR: "1",
@@ -536,7 +571,6 @@ async function main() {
   let desktop = null;
   let staticServer = null;
   let cdp = null;
-  let client = null;
 
   try {
     logStep("build-web.start", { appPort, daemonPort });
@@ -553,16 +587,6 @@ async function main() {
     await waitForHttpOk(`http://127.0.0.1:${daemonPort}/api/status`);
     await waitForChildFailure(daemon, "Desktop scorecard daemon");
     logStep("daemon.ready", { daemonPort });
-
-    client = await connectDaemonClient(daemonPort);
-    const created = await client.createWorkspace({
-      source: { kind: "directory", path: repoPath },
-    });
-    if (!created.workspace || created.error) {
-      throw new Error(created.error ?? `Failed to create scorecard workspace ${repoPath}`);
-    }
-    const workspaceId = created.workspace.id;
-    logStep("workspace.created", { workspaceId });
 
     logStep("static-server.start", { appPort });
     staticServer = spawnLogged(
@@ -614,17 +638,19 @@ async function main() {
       url: await cdp.evaluate("window.location.href"),
       text: String(await cdp.evaluate("document.body?.innerText ?? ''")).slice(0, 300),
     });
-    await cdp.navigate(`${appBaseUrl}/open-project`);
-    logStep("open-project.body", {
+    await cdp.navigate(appBaseUrl);
+    logStep("loop2-root.body", {
       url: await cdp.evaluate("window.location.href"),
       text: String(await cdp.evaluate("document.body?.innerText ?? ''")).slice(0, 300),
     });
-    await expectVisibleText(cdp, "One Thoth");
-    await expectVisibleText(cdp, "Task control plane");
-    await expectTestId(cdp, "open-project-submit");
-    await expectHealthySurface(cdp);
+    await expectTestId(cdp, "thoth-loop2-shell");
+    await expectTestId(cdp, "workspace-secretary-view");
+    await expectVisibleText(cdp, "Workspace Secretary");
+    await expectVisibleText(cdp, "Background Tasks");
+    await expectVisibleText(cdp, "Settings");
+    await expectVisibleText(cdp, "新秘书话题");
     const desktopBridge = await inspectDesktopBridge(cdp);
-    logStep("home.verified", { bridgeKeys: desktopBridge.keys });
+    logStep("loop2-root.verified", { bridgeKeys: desktopBridge.keys });
     const requiredDesktopKeys = ["invoke", "events", "window", "dialog", "notification", "opener"];
     for (const key of requiredDesktopKeys) {
       if (!desktopBridge.keys.includes(key)) {
@@ -635,39 +661,49 @@ async function main() {
     if (!desktopStatus || typeof desktopStatus.serverId !== "string") {
       throw new Error(`Invalid desktop daemon status: ${JSON.stringify(desktopStatus)}`);
     }
-    const serverId = desktopStatus.serverId.trim();
-    await capture(cdp, "desktop-home.png");
-    logStep("home.captured");
-
-    await cdp.navigate(`${appBaseUrl}${buildWorkspaceRoute(serverId, workspaceId)}`);
-    await expectTestId(cdp, "workspace-thoth-surface-preview");
-    await expectVisibleText(cdp, "One Thoth workspace");
-    await expectVisibleText(cdp, "Needs provider before execution");
-    await expectTestId(cdp, "thoth-composer-controls");
-    await clickTestId(cdp, "thoth-control-mode");
-    await clickTestId(cdp, "thoth-control-clarify");
-    await clickTestId(cdp, "thoth-control-loop");
     await expectHealthySurface(cdp);
-    await capture(cdp, "desktop-workspace.png");
-    logStep("workspace.captured");
+    await capture(cdp, "desktop-app-workspace-secretary.png");
+    logStep("workspace-secretary.captured");
 
-    await cdp.navigate(`${appBaseUrl}/settings/about`);
-    await expectVisibleText(cdp, "About Thoth");
+    await fillTestId(cdp, "secretary-composer-input", "hi");
+    await clickTestId(cdp, "secretary-send");
+    await expectVisibleText(cdp, "收到，我先按普通聊天接住这句");
+    const clarifyCountAfterHi = await cdp.evaluate(
+      `document.querySelectorAll('[data-testid="clarify-decision-card"]').length`,
+    );
+    if (clarifyCountAfterHi !== 0) {
+      throw new Error(`Expected no Clarify card after hi, saw ${clarifyCountAfterHi}`);
+    }
     await expectHealthySurface(cdp);
-    await capture(cdp, "desktop-settings-about.png");
-    logStep("settings-about.captured");
+    await capture(cdp, "desktop-app-hi-no-card.png");
+    logStep("hi-no-card.captured");
 
-    await cdp.navigate(`${appBaseUrl}/settings/hosts/${encodeURIComponent(serverId)}/providers`);
-    await expectTestId(cdp, "host-page-providers-card");
+    await clickTestId(cdp, "secretary-mode-menu-trigger");
+    await clickTestId(cdp, "secretary-mode-control-loop");
+    await fillTestId(cdp, "secretary-composer-input", "把 APP 改成 Workspace Secretary");
+    await clickTestId(cdp, "secretary-send");
+    await expectTestId(cdp, "clarify-decision-card");
+    await expectVisibleText(cdp, "一个分支，几个维度");
+    await expectVisibleText(cdp, "你推荐");
+    await expectVisibleText(cdp, "你决定");
     await expectHealthySurface(cdp);
-    await capture(cdp, "desktop-settings-providers.png");
-    logStep("settings-providers.captured");
+    await capture(cdp, "desktop-app-clarify-card.png");
+    logStep("clarify-card.captured");
 
-    await cdp.navigate(`${appBaseUrl}/settings/hosts/${encodeURIComponent(serverId)}/connections`);
-    await expectTestId(cdp, "host-page-connections-card");
+    await clickTestId(cdp, "thoth-view-background-tasks");
+    await expectTestId(cdp, "background-tasks-view");
+    await expectVisibleText(cdp, "确认后的 Loop 会在这里恢复");
     await expectHealthySurface(cdp);
-    await capture(cdp, "desktop-settings-connections.png");
-    logStep("settings-connections.captured");
+    await capture(cdp, "desktop-app-background-tasks.png");
+    logStep("background-tasks.captured");
+
+    await clickTestId(cdp, "thoth-view-settings");
+    await expectTestId(cdp, "settings-view");
+    await expectVisibleText(cdp, "relay.test.thoth.seeles.ai");
+    await expectVisibleText(cdp, "真实测试服务健康");
+    await expectHealthySurface(cdp);
+    await capture(cdp, "desktop-app-settings-real-relay.png");
+    logStep("settings-real-relay.captured");
 
     const badConsoleMessages = cdp.consoleMessages.filter(
       (message) => message.type === "pageerror" || message.type === "error",
@@ -683,7 +719,6 @@ async function main() {
       daemonPort,
       appPort,
       cdpPort,
-      workspaceId,
       desktopBridge,
       desktopStatus: {
         serverId: desktopStatus.serverId,
@@ -692,11 +727,11 @@ async function main() {
         listen: desktopStatus.listen,
       },
       screenshots: [
-        "desktop-home.png",
-        "desktop-workspace.png",
-        "desktop-settings-about.png",
-        "desktop-settings-providers.png",
-        "desktop-settings-connections.png",
+        "desktop-app-workspace-secretary.png",
+        "desktop-app-hi-no-card.png",
+        "desktop-app-clarify-card.png",
+        "desktop-app-background-tasks.png",
+        "desktop-app-settings-real-relay.png",
       ].map((name) => path.join(captureDir, name)),
     };
     writeFileSync(
@@ -751,9 +786,6 @@ async function main() {
     if (cdp) {
       await cdp.close().catch(() => undefined);
     }
-    if (client) {
-      await client.close().catch(() => undefined);
-    }
     if (desktop) {
       await stopProcess(desktop);
     }
@@ -763,7 +795,6 @@ async function main() {
     if (daemon) {
       await stopProcess(daemon);
     }
-    rmSync(repoPath, { recursive: true, force: true });
     rmSync(tempRoot, { recursive: true, force: true });
   }
 }

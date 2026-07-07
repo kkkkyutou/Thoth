@@ -98,6 +98,10 @@ export class DaemonConfigStore {
     return this.current;
   }
 
+  public getThothHome(): string {
+    return this.thothHome;
+  }
+
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = MutableDaemonConfigPatchSchema.parse(partial);
     const next = MutableDaemonConfigSchema.parse(deepMerge(this.current, parsedPatch));
@@ -202,6 +206,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
 
   return {
     ...persisted,
+    workspaceSecretary: mutable.workspaceSecretary,
     daemon: {
       ...persisted.daemon,
       mcp: {

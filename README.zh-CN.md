@@ -2,21 +2,21 @@
 
 Thoth 正在被重建为一个 local-first 的 AI 任务控制平面。
 
-旧的 Claude Code / Codex plugin runtime 已经归档，当前分支不再维护旧 plugin 形态。本仓库现在包含 New Thoth 的设计 authority 和已经提升到正式包源码树中的 TypeScript / Node implementation substrate。当前 checkout 还没有可运行的 CLI、daemon、TUI、桌面 app、手机 app、relay 或 harness driver。
+归档 Claude Code / Codex plugin runtime 已经归档，当前分支不再维护归档 plugin 形态。本仓库现在包含 Thoth 的设计 authority 和已经提升到正式包源码树中的 TypeScript / Node implementation substrate。当前 checkout 还没有可运行的 CLI、daemon、TUI、桌面 app、手机 app、relay 或 harness driver。
 
 ## 当前状态
 
-- 当前分支重点：New Thoth reset 和 MVP 架构。
+- 当前分支重点：Thoth reset 和 MVP 架构。
 - 当前实现状态：正式 `packages/*` 源码树中的 upstream-derived implementation substrate，预期暂时 broken。
 - 当前 license：`AGPL-3.0-or-later`。
 - 当前版权主体：`SeeleAI`。
 - 当前 public surface：文档、包边界和不可运行的 promoted source substrate。
-- 旧 plugin 归档 release：<https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
-- 旧 plugin 归档分支：`archive/main-20260627`
+- 归档 plugin release：<https://github.com/SeeleAI/Thoth/releases/tag/thoth-plugin-final-archive>
+- 归档 plugin 分支：`archive/main-20260627`
 
-## New Thoth 要解决什么
+## Thoth 要解决什么
 
-New Thoth 的第一目标是最大程度降低用户心智负担和使用门槛。用户应该可以自然表达意图；Thoth 应该只追问真正影响方向、风险和验收的少量黄金问题，在需要时注册可恢复任务，异步运行 loop，通过独立审查验证结果，并用证据汇报。
+Thoth 的第一目标是最大程度降低用户心智负担和使用门槛。用户应该可以自然表达意图；Thoth 应该只追问真正影响方向、风险和验收的少量黄金问题，在需要时注册可恢复任务，异步运行 loop，通过独立审查验证结果，并用证据汇报。
 
 核心方向是：
 
@@ -49,16 +49,16 @@ packages/
 从这里开始读：
 
 - [最核心的设计理念](.agent-os/designs/最核心的设计理念.md)
-- [High-Level Design](.agent-os/designs/new-thoth-high-level-design.md)
-- [MVP User Journey](.agent-os/designs/new-thoth-mvp-user-journey.md)
-- [Engineering Architecture](.agent-os/designs/new-thoth-engineering-architecture.md)
-- [Prompt Contract Seeds](.agent-os/designs/new-thoth-prompt-contract-seeds.md)
+- [High-Level Design](.agent-os/designs/thoth-high-level-design.md)
+- [MVP User Journey](.agent-os/designs/thoth-mvp-user-journey.md)
+- [Engineering Architecture](.agent-os/designs/thoth-engineering-architecture.md)
+- [Prompt Contract Seeds](.agent-os/designs/thoth-prompt-contract-seeds.md)
 
-旧的长篇迁移笔记保留在 `.agent-os/designs/new-thoth-migration-architecture-20260625.md`，仅用于历史追溯。
+历史长篇迁移笔记保留在 `.agent-os/designs/thoth-migration-architecture-20260625.md`，仅用于历史追溯。
 
 ## 开发提示
 
-当前 checkout 不是可运行产品。不要把它当作旧 plugin runtime 安装，也不要期待当前分支提供 `thoth`、`/thoth:*` 或 `$thoth` 命令。
+当前 checkout 不是可运行产品。不要把它当作归档 plugin runtime 安装，也不要期待当前分支提供 `thoth`、`/thoth:*` 或 `$thoth` 命令。
 
 后续实现应以 `.agent-os/project-index.md`、`.agent-os/todo.md` 和上面的 canonical 设计文档为准。
 

@@ -33,6 +33,11 @@ import {
   type ListImportableSessionsOptions,
   type ProviderCatalog,
 } from "../agent-sdk-types.js";
+import {
+  THOTH_CLARIFY_RUNTIME_TOOL_NAMES,
+  type ThothClarifyRuntimeToolName,
+} from "@thoth/protocol/thoth-runtime-contract";
+import type { ThothToolCatalog, ThothToolResult } from "../tools/types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
 import type { Logger } from "pino";
 
@@ -186,6 +191,7 @@ const CODEX_APP_SERVER_CAPABILITIES: AgentCapabilityFlags = {
   supportsSessionListing: true,
   supportsDynamicModes: false,
   supportsMcpServers: true,
+  supportsNativeThothTools: true,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
   supportsRewindConversation: true,
@@ -992,6 +998,181 @@ interface CodexQuestionPrompt {
   isSecret?: boolean;
 }
 
+type CodexDynamicToolSpec = {
+  name: string;
+  description: string;
+  inputSchema: unknown;
+  namespace?: string | null;
+  deferLoading?: boolean;
+};
+
+type CodexDynamicToolCallResponse = {
+  success: boolean;
+  contentItems: Array<{ type: "inputText"; text: string }>;
+};
+
+const THOTH_CLARIFY_DYNAMIC_TOOL_NAME_SET = new Set<string>(THOTH_CLARIFY_RUNTIME_TOOL_NAMES);
+
+const clarifyChoiceJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "label", "description"],
+  properties: {
+    id: { type: "string", minLength: 1 },
+    label: { type: "string", minLength: 1, maxLength: 15 },
+    description: { type: "string", minLength: 1, maxLength: 30 },
+  },
+};
+
+const clarifyQuestionJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "question", "choices"],
+  properties: {
+    id: { type: "string", minLength: 1 },
+    question: { type: "string", minLength: 1 },
+    behavior_tree_node: { type: "string", minLength: 1 },
+    choices: {
+      type: "array",
+      minItems: 2,
+      maxItems: 4,
+      items: clarifyChoiceJsonSchema,
+    },
+    note: { type: "string" },
+  },
+};
+
+const taskCardJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "goal", "constraints", "acceptance"],
+  properties: {
+    title: { type: "string", minLength: 1 },
+    goal: { type: "string", minLength: 1 },
+    constraints: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+    acceptance: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+  },
+};
+
+const clarifyProvenanceJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["clarify_transcript_verbatim"],
+  properties: {
+    clarify_transcript_verbatim: { type: "string", minLength: 1 },
+  },
+};
+
+const pyramidSubgoalJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "title", "goal", "acceptance"],
+  properties: {
+    id: { type: "string", minLength: 1 },
+    title: { type: "string", minLength: 1 },
+    goal: { type: "string", minLength: 1 },
+    acceptance: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+  },
+};
+
+const pyramidStageJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "title", "goal", "acceptance", "subgoals"],
+  properties: {
+    id: { type: "string", minLength: 1 },
+    title: { type: "string", minLength: 1 },
+    goal: { type: "string", minLength: 1 },
+    acceptance: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+    subgoals: { type: "array", items: pyramidSubgoalJsonSchema },
+  },
+};
+
+const pyramidPlanJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "summary", "pyramid"],
+  properties: {
+    title: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1 },
+    pyramid: { type: "array", minItems: 1, items: pyramidStageJsonSchema },
+  },
+};
+
+const pyramidProvenanceJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["clarify_transcript_verbatim", "approved_ceo_task_card_verbatim"],
+  properties: {
+    clarify_transcript_verbatim: { type: "string", minLength: 1 },
+    approved_ceo_task_card_verbatim: { type: "string", minLength: 1 },
+  },
+};
+
+const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, CodexDynamicToolSpec> =
+  {
+    thoth_submit_clarify_card: {
+      name: "thoth_submit_clarify_card",
+      description:
+        "Submit one Thoth Clarify decision card when a user-owned decision changes route, scope, acceptance, risk, priority, or irreversible action.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "why_now", "decision_it_changes", "questions"],
+        properties: {
+          title: { type: "string", minLength: 1 },
+          why_now: { type: "string", minLength: 1 },
+          decision_it_changes: { type: "string", minLength: 1 },
+          questions: { type: "array", minItems: 2, maxItems: 4, items: clarifyQuestionJsonSchema },
+          allow_choice_notes: { type: "boolean", const: true },
+          allow_note_only: { type: "boolean", const: true },
+        },
+      },
+    },
+    thoth_submit_task_card: {
+      name: "thoth_submit_task_card",
+      description:
+        "Submit the concise CEO Task Card after Clarify converges. Include only title, goal, constraints, and acceptance.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["task_card", "provenance"],
+        properties: {
+          task_card: taskCardJsonSchema,
+          provenance: clarifyProvenanceJsonSchema,
+        },
+      },
+    },
+    thoth_submit_pyramid_plan: {
+      name: "thoth_submit_pyramid_plan",
+      description:
+        "Submit the second approval card as a pyramid-shaped target breakdown with stages, subgoals, and acceptance evidence.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["pyramid_plan", "provenance"],
+        properties: {
+          pyramid_plan: pyramidPlanJsonSchema,
+          provenance: pyramidProvenanceJsonSchema,
+        },
+      },
+    },
+    thoth_report_blocked: {
+      name: "thoth_report_blocked",
+      description: "Report a real blocker for the structured Workspace Secretary flow.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "reason"],
+        properties: {
+          title: { type: "string", minLength: 1 },
+          reason: { type: "string", minLength: 1 },
+          user_decision_needed: { type: "string" },
+        },
+      },
+    },
+  };
+
 export function normalizeCodexQuestionPrompts(raw: unknown): CodexQuestionPrompt[] {
   if (!Array.isArray(raw)) {
     return [];
@@ -1040,6 +1221,46 @@ export function normalizeCodexQuestionPrompts(raw: unknown): CodexQuestionPrompt
     });
   }
   return questions;
+}
+
+function buildThothDynamicToolSpecs(tools: ThothToolCatalog | undefined): CodexDynamicToolSpec[] {
+  if (!tools) {
+    return [];
+  }
+  return THOTH_CLARIFY_RUNTIME_TOOL_NAMES.flatMap((name) => {
+    if (!tools.getTool(name)) {
+      return [];
+    }
+    return [THOTH_CLARIFY_DYNAMIC_TOOL_SPECS[name]];
+  });
+}
+
+function dynamicToolResultText(result: ThothToolResult): string {
+  const text = result.content
+    .map((item) => (typeof item.text === "string" ? item.text : ""))
+    .filter((item) => item.trim().length > 0)
+    .join("\n\n")
+    .trim();
+  if (text) {
+    return text;
+  }
+  if (result.isError) {
+    return "The requested authority action could not be completed.";
+  }
+  return "The requested authority action completed.";
+}
+
+function dynamicToolErrorResult(error: unknown): CodexDynamicToolCallResponse {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    success: false,
+    contentItems: [
+      {
+        type: "inputText",
+        text: `The requested authority action was rejected by Thoth: ${message}`,
+      },
+    ],
+  };
 }
 
 export function formatCodexQuestionPrompts(questions: CodexQuestionPrompt[]): string {
@@ -2913,6 +3134,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     private readonly goalsEnabled: boolean = false,
     private readonly autoReviewEnabled: boolean = false,
     private readonly agentId?: string,
+    private readonly thothTools?: ThothToolCatalog,
   ) {
     this.logger = logger.child({
       module: "agent",
@@ -3196,6 +3418,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.client.setRequestHandler("item/tool/requestUserInput", (params) =>
       this.handleToolApprovalRequest(params),
     );
+    this.client.setRequestHandler("item/tool/call", (params) => this.handleDynamicToolCall(params));
     // Keep the legacy method name for older Codex builds.
     this.client.setRequestHandler("tool/requestUserInput", (params) =>
       this.handleToolApprovalRequest(params),
@@ -4116,6 +4339,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.config.systemPrompt,
       this.config.daemonAppendSystemPrompt,
     );
+    const dynamicTools = buildThothDynamicToolSpecs(this.thothTools);
     const params: Record<string, unknown> = {
       model,
       cwd: this.config.cwd ?? null,
@@ -4123,6 +4347,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       sandbox,
       ...(developerInstructions ? { developerInstructions } : {}),
       ...(innerConfig ? { config: innerConfig } : {}),
+      ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
       ...(this.ephemeral ? { ephemeral: true } : {}),
     };
     applyApprovalsReviewerParam(params, preset);
@@ -5274,6 +5499,59 @@ export class CodexAppServerAgentSession implements AgentSession {
       });
     });
   }
+
+  private async handleDynamicToolCall(params: unknown): Promise<CodexDynamicToolCallResponse> {
+    const parsed = z
+      .object({
+        threadId: z.string(),
+        turnId: z.string(),
+        callId: z.string(),
+        namespace: z.string().nullable().optional(),
+        tool: z.string(),
+        arguments: z.unknown(),
+      })
+      .parse(params);
+
+    if (!THOTH_CLARIFY_DYNAMIC_TOOL_NAME_SET.has(parsed.tool)) {
+      return dynamicToolErrorResult(new Error("Unsupported dynamic tool for this session"));
+    }
+    if (!this.thothTools) {
+      return dynamicToolErrorResult(new Error("Thoth runtime tool bridge is not enabled"));
+    }
+    const tool = this.thothTools.getTool(parsed.tool);
+    if (!tool) {
+      return dynamicToolErrorResult(new Error("Requested Thoth runtime tool is unavailable"));
+    }
+
+    try {
+      const result = await this.thothTools.executeTool(parsed.tool, parsed.arguments, {
+        providerToolCall: {
+          provider: CODEX_PROVIDER,
+          threadId: parsed.threadId,
+          turnId: parsed.turnId,
+          callId: parsed.callId,
+          toolName: parsed.tool,
+          namespace: parsed.namespace ?? null,
+        },
+      });
+      return {
+        success: result.isError !== true,
+        contentItems: [{ type: "inputText", text: dynamicToolResultText(result) }],
+      };
+    } catch (error) {
+      this.logger.warn(
+        {
+          error,
+          tool: parsed.tool,
+          callId: parsed.callId,
+          threadId: parsed.threadId,
+          turnId: parsed.turnId,
+        },
+        "Codex dynamic tool call failed",
+      );
+      return dynamicToolErrorResult(error);
+    }
+  }
 }
 
 export class CodexAppServerAgentClient implements AgentClient {
@@ -5404,6 +5682,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       goalsEnabled,
       autoReviewEnabled,
       launchContext?.agentId,
+      launchContext?.thothTools,
     );
     await session.connect();
     return session;
@@ -5434,6 +5713,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       goalsEnabled,
       autoReviewEnabled,
       launchContext?.agentId,
+      launchContext?.thothTools,
     );
     await session.connect();
     return session;

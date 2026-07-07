@@ -323,6 +323,7 @@ function getFallbackTabOptionLabel(
     setup: string;
     terminal: string;
     browser: string;
+    backgroundTasks: string;
     agent: string;
   },
 ): string {
@@ -338,6 +339,9 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "browser") {
     return labels.browser;
   }
+  if (tab.target.kind === "background_tasks") {
+    return labels.backgroundTasks;
+  }
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
   }
@@ -352,6 +356,7 @@ function getFallbackTabOptionDescription(
     agent: string;
     terminal: string;
     browser: string;
+    backgroundTasks: string;
   },
 ): string {
   if (tab.target.kind === "draft") {
@@ -368,6 +373,9 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "browser") {
     return labels.browser;
+  }
+  if (tab.target.kind === "background_tasks") {
+    return labels.backgroundTasks;
   }
   return tab.target.path;
 }
@@ -640,6 +648,7 @@ function MobileWorkspaceTabOption({
       setup: t("workspace.tabs.fallback.setup"),
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
+      backgroundTasks: t("workspace.tabs.fallback.backgroundTasks"),
       agent: t("workspace.tabs.fallback.agent"),
     }),
     [t],
@@ -2381,6 +2390,7 @@ function WorkspaceScreenContent({
       workspaceSetup: t("workspace.tabs.fallback.workspaceSetup"),
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
+      backgroundTasks: t("workspace.tabs.fallback.backgroundTasks"),
       agent: t("workspace.tabs.fallback.agent"),
     }),
     [t],
