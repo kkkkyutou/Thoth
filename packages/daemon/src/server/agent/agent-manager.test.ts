@@ -34,7 +34,7 @@ import type {
   AgentTimelineItem,
   ImportProviderSessionInput,
 } from "./agent-sdk-types.js";
-import type { ThothToolCatalog } from "./tools/types.js";
+import type { ThothToolCatalog, ThothToolRuntimeContext } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
 
 interface Deferred<T> {
@@ -1287,6 +1287,7 @@ test("createAgent passes native Thoth tools through launch context without inter
     }
   }
 
+  let capturedToolContext: ThothToolRuntimeContext | null = null;
   const client = new NativeToolsClient();
   const manager = new AgentManager({
     clients: {
@@ -1295,7 +1296,10 @@ test("createAgent passes native Thoth tools through launch context without inter
     registry: storage,
     logger,
     mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
-    thothToolCatalogFactory: () => thothTools,
+    thothToolCatalogFactory: (context) => {
+      capturedToolContext = context;
+      return thothTools;
+    },
     idFactory: () => "00000000-0000-4000-8000-000000000106",
   });
 
@@ -1316,6 +1320,8 @@ test("createAgent passes native Thoth tools through launch context without inter
   });
 
   expect(client.lastLaunchContext?.thothTools).toBe(thothTools);
+  expect(capturedToolContext?.callerAgentId).toBe(snapshot.id);
+  expect(capturedToolContext?.callerAgentConfig?.extra?.codex?.thothClarifyRuntimeTools).toBe(true);
   expect(client.lastConfig?.mcpServers).toEqual({
     custom: {
       type: "stdio",

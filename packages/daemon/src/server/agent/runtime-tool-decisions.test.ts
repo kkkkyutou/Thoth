@@ -70,6 +70,16 @@ describe("runtime authority decision persistence", () => {
         toolName: "thoth_submit_clarify_card",
         phase: "clarify",
         card: { kind: "clarify_card", card: clarifyCard() },
+        publicBadgeSummary: "正在拆解目标边界。",
+        frontierLedger: {
+          clarify_strength: "dive",
+          grounded_user_decisions: [],
+          remaining_material_user_owned_assumptions: ["语言", "交付形态"],
+          agent_owned_assumptions: ["具体实现策略由 agent 决定。"],
+          discoverable_assumptions: ["测试命令可发现。"],
+          why_this_round: "这些问题决定任务路线。",
+          convergence_state: "not_converged",
+        },
         redactedRawInputHash:
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         timeoutMs: 60_000,
@@ -87,7 +97,12 @@ describe("runtime authority decision persistence", () => {
 
       expect(listPendingRuntimeAuthorityDecisions()).toEqual([]);
       expect(listRuntimeAuthorityDecisionRecords()).toContainEqual(
-        expect.objectContaining({ id: record.id, status: "blocked" }),
+        expect.objectContaining({
+          id: record.id,
+          status: "blocked",
+          publicBadgeSummary: "正在拆解目标边界。",
+          frontierLedger: expect.objectContaining({ clarify_strength: "dive" }),
+        }),
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

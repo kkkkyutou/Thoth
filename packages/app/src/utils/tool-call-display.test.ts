@@ -135,6 +135,25 @@ describe("tool-call-display", () => {
     expect(display.errorText).toBe('{\n  "message": "boom"\n}');
   });
 
+  it("uses plain_text label as display name and text as summary", () => {
+    const display = buildToolCallDisplayModel({
+      name: "clarify",
+      status: "running",
+      error: null,
+      detail: {
+        type: "plain_text",
+        label: "需求拆解",
+        text: "正在拆解排序需求：确认语言、接口和性能基线。",
+        icon: "brain",
+      },
+    });
+
+    expect(display).toEqual({
+      displayName: "需求拆解",
+      summary: "正在拆解排序需求：确认语言、接口和性能基线。",
+    });
+  });
+
   it("shows terminal interaction with only the fixed label when no command is available", () => {
     const display = buildToolCallDisplayModel({
       name: "terminal",

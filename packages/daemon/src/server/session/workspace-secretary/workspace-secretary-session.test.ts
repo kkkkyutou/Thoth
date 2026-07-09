@@ -12,7 +12,10 @@ import type { PersistedWorkspaceRecord } from "../../workspace-registry.js";
 import type { AgentManager, ManagedAgent } from "../../agent/agent-manager.js";
 import type { AgentSessionConfig, AgentStreamEvent } from "../../agent/agent-sdk-types.js";
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
-import { createRuntimeAuthorityDecision } from "../../agent/runtime-tool-decisions.js";
+import {
+  createRuntimeAuthorityDecision,
+  rejectRuntimeAuthorityDecision,
+} from "../../agent/runtime-tool-decisions.js";
 import { WorkspaceSecretarySession } from "./workspace-secretary-session.js";
 
 const workspace: PersistedWorkspaceRecord = {
@@ -39,13 +42,18 @@ function providerSession(): MutableDaemonConfig["workspaceSecretary"]["providerS
 
 function createConfig(input?: {
   providerSession?: MutableDaemonConfig["workspaceSecretary"]["providerSession"];
+  workspaceSecretary?: Partial<NonNullable<MutableDaemonConfig["workspaceSecretary"]>>;
   mcpInjected?: boolean;
 }): MutableDaemonConfig {
+  const workspaceSecretary = {
+    ...(input?.providerSession ? { providerSession: input.providerSession } : {}),
+    ...(input?.workspaceSecretary ?? {}),
+  };
   return {
     mcp: { injectIntoAgents: input?.mcpInjected ?? true },
     providers: {},
     metadataGeneration: { providers: [] },
-    workspaceSecretary: input?.providerSession ? { providerSession: input.providerSession } : {},
+    workspaceSecretary,
     autoArchiveAfterMerge: false,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",
@@ -72,6 +80,7 @@ function clarifyCard(id = "clarify-card-1"): ThothClarifyCardModel {
           id: "language",
           question: "要用什么语言实现？",
           behavior_tree_node: "language",
+          selection_mode: "single",
           choices: [
             { id: "cpp", label: "C++", description: "贴近系统性能" },
             { id: "rust", label: "Rust", description: "安全且高性能" },
@@ -81,6 +90,7 @@ function clarifyCard(id = "clarify-card-1"): ThothClarifyCardModel {
           id: "shape",
           question: "最终交付成什么形态？",
           behavior_tree_node: "shape",
+          selection_mode: "single",
           choices: [
             { id: "library", label: "库函数", description: "最小可复用接口" },
             { id: "cli", label: "命令行", description: "可传参运行" },
@@ -137,6 +147,7 @@ function nativeStream(...items: AgentStreamEvent[]): AgentStreamEvent[] {
 
 function createSession(input?: {
   providerSession?: MutableDaemonConfig["workspaceSecretary"]["providerSession"];
+  workspaceSecretary?: Partial<NonNullable<MutableDaemonConfig["workspaceSecretary"]>>;
   streamRuns?: AgentStreamEvent[][];
 }) {
   const emitted: SessionOutboundMessage[] = [];
@@ -201,7 +212,11 @@ function createSession(input?: {
   } as unknown as AgentManager;
   const daemonConfigStore = {
     getThothHome: () => thothHome,
-    get: () => createConfig({ providerSession: input?.providerSession ?? providerSession() }),
+    get: () =>
+      createConfig({
+        providerSession: input?.providerSession ?? providerSession(),
+        workspaceSecretary: input?.workspaceSecretary,
+      }),
     patch: () => undefined,
   } as unknown as DaemonConfigStore;
   const session = new WorkspaceSecretarySession({
@@ -254,6 +269,56 @@ async function flushBackgroundTurns(): Promise<void> {
 }
 
 describe("WorkspaceSecretarySession runtime tool bridge", () => {
+  it("hydrates Loop composer strength from persisted config", async () => {
+    const { session, emitted, cleanup } = createSession({
+      workspaceSecretary: { mode: "loop", loopStrength: "light" },
+    });
+
+    try {
+      await session.handleSnapshotRequest({
+        type: "workspace_secretary.snapshot.request",
+        requestId: "snapshot-1",
+      });
+
+      const message = emitted.find(
+        (entry) => entry.type === "workspace_secretary.snapshot.response",
+      );
+      expect(
+        message && "payload" in message ? message.payload.model?.secretary.composer : null,
+      ).toMatchObject({
+        mode: "loop",
+        loop: "light",
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("defaults missing Loop composer strength to Single", async () => {
+    const { session, emitted, cleanup } = createSession({
+      workspaceSecretary: { mode: "loop" },
+    });
+
+    try {
+      await session.handleSnapshotRequest({
+        type: "workspace_secretary.snapshot.request",
+        requestId: "snapshot-1",
+      });
+
+      const message = emitted.find(
+        (entry) => entry.type === "workspace_secretary.snapshot.response",
+      );
+      expect(
+        message && "payload" in message ? message.payload.model?.secretary.composer : null,
+      ).toMatchObject({
+        mode: "loop",
+        loop: "one_plan_one_do",
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
   it("starts Quick + none as a bare provider timeline without outputSchema", async () => {
     const { session, emitted, runPrompts, runOptions, createdAgentConfigs, cleanup } =
       createSession({
@@ -362,6 +427,10 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       await flushBackgroundTurns();
 
       expect(String(runPrompts[0])).toContain("runtime_tools: thoth_submit_clarify_card");
+      expect(String(runPrompts[0])).toContain("clarify_below_soft_target_policy:");
+      expect(String(runPrompts[0])).toContain("below_soft_minimum: dive has 0/10 Clarify cards");
+      expect(String(runPrompts[0])).toContain("material_frontier_categories:");
+      expect(String(runPrompts[0])).toContain("performance_quality_scale_or_benchmark_baseline");
       expect(String(runPrompts[0])).not.toContain("submit_clarify_packet");
       expect(runOptions).toEqual([{ messageId: "message-1" }]);
       expect(createdAgentConfigs[0]?.extra?.codex?.thothClarifyRuntimeTools).toBe(true);
@@ -468,6 +537,163 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
+  it("rejects multiple choices for a single-select Clarify question", async () => {
+    const card = clarifyCard("clarify-card-single-reject");
+    const { session, emitted, cleanup } = createSession({
+      streamRuns: [
+        nativeStream({
+          type: "timeline",
+          provider: "codex",
+          turnId: "turn-1",
+          item: { type: "clarify_card", card },
+        }),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-1",
+        text: "实现一个高性能快速排序",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "dive",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      const { waitForAnswer } = createRuntimeAuthorityDecision({
+        provider: "codex",
+        agentId: "agent-workspace-secretary",
+        topicId: "topic-main",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        callId: "call-1",
+        toolName: "thoth_submit_clarify_card",
+        phase: "clarify",
+        card: { kind: "clarify_card", card },
+        redactedRawInputHash:
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      });
+      void waitForAnswer.catch(() => undefined);
+
+      await session.handleAnswerRequest({
+        type: "workspace_secretary.answer.request",
+        requestId: "answer-1",
+        cardId: card.id,
+        uiAgentId: "draft-secretary",
+        answer: {
+          intent: "submit_choices",
+          question_card_id: card.card.question_id,
+          title: card.title,
+          answers: [
+            {
+              question_id: "language",
+              choice_ids: ["cpp", "rust"],
+              choice_notes: {},
+            },
+            {
+              question_id: "shape",
+              choice_ids: ["library"],
+              choice_notes: {},
+            },
+          ],
+          raw_answer: "错误地多选了单选题",
+        },
+      });
+
+      expect(lastWorkspaceModel(emitted).secretary.status).toMatchObject({
+        kind: "recoverable_error",
+        detail: expect.stringContaining("单选问题只能提交一个选项"),
+      });
+    } finally {
+      rejectRuntimeAuthorityDecision({
+        cardId: card.id,
+        message: "test cleanup after invalid single-select answer",
+      });
+      cleanup();
+    }
+  });
+
+  it("pauses Clarify without switching the user-selected Loop mode to Quick", async () => {
+    const card = clarifyCard("clarify-card-pause");
+    const { session, cleanup } = createSession({
+      streamRuns: [
+        nativeStream({
+          type: "timeline",
+          provider: "codex",
+          turnId: "turn-1",
+          item: { type: "clarify_card", card },
+        }),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-1",
+        text: "实现一个高性能快速排序",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "loop",
+          clarifyStrength: "dive",
+          loop: "one_plan_one_do",
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      const { waitForAnswer } = createRuntimeAuthorityDecision({
+        provider: "codex",
+        agentId: "agent-workspace-secretary",
+        topicId: "topic-main",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        callId: "call-1",
+        toolName: "thoth_submit_clarify_card",
+        phase: "clarify",
+        card: { kind: "clarify_card", card },
+        redactedRawInputHash:
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      });
+
+      await session.handleAnswerRequest({
+        type: "workspace_secretary.answer.request",
+        requestId: "answer-1",
+        cardId: card.id,
+        uiAgentId: "draft-secretary",
+        answer: {
+          intent: "stop",
+          question_card_id: card.card.question_id,
+          title: card.title,
+          answers: [
+            { question_id: "language", choice_ids: [], choice_notes: {} },
+            { question_id: "shape", choice_ids: [], choice_notes: {} },
+          ],
+          raw_answer: "暂停继续询问",
+        },
+      });
+
+      await expect(waitForAnswer).resolves.toMatchObject({
+        submittedSummary: "已暂停继续询问",
+      });
+      const internalState = (session as unknown as { state: WorkspaceSecretaryStateForTest }).state;
+      expect(internalState.activeTurnPhase).toBe("clarify");
+      expect(internalState.currentClarifyState).not.toBe("C_DIRECT");
+      expect(internalState.model.secretary.composer).toMatchObject({
+        mode: "loop",
+        loop: "one_plan_one_do",
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
   it("denies native provider questions in structured Clarify without mirroring a permission card", async () => {
     const { session, emitted, permissionResponses, cleanup } = createSession({
       streamRuns: [
@@ -534,8 +760,12 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
-  it("blocks structured provider turns that end after Task Card without Pyramid Plan", async () => {
-    const card = taskCard();
+  it("blocks structured provider turns that end after Task Card without Goals Card", async () => {
+    const card = {
+      ...taskCard(),
+      submitted: true,
+      submittedSummary: "已确认并按 Quick 前台执行",
+    };
     const { session, emitted, cleanup } = createSession({
       streamRuns: [
         nativeStream(
@@ -571,7 +801,7 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       expect(update.reason).toBe("provider_blocked");
       expect(update.model.secretary.status).toMatchObject({
         kind: "recoverable_error",
-        detail: expect.stringContaining("Pyramid Plan"),
+        detail: expect.stringContaining("Goals Card"),
       });
     } finally {
       cleanup();

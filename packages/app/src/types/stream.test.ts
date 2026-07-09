@@ -139,6 +139,7 @@ function clarifyCardTimeline(cardId = "clarify-card-1"): AgentStreamEventPayload
               id: "scope",
               question: "优先哪条路线？",
               behavior_tree_node: "delivery-path/scope",
+              selection_mode: "single",
               choices: [
                 { id: "ship", label: "上线", description: "真实发布" },
                 { id: "demo", label: "演示", description: "先做演示" },
@@ -148,6 +149,7 @@ function clarifyCardTimeline(cardId = "clarify-card-1"): AgentStreamEventPayload
               id: "risk",
               question: "风险边界？",
               behavior_tree_node: "delivery-path/risk",
+              selection_mode: "single",
               choices: [
                 { id: "safe", label: "保守", description: "少改动" },
                 { id: "bold", label: "激进", description: "可重构" },

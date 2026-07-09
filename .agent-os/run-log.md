@@ -446,7 +446,7 @@
 - State changes: Updated app e2e helpers so static export tests can reuse the existing daemon/workspace fixtures: `fixtures.ts` honors `E2E_BASE_URL`; `global-setup.ts` uses ESM-safe paths, resolves `wrangler` from app/root install locations, starts `packages/daemon`, validates relay v3 offer shape and includes the static export origin in CORS; `helpers/app.ts` opens Settings through the real responsive sidebar/drawer path; `daemon-client-loader.ts` uses ESM-safe paths.
 - Failed exploration recorded: early scorecard attempts treated mobile Settings navigation like desktop Settings navigation. Narrow viewports use a drawer and can remain on the Settings host root route, so the test timed out waiting for desktop-only visible controls. This is now captured as `NTH-EXP-007`.
 - Evidence produced: `npm run smoke:web:ui-scorecard` passed. It ran `npm run build:web`, exported the module-marked web bundle from `packages/app/dist`, served it on an ephemeral localhost port and completed Playwright with `1 passed (18.6s)`.
-- Evidence produced: Current Web scorecard screenshots exist at `docs/ui-review-captures/web-scorecard/web-home-desktop.png` (`68775` bytes), `web-home-mobile.png` (`39004` bytes), `web-workspace-composer.png` (`92514` bytes), `web-settings-about.png` (`42747` bytes), `web-settings-providers.png` (`118783` bytes) and `web-settings-connections.png` (`37881` bytes).
+- Evidence produced: Current Web scorecard screenshots exist at `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-desktop.png` (`68775` bytes), `web-home-mobile.png` (`39004` bytes), `web-workspace-composer.png` (`92514` bytes), `web-settings-about.png` (`42747` bytes), `web-settings-providers.png` (`118783` bytes) and `web-settings-connections.png` (`37881` bytes).
 - Evidence produced: `npm run format:check` passed after root `npm run format`; `git diff --check` passed.
 - Evidence produced: `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
 - Evidence produced: `npm run smoke:isolation` passed with Paseo/legacy on `127.0.0.1:6767`, Thoth on `127.0.0.1:6688` and different PIDs.
@@ -478,7 +478,7 @@
 - State changes: Renamed the local branch to `agent/dev/mvp`. Updated current-branch facts in `AGENTS.md` and `.agent-os/project-index.md`.
 - State changes: Recorded `NTH-CD-028`, superseding the branch portion of `NTH-CD-025`. The active goal is now Thoth MVP implementation rather than UI-only scorecard/productization.
 - State changes: Renamed `.agent-os/designs/thoth-ui-goal-prompt.md` to `.agent-os/designs/thoth-mvp-goal-prompt.md` and rewrote the prompt around Workspace Secretary, Background Tasks, Settings, hidden `thoth.clarify` / `thoth.loop` skills, compact packets, daemon authority and provider session integration.
-- State changes: Added `packages/app/test-results/` to `.gitignore` so Playwright transient attachments are not committed; durable review captures remain under `docs/ui-review-captures/`.
+- State changes: Added `packages/app/test-results/` to `.gitignore` so Playwright transient attachments are not committed; durable review captures remain under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`.
 - Evidence produced: `npm run format` completed.
 - Evidence produced: `npm run format:check` passed.
 - Evidence produced: `git diff --check` passed.
@@ -771,7 +771,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   passed with `1` Playwright test against the static export.
 - Evidence produced: `npm run smoke:web:ui-scorecard` passed end-to-end through build, static serve
   and the Loop-2 scorecard e2e.
-- Evidence produced: screenshots captured under `docs/ui-review-captures/loop2-workspace-secretary/`
+- Evidence produced: screenshots captured under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`
   for desktop Workspace Secretary, `hi`, Clarify card, readonly/next-round Clarify, Background
   Tasks, Settings real relay state and mobile composer.
 - Evidence produced: `npm --workspace=@thoth/app run typecheck` still fails on existing promoted
@@ -828,12 +828,12 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   `workspace_secretary.topic.create.request: 1`; the final rerun also asserts `stop` returns the
   composer action to `Send` / Quick.
 - Evidence produced: Latest screenshots were refreshed under
-  `docs/ui-review-captures/loop2-workspace-secretary/`: `desktop-workspace-secretary.png`,
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`: `desktop-workspace-secretary.png`,
   `desktop-hi-no-card.png`, `desktop-clarify-card.png`,
   `desktop-clarify-readonly-next-round.png`, `desktop-background-tasks.png`,
   `desktop-settings-real-relay.png` and `mobile-workspace-secretary-composer.png`.
 - Evidence produced: After re-checking the requested web app, Electron desktop app and mobile
-  screenshots, the previous `docs/ui-review-captures/desktop-scorecard/` images were identified as
+  screenshots, the previous `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/desktop-scorecard/` images were identified as
   historical pre-Loop-2 One Thoth / New Agent evidence rather than current desktop app evidence. The
   desktop smoke was updated to load the Loop-2 static export in the Electron shell through
   `THOTH_DESKTOP_LOAD_STATIC_EXPORT=1`.
@@ -842,7 +842,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   desktop main process, launched an isolated daemon on `127.0.0.1:46409`, verified the Electron
   bridge, and captured `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
   `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
-  `desktop-app-settings-real-relay.png` under `docs/ui-review-captures/loop2-workspace-secretary/`.
+  `desktop-app-settings-real-relay.png` under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`.
 - Evidence produced: Manual `view_image` review passed for the refreshed Electron desktop app root
   Workspace Secretary view, `hi` no-card state, Clarify decision card, Background Tasks empty state
   and Settings real relay state. Manual `view_image` review also reconfirmed the existing Loop-2 web
@@ -859,7 +859,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   terms; icon/accessibility inventory found the active shell uses `ThothInventoryIcon` and
   `accessibilityLabel` on the main action surfaces.
 - Evidence produced: Independent read-only `codex exec` mental-model review wrote
-  `docs/ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
   verdict `PASS` and no blocking evidence.
 - Evidence produced: `git diff --check` passed.
 - Evidence produced: `npm run format:check` passed.
@@ -968,7 +968,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   and stale local storage was rewritten from `srv_stale_public_review` to the current real daemon
   `srv_0Ryud1K1J1zRYj7eylwnsg`.
 - Evidence produced: Public screenshots were saved under
-  `docs/ui-review-captures/loop2-workspace-secretary/` as `public-web-fresh-desktop.png`,
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/` as `public-web-fresh-desktop.png`,
   `public-web-stale-desktop.png` and `public-web-stale-mobile.png`; manual `view_image` review
   passed for all three.
 - Evidence produced: `npm run smoke:desktop:ui-scorecard` passed. It reran desktop
@@ -1017,7 +1017,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   selected the public same-origin daemon, showed `前台 Quick 可用`, answered `hi` in Quick and kept
   Clarify card count at `0`.
 - Evidence produced: Screenshot saved as
-  `docs/ui-review-captures/loop2-workspace-secretary/public-web-multihost-dark-ready.png` and
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/public-web-multihost-dark-ready.png` and
   manually reviewed with `view_image`.
 - Evidence produced: `git diff --check`, `npm run format:check` and `npm run check:foundation`
   passed. Foundation tests passed with highlight `66`, relay `29`, protocol `312` and client `110`
@@ -1135,7 +1135,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   daemon restart. It showed `真实 provider 已连接`, `真实 provider 回合已开始`,
   `真实 provider 回合完成`, no provider failure, no repair, no Clarify card for `hi`, no raw/schema
   leakage, and a provider-generated secretary reply. Screenshot:
-  `docs/ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
 - Evidence produced: `git diff --check` passed. `npm run check:foundation` passed through repo
   validation, format, foundation lint, foundation build, foundation typecheck and foundation tests
   with highlight `66`, relay `29`, protocol `315` and client `111` tests green.
@@ -1207,11 +1207,11 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   current bundle.
 - Evidence produced: Public Playwright real-provider journey against `http://180.76.242.105:8148/`
   passed. Summary file
-  `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
   records all steps as `ok`: ready shell, `hi` no card, Clarify card atomic, submitted readonly,
   Settings relay and mobile composer.
 - Evidence produced: Screenshots saved under
-  `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`: desktop ready,
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`: desktop ready,
   streaming Quick live, `hi` no card final, Loop live before card, Clarify card atomic, Clarify
   readonly, Settings real relay status and mobile composer. Manual `view_image` review passed for
   the key states.
@@ -1221,7 +1221,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   `videos/page@8b34a58568759844da9b3c8ab63b7f39.webm`.
 - Evidence produced: Independent read-only `codex exec` UI mental-model review passed with verdict
   `PASS` in
-  `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
 - Evidence produced: `git diff --check`, `npm run format:check` and `npm run check:foundation`
   passed after the implementation/verification pass. Foundation test totals were highlight `66`,
   relay `29`, protocol `316` and client `112`.
@@ -1288,7 +1288,7 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
 npm --workspace=@thoth/app run test:e2e -- thoth-ui-scorecard.spec.ts` passed 2 tests; `npm run
 check:foundation` passed validation / format / lint / build / typecheck / tests with foundation
   test totals highlight 66, relay 29, protocol 317 and client 112.
-- Visual evidence: Captures are under `docs/ui-review-captures/loop2-paseo-surface/`: desktop and
+- Visual evidence: Captures are under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-paseo-surface/`: desktop and
   mobile open-project screenshots, desktop workspace/composer screenshot, Provider / Clarify / Mode
   composer screenshot, settings screenshot, mobile workspace/composer screenshot, open-project and
   workspace/settings trace/video, and two independent UI mental-model reviews. The screenshots were
@@ -1657,7 +1657,7 @@ src/composer/actions.test.ts` passed 39 tests. `npm run build:web` passed and th
   `docs/runtime-tool-bridge-clarify-research.md` so Loop-2 is verified, Loop-3 is ready and the second
   approval artifact is Pyramid Plan Card rather than old Goal Card wording.
 - Evidence summary: `NTH-EV-029` is now the current Loop-2 acceptance authority. Evidence lives under
-  `docs/ui-review-captures/loop2-runtime-tool-bridge/`: Quick+none report
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/`: Quick+none report
   `1783414416734-quick-none-report.json`, Quick+Dive report `1783416763028-report.json`,
   Loop+Dive registration report `1783415185110-report.json`, Background Tasks recovery report
   `1783415406577-background-tasks-success-report.json`, mobile recovery report
@@ -1679,3 +1679,385 @@ background-tasks-panel-success.png` confirmed the independent registered-task br
   `NTH-MS-014` is the top next action and is ready, no longer blocked by Loop-2.
 - Non-goals / residual scope: Loop-5 PlanExec / Review, real background running/review evidence,
   non-Codex runtime-tool adapters and the final Loop-6 dogfood task system remain future milestones.
+
+## 2026-07-07 [Workspace Secretary spinner-only residue cleanup]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-TD-016`
+- User-visible request: Clean up the remaining Workspace Secretary spinner-only risks found in the
+  follow-up audit: demote `workspace_secretary.liveEvents` so it no longer looks like the main
+  realtime channel, and stop `applyWorkspaceSecretaryModelToStream` from clearing live AgentTimeline
+  head items when clean model responses race with provider stream events.
+- Implementation summary: Renamed the clean-event compatibility schema to
+  `WorkspaceSecretaryDeprecatedCleanEventSchema`, added `deprecatedLiveEvents` as the explicit legacy
+  field, and kept old `liveEvents` parse support only for backward compatibility. Workspace Secretary
+  daemon output no longer initializes or clears `model.secretary.liveEvents`; AgentTimeline /
+  `agent_stream` remains the realtime authority surface.
+- Implementation summary: Updated `applyWorkspaceSecretaryModelToStream` so clean Workspace Secretary
+  turns merge into tail while the live head is preserved. It now removes only optimistic user messages
+  from `agentStreamHead`, preventing already-arrived running tool/assistant timeline items from being
+  dropped by a later clean-model RPC response.
+- Verification passed: `npm --workspace=@thoth/protocol run test --
+src/workspace-secretary/rpc-schemas.test.ts` passed 7 tests.
+  `npm --workspace=@thoth/app run test -- src/composer/actions.test.ts` passed 36 tests.
+  `npm --workspace=@thoth/daemon run test:unit --
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 6 tests.
+  `git diff --check` passed. `npm run check:foundation` passed validation, format, foundation lint,
+  foundation build, foundation typecheck and foundation tests; foundation totals were highlight 66,
+  relay 29, protocol 321 and client 112.
+- Current limitation: `npm --workspace=@thoth/app run typecheck` was also attempted and still fails on
+  pre-existing broad app type issues such as missing `react-dom` declarations, existing spread type
+  errors and unrelated tests/config typings. The related app unit test for this change passes.
+
+## 2026-07-07 [Workspace Secretary New Agent stale history fix]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-TD-016`
+- User-visible request: Debug why creating `New Agent` in any workspace immediately showed a previous
+  Workspace Secretary chat instead of an empty new session.
+- Root cause: `WorkspaceDraftAgentTab` hydrated `workspace_secretary.snapshot` on mount for every
+  fresh draft tab. That snapshot is workspace-scoped and returns the last active Workspace Secretary
+  topic, so the app merged old `model.secretary.turns` into the brand-new draft tab stream and marked
+  it as submitted.
+- Implementation summary: Added a draft-tab hydrate gate so fresh New Agent drafts do not merge the
+  workspace active-topic snapshot. Snapshot merging is only allowed once the draft already owns local
+  Workspace Secretary stream items.
+- Verification passed: `npm --workspace=@thoth/app run test --
+src/composer/draft/workspace-tab-core.test.ts` passed 2 tests.
+  `npm --workspace=@thoth/app run test -- src/composer/actions.test.ts` passed 36 tests.
+  `npm run build:web` passed and refreshed `packages/app/dist`.
+  `curl -I --max-time 5 http://127.0.0.1:8082/` and
+  `curl -I --max-time 8 http://180.76.242.105:8148/` returned `HTTP/1.1 200 OK`.
+  Local `/ws` upgrade returned `HTTP/1.1 101 Switching Protocols`.
+  A headless Chromium check opened `Quick Dive Sort Acceptance`, clicked `New Agent`, and confirmed
+  the new draft body did not contain the previous Clarify/Task/quick-sort chat content.
+
+## 2026-07-07 [Quick Clarify intelligent timeline and frontier ledger repair]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-003`, `NTH-TD-016`, `NTH-EV-029`
+- User-visible request: Fully fix the latest Quick+Clarify issues: timeline must not look completed
+  before the Clarify card appears; badge copy must be intelligent demand decomposition rather than
+  neutral waiting copy; `balanced` / `dive` must not converge after fixed shallow rounds; and the
+  solution should use model frontier ledger rather than daemon hard question-quality judgment.
+- Regression recorded: Reopened `NTH-EV-029`. The previous Loop-2 runtime-tool evidence is now
+  historical for the prior contract, because real user testing showed pending lifecycle and
+  clarify-strength/frontier behavior regressions.
+- Implementation summary: Extended the semantic runtime tool contract so
+  `thoth_submit_clarify_card` requires `public_badge_summary` and `frontier_ledger`, while legacy
+  `decision_it_changes` is now optional and no longer required by Codex dynamicTools. Extended
+  `thoth_submit_task_card` with `convergence_review`, soft-target rationale handling and mechanical
+  frontier self-consistency.
+- Implementation summary: Updated daemon authority tooling to persist public badge summaries,
+  frontier ledgers and convergence reviews; render Clarify badges as `需求拆解` with the model summary;
+  label rounds as `Clarify 1`, `Clarify 2`, ...; count answered Clarify cards for soft targets; and
+  reject Task reviews that downgrade the latest Clarify strength.
+- Implementation summary: Updated Workspace Secretary runtime context with clarify card count, soft
+  range and latest ledger; kept pending authority decisions in loading state when provider
+  `turn_completed` races ahead; and updated app stream/layout reducers so unresolved authority cards
+  or running Thoth authority tool calls suppress premature completed/idle footers.
+- State changes: `.agent-os/project-index.md`, `.agent-os/todo.md` and
+  `.agent-os/acceptance-report.md` now show `NTH-TD-016` as reopened/doing until the new evidence is
+  captured. `docs/testing.md` and `docs/runtime-tool-bridge-clarify-research.md` document semantic
+  tool contract v2, soft ranges and pending-decision lifecycle.
+- Verification passed so far: `npm --workspace=@thoth/protocol run test --
+src/thoth-runtime-contract.test.ts src/workspace-secretary/rpc-schemas.test.ts` passed 36 tests.
+  `npm run build:protocol` passed. `npm --workspace=@thoth/daemon run test:unit --
+src/server/agent/tools/thoth-tools.test.ts src/server/agent/runtime-tool-decisions.test.ts
+src/server/agent/providers/codex-app-server-agent.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 4 files / 86
+  tests. `npm --workspace=@thoth/app run test --
+src/utils/tool-call-display.test.ts src/timeline/session-stream-reducers.test.ts
+src/agent-stream/layout.test.ts src/composer/actions.test.ts
+src/composer/draft/workspace-tab-core.test.ts` passed 5 files / 131 tests.
+- Current limitation: Full `npm --workspace=@thoth/app run test`, `npm run build:web`, `npm run
+check:foundation`, `git diff --check` and real-provider 8082/8148 Quick+Balanced / Quick+Dive
+  evidence are still pending in this work session.
+
+## 2026-07-07 [Quick Clarify frontier-ledger repair revalidation]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-003`, `NTH-TD-016`, `NTH-EV-029`
+- User-visible request: Continue the approved Quick+Clarify complete repair. Fix the remaining
+  behavior where `balanced` / `dive` still converged too early, keep timeline badges as intelligent
+  request decomposition, run real Codex web journeys, and record the reusable flow.
+- Implementation summary: Strengthened `packages/drivers/src/runtime-skills/thoth-clarify/SKILL.md`
+  so early convergence below the soft minimum is exceptional rather than a normal shortcut. Added a
+  compact `clarify_below_soft_target_policy` and material frontier category list to Workspace
+  Secretary runtime context. Updated Codex dynamic tool descriptions and Thoth tool-result guidance so
+  the model normally continues Clarify before `balanced` card 5 / `dive` card 10 unless it can account
+  for every material frontier category.
+- Implementation summary: Updated the guarded `.dev/loop2-full-chain.mjs` evidence runner so Quick
+  execution waits longer and requires generated workspace files to stabilize before writing the final
+  report. This fixed a false-negative report for slower PathTracing runs where files arrived after the
+  previous 4-minute wait.
+- Verification passed: `npm --workspace=@thoth/daemon run test:unit --
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts
+src/server/agent/providers/codex-app-server-agent.test.ts src/server/agent/tools/thoth-tools.test.ts`
+  passed 3 files / 85 tests. `npm --workspace=@thoth/protocol run test --
+src/thoth-runtime-contract.test.ts src/workspace-secretary/rpc-schemas.test.ts` passed 36 tests.
+  `npm run build:protocol` passed. `npm --workspace=@thoth/app run test --
+src/utils/tool-call-display.test.ts src/timeline/session-stream-reducers.test.ts
+src/agent-stream/layout.test.ts src/composer/actions.test.ts
+src/composer/draft/workspace-tab-core.test.ts` passed 5 files / 131 tests.
+  `npm --workspace=@thoth/app run test` passed 317 files / 2628 tests. `npm run build:web` passed.
+  `npm run check:foundation` passed. `git diff --check` passed.
+- Real-provider evidence passed: Local `8082` Quick+Balanced sorting report
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447093160-report.json` reached 5 Clarify
+  cards and generated `quicksort.py` / `test_quicksort.py`. Public `8148` Quick+Balanced sorting
+  report `1783447426182-report.json` reached 5 cards and generated C++ source/test files. Local
+  Quick+Dive sorting report `1783447971613-report.json` reached 12 cards and generated C++ header,
+  test, benchmark and Makefile. Local Quick+Balanced PathTracing report `1783449102697-report.json`
+  reached 5 cards and generated `index.html`, `src/main.js`, `src/styles.css`. Local Loop+Balanced
+  sorting report `1783449979213-report.json` reached `registered_pending` without fake execution.
+- Visual review: `view_image` opened `1783446788953-clarify-round-5.png`,
+  `1783447093090-quick-exec.png`, `1783447727999-clarify-round-12.png`,
+  `1783447971544-quick-exec.png`, `1783449724053-quick-exec.png` and
+  `1783450162819-mobile-registered-pending.png`. The successful desktop screenshots show intelligent
+  `需求拆解` badges, paginated cards and Shell/Edit timeline; the mobile screenshot shows a remaining
+  blank `New Agent` history-recovery issue.
+- Current result: `NTH-EV-029` is partially revalidated but remains reopened. Remaining issues:
+  mobile registered-pending workspace/history recovery opened as an empty `New Agent` tab in a
+  390x844 viewport, and local Quick+Dive PathTracing report `1783449724169-report.json` reached 10
+  Clarify cards but produced incomplete quick_exec output (`index.html` references missing
+  `src/main.js`). These are now recorded in `.agent-os/acceptance-report.md`; do not mark
+  `NTH-TD-016` verified until they are fixed or explicitly descoped by the user.
+
+## 2026-07-08 [UI review captures moved out of repo]
+
+- Worked on: `NTH-OBJ-001`, `NTH-EV-029`
+- User-visible request: Move the repo-local UI review captures directory out of `docs/` and ensure
+  UI review captures do not live inside the git repository.
+- State changes: Copied the full capture tree to the external evidence root
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`, preserving 358 files / 49M. Removed the repo-local
+  capture directory and staged deletion of the 190 previously tracked capture files.
+- State changes: Added a repo-local capture-directory guard to `.gitignore`, changed
+  `.dev/loop2-full-chain.mjs`, `scripts/smoke-desktop-ui-scorecard.mjs` and
+  `packages/app/e2e/thoth-ui-scorecard.spec.ts` so their default capture roots point outside the repo
+  while still allowing explicit environment overrides.
+- State changes: Updated `.agent-os/` and `docs/` evidence references from the old repo path to
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`. Also rewrote old path references inside the moved
+  external report/markdown evidence files.
+- Verification passed: the repo-local capture directory is absent, git no longer tracks capture
+  files there, the external evidence root still contains 358 files / 49M, no old operational capture
+  path references remain in the repo scan, and `git diff --check` passed.
+
+## 2026-07-08 [Composer Provider and Loop controls]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`
+- User-visible request: Implement the approved Composer Provider/Loop controls change: Provider
+  should default to the concrete model name, `Mode` becomes `Loop`, Loop strength is selected inside
+  that same control as `Single` / `Light` / `Balanced` / `Infinite`, and `Infinite` uses a dynamic
+  laser label in both the menu and selected chip.
+- Implementation summary: Added optional `workspaceSecretary.loopStrength` to protocol and daemon
+  persisted config, resolved Loop composer strength as `quick -> null` and `loop -> selected strength
+or one_plan_one_do`, and updated Workspace Secretary snapshots/send requests to use the real
+  selected value instead of hard-coded `balanced`.
+- Implementation summary: Updated app composer controls so the Provider chip displays selected or
+  default model labels such as `gpt-5.5`, renamed the mode chip to `Loop`, implemented the in-menu
+  Loop strength panel, and added the animated `Loop Infinite` label. Workspace Secretary draft tabs
+  now pass the configured provider/model into the shared agent controls so they no longer show the
+  generic `Provider Provider` fallback.
+- Verification passed: `npm --workspace=@thoth/protocol run test -- messages.config
+thoth-runtime-contract` passed 2 files / 30 tests. `npm --workspace=@thoth/daemon run test:unit --
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 8 tests.
+  `npm --workspace=@thoth/app run test -- runtime-controls provider-display workspace-tab` passed
+  9 files / 66 tests. `npm --workspace=@thoth/app run test` passed 318 files / 2634 tests.
+  `npm run build:web`, `npm run check:foundation`, and `git diff --check` passed.
+- Runtime evidence: Restarted only the Thoth dev daemon on `127.0.0.1:6688` so the running schema
+  accepted `workspaceSecretary.loopStrength`; the reserved Paseo daemon on `127.0.0.1:6767` was not
+  touched. Direct RPC patch verified `run_until_stopped` and restore to `one_plan_one_do`.
+- Visual evidence: Playwright screenshots were saved outside the repository under
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-controls-20260708-final/`. Local desktop,
+  local mobile, and public `http://180.76.242.105:8148/` desktop all show Provider `gpt-5.5`,
+  `Loop Single`, and separate `Clarify Direct`. Local desktop also verified selecting
+  `Loop Infinite` changes the chip to the laser-styled `Loop Infinite`, then restored it to
+  `Loop Single`.
+
+## 2026-07-08 [Composer Loop label detail cleanup]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`
+- User-visible request: Keep `Foreground` / `Background` wording in the Loop menu details, but remove
+  those details from the selected chip. The selected short values should be only `Quick`, `Single`,
+  `Light`, `Balanced`, or `Infinite`.
+- Implementation summary: Changed the RuntimeControls selected Loop label resolver so Quick mode
+  renders `Quick` and Loop mode renders only the selected strength label. The root menu still renders
+  `Quick (Foreground)` and `Loop (Background)`, and the strength submenu now renders
+  `Single (Background)`, `Light (Background)`, `Balanced (Background)`, and `Infinite (Background)`.
+  The `Infinite` word itself keeps the laser label.
+- Verification passed: `npm --workspace=@thoth/app run test -- runtime-controls` passed 1 file / 6
+  tests. `npm run build:web` passed. Playwright verified local `8082` and public `8148`: selected
+  chip text is `Quick`, `Infinite`, or `Single` without `Foreground` / `Background`; menu text keeps
+  the foreground/background detail. `git diff --check` passed.
+
+## 2026-07-08 [Composer Loop strength submenu label cleanup]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`
+- User-visible request: Keep `(Background)` only on the first-level `Loop` menu item; remove it from
+  the second-level strength options `Single`, `Light`, `Balanced`, and `Infinite`.
+- Implementation summary: Updated `RuntimeControls` so the Loop strength submenu renders plain
+  strength labels only. The root menu still shows `Quick (Foreground)` and `Loop (Background)`, and
+  the selected chip remains the short value `Quick`, `Single`, `Light`, `Balanced`, or `Infinite`.
+- Verification passed: `npm --workspace=@thoth/app run test -- runtime-controls` passed 1 file / 6
+  tests. `git diff --check` passed.
+
+## 2026-07-08 [Composer Loop Live/Async wording cleanup]
+
+- Worked on: `NTH-OBJ-001`, `NTH-WS-001`
+- User-visible request: Replace the longer `Foreground` / `Background` Loop menu detail wording
+  with the shorter recommended labels.
+- Implementation summary: Updated the root Loop menu to show `Quick (Live)` and `Loop (Async)`.
+  The selected chip remains short (`Quick`, `Single`, `Light`, `Balanced`, `Infinite`), and the Loop
+  strength submenu/back row no longer carries foreground/background-style detail copy.
+- Verification passed: `npm --workspace=@thoth/app run test -- runtime-controls` passed 1 file / 6
+  tests. `npm run build:web` passed and refreshed the web export. `git diff --check` passed.
+
+## 2026-07-08 [Clarify card completion and pending timeline repair]
+
+- Worked on: `NTH-OBJ-001`, `NTH-EV-029`
+- User-visible request: Implement the approved Clarify card interaction and pending timeline fix:
+  submit disabled until all questions complete, single/multiple question modes, single-select
+  auto-advance, only `你推荐`, unified note placeholder, `取消` pause semantics, spinner/timer
+  without spinner-only, and no premature `Worked for ...` while Clarify authority is still pending.
+- Implementation summary: Added `selection_mode: "single" | "multiple"` to the protocol Clarify
+  question schemas, semantic Codex dynamic tool schema and daemon handling. Legacy cards default to
+  `single`; daemon answer validation rejects multiple `choice_ids` for a single-select question.
+- Implementation summary: Reworked `ClarifyDecisionCard` so every question must be completed before
+  `提交` enables, single-select choices replace and auto-advance, multiple-select choices toggle
+  without auto-advance, single/multiple modes render with different visual tokens, `你决定` is removed,
+  `你推荐` only fills the current question delegation note and advances, and note placeholders now use
+  `可补说明也可以只写备注。`.
+- Implementation summary: Changed Clarify stop handling to pause further questioning without forcing
+  composer mode/clarify strength back to Quick/direct. Fixed a live UI crash where
+  `hasPendingAuthorityDecisionStreamItem` was accidentally used as an item predicate. Added Workspace
+  Secretary draft running-state logic so non-none Clarify remains running before the first authority
+  card, between submitted Clarify cards and the next card, and between submitted Task and Pyramid Plan.
+- Verification passed: `npm --workspace=@thoth/protocol run test -- thoth-runtime-contract
+workspace-secretary` passed 2 files / 37 tests. `npm --workspace=@thoth/daemon run test:unit --
+src/server/agent/tools/thoth-tools.test.ts src/server/agent/providers/codex-app-server-agent.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 3 files / 89
+  tests. `npm --workspace=@thoth/app run test -- workspace-tab-core clarify-decision-card layout
+session-stream-reducers types/stream agent-stream` passed 18 files / 279 tests.
+  `npm --workspace=@thoth/app run test` passed 318 files / 2642 tests. `npm run build:web`,
+  `npm run check:foundation`, and `git diff --check` passed.
+- Real UI evidence: Created a throwaway `/tmp/thoth-clarify-ui-*` git workspace through the real
+  daemon on `127.0.0.1:6688`, verified local `http://127.0.0.1:8082/` and public
+  `http://180.76.242.105:8148/`, then removed the daemon project and `/tmp` repo. Captures and JSON
+  reports are outside the repo under
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/clarify-card-pending-20260708/`.
+- Real UI evidence: Local full interaction report `full-interaction-v2-report.json` shows
+  `waitHadWorked=false`, `waitHadTimer=true`, `submitBefore`/`submitAfterQ1`/`submitAfterRecommend`
+  disabled, `afterQ1Question2=true`, `afterRecommendQuestion3=true`, `afterQ3CanSubmit=true`,
+  `afterSubmitNoRecommendButton=true`, `afterSubmitHasWorked=false`, and no page errors. Public
+  report `public-clarify-v2-report.json` shows the same no-premature-`Worked for ...` behavior,
+  initial disabled submit, `单选`, `取消`, no `你决定`, timer present, and no page errors.
+
+## 2026-07-09 [Loop Background Goals/PlanExec/Review implementation]
+
+- Worked on: `NTH-TD-019`, `NTH-CD-045`, `NTH-EV-030`
+- User-visible request: Implement Loop background mode completely after Clarify + two approvals:
+  register a durable background task, show it in Background Tasks, open task/goal/phase detail, run
+  linear goals through PlanExec and Review sessions, count failed Review budgets by Loop strength, and
+  stream each phase through the existing AgentTimeline substrate.
+- Implementation summary: Added the new main-path `Goals Card` authority model and
+  `thoth_submit_goals_card` runtime tool while keeping old Pyramid Plan parsing as legacy. Added Loop
+  semantic tools for PlanExec result, Review verdict and blocked reporting. Updated Codex dynamic tool
+  registration so Clarify and Loop tools are scoped by phase flags instead of leaking into all
+  sessions.
+- Implementation summary: Added `ThothLoopTaskService` with daemon-owned persistence, worktree lock,
+  queued/running/paused/blocked/done/stopped/interrupted states, failed-Review budgets
+  (`Single=1`, `Light=5`, `Balanced=10`, `Infinite=30`), current-goal-only looping, PlanExec
+  provider plan mode, fresh Review sessions, pause/resume/stop and restart interruption handling.
+- Implementation summary: Wired `background_task.list`, `background_task.inspect` and
+  `background_task.action` through protocol/client/daemon/session/websocket. Goals Card `accept_loop`
+  now registers the new task model and queues the scheduler instead of ending at `registered_pending`
+  when the new Goals Card is present.
+- Implementation summary: Reworked Background Tasks panel to list real Loop tasks, open task detail,
+  show linear goals with current goal spinner and grey inactive goals, show PlanExec/Review phase tabs,
+  default to the active phase, embed selected phase AgentTimeline, subscribe stream/permission events
+  and route Pause/Resume/Stop actions.
+- Bug fixed during verification: Pause/Stop previously could race with the pending phase promise and
+  be overwritten as `blocked`; action state now lands before cancellation and canceled phases no
+  longer override paused/stopped state.
+- Verification passed: `npm --workspace=@thoth/protocol run test -- thoth-runtime-contract
+workspace-secretary` passed 2 files / 37 tests. `npm --workspace=@thoth/daemon run test:unit --
+src/server/agent/tools/thoth-tools.test.ts src/server/agent/providers/codex-app-server-agent.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts
+src/server/thoth-loop/task-service.test.ts` passed 4 files / 96 tests.
+  `npm --workspace=@thoth/app run test -- background-tasks-panel secretary-approval-card
+types/stream` passed 4 files / 52 tests. `npm --workspace=@thoth/app run test` passed 319 files /
+  2645 tests. `npm run build:daemon`, `npm run build:web`, `npm run check:foundation` and
+  `git diff --check` passed.
+- Verification note: `npm --workspace=@thoth/app run typecheck` was run and still fails on broad
+  pre-existing app type errors unrelated to the new Background Tasks panel. Do not claim app typecheck
+  as passed for this session.
+- Remaining evidence gap at this point in the session: real Codex Loop background acceptance on local
+  `8082` and public `8148` had not been run yet. This was superseded by the next run-log entry, where
+  `NTH-EV-030` moved from `partial_code_verified` to passed Single-path real-provider evidence.
+
+## 2026-07-09 [Loop Background real-provider acceptance]
+
+- Worked on: `NTH-TD-019`, `NTH-TD-021`, `NTH-CD-045`, `NTH-EV-030`
+- User-visible request: Continue the approved Loop Background complete implementation and verify it
+  with real Codex on local `8082` and public `8148`.
+- Bug fixed during real-provider verification: Workspace Secretary structured Codex sessions were
+  initially launching with `dynamicToolNames: []` because native Thoth tool catalog gating read the
+  caller agent from `AgentManager` before `registerSession()`. `AgentManager.buildLaunchContext()`
+  now passes `callerAgentConfig`, and `createThothToolCatalog()` falls back to that launch config
+  before the caller agent exists. Regression tests cover the launch-config path.
+- UI hardening: Background Task phase timelines now carry `testID="loop-phase-timeline"` and auto
+  call `AgentStreamView.scrollToBottom("jump-to-bottom")` when a phase loads or receives new items,
+  so embedded PlanExec/Review timelines do not visually sit at the long initial prompt while live
+  Shell/Thinking/tool events exist below.
+- Local real-provider evidence: Ran Loop+Single / Clarify Balanced against
+  `http://127.0.0.1:8082/` with throwaway workspace `/tmp/thoth-loop-background-dIy278`. Report:
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
+  The run produced 5 Clarify cards, Task Card, Goals Card, durable task
+  `loop-task-13fa5321-1d5d-4a52-b655-ae2634f74d9a`, 8 linear goals and Background Tasks detail.
+  Follow-up task inspection showed Goal 1 PlanExec and Review completed with reasoning,
+  assistant_message and tool_call AgentTimeline entries; Review pass advanced to Goal 2; Goal 2
+  Review failed and consumed the Single failed-review budget.
+- Public real-provider evidence: Ran the same path against `http://180.76.242.105:8148/` with
+  throwaway workspace `/tmp/thoth-loop-background-l16BGt`. Report:
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
+  The run produced 5 Clarify cards, Task Card, Goals Card, durable task
+  `loop-task-2f4cd8fb-a6a8-457d-8eea-a85df8b9932b`, 10 linear goals and Background Tasks detail.
+  It advanced linearly through Goal 1, Goal 2 and Goal 3 Review pass without consuming failed-review
+  budget, then was intentionally stopped during Goal 4 PlanExec.
+- Evidence summary: Post-run RPC/timeline summary saved at
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
+  It records local/public phase entry counts and confirms PlanExec/Review timelines include
+  reasoning, assistant_message and tool_call entries. Key screenshots inspected with `view_image`:
+  public task/detail current-goal spinner
+  `1783564538646-background-task-list-detail.png`, public phase timeline
+  `1783564545842-background-task-planexec-timeline.png`, and additional timeline capture attempts
+  under the same external evidence directory.
+- Verification passed: `npm --workspace=@thoth/protocol run test -- thoth-runtime-contract
+workspace-secretary` passed 2 files / 37 tests. `npm --workspace=@thoth/daemon run test:unit --
+src/server/agent/providers/codex-app-server-agent.test.ts src/server/agent/tools/thoth-tools.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts
+src/server/thoth-loop/task-service.test.ts` passed 4 files / 98 tests.
+  `npm --workspace=@thoth/app run test -- background-tasks-panel secretary-approval-card
+types/stream` passed 4 files / 52 tests. `npm --workspace=@thoth/app run test` passed 319 files /
+  2645 tests. `npm run build:web`, `npm run check:foundation`, and `git diff --check` passed.
+- State updates: `NTH-EV-030` is now passed for the first real Codex Loop+Single local/public path.
+  `NTH-TD-019` moved to verified. `NTH-TD-021` moved to ready for Loop+Light, complete
+  all-goals-to-`done`, restart recovery and repeated hardening evidence.
+- Not claimed: Loop+Light, complete all-goals-to-`done`, Claude/OpenCode Loop adapters and
+  restart-recovery real-provider runs are not verified by this evidence.
+
+## 2026-07-09 [Background Tasks nested timeline wheel chaining]
+
+- Worked on: Background Tasks detail UI hardening after user report that the outer detail page only
+  scrolls when the pointer is outside the embedded PlanExec/AgentTimeline area.
+- Root cause: The embedded `AgentStreamView` web scroll container uses its own overflow surface and
+  `overscrollBehaviorY: "contain"`. When the pointer was over the phase timeline, wheel input stayed
+  inside the inner container even when the inner timeline could not continue scrolling, so the outer
+  task detail `ScrollView` never received the scroll.
+- Implementation summary: Added a Background Tasks scoped web-only wheel bridge on
+  `loop-phase-timeline`. It lets the inner AgentTimeline handle wheel input while it can scroll; once
+  the inner timeline reaches the top or bottom, the bridge forwards the normalized wheel delta to the
+  outer task detail scroll container. This intentionally does not change the global AgentTimeline /
+  Workspace timeline behavior.
+- Test coverage: Added `shouldForwardLoopPhaseTimelineWheel` coverage plus DOM wheel tests proving
+  that edge scrolling chains to the outer detail view and non-edge scrolling remains inside the
+  phase timeline.
+- Verification passed: `npm --workspace=@thoth/app run test -- background-tasks-panel` passed 1 file
+  / 6 tests. `npm run build:web` passed. `npm --workspace=@thoth/app run test` passed 319 files /
+  2648 tests. `npm run format:check` and `git diff --check` passed.

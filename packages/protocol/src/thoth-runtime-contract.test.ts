@@ -14,6 +14,8 @@ import {
   THOTH_CLARIFY_CODES,
   THOTH_LOOP_CODES,
   THOTH_RUNTIME_PACKET_FIELDS,
+  ThothSubmitClarifyCardInputSchema,
+  ThothSubmitTaskCardInputSchema,
   ThothProviderInputEnvelopeSchema,
   ThothRuntimePacketSchema,
   isAllowedClarifyMechanicalTransition,
@@ -29,6 +31,7 @@ const clarifyQuestionCard = {
       id: "q_goal_route",
       question: "这次最需要我优先切掉哪条错误路线？",
       behavior_tree_node: "goal_route",
+      selection_mode: "single",
       choices: [
         {
           id: "production",
@@ -46,6 +49,7 @@ const clarifyQuestionCard = {
       id: "q_owner",
       question: "哪些判断应该由我直接决定？",
       behavior_tree_node: "assumption_owner",
+      selection_mode: "single",
       choices: [
         {
           id: "agent",
@@ -77,6 +81,16 @@ const clarifyAskMeta = {
     },
   ],
   question_value_reason: "当前最高价值分叉会排除做偏路线。",
+};
+
+const readyFrontierLedger = {
+  clarify_strength: "balanced",
+  grounded_user_decisions: ["用户确认目标路线。"],
+  remaining_material_user_owned_assumptions: [],
+  agent_owned_assumptions: ["技术细节由 agent 决定。"],
+  discoverable_assumptions: ["仓库测试命令可发现。"],
+  why_this_round: "已完成关键材料分支确认。",
+  convergence_state: "ready_for_task",
 };
 
 const skillRef = {
@@ -246,11 +260,21 @@ describe("thoth runtime contract", () => {
       question_id: "card_goal_route",
       questions: expect.arrayContaining([
         expect.objectContaining({
+          selection_mode: "single",
           choices: expect.arrayContaining([expect.objectContaining({ label: "生产落地" })]),
         }),
       ]),
       allow_choice_notes: true,
       allow_note_only: true,
+    });
+  });
+
+  it("accepts explicit multi-select clarify questions", () => {
+    const card = structuredClone(clarifyQuestionCard);
+    card.questions[1].selection_mode = "multiple";
+
+    expect(ClarifyQuestionCardSchema.parse(card).questions[1]).toMatchObject({
+      selection_mode: "multiple",
     });
   });
 
@@ -477,6 +501,88 @@ describe("thoth runtime contract", () => {
           },
           clarifyQuestionCard.questions[1],
         ],
+      }),
+    ).toThrow();
+  });
+
+  it("requires semantic Clarify tools to carry public badge summary and frontier ledger", () => {
+    expect(
+      ThothSubmitClarifyCardInputSchema.parse({
+        title: "确认目标边界",
+        why_now: "这些选择会改变任务路线。",
+        public_badge_summary: "正在拆解目标边界：先确认路线、验收和风险取舍。",
+        frontier_ledger: {
+          ...readyFrontierLedger,
+          convergence_state: "not_converged",
+          remaining_material_user_owned_assumptions: ["验收基线"],
+        },
+        questions: clarifyQuestionCard.questions,
+      }).public_badge_summary,
+    ).toContain("拆解目标边界");
+
+    expect(() =>
+      ThothSubmitClarifyCardInputSchema.parse({
+        title: "确认目标边界",
+        why_now: "这些选择会改变任务路线。",
+        decision_it_changes: "legacy compatibility text",
+        questions: clarifyQuestionCard.questions,
+      }),
+    ).toThrow();
+
+    expect(
+      ThothSubmitClarifyCardInputSchema.parse({
+        title: "确认目标边界",
+        why_now: "这些选择会改变任务路线。",
+        decision_it_changes: "legacy compatibility text",
+        public_badge_summary: "正在拆解目标边界：先确认路线、验收和风险取舍。",
+        frontier_ledger: {
+          ...readyFrontierLedger,
+          convergence_state: "not_converged",
+          remaining_material_user_owned_assumptions: ["风险取舍"],
+        },
+        questions: clarifyQuestionCard.questions,
+      }).decision_it_changes,
+    ).toBe("legacy compatibility text");
+  });
+
+  it("requires Task Card submissions to include a ready convergence review", () => {
+    expect(
+      ThothSubmitTaskCardInputSchema.parse({
+        task_card: {
+          title: "整理设置页账号安全区域",
+          goal: "让账号安全状态可确认。",
+          constraints: ["保持现有设置入口。"],
+          acceptance: ["用户能看到当前登录状态。"],
+        },
+        provenance: {
+          clarify_transcript_verbatim: "完整 Clarify 原文。",
+        },
+        convergence_review: {
+          frontier_ledger: readyFrontierLedger,
+          why_task_is_now_grounded: "剩余事项均可由 agent 决定或在仓库中发现。",
+        },
+      }).convergence_review.frontier_ledger.convergence_state,
+    ).toBe("ready_for_task");
+
+    expect(() =>
+      ThothSubmitTaskCardInputSchema.parse({
+        task_card: {
+          title: "整理设置页账号安全区域",
+          goal: "让账号安全状态可确认。",
+          constraints: ["保持现有设置入口。"],
+          acceptance: ["用户能看到当前登录状态。"],
+        },
+        provenance: {
+          clarify_transcript_verbatim: "完整 Clarify 原文。",
+        },
+        convergence_review: {
+          frontier_ledger: {
+            ...readyFrontierLedger,
+            remaining_material_user_owned_assumptions: ["是否允许改动认证流程"],
+            convergence_state: "not_converged",
+          },
+          why_task_is_now_grounded: "仍有用户决策未确认。",
+        },
       }),
     ).toThrow();
   });

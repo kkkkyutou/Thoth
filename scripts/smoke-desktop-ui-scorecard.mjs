@@ -9,7 +9,9 @@ import { pathToFileURL } from "node:url";
 import { WebSocket } from "ws";
 
 const repoRoot = process.cwd();
-const captureDir = path.join(repoRoot, "docs/ui-review-captures/loop2-workspace-secretary");
+const captureDir =
+  process.env.THOTH_UI_REVIEW_CAPTURE_DIR ??
+  "/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary";
 const forbiddenSurfacePatterns = [
   /Paseo/i,
   /127\.0\.0\.1:6767/,

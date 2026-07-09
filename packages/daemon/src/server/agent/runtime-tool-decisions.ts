@@ -2,9 +2,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
+  ClarifyConvergenceReview,
+  ClarifyFrontierLedger,
+} from "@thoth/protocol/thoth-runtime-contract";
+import type {
   RegisteredTaskModel,
   ThothClarifyCardModel,
-  ThothGoalCardModel,
+  ThothApprovalGoalCardModel,
   ThothTaskCardModel,
   WorkspaceSecretaryTurnActionPayload,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
@@ -12,6 +16,7 @@ import type {
 export type RuntimeAuthorityCardKind =
   | "clarify_card"
   | "task_card"
+  | "goals_card"
   | "pyramid_plan_card"
   | "blocked_card";
 
@@ -25,7 +30,8 @@ export type RuntimeAuthorityDecisionStatus =
 export type RuntimeAuthorityCard =
   | { kind: "clarify_card"; card: ThothClarifyCardModel }
   | { kind: "task_card"; card: ThothTaskCardModel }
-  | { kind: "pyramid_plan_card"; card: ThothGoalCardModel }
+  | { kind: "goals_card"; card: ThothApprovalGoalCardModel }
+  | { kind: "pyramid_plan_card"; card: ThothApprovalGoalCardModel }
   | { kind: "blocked_card"; title: string; reason: string };
 
 export interface RuntimeAuthorityDecisionRecord {
@@ -45,6 +51,9 @@ export interface RuntimeAuthorityDecisionRecord {
   updatedAt: string;
   redactedRawInputHash: string;
   authorityCard: RuntimeAuthorityCard;
+  publicBadgeSummary?: string;
+  frontierLedger?: ClarifyFrontierLedger;
+  convergenceReview?: ClarifyConvergenceReview;
 }
 
 interface PendingRuntimeAuthorityDecision {
@@ -66,7 +75,7 @@ const pendingByDecisionId = new Map<string, PendingRuntimeAuthorityDecision>();
 const pendingByCardId = new Map<string, PendingRuntimeAuthorityDecision>();
 const recordsByDecisionId = new Map<string, RuntimeAuthorityDecisionRecord>();
 const latestTaskCardByAgent = new Map<string, ThothTaskCardModel>();
-const latestPyramidPlanByAgent = new Map<string, ThothGoalCardModel>();
+const latestGoalCardByAgent = new Map<string, ThothApprovalGoalCardModel>();
 let persistenceFilePath: string | null = null;
 let loadedPersistenceFilePath: string | null = null;
 
@@ -156,6 +165,9 @@ export function createRuntimeAuthorityDecision(input: {
   phase?: string | null;
   card: RuntimeAuthorityCard;
   redactedRawInputHash: string;
+  publicBadgeSummary?: string;
+  frontierLedger?: ClarifyFrontierLedger;
+  convergenceReview?: ClarifyConvergenceReview;
   timeoutMs?: number;
 }): {
   record: RuntimeAuthorityDecisionRecord;
@@ -165,6 +177,7 @@ export function createRuntimeAuthorityDecision(input: {
   const cardId =
     input.card.kind === "clarify_card" ||
     input.card.kind === "task_card" ||
+    input.card.kind === "goals_card" ||
     input.card.kind === "pyramid_plan_card"
       ? input.card.card.id
       : `blocked-${randomUUID()}`;
@@ -185,6 +198,9 @@ export function createRuntimeAuthorityDecision(input: {
     updatedAt: now,
     redactedRawInputHash: input.redactedRawInputHash,
     authorityCard: input.card,
+    ...(input.publicBadgeSummary ? { publicBadgeSummary: input.publicBadgeSummary } : {}),
+    ...(input.frontierLedger ? { frontierLedger: input.frontierLedger } : {}),
+    ...(input.convergenceReview ? { convergenceReview: input.convergenceReview } : {}),
   };
 
   recordsByDecisionId.set(record.id, record);
@@ -210,8 +226,8 @@ export function createRuntimeAuthorityDecision(input: {
   if (input.card.kind === "task_card") {
     latestTaskCardByAgent.set(input.agentId, input.card.card);
   }
-  if (input.card.kind === "pyramid_plan_card") {
-    latestPyramidPlanByAgent.set(input.agentId, input.card.card);
+  if (input.card.kind === "goals_card" || input.card.kind === "pyramid_plan_card") {
+    latestGoalCardByAgent.set(input.agentId, input.card.card);
   }
 
   return { record, waitForAnswer };
@@ -280,8 +296,10 @@ export function getLatestRuntimeTaskCardForAgent(agentId: string): ThothTaskCard
   return latestTaskCardByAgent.get(agentId) ?? null;
 }
 
-export function getLatestRuntimePyramidPlanForAgent(agentId: string): ThothGoalCardModel | null {
-  return latestPyramidPlanByAgent.get(agentId) ?? null;
+export function getLatestRuntimePyramidPlanForAgent(
+  agentId: string,
+): ThothApprovalGoalCardModel | null {
+  return latestGoalCardByAgent.get(agentId) ?? null;
 }
 
 export function resetRuntimeAuthorityDecisionsForTest(): void {
@@ -292,7 +310,7 @@ export function resetRuntimeAuthorityDecisionsForTest(): void {
   pendingByCardId.clear();
   recordsByDecisionId.clear();
   latestTaskCardByAgent.clear();
-  latestPyramidPlanByAgent.clear();
+  latestGoalCardByAgent.clear();
   persistenceFilePath = null;
   loadedPersistenceFilePath = null;
 }

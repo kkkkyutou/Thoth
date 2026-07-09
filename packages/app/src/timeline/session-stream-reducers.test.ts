@@ -95,6 +95,34 @@ function makeToolCallTimelineEvent(callId: string): AgentStreamEventPayload {
   } as AgentStreamEventPayload;
 }
 
+function makePendingAuthorityToolCallItem(): AgentToolCallItem {
+  return {
+    kind: "tool_call",
+    id: "agent_tool_call-authority",
+    timestamp: new Date(1000),
+    payload: {
+      source: "agent",
+      data: {
+        provider: "codex",
+        callId: "call-authority",
+        name: "clarify",
+        status: "running",
+        error: null,
+        detail: {
+          type: "plain_text",
+          label: "需求拆解",
+          text: "正在拆解需求边界。",
+          icon: "brain",
+        },
+        metadata: {
+          thothAuthorityDecision: true,
+          pendingAuthorityDecision: true,
+        },
+      },
+    },
+  };
+}
+
 function makeStreamReducerEvent(
   event: AgentStreamEventPayload,
   seq: number,
@@ -1377,6 +1405,23 @@ describe("processAgentStreamEvent", () => {
     expect(result.agent!.status).toBe("idle");
     expect(result.agent!.updatedAt.getTime()).toBe(2000);
     expect(result.agent!.lastActivityAt.getTime()).toBe(2000);
+  });
+
+  it("does not derive optimistic idle while a Thoth authority decision is pending", () => {
+    const result = processAgentStreamEvent({
+      ...baseStreamInput,
+      event: { type: "turn_completed", provider: "codex" } as AgentStreamEventPayload,
+      currentTail: [makeAssistantItem("正在拆解需求"), makePendingAuthorityToolCallItem()],
+      currentAgent: {
+        status: "running",
+        updatedAt: new Date(1000),
+        lastActivityAt: new Date(1000),
+      },
+      timestamp: new Date(2000),
+    });
+
+    expect(result.agentChanged).toBe(false);
+    expect(result.agent).toBe(null);
   });
 
   it("derives optimistic error status on turn_failed for running agent", () => {

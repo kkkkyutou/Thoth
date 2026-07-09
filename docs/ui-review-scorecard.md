@@ -80,12 +80,12 @@ builds the real web export with `npm run build:web`, serves `packages/app/dist` 
 server, runs Playwright against `E2E_BASE_URL`, captures the current screenshot set and drives rapid
 Workspace/Settings/composer/viewport stress. The refreshed screenshot set is:
 
-1. `docs/ui-review-captures/web-scorecard/web-home-desktop.png`
-2. `docs/ui-review-captures/web-scorecard/web-home-mobile.png`
-3. `docs/ui-review-captures/web-scorecard/web-workspace-composer.png`
-4. `docs/ui-review-captures/web-scorecard/web-settings-about.png`
-5. `docs/ui-review-captures/web-scorecard/web-settings-providers.png`
-6. `docs/ui-review-captures/web-scorecard/web-settings-connections.png`
+1. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-desktop.png`
+2. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-mobile.png`
+3. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-workspace-composer.png`
+4. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-about.png`
+5. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-providers.png`
+6. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-connections.png`
 
 Still missing for final Web acceptance: fresh relay scorecard path, expired relay recovery
 scorecard path, full task route/backend path, provider/model editing path and a score above `90`.

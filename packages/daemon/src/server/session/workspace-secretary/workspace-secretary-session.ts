@@ -14,6 +14,7 @@ import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import {
   answerRuntimeAuthorityDecision,
   getPendingRuntimeAuthorityDecisionByCardId,
+  listPendingRuntimeAuthorityDecisions,
 } from "../../agent/runtime-tool-decisions.js";
 import {
   BackgroundTaskModelSchema,
@@ -22,14 +23,17 @@ import {
   WORKSPACE_SECRETARY_RELAY_HEALTH_URL,
   ThothCleanUiModelSchema,
   type BackgroundTaskModel,
+  type LoopTaskModel,
   type RegisteredTaskModel,
   type RelayServiceStatus,
   type SecretaryClarifyAnswerPayload,
   type SecretaryRuntimeStatusKind,
   type SecretaryTopicModel,
   type SecretaryTurn,
+  type ThothApprovalGoalCardModel,
+  type ThothClarifyCardModel,
   type ThothCleanUiModel,
-  type ThothGoalCardModel,
+  type ThothGoalsCardModel,
   type ThothTaskCardModel,
   type WorkspaceSecretaryAnswerRequest,
   type WorkspaceSecretaryProviderBridge,
@@ -43,6 +47,7 @@ import {
   type ClarifyRuntimeCode,
   type ClarifyTurnPhase,
   type ThothRuntimeClarifyStrength,
+  type ThothRuntimeLoopStrength,
   type ThothRuntimeMode,
 } from "@thoth/protocol/thoth-runtime-contract";
 import type { AgentAttachment } from "@thoth/protocol/messages";
@@ -51,6 +56,7 @@ import {
   mountRuntimeSkillForSession,
   type RuntimeSkillMount,
 } from "@thoth/drivers/clarify";
+import type { ThothLoopTaskService } from "../../thoth-loop/task-service.js";
 
 interface WorkspaceSecretaryHost {
   emit(message: SessionOutboundMessage): void;
@@ -61,6 +67,7 @@ interface WorkspaceSecretarySessionOptions {
   host: WorkspaceSecretaryHost;
   agentManager: AgentManager;
   daemonConfigStore: DaemonConfigStore;
+  loopTaskService?: ThothLoopTaskService | null;
   probeRelayHealth?: () => Promise<RelayServiceStatus>;
 }
 
@@ -86,6 +93,8 @@ interface ProviderSessionConfig {
 interface WorkspaceSecretaryComposerConfig {
   mode: ThothRuntimeMode;
   clarifyStrength: Exclude<ThothRuntimeClarifyStrength, "deep">;
+  loop?: ThothRuntimeLoopStrength | null;
+  loopStrength?: ThothRuntimeLoopStrength | null;
 }
 
 interface WorkspaceSecretaryTopicSnapshot {
@@ -235,6 +244,7 @@ function readComposerConfig(store: DaemonConfigStore): WorkspaceSecretaryCompose
       raw?.clarifyStrength === "dive"
         ? raw.clarifyStrength
         : "balanced",
+    loopStrength: normalizeLoopStrength(raw?.loopStrength),
   };
 }
 
@@ -371,8 +381,20 @@ function persistRegisteredTasks(
   });
 }
 
-function loopStrengthForMode(mode: ThothRuntimeMode) {
-  return mode === "loop" ? "balanced" : null;
+function normalizeLoopStrength(value: unknown): ThothRuntimeLoopStrength | null {
+  return value === "one_plan_one_do" ||
+    value === "light" ||
+    value === "balanced" ||
+    value === "run_until_stopped"
+    ? value
+    : null;
+}
+
+function loopStrengthForComposer(config: WorkspaceSecretaryComposerConfig) {
+  if (config.mode !== "loop") {
+    return null;
+  }
+  return normalizeLoopStrength(config.loopStrength ?? config.loop) ?? "one_plan_one_do";
 }
 
 function applyComposerConfig(
@@ -383,7 +405,7 @@ function applyComposerConfig(
     ...state.model.secretary.composer,
     mode: config.mode,
     clarifyStrength: config.clarifyStrength,
-    loop: loopStrengthForMode(config.mode),
+    loop: loopStrengthForComposer(config),
   };
 }
 
@@ -437,29 +459,73 @@ function runtimeStatusKind(runtime: WorkspaceSecretaryProviderRuntimeModel) {
   return "ready" as const;
 }
 
+const CLARIFY_MATERIAL_FRONTIER_CATEGORIES = [
+  "target_environment_and_runtime",
+  "delivery_shape_and_integration_boundary",
+  "api_data_contract_and_error_behavior",
+  "correctness_acceptance_and_edge_cases",
+  "performance_quality_scale_or_benchmark_baseline",
+  "resource_memory_concurrency_portability_and_safety",
+  "testing_evidence_docs_and_comparison_baseline",
+  "user_owned_tradeoffs",
+] as const;
+
+function clarifyBelowSoftTargetPolicy(input: {
+  strength: Exclude<ThothRuntimeClarifyStrength, "deep">;
+  cardCount: number;
+  softRange: { min: number | null; max: number | null };
+}): string {
+  if (!input.softRange.min || input.cardCount >= input.softRange.min) {
+    return "at_or_above_soft_minimum: submit Task only when the frontier ledger has no remaining material user-owned assumptions.";
+  }
+  if (input.strength === "balanced" || input.strength === "dive") {
+    return [
+      `below_soft_minimum: ${input.strength} has ${input.cardCount}/${input.softRange.min} Clarify cards.`,
+      "Normally call thoth_submit_clarify_card and expand the next material frontier.",
+      "thoth_submit_task_card is exceptional before the soft minimum: use it only after explicit user stop, a genuinely trivial request, or category-by-category proof that every remaining material frontier is grounded, agent-owned, discoverable, or standard practice.",
+      "Do not use a generic below_soft_target_rationale as a shortcut.",
+    ].join(" ");
+  }
+  return "no_soft_minimum_for_current_strength.";
+}
+
 function runtimeContextPrompt(input: {
   bridge: WorkspaceSecretaryProviderBridge;
   state: WorkspaceSecretaryState;
   skillMount: RuntimeSkillMount;
 }): string {
+  const clarifyCards = clarifyCardTurns(input.state);
+  const strength = input.state.model.secretary.composer.clarifyStrength;
+  const softRange = clarifySoftRange(strength);
+  const latestLedger = latestClarifyCard(input.state)?.frontierLedger;
+  const belowSoftTargetPolicy = clarifyBelowSoftTargetPolicy({
+    strength,
+    cardCount: clarifyCards.length,
+    softRange,
+  });
   return [
     "Thoth structured Workspace Secretary turn.",
     `mode: ${input.state.model.secretary.composer.mode}`,
-    `clarify_strength: ${input.state.model.secretary.composer.clarifyStrength}`,
+    `clarify_strength: ${strength}`,
     `turn_phase: ${input.state.activeTurnPhase}`,
     `current_state: ${input.state.currentClarifyState}`,
+    `clarify_card_count: ${clarifyCards.length}`,
+    `clarify_soft_range: ${softRange.min ?? "none"}-${softRange.max ?? "none"}`,
+    `clarify_below_soft_target_policy: ${belowSoftTargetPolicy}`,
+    `material_frontier_categories: ${CLARIFY_MATERIAL_FRONTIER_CATEGORIES.join(", ")}`,
+    `latest_frontier_ledger: ${latestLedger ? JSON.stringify(latestLedger) : "none"}`,
     `skill_ref: ${input.skillMount.skillRef.id} ${input.skillMount.skillRef.digest}`,
     `skill_mount: session_scoped ${input.skillMount.mountedPath}`,
     `required_next_runtime_tool: ${resolveRequiredRuntimeTool(input.state)}`,
-    "skill_sections: Runtime Tools, Runtime Context, Clarify Strength, Assumption Ownership, Clarify Cards, Task Card, Pyramid Plan Card, Transition Rules, Loop And Quick Handoff, Repair",
-    "runtime_tools: thoth_submit_clarify_card, thoth_submit_task_card, thoth_submit_pyramid_plan, thoth_report_blocked",
+    "skill_sections: Runtime Tools, Runtime Context, Clarify Strength, Assumption Ownership, Clarify Cards, Task Card, Goals Card, Transition Rules, Loop And Quick Handoff, Repair",
+    "runtime_tools: thoth_submit_clarify_card, thoth_submit_task_card, thoth_submit_goals_card, thoth_report_blocked",
     "Use the loaded session-scoped Skill as the behavior authority. Treat required_next_runtime_tool as daemon phase context, then call the matching semantic Thoth runtime tool for this structured decision point.",
   ].join("\n\n");
 }
 
 function resolveRequiredRuntimeTool(state: WorkspaceSecretaryState): string {
   if (state.activeTurnPhase === "approval_task" || state.currentClarifyState === "C_TASK_CARD") {
-    return "thoth_submit_pyramid_plan";
+    return "thoth_submit_goals_card";
   }
   if (state.activeTurnPhase === "clarify") {
     return "thoth_submit_clarify_card_or_thoth_submit_task_card";
@@ -478,13 +544,13 @@ function resolveStructuredCompletionError(state: WorkspaceSecretaryState): strin
     return null;
   }
   if (state.activeTurnPhase === "approval_task" || state.currentClarifyState === "C_TASK_CARD") {
-    return "Task Card 已确认，但真实 provider 回合结束前没有提交 Pyramid Plan。";
+    return "Task Card 已确认，但真实 provider 回合结束前没有提交 Goals Card。";
   }
   if (
     state.activeTurnPhase === "approval_breakdown" ||
     state.currentClarifyState === "C_GOAL_CARD"
   ) {
-    return "Pyramid Plan 审批回合结束前没有产生可验证的下一步结果。";
+    return "Goals Card 审批回合结束前没有产生可验证的下一步结果。";
   }
   if (state.activeTurnPhase === "clarify" || state.currentClarifyState === "C_ASK") {
     return "Clarify 结构化回合结束前没有提交新的 Clarify card、Task Card 或阻塞状态。";
@@ -632,7 +698,22 @@ function renderTaskCardForProvider(card: ThothTaskCardModel): string {
   ].join("\n");
 }
 
-function renderGoalCardForProvider(card: ThothGoalCardModel): string {
+function renderGoalCardForProvider(card: ThothApprovalGoalCardModel): string {
+  if ("goals" in card) {
+    return [
+      `title: ${card.title}`,
+      `summary: ${card.summary}`,
+      "linear goals:",
+      ...card.goals.map((goal) =>
+        [
+          `${goal.order}. ${goal.title}`,
+          `goal: ${goal.goal}`,
+          `constraints: ${goal.constraints.join("；")}`,
+          `acceptance: ${goal.acceptance.join("；")}`,
+        ].join("\n"),
+      ),
+    ].join("\n");
+  }
   return [
     `title: ${card.title}`,
     `summary: ${card.summary}`,
@@ -674,6 +755,35 @@ function latestGoalCardTurn(
   );
 }
 
+function clarifyCardTurns(
+  state: WorkspaceSecretaryState,
+): Array<Extract<SecretaryTurn, { kind: "clarify_card" }>> {
+  return state.model.secretary.turns.filter(
+    (turn): turn is Extract<SecretaryTurn, { kind: "clarify_card" }> =>
+      turn.kind === "clarify_card",
+  );
+}
+
+function latestClarifyCard(state: WorkspaceSecretaryState): ThothClarifyCardModel | null {
+  return clarifyCardTurns(state).at(-1)?.card ?? null;
+}
+
+function clarifySoftRange(strength: Exclude<ThothRuntimeClarifyStrength, "deep">): {
+  min: number | null;
+  max: number | null;
+} {
+  if (strength === "balanced") {
+    return { min: 5, max: 10 };
+  }
+  if (strength === "dive") {
+    return { min: 10, max: 20 };
+  }
+  if (strength === "light") {
+    return { min: 1, max: 1 };
+  }
+  return { min: null, max: null };
+}
+
 function limitText(value: string | null | undefined, max = 200): string | undefined {
   const trimmed = value?.replace(/\s+/g, " ").trim();
   if (!trimmed) {
@@ -704,8 +814,10 @@ function buildRegisteredTaskModel(input: {
   workspacePath: string;
   sourceTopicId: string;
   taskCard: ThothTaskCardModel;
-  goalCard: ThothGoalCardModel;
+  goalCard: ThothApprovalGoalCardModel;
 }): RegisteredTaskModel {
+  const firstGoalTitle =
+    "goals" in input.goalCard ? input.goalCard.goals[0]?.title : input.goalCard.pyramid[0]?.title;
   return {
     id: `registered-task-${randomUUID()}`,
     title: input.taskCard.title,
@@ -716,7 +828,7 @@ function buildRegisteredTaskModel(input: {
     summary: "已确认并注册，等待后续 Loop 后端执行。",
     taskCard: input.taskCard,
     goalCard: input.goalCard,
-    currentGoalTitle: input.goalCard.pyramid[0]?.title,
+    currentGoalTitle: firstGoalTitle,
     currentRoundLabel: "Pending execution",
   };
 }
@@ -755,6 +867,28 @@ function applyRegisteredTasksToModel(
   };
 }
 
+function applyLoopTasksToModel(
+  state: WorkspaceSecretaryState,
+  loopTaskService: ThothLoopTaskService | null | undefined,
+  selectedTaskId?: string | null,
+): void {
+  if (!loopTaskService) {
+    return;
+  }
+  const tasks = loopTaskService.list({ workspacePath: state.model.secretary.workspacePath });
+  const selected =
+    selectedTaskId ??
+    state.model.backgroundTasks.selectedTaskId ??
+    tasks.find((task) => task.id !== "empty")?.id ??
+    null;
+  const detail = selected && selected !== "empty" ? loopTaskService.inspect(selected) : null;
+  state.model.backgroundTasks = {
+    tasks,
+    selectedTaskId: selected,
+    detail,
+  };
+}
+
 function summarizeSubmittedAnswer(payload: WorkspaceSecretaryTurnActionPayload): string {
   if (
     payload.intent === "accept_quick" ||
@@ -781,7 +915,7 @@ function summarizeSubmittedAnswer(payload: WorkspaceSecretaryTurnActionPayload):
     return "已授权秘书决定分支";
   }
   if (clarifyPayload.intent === "stop") {
-    return "已停止这轮 Clarify";
+    return "已暂停继续询问";
   }
   if (clarifyPayload.intent === "note_only") {
     return clarifyPayload.note ? `已补充 note：${clarifyPayload.note}` : "已补充 note";
@@ -791,6 +925,39 @@ function summarizeSubmittedAnswer(payload: WorkspaceSecretaryTurnActionPayload):
     0,
   );
   return `已确认 ${selectedCount} 个分支维度`;
+}
+
+function clarifyQuestionItems(card: ThothClarifyCardModel["card"]) {
+  if ("questions" in card) {
+    return card.questions;
+  }
+  return [
+    {
+      id: card.question_id,
+      selection_mode: "single" as const,
+    },
+  ];
+}
+
+function validateClarifyAnswerForCard(input: {
+  card: ThothClarifyCardModel;
+  answer: WorkspaceSecretaryTurnActionPayload;
+}): string | null {
+  if (!("answers" in input.answer)) {
+    return null;
+  }
+  const questionModeById = new Map(
+    clarifyQuestionItems(input.card.card).map((question) => [
+      question.id,
+      question.selection_mode ?? "single",
+    ]),
+  );
+  for (const answer of input.answer.answers) {
+    if (questionModeById.get(answer.question_id) === "single" && answer.choice_ids.length > 1) {
+      return "单选问题只能提交一个选项；请调整后再提交。";
+    }
+  }
+  return null;
 }
 
 function createInitialModel(input: {
@@ -820,7 +987,6 @@ function createInitialModel(input: {
       activeTopicId: "topic-main",
       status: createStatusModel("provider_required"),
       provider: providerRuntime,
-      liveEvents: [],
       topics: [
         {
           id: "topic-main",
@@ -833,7 +999,7 @@ function createInitialModel(input: {
       composer: {
         mode: input.composer.mode,
         clarifyStrength: input.composer.clarifyStrength,
-        loop: input.composer.mode === "loop" ? "balanced" : null,
+        loop: loopStrengthForComposer(input.composer),
         authorityLabel: "需要真实 provider",
         authorityReady: false,
         disabledReason: "需要先在 Settings 配置真实 provider",
@@ -915,7 +1081,6 @@ export class WorkspaceSecretarySession {
       state.activeTurnPhase = isQuickNoneForeground(request.composer) ? "quick_exec" : "clarify";
       this.applyResolvedRuntime(state, provider.runtime);
       state.model.secretary.status = createStatusModel("loading");
-      state.model.secretary.liveEvents = [];
 
       await this.startProviderTurnInBackground({
         state,
@@ -975,6 +1140,17 @@ export class WorkspaceSecretarySession {
         return state;
       }
 
+      if (targetTurn.kind === "clarify_card") {
+        const validationError = validateClarifyAnswerForCard({
+          card: targetTurn.card,
+          answer: request.answer,
+        });
+        if (validationError) {
+          state.model.secretary.status = createStatusModel("recoverable_error", validationError);
+          return state;
+        }
+      }
+
       const submittedSummary = summarizeSubmittedAnswer(request.answer);
       targetTurn.card = {
         ...targetTurn.card,
@@ -982,34 +1158,50 @@ export class WorkspaceSecretarySession {
         submittedSummary,
       };
 
-      if (
-        "intent" in request.answer &&
-        (request.answer.intent === "stop" || request.answer.intent === "cancel")
-      ) {
-        state.model.secretary.composer = {
-          ...state.model.secretary.composer,
-          mode: "quick",
-          loop: null,
-        };
-        state.activeTurnPhase = "quick_exec";
-        state.currentClarifyState = "C_DIRECT";
-      } else {
-        state.activeTurnPhase =
-          targetTurn.kind === "clarify_card"
-            ? "clarify"
-            : targetTurn.kind === "task_card"
-              ? "approval_task"
-              : "approval_breakdown";
-      }
+      state.activeTurnPhase =
+        targetTurn.kind === "clarify_card"
+          ? "clarify"
+          : targetTurn.kind === "task_card"
+            ? "approval_task"
+            : "approval_breakdown";
 
       let registeredTask: RegisteredTaskModel | undefined;
+      let loopTask: LoopTaskModel | undefined;
       if (
         targetTurn.kind === "goal_card" &&
         "intent" in request.answer &&
         request.answer.intent === "accept_loop"
       ) {
         const taskTurn = latestTaskCardTurn(state);
-        if (taskTurn) {
+        if (taskTurn && "goals" in targetTurn.card && this.options.loopTaskService) {
+          const loopStrength =
+            normalizeLoopStrength(state.model.secretary.composer.loop) ?? "one_plan_one_do";
+          loopTask = await this.options.loopTaskService.register({
+            workspaceName: state.model.secretary.workspaceName,
+            workspacePath: state.model.secretary.workspacePath,
+            sourceTopicId: state.model.secretary.activeTopicId,
+            taskCard: taskTurn.card,
+            goalsCard: targetTurn.card as ThothGoalsCardModel,
+            clarifyTranscript: renderTranscript(state.model.secretary.turns),
+            loopStrength,
+            provider: provider.config,
+          });
+          state.model.backgroundTasks = {
+            tasks: this.options.loopTaskService.list({
+              workspacePath: state.model.secretary.workspacePath,
+            }),
+            selectedTaskId: loopTask.id,
+            detail: null,
+          };
+          this.emitMirroredAgentStream(request.uiAgentId, {
+            type: "timeline",
+            provider: provider.config.provider,
+            item: {
+              type: "assistant_message",
+              text: `后台任务已注册并开始排队：${loopTask.title}`,
+            },
+          });
+        } else if (taskTurn) {
           registeredTask = buildRegisteredTaskModel({
             workspaceName: state.model.secretary.workspaceName,
             workspacePath: state.model.secretary.workspacePath,
@@ -1125,7 +1317,6 @@ export class WorkspaceSecretarySession {
           })),
         ];
         state.model.secretary.turns = [];
-        state.model.secretary.liveEvents = [];
         applyComposerConfig(state, composerConfig);
         return state;
       },
@@ -1173,7 +1364,6 @@ export class WorkspaceSecretarySession {
       }));
       model.secretary.turns = persistedTopic.turns;
       model.secretary.status = createStatusModel("ready");
-      model.secretary.liveEvents = [];
     }
     this.state = {
       model: withSchemaVerifiedModel(model),
@@ -1515,6 +1705,15 @@ export class WorkspaceSecretarySession {
     attachments?: AgentAttachment[];
   }): AgentPromptInput {
     const topicId = input.state.model.secretary.activeTopicId;
+    const clarifyCards = clarifyCardTurns(input.state);
+    const clarifyStrength = input.state.model.secretary.composer.clarifyStrength;
+    const softRange = clarifySoftRange(clarifyStrength);
+    const latestLedger = latestClarifyCard(input.state)?.frontierLedger ?? null;
+    const belowSoftTargetPolicy = clarifyBelowSoftTargetPolicy({
+      strength: clarifyStrength,
+      cardCount: clarifyCards.length,
+      softRange,
+    });
     const skillMount = mountClarifySkillForTopic({
       state: input.state,
       thothHome: this.options.daemonConfigStore.getThothHome(),
@@ -1527,8 +1726,16 @@ export class WorkspaceSecretarySession {
       turn_phase: input.state.activeTurnPhase,
       controls: {
         mode: input.state.model.secretary.composer.mode,
-        clarify_strength: input.state.model.secretary.composer.clarifyStrength,
+        clarify_strength: clarifyStrength,
         loop: input.state.model.secretary.composer.loop,
+      },
+      clarify_progress: {
+        card_count: clarifyCards.length,
+        next_card_index: clarifyCards.length + 1,
+        soft_range: softRange,
+        below_soft_target_policy: belowSoftTargetPolicy,
+        material_frontier_categories: CLARIFY_MATERIAL_FRONTIER_CATEGORIES,
+        latest_frontier_ledger: latestLedger,
       },
       user_input: input.userInput,
       answer: input.answer,
@@ -1536,6 +1743,9 @@ export class WorkspaceSecretarySession {
       required_next_runtime_tool: resolveRequiredRuntimeTool(input.state),
       approved_task_card: latestTaskCardTurn(input.state)
         ? renderTaskCardForProvider(latestTaskCardTurn(input.state)!.card)
+        : null,
+      approved_goals_card: latestGoalCardTurn(input.state)
+        ? renderGoalCardForProvider(latestGoalCardTurn(input.state)!.card)
         : null,
       approved_pyramid_plan_card: latestGoalCardTurn(input.state)
         ? renderGoalCardForProvider(latestGoalCardTurn(input.state)!.card)
@@ -1580,6 +1790,18 @@ export class WorkspaceSecretarySession {
         this.emitMirroredAgentStream(input.uiAgentId, event);
         this.recordTimelineForSecretaryState(input.state, event);
         if (event.type === "turn_completed") {
+          const hasPendingAuthorityDecision = listPendingRuntimeAuthorityDecisions().some(
+            (decision) => decision.agentId === input.agentId,
+          );
+          if (hasPendingAuthorityDecision) {
+            input.state.model.secretary.status = createStatusModel(
+              "loading",
+              "正在等待用户确认需求拆解卡片。",
+            );
+            this.emitModelUpdate(input.state, "provider_progress");
+            persistTopicSnapshot(this.options.daemonConfigStore, input.state);
+            continue;
+          }
           const completionError = input.structured
             ? resolveStructuredCompletionError(input.state)
             : null;
@@ -1687,11 +1909,15 @@ export class WorkspaceSecretarySession {
     const provider = await this.resolveProviderRuntime();
     const runtime = provider.runtime;
     this.applyResolvedRuntime(state, runtime);
-    applyRegisteredTasksToModel(
-      state,
-      readRegisteredTasks(this.options.daemonConfigStore),
-      readSelectedRegisteredTaskId(this.options.daemonConfigStore),
-    );
+    if (this.options.loopTaskService) {
+      applyLoopTasksToModel(state, this.options.loopTaskService);
+    } else {
+      applyRegisteredTasksToModel(
+        state,
+        readRegisteredTasks(this.options.daemonConfigStore),
+        readSelectedRegisteredTaskId(this.options.daemonConfigStore),
+      );
+    }
     state.model.authority = {
       source:
         runtime.ready && state.activeTopicProviderBacked

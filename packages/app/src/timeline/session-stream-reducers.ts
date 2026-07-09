@@ -5,6 +5,7 @@ import { useSessionStore } from "@/stores/session-store";
 import type { StreamItem, UserMessageItem } from "@/types/stream";
 import {
   applyStreamEvent,
+  hasPendingAuthorityDecisionStreamItem,
   hydrateStreamState,
   isAgentToolCallItem,
   mergeAgentToolCallItem,
@@ -955,7 +956,11 @@ export function processAgentStreamEvent(
       event.type === "turn_canceled" ||
       event.type === "turn_failed")
   ) {
-    const optimisticStatus = deriveOptimisticLifecycleStatus(currentAgent.status, event);
+    const hasPendingAuthorityDecision =
+      hasPendingAuthorityDecisionStreamItem(tail) || hasPendingAuthorityDecisionStreamItem(head);
+    const optimisticStatus = hasPendingAuthorityDecision
+      ? null
+      : deriveOptimisticLifecycleStatus(currentAgent.status, event);
     if (optimisticStatus) {
       const nextUpdatedAtMs = Math.max(currentAgent.updatedAt.getTime(), timestamp.getTime());
       const nextLastActivityAtMs = Math.max(

@@ -98,6 +98,7 @@ import { isWeb, isNative } from "@/constants/platform";
 import type { GitHubSearchItem, MutableDaemonConfig } from "@thoth/protocol/messages";
 import type {
   ThothRuntimeClarifyStrength,
+  ThothRuntimeLoopStrength,
   ThothRuntimeMode,
 } from "@thoth/protocol/thoth-runtime-contract";
 import type { ThothComposerModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
@@ -229,13 +230,25 @@ function buildWorkspaceSecretaryComposerModel(
     rawClarify === "dive"
       ? rawClarify
       : "balanced";
+  const loopStrength = resolveWorkspaceSecretaryLoopStrength(
+    config?.workspaceSecretary?.loopStrength,
+  );
   return {
     mode,
     clarifyStrength,
-    loop: mode === "loop" ? "balanced" : null,
+    loop: mode === "loop" ? loopStrength : null,
     authorityLabel: "真实 provider",
     authorityReady: true,
   };
+}
+
+function resolveWorkspaceSecretaryLoopStrength(value: unknown): ThothRuntimeLoopStrength {
+  return value === "one_plan_one_do" ||
+    value === "light" ||
+    value === "balanced" ||
+    value === "run_until_stopped"
+    ? value
+    : "one_plan_one_do";
 }
 
 function renderContextWindowMeter(

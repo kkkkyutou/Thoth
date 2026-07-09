@@ -19,6 +19,7 @@ import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit
 import {
   appendOptimisticUserMessageToStream,
   buildOptimisticUserMessage,
+  clearOptimisticUserMessages,
   generateMessageId,
   type StreamItem,
   type UserMessageItem,
@@ -278,11 +279,20 @@ export function applyWorkspaceSecretaryModelToStream(
     return next;
   });
   stream.setHead((prev) => {
-    if (!prev.has(agentId)) {
+    const current = prev.get(agentId);
+    if (!current) {
+      return prev;
+    }
+    const headWithoutOptimisticUser = clearOptimisticUserMessages(current);
+    if (headWithoutOptimisticUser === current) {
       return prev;
     }
     const next = new Map(prev);
-    next.delete(agentId);
+    if (headWithoutOptimisticUser.length === 0) {
+      next.delete(agentId);
+    } else {
+      next.set(agentId, headWithoutOptimisticUser);
+    }
     return next;
   });
 }

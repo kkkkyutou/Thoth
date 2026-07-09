@@ -35,9 +35,11 @@ import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
   shouldAllowEmptyDraftText,
+  shouldHydrateWorkspaceSecretarySnapshotForDraft,
+  shouldKeepWorkspaceSecretaryAuthorityTurnRunning,
   validateDraftSubmission,
 } from "@/composer/draft/workspace-tab-core";
-import type { AgentCapabilityFlags } from "@thoth/protocol/agent-types";
+import type { AgentCapabilityFlags, AgentProvider } from "@thoth/protocol/agent-types";
 import type { AgentSnapshotPayload } from "@thoth/protocol/messages";
 import type { DaemonClient } from "@thoth/client/internal/daemon-client";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
@@ -53,6 +55,7 @@ import type {
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import type {
   ThothRuntimeClarifyStrength,
+  ThothRuntimeLoopStrength,
   ThothRuntimeMode,
 } from "@thoth/protocol/thoth-runtime-contract";
 import {
@@ -79,6 +82,7 @@ function buildWorkspaceSecretaryComposerModel(config: {
   workspaceSecretary?: {
     mode?: string;
     clarifyStrength?: string;
+    loopStrength?: string;
   };
 }): ThothComposerModel {
   const rawMode = config.workspaceSecretary?.mode;
@@ -91,13 +95,25 @@ function buildWorkspaceSecretaryComposerModel(config: {
     rawClarify === "dive"
       ? rawClarify
       : "balanced";
+  const loopStrength = resolveWorkspaceSecretaryLoopStrength(
+    config.workspaceSecretary?.loopStrength,
+  );
   return {
     mode,
     clarifyStrength,
-    loop: mode === "loop" ? ("balanced" as const) : null,
+    loop: mode === "loop" ? loopStrength : null,
     authorityLabel: "真实 provider",
     authorityReady: true,
   };
+}
+
+function resolveWorkspaceSecretaryLoopStrength(value: unknown): ThothRuntimeLoopStrength {
+  return value === "one_plan_one_do" ||
+    value === "light" ||
+    value === "balanced" ||
+    value === "run_until_stopped"
+    ? value
+    : "one_plan_one_do";
 }
 
 function buildWorkspaceSecretaryDraftAgent(input: {
@@ -462,6 +478,15 @@ export function WorkspaceDraftAgentTab({
   const secretaryStreamItems =
     useSessionStore((state) => state.sessions[serverId]?.agentStreamTail?.get(tabId)) ??
     EMPTY_STREAM_ITEMS;
+  const secretaryAuthorityTurnRunning = shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
+    secretarySubmitted,
+    secretarySubmitting,
+    clarifyStrength: workspaceSecretaryComposer.clarifyStrength,
+    streamItems: secretaryStreamItems,
+  });
+  const shouldHydrateSecretarySnapshot = shouldHydrateWorkspaceSecretarySnapshotForDraft({
+    localStreamItemCount: secretaryStreamItems.length,
+  });
   const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
   const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
   const secretaryDraftAgent = useMemo(
@@ -474,14 +499,14 @@ export function WorkspaceDraftAgentTab({
             workspaceId: workspaceFields?.id ?? null,
             provider: secretaryProvider,
             model: secretaryModel,
-            status: secretarySubmitting ? "running" : "idle",
+            status: secretaryAuthorityTurnRunning ? "running" : "idle",
           })
         : null,
     [
       draftWorkingDirectory,
       secretaryModel,
       secretaryProvider,
-      secretarySubmitting,
+      secretaryAuthorityTurnRunning,
       serverId,
       tabId,
       workspaceFields?.id,
@@ -498,6 +523,9 @@ export function WorkspaceDraftAgentTab({
   );
   const secretarySnapshotHydratedRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!shouldHydrateSecretarySnapshot) {
+      return;
+    }
     if (!client || !draftWorkingDirectory || !workspaceFields?.id) {
       return;
     }
@@ -536,6 +564,7 @@ export function WorkspaceDraftAgentTab({
     draftWorkingDirectory,
     getSecretaryStreamWriter,
     serverId,
+    shouldHydrateSecretarySnapshot,
     tabId,
     workspaceFields?.id,
   ]);
@@ -896,6 +925,8 @@ export function WorkspaceDraftAgentTab({
   const composerAgentControls = useMemo(
     () => ({
       ...composerState.agentControls,
+      selectedProvider: secretaryProvider as AgentProvider,
+      selectedModel: secretaryModel ?? composerState.agentControls.selectedModel,
       onSelectProvider: handleProviderSelectWithFocus,
       onSelectMode: handleModeSelectWithFocus,
       onSelectModel: handleModelSelectWithFocus,
@@ -915,12 +946,14 @@ export function WorkspaceDraftAgentTab({
       handleSetFeatureWithFocus,
       handleDropdownCloseFocus,
       isSubmitting,
+      secretaryModel,
+      secretaryProvider,
     ],
   );
   const showWorkspaceSecretaryStream =
     Boolean(secretaryDraftAgent) && (secretarySubmitted || secretaryStreamItems.length > 0);
   const visibleFormErrorMessage = secretaryErrorMessage || formErrorMessage;
-  const visibleSubmitLoading = isSubmitting || secretarySubmitting;
+  const visibleSubmitLoading = isSubmitting || secretaryAuthorityTurnRunning;
   return (
     <FileDropZone style={styles.container}>
       <View style={styles.contentContainer}>

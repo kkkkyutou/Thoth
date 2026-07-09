@@ -8,6 +8,7 @@ build/
 packages/app/test-results/
 .wrangler/
 .dev/
+/docs/ui-review-captures/
 
 .env
 .env.*

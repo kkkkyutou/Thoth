@@ -34,8 +34,10 @@ import {
   type ProviderCatalog,
 } from "../agent-sdk-types.js";
 import {
-  THOTH_CLARIFY_RUNTIME_TOOL_NAMES,
+  THOTH_RUNTIME_TOOL_NAMES,
   type ThothClarifyRuntimeToolName,
+  type ThothLoopRuntimeToolName,
+  type ThothRuntimeToolName,
 } from "@thoth/protocol/thoth-runtime-contract";
 import type { ThothToolCatalog, ThothToolResult } from "../tools/types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
@@ -1011,7 +1013,7 @@ type CodexDynamicToolCallResponse = {
   contentItems: Array<{ type: "inputText"; text: string }>;
 };
 
-const THOTH_CLARIFY_DYNAMIC_TOOL_NAME_SET = new Set<string>(THOTH_CLARIFY_RUNTIME_TOOL_NAMES);
+const THOTH_DYNAMIC_TOOL_NAME_SET = new Set<string>(THOTH_RUNTIME_TOOL_NAMES);
 
 const clarifyChoiceJsonSchema = {
   type: "object",
@@ -1027,11 +1029,12 @@ const clarifyChoiceJsonSchema = {
 const clarifyQuestionJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["id", "question", "choices"],
+  required: ["id", "question", "selection_mode", "choices"],
   properties: {
     id: { type: "string", minLength: 1 },
     question: { type: "string", minLength: 1 },
     behavior_tree_node: { type: "string", minLength: 1 },
+    selection_mode: { type: "string", enum: ["single", "multiple"] },
     choices: {
       type: "array",
       minItems: 2,
@@ -1039,6 +1042,46 @@ const clarifyQuestionJsonSchema = {
       items: clarifyChoiceJsonSchema,
     },
     note: { type: "string" },
+  },
+};
+
+const clarifyFrontierLedgerJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "clarify_strength",
+    "grounded_user_decisions",
+    "remaining_material_user_owned_assumptions",
+    "agent_owned_assumptions",
+    "discoverable_assumptions",
+    "why_this_round",
+    "convergence_state",
+  ],
+  properties: {
+    clarify_strength: { type: "string", enum: ["none", "auto", "light", "balanced", "dive"] },
+    grounded_user_decisions: { type: "array", items: { type: "string", minLength: 1 } },
+    remaining_material_user_owned_assumptions: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+    },
+    agent_owned_assumptions: { type: "array", items: { type: "string", minLength: 1 } },
+    discoverable_assumptions: { type: "array", items: { type: "string", minLength: 1 } },
+    why_this_round: { type: "string", minLength: 1 },
+    convergence_state: {
+      type: "string",
+      enum: ["not_converged", "ready_for_task", "user_stopped", "blocked"],
+    },
+  },
+};
+
+const clarifyConvergenceReviewJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["frontier_ledger", "why_task_is_now_grounded"],
+  properties: {
+    frontier_ledger: clarifyFrontierLedgerJsonSchema,
+    why_task_is_now_grounded: { type: "string", minLength: 1 },
+    below_soft_target_rationale: { type: "string" },
   },
 };
 
@@ -1109,20 +1152,59 @@ const pyramidProvenanceJsonSchema = {
   },
 };
 
+const linearGoalJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["id", "order", "title", "goal", "constraints", "acceptance"],
+  properties: {
+    id: { type: "string", minLength: 1 },
+    order: { type: "integer", minimum: 1 },
+    title: { type: "string", minLength: 1 },
+    goal: { type: "string", minLength: 1 },
+    constraints: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+    acceptance: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+    provenance: { type: "string" },
+  },
+};
+
+const goalsCardJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "summary", "goals"],
+  properties: {
+    title: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1 },
+    goals: { type: "array", minItems: 1, items: linearGoalJsonSchema },
+  },
+};
+
+const loopAcceptanceMatrixEntryJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["acceptance", "status"],
+  properties: {
+    acceptance: { type: "string", minLength: 1 },
+    status: { type: "string", enum: ["met", "not_met", "unclear"] },
+    evidence: { type: "string" },
+  },
+};
+
 const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, CodexDynamicToolSpec> =
   {
     thoth_submit_clarify_card: {
       name: "thoth_submit_clarify_card",
       description:
-        "Submit one Thoth Clarify decision card when a user-owned decision changes route, scope, acceptance, risk, priority, or irreversible action.",
+        "Submit one Thoth Clarify decision card with a user-visible demand-breakdown badge summary and a frontier ledger. Ask high-value user-owned decisions only; before balanced/dive soft minimum, normally continue with the next material frontier instead of converging.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "why_now", "decision_it_changes", "questions"],
+        required: ["title", "why_now", "public_badge_summary", "frontier_ledger", "questions"],
         properties: {
           title: { type: "string", minLength: 1 },
           why_now: { type: "string", minLength: 1 },
           decision_it_changes: { type: "string", minLength: 1 },
+          public_badge_summary: { type: "string", minLength: 1 },
+          frontier_ledger: clarifyFrontierLedgerJsonSchema,
           questions: { type: "array", minItems: 2, maxItems: 4, items: clarifyQuestionJsonSchema },
           allow_choice_notes: { type: "boolean", const: true },
           allow_note_only: { type: "boolean", const: true },
@@ -1132,27 +1214,28 @@ const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, Code
     thoth_submit_task_card: {
       name: "thoth_submit_task_card",
       description:
-        "Submit the concise CEO Task Card after Clarify converges. Include only title, goal, constraints, and acceptance.",
+        "Submit the concise CEO Task Card only after Clarify converges. Include only title, goal, constraints, and acceptance. Below the balanced/dive soft minimum, convergence is exceptional and the review must account for every material frontier category, not use a generic shortcut rationale.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
-        required: ["task_card", "provenance"],
+        required: ["task_card", "provenance", "convergence_review"],
         properties: {
           task_card: taskCardJsonSchema,
           provenance: clarifyProvenanceJsonSchema,
+          convergence_review: clarifyConvergenceReviewJsonSchema,
         },
       },
     },
-    thoth_submit_pyramid_plan: {
-      name: "thoth_submit_pyramid_plan",
+    thoth_submit_goals_card: {
+      name: "thoth_submit_goals_card",
       description:
-        "Submit the second approval card as a pyramid-shaped target breakdown with stages, subgoals, and acceptance evidence.",
+        "Submit the second approval card as a linear Goals Card. Split the approved task into ordered, fine-grained goals with clear constraints and acceptance; do not include commands, file paths, or code-level execution steps.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
-        required: ["pyramid_plan", "provenance"],
+        required: ["goals_card", "provenance"],
         properties: {
-          pyramid_plan: pyramidPlanJsonSchema,
+          goals_card: goalsCardJsonSchema,
           provenance: pyramidProvenanceJsonSchema,
         },
       },
@@ -1172,6 +1255,98 @@ const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, Code
       },
     },
   };
+
+const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynamicToolSpec> = {
+  thoth_loop_submit_planexec_result: {
+    name: "thoth_loop_submit_planexec_result",
+    description:
+      "Submit the completed PlanExec result for the current Thoth background Loop goal after planning, implementing only this goal, and collecting validation evidence.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "goal_id",
+        "round",
+        "plan_summary",
+        "execution_summary",
+        "evidence",
+        "next_review_focus",
+      ],
+      properties: {
+        goal_id: { type: "string", minLength: 1 },
+        round: { type: "integer", minimum: 1 },
+        plan_summary: { type: "string", minLength: 1 },
+        execution_summary: { type: "string", minLength: 1 },
+        evidence: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+        validation_performed: { type: "array", items: { type: "string", minLength: 1 } },
+        remaining_risks: { type: "array", items: { type: "string", minLength: 1 } },
+        next_review_focus: { type: "string", minLength: 1 },
+      },
+    },
+  },
+  thoth_loop_submit_review_verdict: {
+    name: "thoth_loop_submit_review_verdict",
+    description:
+      "Submit the independent Review verdict for the current Thoth background Loop goal. Pass advances; fail consumes one failed-review budget and must include root cause plus next-round guidance.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["goal_id", "round", "outcome", "summary", "acceptance_matrix", "evidence_summary"],
+      properties: {
+        goal_id: { type: "string", minLength: 1 },
+        round: { type: "integer", minimum: 1 },
+        outcome: { type: "string", enum: ["pass", "fail", "blocked"] },
+        summary: { type: "string", minLength: 1 },
+        acceptance_matrix: {
+          type: "array",
+          minItems: 1,
+          items: loopAcceptanceMatrixEntryJsonSchema,
+        },
+        failed_acceptance: { type: "array", items: { type: "string", minLength: 1 } },
+        failure_root_cause: { type: "string" },
+        next_round_guidance: { type: "string" },
+        anti_repeat_strategy: { type: "array", items: { type: "string", minLength: 1 } },
+        evidence_summary: { type: "string", minLength: 1 },
+      },
+    },
+  },
+  thoth_loop_report_blocked: {
+    name: "thoth_loop_report_blocked",
+    description:
+      "Report that the current Thoth background Loop phase is blocked by a real external condition or user-owned decision.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["title", "reason"],
+      properties: {
+        goal_id: { type: "string", minLength: 1 },
+        phase: { type: "string", enum: ["planexec", "review"] },
+        title: { type: "string", minLength: 1 },
+        reason: { type: "string", minLength: 1 },
+        next_user_decision: { type: "string" },
+      },
+    },
+  },
+};
+
+const THOTH_DYNAMIC_TOOL_SPECS: Record<ThothRuntimeToolName, CodexDynamicToolSpec> = {
+  ...THOTH_CLARIFY_DYNAMIC_TOOL_SPECS,
+  thoth_submit_pyramid_plan: {
+    name: "thoth_submit_pyramid_plan",
+    description:
+      "Legacy compatibility only. New Workspace Secretary sessions must use thoth_submit_goals_card.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["pyramid_plan", "provenance"],
+      properties: {
+        pyramid_plan: pyramidPlanJsonSchema,
+        provenance: pyramidProvenanceJsonSchema,
+      },
+    },
+  },
+  ...THOTH_LOOP_DYNAMIC_TOOL_SPECS,
+};
 
 export function normalizeCodexQuestionPrompts(raw: unknown): CodexQuestionPrompt[] {
   if (!Array.isArray(raw)) {
@@ -1227,12 +1402,26 @@ function buildThothDynamicToolSpecs(tools: ThothToolCatalog | undefined): CodexD
   if (!tools) {
     return [];
   }
-  return THOTH_CLARIFY_RUNTIME_TOOL_NAMES.flatMap((name) => {
+  return THOTH_RUNTIME_TOOL_NAMES.flatMap((name) => {
     if (!tools.getTool(name)) {
       return [];
     }
-    return [THOTH_CLARIFY_DYNAMIC_TOOL_SPECS[name]];
+    return [THOTH_DYNAMIC_TOOL_SPECS[name]];
   });
+}
+
+function stripInternalCodexRuntimeConfig(
+  config: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!config) {
+    return {};
+  }
+  const {
+    thothClarifyRuntimeTools: _thothClarifyRuntimeTools,
+    thothLoopRuntimeTools: _thothLoopRuntimeTools,
+    ...providerConfig
+  } = config;
+  return providerConfig;
 }
 
 function dynamicToolResultText(result: ThothToolResult): string {
@@ -4351,6 +4540,18 @@ export class CodexAppServerAgentSession implements AgentSession {
       ...(this.ephemeral ? { ephemeral: true } : {}),
     };
     applyApprovalsReviewerParam(params, preset);
+    this.logger.info(
+      {
+        threadId: this.currentThreadId,
+        model,
+        modeId: this.currentMode ?? null,
+        cwd: this.config.cwd ?? null,
+        dynamicToolNames: dynamicTools.map((tool) => tool.name),
+        dynamicToolCount: dynamicTools.length,
+        hasCodexConfig: Boolean(innerConfig),
+      },
+      "Starting Codex app-server thread",
+    );
     const rawResponse = await this.client.request("thread/start", params);
     const response = toObjectRecord(rawResponse);
     const threadRecord = toObjectRecord(response?.thread);
@@ -4383,7 +4584,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       innerConfig.mcp_servers = mcpServers;
     }
     if (this.config.extra?.codex) {
-      Object.assign(innerConfig, this.config.extra.codex);
+      Object.assign(innerConfig, stripInternalCodexRuntimeConfig(this.config.extra.codex));
     }
     if (this.deps.customCodexConfig) {
       Object.assign(innerConfig, this.deps.customCodexConfig);
@@ -5512,7 +5713,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       })
       .parse(params);
 
-    if (!THOTH_CLARIFY_DYNAMIC_TOOL_NAME_SET.has(parsed.tool)) {
+    if (!THOTH_DYNAMIC_TOOL_NAME_SET.has(parsed.tool)) {
       return dynamicToolErrorResult(new Error("Unsupported dynamic tool for this session"));
     }
     if (!this.thothTools) {

@@ -2,8 +2,8 @@ import type { AgentProvider, ToolCallDetail } from "@thoth/protocol/agent-types"
 import type { AgentAttachment, AgentStreamEventPayload } from "@thoth/protocol/messages";
 import type {
   RegisteredTaskModel,
+  ThothApprovalGoalCardModel,
   ThothClarifyCardModel,
-  ThothGoalCardModel,
   ThothTaskCardModel,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import type { AttachmentMetadata } from "@/attachments/types";
@@ -155,7 +155,7 @@ export interface GoalCardItem {
   kind: "goal_card";
   id: string;
   timestamp: Date;
-  card: ThothGoalCardModel;
+  card: ThothApprovalGoalCardModel;
 }
 
 export interface RegisteredTaskItem {
@@ -168,6 +168,28 @@ export interface RegisteredTaskItem {
 export type AgentToolCallItem = ToolCallItem & {
   payload: { source: "agent"; data: AgentToolCallData };
 };
+
+export function isPendingAuthorityDecisionStreamItem(item: StreamItem): boolean {
+  if (
+    (item.kind === "clarify_card" || item.kind === "task_card" || item.kind === "goal_card") &&
+    item.card.submitted === false
+  ) {
+    return true;
+  }
+  if (item.kind !== "tool_call" || item.payload.source !== "agent") {
+    return false;
+  }
+  const { data } = item.payload;
+  return (
+    data.status === "running" &&
+    data.metadata?.thothAuthorityDecision === true &&
+    data.metadata?.pendingAuthorityDecision !== false
+  );
+}
+
+export function hasPendingAuthorityDecisionStreamItem(items: StreamItem[]): boolean {
+  return items.some(isPendingAuthorityDecisionStreamItem);
+}
 
 export function isAgentToolCallItem(item: StreamItem): item is AgentToolCallItem {
   return item.kind === "tool_call" && item.payload.source === "agent";
@@ -696,7 +718,7 @@ function appendTaskCard(
 
 function appendGoalCard(
   state: StreamItem[],
-  card: ThothGoalCardModel,
+  card: ThothApprovalGoalCardModel,
   timestamp: Date,
 ): StreamItem[] {
   const item: GoalCardItem = {

@@ -7,6 +7,7 @@ import { AgentProviderSchema } from "@thoth/protocol/provider-manifest";
 import { normalizeAgentModelDefinition, TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
   ThothRuntimeClarifyStrengthSchema,
+  ThothRuntimeLoopStrengthSchema,
   ThothRuntimeModeSchema,
 } from "./thoth-runtime-contract.js";
 import { RegisteredTaskModelSchema } from "./workspace-secretary/rpc-schemas.js";
@@ -14,7 +15,7 @@ import {
   SecretaryTopicModelSchema,
   SecretaryTurnSchema,
   ThothClarifyCardModelSchema,
-  ThothGoalCardModelSchema,
+  ThothApprovalGoalCardModelSchema,
   ThothTaskCardModelSchema,
 } from "./workspace-secretary/rpc-schemas.js";
 import {
@@ -70,11 +71,18 @@ import {
   WorkspaceSecretarySendRequestSchema,
   WorkspaceSecretaryAnswerRequestSchema,
   WorkspaceSecretaryTopicCreateRequestSchema,
+  BackgroundTaskListRequestSchema,
+  BackgroundTaskInspectRequestSchema,
+  BackgroundTaskActionRequestSchema,
   WorkspaceSecretarySnapshotResponseSchema,
   WorkspaceSecretarySendResponseSchema,
   WorkspaceSecretaryAnswerResponseSchema,
   WorkspaceSecretaryTopicCreateResponseSchema,
   WorkspaceSecretaryModelUpdateSchema,
+  BackgroundTaskListResponseSchema,
+  BackgroundTaskInspectResponseSchema,
+  BackgroundTaskActionResponseSchema,
+  BackgroundTaskUpdateSchema,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import {
   ThothConfigRawSchema,
@@ -149,6 +157,7 @@ const MutableWorkspaceSecretaryConfigSchema = z
     providerSession: MutableWorkspaceSecretaryProviderSessionSchema.optional(),
     mode: ThothRuntimeModeSchema.optional(),
     clarifyStrength: ThothRuntimeClarifyStrengthSchema.exclude(["deep"]).optional(),
+    loopStrength: ThothRuntimeLoopStrengthSchema.optional(),
     registeredTasks: z.array(RegisteredTaskModelSchema).optional(),
     selectedBackgroundTaskId: z.string().min(1).nullable().optional(),
     topicSnapshots: z
@@ -635,7 +644,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   }),
   z.object({
     type: z.literal("goal_card"),
-    card: ThothGoalCardModelSchema,
+    card: ThothApprovalGoalCardModelSchema,
   }),
   z.object({
     type: z.literal("registered_task"),
@@ -2245,6 +2254,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceSecretarySendRequestSchema,
   WorkspaceSecretaryAnswerRequestSchema,
   WorkspaceSecretaryTopicCreateRequestSchema,
+  BackgroundTaskListRequestSchema,
+  BackgroundTaskInspectRequestSchema,
+  BackgroundTaskActionRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -4391,6 +4403,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceSecretaryAnswerResponseSchema,
   WorkspaceSecretaryTopicCreateResponseSchema,
   WorkspaceSecretaryModelUpdateSchema,
+  BackgroundTaskListResponseSchema,
+  BackgroundTaskInspectResponseSchema,
+  BackgroundTaskActionResponseSchema,
+  BackgroundTaskUpdateSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
 ]);

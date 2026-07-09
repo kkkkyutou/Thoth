@@ -41,8 +41,15 @@ export interface ThothToolCatalog {
   ): Promise<ThothToolResult>;
 }
 
+export interface ThothToolRuntimeCallerConfig {
+  extra?: {
+    codex?: Record<string, unknown>;
+  };
+}
+
 export interface ThothToolRuntimeContext {
   callerAgentId?: string;
+  callerAgentConfig?: ThothToolRuntimeCallerConfig;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
 }

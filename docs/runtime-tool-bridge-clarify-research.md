@@ -2,12 +2,16 @@
 
 ## Status
 
-1. 日期：`2026-07-07`
+1. 日期：`2026-07-09`
 2. 性质：Claude Code、Codex app-server、OpenCode runtime tool / native question 能力调研与 Thoth Clarify 迁移方向
 3. 目的：把 Thoth Clarify 从 prompt packet / assistant JSON 输出迁移为 provider runtime tool bridge
 4. 范围：Claude Agent SDK custom tools / `AskUserQuestion`、Codex app-server `dynamicTools` / MCP / `request_user_input`、OpenCode custom tools / MCP / `question`
-5. 当前实测状态：Codex app-server `dynamicTools` 已在 Loop-2 主路径实现并通过真实 provider web test app 验收；Claude/OpenCode 仍是后续 adapter 方向。
-6. 非目标：不替代 `.agent-os/designs/*` canonical authority，不声称 Loop-5 PlanExec / Review 或非 Codex provider adapters 已完成。
+5. 当前实测状态：Codex app-server `dynamicTools` 已在 Loop-2 Clarify 主路径实现。原
+   `NTH-EV-029` 真实 provider evidence 因 2026-07-07 Quick+Clarify pending lifecycle 和
+   strength/frontier 行为回归已降级为 reopened regression；新的 contract v2 修复正在重验。
+   `NTH-CD-045` 进一步把 Loop background 从 registered-pending handoff 升级为 Goals Card ->
+   durable Loop task -> PlanExec / Review phases。Claude/OpenCode 仍是后续 adapter 方向。
+6. 非目标：不替代 `.agent-os/designs/*` canonical authority，不声称非 Codex provider adapters 已完成。
 
 ## 1. Verdict
 
@@ -26,7 +30,8 @@ Thoth 当前 `thoth.clarify` 方向应从“prompt 要求 provider 输出 Clarif
 
 ## 1.1 Loop-2 Implementation Result
 
-`NTH-EV-029` closes the Codex part of this research direction for Loop-2:
+`NTH-EV-029` originally closed the Codex part of this research direction for Loop-2, then was
+reopened after live Quick+Clarify testing exposed lifecycle and strength behavior gaps:
 
 1. Workspace Secretary structured phases use Codex app-server `dynamicTools` / `item/tool/call`.
 2. Registered semantic tools are `thoth_submit_clarify_card`, `thoth_submit_task_card`,
@@ -36,12 +41,38 @@ Thoth 当前 `thoth.clarify` 方向应从“prompt 要求 provider 输出 Clarif
 4. Clarify / Task / Pyramid / registered-task cards render through AgentTimeline, not assistant JSON
    packet parsing.
 5. Quick+none stays bare Codex/Paseo and does not register Thoth semantic tools.
-6. Loop stops honestly at durable `registered_pending`; PlanExec / Review remain future `NTH-TD-019`
-   scope.
-7. Evidence path: `docs/ui-review-captures/loop2-runtime-tool-bridge/`.
+6. Historical Loop-2 stopped honestly at durable `registered_pending`. After `NTH-CD-045`, the current
+   main Loop background path continues into durable Loop tasks with PlanExec / Review phases; see
+   `NTH-EV-030` for code-level evidence and `docs/testing.md` for real-provider acceptance steps.
+7. Evidence path: `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/`.
 
 The old `submit_clarify_packet` bridge is now legacy/internal compatibility for Loop-2 purposes. It
 is not the accepted product path and must not be user-visible.
+
+## 1.2 Semantic Tool Contract v2
+
+The updated Codex dynamicTools contract keeps runtime tools as the product boundary and adds two
+pieces of model-owned evidence that the daemon can persist and audit without judging question quality:
+
+1. `thoth_submit_clarify_card` now requires `public_badge_summary`. This is the user-visible
+   AgentTimeline badge body, for example "正在拆解排序需求：先确认语言、交付形态和性能验收的材料分支。"
+   It replaces neutral waiting copy and no longer uses legacy `decision_it_changes`.
+2. `thoth_submit_clarify_card` now requires `frontier_ledger`: current strength, grounded user
+   decisions, remaining material user-owned assumptions, agent-owned assumptions, discoverable
+   assumptions, why this round matters and convergence state.
+3. `decision_it_changes` is accepted only as legacy optional input. It is not required by dynamicTools
+   and must not drive timeline badge copy.
+4. `thoth_submit_task_card` now requires `convergence_review`, including a `ready_for_task`
+   frontier ledger. If the model converges below the soft target, `balanced < 5` or `dive < 10`, the
+   review must include `below_soft_target_rationale`.
+5. The daemon still does not mechanically judge whether questions are "good". It validates that the
+   ledger exists, is shape-valid, is mechanically self-consistent, does not claim ready while listing
+   remaining material user-owned assumptions, and does not downgrade the latest Clarify strength when
+   submitting Task.
+6. AgentTimeline pending lifecycle is part of the bridge contract: a Thoth authority tool call starts
+   as a running badge, opens a pending card, folds into a readonly submitted card after user answer,
+   completes the same call id, and only then allows the provider continuation / turn completion to
+   appear as completed.
 
 ## 2. Current Problem With Prompt Packets
 
@@ -413,9 +444,9 @@ Local evidence:
 1. `codex-cli 0.134.0`
 2. `codex app-server generate-json-schema --out <tmp>` on `2026-07-07T04:57:50Z`, with generated schema containing `DynamicToolSpec`, `DynamicToolCallParams`, `DynamicToolCallResponse`, `item/tool/call`, `item/tool/requestUserInput`, `mcpServer/tool/call`, `mcpToolCall` and `item/mcpToolCall/progress`.
 3. `docs/harness-question-clarify-research.md` for prior provider-native question analysis.
-4. `docs/ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` for real public
+4. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` for real public
    Quick+Dive Codex dynamic-tool journey.
-5. `docs/ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` for real public
+5. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` for real public
    Loop+Dive registered_pending journey.
-6. `docs/ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md` for
+6. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md` for
    independent read-only review verdict.

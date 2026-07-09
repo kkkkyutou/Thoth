@@ -1,8 +1,19 @@
-import { useCallback, useMemo, useState } from "react";
-import { Pressable, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  type PressableStateCallbackType,
+} from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Check } from "lucide-react-native";
-import type { ClarifyQuestionChoice } from "@thoth/protocol/thoth-runtime-contract";
+import type {
+  ClarifyQuestionChoice,
+  ClarifyQuestionSelectionMode,
+} from "@thoth/protocol/thoth-runtime-contract";
 import type {
   SecretaryClarifyAnswerPayload,
   ThothClarifyCardModel,
@@ -18,9 +29,13 @@ interface ClarifyDecisionCardProps {
 type Question = {
   id: string;
   question: string;
+  selection_mode?: ClarifyQuestionSelectionMode;
   choices: ClarifyQuestionChoice[];
   note?: string;
 };
+
+const RECOMMEND_NOTE = "你根据当前我的选择和倾向，自行推荐这个选项";
+const NOTE_PLACEHOLDER = "可补说明也可以只写备注。";
 
 function getQuestions(card: ThothClarifyCardModel["card"]): Question[] {
   if ("questions" in card) {
@@ -30,6 +45,7 @@ function getQuestions(card: ThothClarifyCardModel["card"]): Question[] {
     {
       id: card.question_id,
       question: card.question,
+      selection_mode: "single",
       choices: card.choices,
     },
   ];
@@ -39,7 +55,7 @@ function getQuestionCardId(card: ThothClarifyCardModel["card"]): string {
   return card.question_id;
 }
 
-function toggleChoice(selection: Set<string>, choiceId: string): Set<string> {
+function toggleMultipleChoice(selection: Set<string>, choiceId: string): Set<string> {
   const next = new Set(selection);
   if (next.has(choiceId)) {
     next.delete(choiceId);
@@ -47,6 +63,10 @@ function toggleChoice(selection: Set<string>, choiceId: string): Set<string> {
     next.add(choiceId);
   }
   return next;
+}
+
+function selectionMode(question: Question): ClarifyQuestionSelectionMode {
+  return question.selection_mode ?? "single";
 }
 
 function compactNotes(notes: Record<string, string | undefined>): Record<string, string> {
@@ -101,26 +121,49 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
   const activeQuestion =
     questions[Math.min(activeQuestionIndex, Math.max(questions.length - 1, 0))];
 
-  const hasAnswer = useMemo(() => {
-    const hasChoice = Object.values(selections).some((set) => set.size > 0);
-    const hasChoiceNote = Object.values(choiceNotes).some((notes) =>
-      Object.values(notes).some((note) => (note ?? "").trim().length > 0),
-    );
-    const hasQuestionNote = Object.values(questionNotes).some(
-      (note) => (note ?? "").trim().length > 0,
-    );
-    return hasChoice || hasChoiceNote || hasQuestionNote;
-  }, [choiceNotes, questionNotes, selections]);
+  const isQuestionComplete = useCallback(
+    (question: Question) => {
+      const hasChoice = (selections[question.id]?.size ?? 0) > 0;
+      const hasChoiceNote = Object.values(choiceNotes[question.id] ?? {}).some(
+        (note) => (note ?? "").trim().length > 0,
+      );
+      const hasQuestionNote = (questionNotes[question.id] ?? "").trim().length > 0;
+      return hasChoice || hasChoiceNote || hasQuestionNote;
+    },
+    [choiceNotes, questionNotes, selections],
+  );
+
+  const allQuestionsComplete = useMemo(
+    () => questions.length > 0 && questions.every(isQuestionComplete),
+    [isQuestionComplete, questions],
+  );
+
+  const moveToNextQuestion = useCallback(() => {
+    setActiveQuestionIndex((current) => {
+      if (current >= questions.length - 1) {
+        return current;
+      }
+      return current + 1;
+    });
+  }, [questions.length]);
 
   const handleToggleChoice = useCallback(
-    (questionId: string, choiceId: string) => {
+    (question: Question, choiceId: string) => {
       if (readonly) return;
+      if (selectionMode(question) === "single") {
+        setSelections((current) => ({
+          ...current,
+          [question.id]: new Set([choiceId]),
+        }));
+        moveToNextQuestion();
+        return;
+      }
       setSelections((current) => ({
         ...current,
-        [questionId]: toggleChoice(current[questionId] ?? new Set<string>(), choiceId),
+        [question.id]: toggleMultipleChoice(current[question.id] ?? new Set<string>(), choiceId),
       }));
     },
-    [readonly],
+    [moveToNextQuestion, readonly],
   );
 
   const handleChoiceNoteChange = useCallback(
@@ -152,7 +195,7 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
           : intent === "decide"
             ? "你决定"
             : intent === "stop"
-              ? "停止 Clarify，回到 Quick"
+              ? "暂停继续询问"
               : summarizeRawAnswer({ questions, selections, choiceNotes, questionNotes });
       const answers = questions.map((question) => ({
         question_id: question.id,
@@ -193,16 +236,20 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
     void submit(intent);
   }, [selections, submit]);
   const handleRecommend = useCallback(() => {
-    void submit("recommend");
-  }, [submit]);
-  const handleDecide = useCallback(() => {
-    void submit("decide");
-  }, [submit]);
+    if (readonly || isSubmitting || !activeQuestion) return;
+    setQuestionNotes((current) => ({
+      ...current,
+      [activeQuestion.id]: current[activeQuestion.id]?.trim()
+        ? current[activeQuestion.id]
+        : RECOMMEND_NOTE,
+    }));
+    moveToNextQuestion();
+  }, [activeQuestion, isSubmitting, moveToNextQuestion, readonly]);
   const handleStop = useCallback(() => {
     void submit("stop");
   }, [submit]);
 
-  const submitDisabled = readonly || isSubmitting || !hasAnswer;
+  const submitDisabled = readonly || isSubmitting || !allQuestionsComplete;
   const intentDisabled = readonly || isSubmitting;
 
   if (card.submitted) {
@@ -278,6 +325,26 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
           <Text style={styles.questionKicker}>
             问题 {Math.min(activeQuestionIndex + 1, questions.length)} / {questions.length}
           </Text>
+          <View
+            style={[
+              styles.questionModeShell,
+              selectionMode(activeQuestion) === "multiple"
+                ? styles.questionModeShellMultiple
+                : styles.questionModeShellSingle,
+            ]}
+            testID={`clarify-card-question-mode-${activeQuestion.id}-${selectionMode(activeQuestion)}`}
+          >
+            <Text
+              style={[
+                styles.questionModeText,
+                selectionMode(activeQuestion) === "multiple"
+                  ? styles.questionModeTextMultiple
+                  : styles.questionModeTextSingle,
+              ]}
+            >
+              {selectionMode(activeQuestion) === "multiple" ? "多选" : "单选"}
+            </Text>
+          </View>
           <Text style={styles.questionText}>{activeQuestion.question}</Text>
           {activeQuestion.note ? (
             <Text style={styles.questionNote}>{activeQuestion.note}</Text>
@@ -286,15 +353,18 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
             {activeQuestion.choices.map((choice) => {
               const selected = selections[activeQuestion.id] ?? new Set<string>();
               const isSelected = selected.has(choice.id);
+              const isMultiple = selectionMode(activeQuestion) === "multiple";
               const choicePressableStyle = ({
                 pressed,
                 hovered,
               }: PressableStateCallbackType & { hovered?: boolean }) => [
                 styles.choice,
-                (Boolean(hovered) || isSelected) && {
+                isMultiple ? styles.choiceMultiple : styles.choiceSingle,
+                Boolean(hovered) && {
                   backgroundColor: theme.colors.surface2,
-                  borderColor: theme.colors.borderAccent,
                 },
+                isSelected &&
+                  (isMultiple ? styles.choiceSelectedMultiple : styles.choiceSelectedSingle),
                 pressed && styles.pressed,
               ];
               return (
@@ -302,8 +372,8 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={choice.label}
-                    accessibilityState={{ selected: isSelected }}
-                    onPress={() => handleToggleChoice(activeQuestion.id, choice.id)}
+                    accessibilityState={{ selected: isSelected, checked: isSelected }}
+                    onPress={() => handleToggleChoice(activeQuestion, choice.id)}
                     style={choicePressableStyle}
                     testID={`clarify-card-choice-${activeQuestion.id}-${choice.id}`}
                   >
@@ -315,7 +385,7 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
                   </Pressable>
                   {isSelected ? (
                     <TextInput
-                      placeholder="可补一句说明"
+                      placeholder={NOTE_PLACEHOLDER}
                       placeholderTextColor={theme.colors.foregroundMuted}
                       value={choiceNotes[activeQuestion.id]?.[choice.id] ?? ""}
                       onChangeText={(value) =>
@@ -330,7 +400,7 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
             })}
           </View>
           <TextInput
-            placeholder="也可以只写备注"
+            placeholder={NOTE_PLACEHOLDER}
             placeholderTextColor={theme.colors.foregroundMuted}
             value={questionNotes[activeQuestion.id] ?? ""}
             onChangeText={(value) => handleQuestionNoteChange(activeQuestion.id, value)}
@@ -341,33 +411,105 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
       ) : null}
 
       <View style={styles.actions}>
-        <ActionButton
-          label="提交"
-          disabled={submitDisabled}
-          primary
-          onPress={handleSubmitChoices}
-          testID="clarify-card-submit"
-        />
-        <ActionButton
-          label="你推荐"
-          disabled={intentDisabled}
-          onPress={handleRecommend}
-          testID="clarify-card-recommend"
-        />
-        <ActionButton
-          label="你决定"
-          disabled={intentDisabled}
-          onPress={handleDecide}
-          testID="clarify-card-decide"
-        />
-        <ActionButton
-          label="停止"
-          disabled={intentDisabled}
-          onPress={handleStop}
-          testID="clarify-card-stop"
-        />
+        <View style={styles.actionsLeft}>
+          <RecommendButton
+            disabled={intentDisabled}
+            onPress={handleRecommend}
+            testID="clarify-card-recommend"
+          />
+        </View>
+        <View style={styles.actionsRight}>
+          <ActionButton
+            label="提交"
+            disabled={submitDisabled}
+            primary
+            onPress={handleSubmitChoices}
+            testID="clarify-card-submit"
+          />
+          <ActionButton
+            label="取消"
+            disabled={intentDisabled}
+            onPress={handleStop}
+            testID="clarify-card-cancel"
+          />
+        </View>
       </View>
     </View>
+  );
+}
+
+function RecommendButton({
+  disabled,
+  onPress,
+  testID,
+}: {
+  disabled: boolean;
+  onPress: () => void;
+  testID: string;
+}) {
+  const { theme } = useUnistyles();
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (disabled) {
+      return undefined;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [disabled, pulse]);
+
+  const glowOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.25, 0.65],
+  });
+
+  const pressableStyle = useCallback(
+    ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.action,
+      styles.recommendAction,
+      !disabled && styles.recommendActionEnabled,
+      !disabled && Boolean(hovered) && { backgroundColor: "rgba(14, 165, 233, 0.2)" },
+      pressed && styles.pressed,
+      disabled && styles.disabled,
+    ],
+    [disabled],
+  );
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={pressableStyle}
+      testID={testID}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.recommendGlow, { opacity: glowOpacity }]}
+      />
+      <Text
+        style={[styles.actionText, styles.recommendActionText, { color: theme.colors.foreground }]}
+      >
+        你推荐
+      </Text>
+    </Pressable>
   );
 }
 
@@ -392,6 +534,11 @@ function ActionButton({
         backgroundColor: theme.colors.accent,
         borderColor: theme.colors.accent,
       },
+      primary &&
+        disabled && {
+          backgroundColor: "rgba(32, 116, 74, 0.22)",
+          borderColor: "rgba(124, 203, 160, 0.42)",
+        },
       !primary && Boolean(hovered) && { backgroundColor: theme.colors.surface2 },
       pressed && styles.pressed,
       disabled && styles.disabled,
@@ -488,6 +635,31 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
   },
+  questionModeShell: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: 3,
+  },
+  questionModeShellSingle: {
+    backgroundColor: "rgba(37, 99, 235, 0.12)",
+    borderColor: "rgba(96, 165, 250, 0.55)",
+  },
+  questionModeShellMultiple: {
+    backgroundColor: "rgba(147, 51, 234, 0.12)",
+    borderColor: "rgba(192, 132, 252, 0.55)",
+  },
+  questionModeText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  questionModeTextSingle: {
+    color: "#93c5fd",
+  },
+  questionModeTextMultiple: {
+    color: "#d8b4fe",
+  },
   questionNote: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
@@ -501,13 +673,26 @@ const styles = StyleSheet.create((theme) => ({
   },
   choice: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface0,
     padding: theme.spacing[3],
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+  },
+  choiceSingle: {
+    borderColor: "rgba(96, 165, 250, 0.28)",
+  },
+  choiceMultiple: {
+    borderColor: "rgba(192, 132, 252, 0.28)",
+  },
+  choiceSelectedSingle: {
+    backgroundColor: "rgba(37, 99, 235, 0.16)",
+    borderColor: "rgba(96, 165, 250, 0.78)",
+  },
+  choiceSelectedMultiple: {
+    backgroundColor: "rgba(147, 51, 234, 0.16)",
+    borderColor: "rgba(192, 132, 252, 0.78)",
   },
   choiceText: {
     flex: 1,
@@ -550,6 +735,16 @@ const styles = StyleSheet.create((theme) => ({
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  actionsLeft: {
+    flexDirection: "row",
+    gap: theme.spacing[2],
+  },
+  actionsRight: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "flex-end",
     gap: theme.spacing[2],
   },
@@ -562,10 +757,30 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
+  recommendAction: {
+    overflow: "hidden",
+    borderColor: "rgba(14, 165, 233, 0.7)",
+    backgroundColor: "rgba(14, 165, 233, 0.12)",
+  },
+  recommendActionEnabled: {
+    borderColor: "rgba(168, 85, 247, 0.65)",
+  },
+  recommendGlow: {
+    position: "absolute",
+    left: -16,
+    right: -16,
+    top: -18,
+    bottom: -18,
+    backgroundColor: "rgba(14, 165, 233, 0.32)",
+    transform: [{ rotate: "-8deg" }],
+  },
   actionText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
+  },
+  recommendActionText: {
+    zIndex: 1,
   },
   primaryActionText: {
     color: theme.colors.accentForeground,

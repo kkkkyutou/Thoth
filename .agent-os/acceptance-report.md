@@ -912,12 +912,12 @@ Evidence:
    Workspace composer/task/evidence preview slots, Settings About, host Providers and host
    Connections, then churns Settings/Workspace/composer/viewport paths.
 3. The spec captures six screenshot artifacts:
-   `docs/ui-review-captures/web-scorecard/web-home-desktop.png`,
-   `docs/ui-review-captures/web-scorecard/web-home-mobile.png`,
-   `docs/ui-review-captures/web-scorecard/web-workspace-composer.png`,
-   `docs/ui-review-captures/web-scorecard/web-settings-about.png`,
-   `docs/ui-review-captures/web-scorecard/web-settings-providers.png` and
-   `docs/ui-review-captures/web-scorecard/web-settings-connections.png`.
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-desktop.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-mobile.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-workspace-composer.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-about.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-providers.png` and
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-connections.png`.
 4. Screenshot sizes from the local artifact check were `68775`, `39004`, `92514`, `42747`,
    `118783` and `37881` bytes respectively.
 5. `packages/app/e2e/fixtures.ts` now lets `E2E_BASE_URL` override the Metro base URL so the same app
@@ -1338,7 +1338,7 @@ Evidence:
     `workspace_secretary.topic.create.request: 1`. The final e2e also asserts that stopping
     Clarify returns the visible composer action to `Send` rather than leaving the Loop action active.
 18. Latest screenshot evidence was refreshed under
-    `docs/ui-review-captures/loop2-workspace-secretary/` on 2026-07-04 after the stop-to-Quick
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/` on 2026-07-04 after the stop-to-Quick
     refinement:
     `desktop-workspace-secretary.png`, `desktop-hi-no-card.png`, `desktop-clarify-card.png`,
     `desktop-clarify-readonly-next-round.png`, `desktop-background-tasks.png`,
@@ -1351,10 +1351,10 @@ Evidence:
     `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
     `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
     `desktop-app-settings-real-relay.png` under
-    `docs/ui-review-captures/loop2-workspace-secretary/`.
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`.
 20. Manual `view_image` review passed for the Electron desktop app Workspace Secretary root, `hi`
     with no Clarify card, Clarify decision card, Background Tasks and Settings real relay state.
-    The older `docs/ui-review-captures/desktop-scorecard/` screenshots still show the pre-Loop-2
+    The older `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/desktop-scorecard/` screenshots still show the pre-Loop-2
     One Thoth / New Agent scorecard and are historical, not the current Loop-2 desktop evidence.
 21. Latest Playwright evidence is
     `packages/app/test-results/thoth-ui-scorecard-Loop-2--d4592--card-and-real-relay-status-Desktop-Chrome/trace.zip`
@@ -1374,7 +1374,7 @@ Evidence:
     main navigation, new topic, composer inputs/actions, mode/strength controls, choices, notes and
     Clarify action buttons.
 25. Independent read-only `codex exec` mental-model review wrote
-    `docs/ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
     verdict `PASS`. It found no blocking evidence that the UI still reads as Paseo agent manager,
     questionnaire or permission prompt.
 26. `git diff --check` passed after the final Loop-2 edits.
@@ -1391,7 +1391,7 @@ Evidence:
     and selecting Loop / Clarify / Loop-strength options updates the visible composer state.
 30. The Loop-2 scorecard now captures dropdown-open states in addition to the existing journey:
     `desktop-composer-clarify-menu.png` and `mobile-composer-loop-menu.png` under
-    `docs/ui-review-captures/loop2-workspace-secretary/`. Manual `view_image` review passed for
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`. Manual `view_image` review passed for
     both. The mobile screenshot verifies the menu overlays upward and keeps the bottom Mode /
     Clarify / Loop controls visible rather than pushing them off-screen.
 31. The latest composer-refinement `npm run build:web` passed and exported
@@ -1431,7 +1431,7 @@ http://180.76.242.105:8148/` showed the injected `__THOTH_INITIAL_DAEMON_CONNECT
     `srv_0Ryud1K1J1zRYj7eylwnsg`.
 38. Public review screenshots were captured and manually reviewed with `view_image`:
     `public-web-fresh-desktop.png`, `public-web-stale-desktop.png` and
-    `public-web-stale-mobile.png` under `docs/ui-review-captures/loop2-workspace-secretary/`.
+    `public-web-stale-mobile.png` under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`.
     Electron desktop smoke was also rerun and passed, refreshing
     `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
     `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
@@ -1537,7 +1537,7 @@ Evidence so far:
    reply, no Clarify card, no repair loop, no provider failure, no stale "waiting" flood, no
    raw/schema leakage, and visible clean events `真实 provider 回合已开始` /
    `真实 provider 回合完成`. Screenshot:
-   `docs/ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
 10. Additional gates for the public test bugfix passed on 2026-07-05:
     `npm --workspace=@thoth/daemon exec vitest run src/server/session/workspace-secretary/workspace-secretary-session.test.ts`
     with `1` file and `9` tests, `git diff --check`, and `npm run check:foundation` through repo
@@ -1613,7 +1613,7 @@ Evidence:
     evidence showed `__THOTH_INITIAL_DAEMON_CONNECTION__` and
     `index-dc3970d4d5f1b889316602a4e34382e9.js`.
 13. Public real-provider Playwright journey passed against `http://180.76.242.105:8148/`. Summary:
-    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
     records all steps as `ok`: ready Workspace Secretary shell, `hi` completed with no card,
     Clarify card appeared atomically, submitted card became readonly, Settings relay captured and
     mobile composer captured.
@@ -1622,13 +1622,13 @@ Evidence:
     `workspace-secretary-hi-no-card-final.png`, `workspace-secretary-loop-live-before-card.png`,
     `workspace-secretary-clarify-card-atomic.png`, `workspace-secretary-clarify-card-readonly.png`,
     `settings-real-relay-status.png` and `mobile-workspace-secretary-composer.png` under
-    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`.
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`.
 15. Playwright trace/video evidence was saved:
-    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-trace.zip`,
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-trace.zip`,
     `videos/page@0e81e70a7ef3f02ebfc7a717d13ae278.webm` and
     `videos/page@8b34a58568759844da9b3c8ab63b7f39.webm`.
 16. Independent read-only `codex exec` UI mental-model review passed with verdict `PASS` in
-    `docs/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
     It found no blocking evidence of Paseo agent manager, questionnaire, permission prompt, fake
     provider, fake relay, local fallback, non-streaming Quick or non-atomic QA card behavior.
 17. `git diff --check` and `npm run format:check` passed after the implementation/formatting pass.
@@ -1657,7 +1657,43 @@ Residual non-blocking risks:
 
 ### `NTH-EV-029` Loop-2 Runtime Tool Bridge And AgentTimeline Evidence
 
-Status: `passed`
+Status: `regression_reopened`
+
+Regression note on `2026-07-07`:
+
+1. Real user testing after the original Loop-2 pass found that Quick+Clarify could show provider
+   timeline activity, then visually complete/idle, and only afterward reveal the Clarify card. This
+   fails the Paseo-style pending user decision lifecycle expected from provider question/tool flows.
+2. Quick+Clarify strength behavior was too shallow: `dive` and `balanced` could converge after only a
+   few fixed-looking rounds, instead of pursuing a valuable frontier until material user-owned
+   assumptions were exhausted.
+3. Timeline badge copy did not reliably come from an intelligent decomposition of the user's request.
+   Badge text must now be provided by the model as `public_badge_summary`, while detailed stopping
+   behavior is represented by a model-submitted `frontier_ledger`.
+4. The earlier evidence below remains useful historical proof that Codex `dynamicTools`,
+   AgentTimeline cards, same-session quick_exec and Loop `registered_pending` existed. It no longer
+   verifies the strengthened Loop-2 acceptance contract until the new pending lifecycle and
+   strength/frontier behavior are revalidated on the local `8082` and public `8148` web test apps.
+
+Repair implementation status:
+
+1. Protocol and Codex dynamic tool schemas now require `public_badge_summary` and `frontier_ledger` on
+   `thoth_submit_clarify_card`; `decision_it_changes` is legacy optional input and no longer drives
+   UI copy.
+2. `thoth_submit_task_card` now requires `convergence_review` with a `ready_for_task`
+   `frontier_ledger`. Below the soft target, `balanced < 5` or `dive < 10`, the model must provide
+   `below_soft_target_rationale`.
+3. Daemon authority tooling now persists `publicBadgeSummary`, `frontierLedger` and
+   `convergenceReview`, labels Clarify tool badges as `需求拆解`, derives card labels as
+   `Clarify 1`, `Clarify 2`, and rejects Task reviews that downgrade the latest Clarify strength.
+4. App stream reducers and AgentStream layout now treat unresolved Clarify / Task / Pyramid authority
+   cards or running Thoth authority tool calls as pending decisions, suppressing premature
+   completed/idle footer rendering until the decision resolves.
+5. Verification after the frontier-ledger repair is no longer narrow-only: protocol, daemon and app
+   targeted tests passed; `npm --workspace=@thoth/app run test`, `npm run build:web`,
+   `npm run check:foundation` and `git diff --check` also passed. Real Codex evidence now covers the
+   main strengthened behavior, but this evidence remains `regression_reopened` because the latest
+   mobile recovery and one complex Dive quick_exec run exposed residual issues.
 
 Scope:
 
@@ -1701,13 +1737,13 @@ Evidence:
    detail show honest `registered_pending` state only.
 8. Quick+none real-provider evidence passed on `2026-07-07` in throwaway workspace
    `/tmp/thoth-loop2-quick-none-K8g4vp`: report
-   `docs/ui-review-captures/loop2-runtime-tool-bridge/1783414416734-quick-none-report.json` records
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783414416734-quick-none-report.json` records
    prompt `hi`, `hasClarifyCard: 0` and screenshots
    `1783414371390-quick-none-start.png` / `1783414416665-quick-none-result.png`. `view_image` review
    confirmed ordinary provider reply with no Clarify card or raw packet/schema text.
 9. Quick+Dive runtime-tool evidence passed on public `http://180.76.242.105:8148/` in
    `/tmp/thoth-loop2-runtime-tools-6eO72B`: report
-   `docs/ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` records prompt
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` records prompt
    `实现一个高性能快速排序`, Provider=Codex, Mode=Quick, Clarify=Dive, three Clarify rounds, Task
    approval `accept_quick`, Pyramid approval `accept_quick`, same-session quick_exec and generated
    files `bench/bench_fast_quicksort.cpp`, `include/fast_quicksort.hpp` and
@@ -1719,17 +1755,17 @@ Evidence:
     spinner-only output.
 11. Loop+Dive registration evidence passed on public `http://180.76.242.105:8148/` in
     `/tmp/thoth-loop2-runtime-tools-wDRNa4`: report
-    `docs/ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` records three Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` records three Clarify
     rounds, Task approval `accept_loop`, Pyramid approval `accept_loop` and
     `registeredTaskVisible: true`. Screenshot `1783415185038-registered-pending.png` shows honest
     registration without fake running, fake review or fake evidence.
 12. Background Tasks list/detail recovery passed:
-    `docs/ui-review-captures/loop2-runtime-tool-bridge/1783415406577-background-tasks-success-report.json`
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783415406577-background-tasks-success-report.json`
     records `passed_visual_and_text_recovery`, observed `Background tasks`, `registered_pending`, task
     title and source topic. Screenshot `1783415406577-background-tasks-panel-success.png` shows list and
     detail in the independent panel.
 13. Mobile deep-link recovery passed:
-    `docs/ui-review-captures/loop2-runtime-tool-bridge/1783416247271-mobile-loop-recovery-success-report.json`
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783416247271-mobile-loop-recovery-success-report.json`
     records `passed_mobile_deep_link_recovery` for
     `http://180.76.242.105:8148/h/srv_Qd3ONVF7rQEHNW2PJTTBxA/workspace/wks_9429345588e40559`.
     Screenshot `1783416247271-mobile-loop-registered-recovery.png` shows the registered task card and
@@ -1755,15 +1791,70 @@ src/navigation/host-runtime-bootstrap.test.ts` passed 77 tests;
     protocol 320 and client 112.
 18. Independent read-only `codex exec` UI/runtime mental-model review passed with verdict `PASS` and no
     blocking findings in
-    `docs/ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md`.
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md`.
+19. Frontier-ledger repair revalidation on `2026-07-07` passed the required code gates:
+    `npm --workspace=@thoth/protocol run test --
+src/thoth-runtime-contract.test.ts src/workspace-secretary/rpc-schemas.test.ts` passed 36 tests;
+    `npm run build:protocol` passed; `npm --workspace=@thoth/daemon run test:unit --
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts
+src/server/agent/providers/codex-app-server-agent.test.ts src/server/agent/tools/thoth-tools.test.ts`
+    passed 3 files / 85 tests; `npm --workspace=@thoth/app run test --
+src/utils/tool-call-display.test.ts src/timeline/session-stream-reducers.test.ts
+src/agent-stream/layout.test.ts src/composer/actions.test.ts
+src/composer/draft/workspace-tab-core.test.ts` passed 5 files / 131 tests;
+    `npm --workspace=@thoth/app run test` passed 317 files / 2628 tests; `npm run build:web` passed;
+    `npm run check:foundation` passed with highlight 66, relay 29, protocol 323 and client 112 tests;
+    `git diff --check` passed.
+20. Local `8082` Quick + Balanced prompt `实现一个高性能快速排序` passed the strengthened soft-range
+    behavior: report
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447093160-report.json` records 5 Clarify
+    rounds, Task approval, Pyramid approval, same-session quick_exec and generated files
+    `quicksort.py` / `test_quicksort.py`. Screenshot
+    `1783446788953-clarify-round-5.png` shows `Clarify 5` with intelligent `需求拆解` badge text and
+    no raw packet/schema text; screenshot `1783447093090-quick-exec.png` shows Shell/Edit timeline
+    rows during foreground execution.
+21. Public `8148` Quick + Balanced prompt `实现一个高性能快速排序` passed the same path: report
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447426182-report.json` records 5 Clarify
+    rounds and generated C++ files `CMakeLists.txt`,
+    `include/sorting/high_performance_quicksort.hpp`, `src/high_performance_quicksort.cpp` and
+    `tests/high_performance_quicksort_tests.cpp`.
+22. Local `8082` Quick + Dive prompt `实现一个高性能快速排序` passed the Dive soft range: report
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447971613-report.json` records 12 Clarify
+    rounds, Task/Pyramid approvals, quick_exec and generated files `Makefile`,
+    `benchmarks/benchmark_fast_quicksort.cpp`, `include/fast_quicksort.hpp` and
+    `tests/test_fast_quicksort.cpp`. Screenshot `1783447727999-clarify-round-12.png` shows
+    `Clarify 12`; screenshot `1783447971544-quick-exec.png` shows Shell/Edit execution timeline.
+23. Local `8082` Quick + Balanced prompt `帮我实现一个实时 PathTracing 系统` passed after extending the
+    guarded e2e wait for slower file generation: report
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783449102697-report.json` records 5 Clarify
+    rounds and generated files `index.html`, `src/main.js` and `src/styles.css`.
+24. Local `8082` Quick + Dive prompt `帮我实现一个实时 PathTracing 系统` passed the Dive soft-range
+    clarification behavior but not full quick_exec quality: report
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783449724169-report.json` records 10 Clarify
+    rounds and quick_exec, but generated only `index.html` and `src/styles.css` while `index.html`
+    references missing `src/main.js`. This is recorded as a residual execution-quality regression, not
+    as acceptance pass evidence.
+25. Local `8082` Loop + Balanced prompt `实现一个高性能快速排序` passed honest Loop registration: report
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783449979213-report.json` records 5 Clarify
+    rounds, Task approval `accept_loop`, Pyramid approval `accept_loop` and
+    `registeredTaskVisible: true`; screenshot `1783449979146-registered-pending.png` captures the
+    `registered_pending` terminal state without fake running/review.
+26. Mobile viewport was rechecked after the repair. Screenshot
+    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783450162819-mobile-registered-pending.png`
+    opens the registered-pending workspace in a 390x844 viewport but shows an empty `New Agent` tab
+    rather than the registered task/timeline. Treat this as a remaining mobile history/recovery
+    regression; do not count mobile as revalidated for the strengthened contract.
 
 Current result:
 
-`NTH-EV-029` passes Loop-2. It verifies restored Paseo surface, Codex runtime-tool Clarify bridge,
-AgentTimeline authority-card rendering, Quick+none bare provider stream, Quick+Dive same-session
-quick_exec, Loop `registered_pending`, Background Tasks recovery, mobile recovery and required gates.
-It does not verify Loop-5 PlanExec / Review execution, real background running/review evidence,
-non-Codex provider runtime-tool adapters or a release build.
+`NTH-EV-029` remains reopened, but the frontier-ledger repair is partially revalidated. The real
+Codex evidence now verifies intelligent demand-breakdown badges, pending authority lifecycle behavior
+visible in AgentTimeline, `balanced` / `dive` soft ranges, Task convergence review plumbing, local and
+public web paths, same-session quick_exec for multiple prompts and Loop `registered_pending`. It does
+not yet fully verify the strengthened contract because mobile registered-pending history recovery
+regressed to an empty `New Agent` tab and one complex Dive quick_exec produced incomplete source
+output. It also does not verify Loop-5 PlanExec / Review execution, real background running/review
+evidence, non-Codex provider runtime-tool adapters or a release build.
 
 Residual risks:
 
@@ -1776,10 +1867,116 @@ Residual risks:
 4. The Background Tasks panel is a Loop-2 registered-task browser, not the final Loop-6 dogfood task
    system.
 
+### `NTH-EV-030` Loop Background Real-Provider Verification
+
+Status: `passed`
+
+Scope:
+
+1. Verify the implementation of `NTH-CD-045`: Task Card + Goals Card approval registers a
+   durable background Loop task, starts scheduling immediately, runs linear goals through PlanExec and
+   independent Review sessions, tracks failed-Review budgets, exposes task/goal/phase state in
+   Background Tasks, and embeds phase AgentTimeline output.
+2. Verify the main Codex dynamicTools path on both local `8082` and public `8148` using throwaway
+   `/tmp` workspaces and external captures outside the git repository.
+
+Implementation evidence:
+
+1. Protocol now includes `ThothGoalsCardModel`, `LoopTaskModel`, `LoopGoalRecord`,
+   `LoopPhaseRecord`, `LoopReviewVerdict`, background task RPC schemas and Loop semantic tool schemas
+   for `thoth_loop_submit_planexec_result`, `thoth_loop_submit_review_verdict` and
+   `thoth_loop_report_blocked`.
+2. Daemon now has `ThothLoopTaskService`, persisted under daemon-owned `thoth-loop/tasks.json`.
+   Startup marks previously running tasks as `interrupted`; `register`, `list`, `inspect` and
+   `action(pause/resume/stop)` are exposed through session RPC and websocket updates.
+3. Scheduler semantics are code-covered: same-worktree lock, queued task handling, current-goal-only
+   PlanExec, independent Review, Review pass advancing to the next goal, Review fail consuming budget
+   and retrying the same goal, Single budget blocking after one failed Review, and all-goals pass
+   producing `done`.
+4. Provider session semantics are code-covered for the Codex path: PlanExec inherits provider config
+   and forces `plan_mode: true`; Review creates a fresh Auto-mode session per round; both mount
+   `thoth.loop` through session-scoped `CODEX_HOME` and enable only Loop runtime tools.
+5. Background Tasks UI now lists real Loop tasks, opens task detail, shows linear goals, marks the
+   current goal/phase with spinner, keeps inactive goals grey, lets users switch PlanExec/Review
+   phase tabs, fetches the selected phase AgentTimeline, subscribes `agent_stream` and permission
+   events, and routes Pause/Resume/Stop through daemon RPC.
+6. Background Tasks phase timelines now auto-scroll to the latest embedded AgentTimeline output when
+   the selected phase loads or receives new stream items, preventing the embedded view from looking
+   like only the initial PlanExec prompt is present.
+
+Code verification passed on `2026-07-09`:
+
+1. `npm --workspace=@thoth/protocol run test -- thoth-runtime-contract workspace-secretary` passed 2
+   files / 37 tests.
+2. `npm --workspace=@thoth/daemon run test:unit --
+src/server/agent/tools/thoth-tools.test.ts
+src/server/agent/providers/codex-app-server-agent.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts
+src/server/thoth-loop/task-service.test.ts` passed 4 files / 98 tests after the dynamicTools
+   launch-config gating repair.
+3. `npm --workspace=@thoth/daemon run test:unit -- src/server/thoth-loop/task-service.test.ts`
+   passed 1 file / 7 tests, covering register/start, linear pass advancement, failed Review retry,
+   PlanExec reuse, Review fresh-session creation, Single budget blocking, same-worktree queueing,
+   pause/resume/stop and interrupted reload.
+4. `npm --workspace=@thoth/app run test -- background-tasks-panel secretary-approval-card
+types/stream` passed 4 files / 52 tests. The Background Tasks panel test now verifies the embedded
+   phase `AgentStreamView` receives `scrollToBottom("jump-to-bottom")`.
+5. `npm --workspace=@thoth/app run test` passed 319 files / 2645 tests.
+6. `npm run build:daemon` passed.
+7. `npm run build:web` passed and exported the web app to `packages/app/dist`.
+8. `npm run check:foundation` passed: repo validation, format check, foundation lint, foundation
+   build, foundation typecheck and foundation tests all passed.
+9. `git diff --check` passed.
+
+Real Codex evidence captured on `2026-07-09`:
+
+1. Local `http://127.0.0.1:8082/` Loop+Single / Clarify Balanced run used throwaway workspace
+   `/tmp/thoth-loop-background-dIy278`. Report:
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
+   It produced 5 Clarify cards, Task Card approval, Goals Card approval, durable task
+   `loop-task-13fa5321-1d5d-4a52-b655-ae2634f74d9a`, 8 linear goals and a visible Background Tasks
+   detail with Goal 1 PlanExec running.
+2. Public `http://180.76.242.105:8148/` Loop+Single / Clarify Balanced run used throwaway workspace
+   `/tmp/thoth-loop-background-l16BGt`. Report:
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
+   It produced 5 Clarify cards, Task Card approval, Goals Card approval, durable task
+   `loop-task-2f4cd8fb-a6a8-457d-8eea-a85df8b9932b`, 10 linear goals and a visible Background Tasks
+   detail with Goal 1 PlanExec running.
+3. Post-run summary:
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
+   Local evidence shows Goal 1 PlanExec and Review completed with reasoning / assistant / tool_call
+   AgentTimeline entries, Review pass advanced to Goal 2, Goal 2 Review failed, Single budget
+   consumed `1/1`, and the task was stopped after the blocked/stop path was observed. Public
+   evidence shows Goal 1, Goal 2 and Goal 3 all passed Review without consuming failed-review budget
+   and the task linearly advanced to Goal 4 PlanExec before being stopped.
+4. Key external screenshots include:
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564538646-background-task-list-detail.png`
+   for task/goal detail and current-goal spinner, and
+   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545842-background-task-planexec-timeline.png`
+   for embedded phase timeline. Additional direct AgentTimeline evidence is in the post-run summary
+   because the visual timeline starts at the long PlanExec input prompt before auto-scroll repair.
+5. Daemon log evidence shows the secretary Codex session registered
+   `thoth_submit_clarify_card`, `thoth_submit_task_card`, `thoth_submit_goals_card`,
+   `thoth_report_blocked` and legacy `thoth_submit_pyramid_plan`; Loop phase sessions registered
+   `thoth_loop_submit_planexec_result`, `thoth_loop_submit_review_verdict` and
+   `thoth_loop_report_blocked`.
+
+Known follow-ups, not claimed by this evidence:
+
+1. Loop+Light, restart recovery and complete all-goals-to-`done` real-provider runs remain
+   hardening work under `NTH-TD-021`.
+2. No Claude/OpenCode native question or custom runtime-tool Loop adapter is claimed.
+3. Golden/judge evaluation for `thoth.loop` PlanExec/Review quality remains to be promoted beyond
+   unit-level behavior tests.
+4. `npm --workspace=@thoth/app run typecheck` was previously attempted and still fails on broad
+   pre-existing app type issues unrelated to the new Background Tasks panel; app tests and web export
+   passed.
+
 ## Failed Or Not-Yet-Passed Checks
 
-1. The full MVP loop remains open because Task Contract Compiler hardening, full Task/Pyramid edit
-   workflows, PlanExec, Review and final Background Tasks dogfood behavior are later milestones.
+1. The full MVP loop remains open because Loop background still needs Loop+Light real-provider
+   hardening, complete all-goals-to-`done` dogfood, restart recovery evidence and golden/judge
+   promotion for `thoth.loop` quality beyond the current verified Single-path evidence.
 2. Full daemon/app/desktop/CLI/driver build and test suites are still outside the foundation gate and may remain expected-broken until their dedicated migration milestones.
 3. Some old `.tmp_pytest` fixture entries could not be unlinked promptly on NFS and were moved under ignored `.agent-os/.trash/tmp_pytest-nfs-stale-20260628`; this is not part of the committed source tree.
 4. Android build currently emits upstream Expo/React Native/Gradle deprecation warnings; the Debug APK is still produced successfully.

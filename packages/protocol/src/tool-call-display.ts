@@ -114,7 +114,8 @@ function buildCanonicalDetailDisplay(input: ToolCallDisplayInput): DetailDisplay
       };
     case "plain_text":
       return {
-        summary: input.detail.label,
+        displayName: readString(input.detail.label),
+        summary: readString(input.detail.text),
       };
     case "plan":
       return {

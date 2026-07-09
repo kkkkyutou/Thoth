@@ -95,7 +95,7 @@ function createModel() {
         authorityReady: true,
       },
       provider: providerRuntime,
-      liveEvents: [
+      deprecatedLiveEvents: [
         {
           id: "event-provider-turn-completed",
           kind: "provider_turn_completed",
@@ -169,7 +169,7 @@ describe("workspace secretary RPC schemas", () => {
     expect(JSON.stringify(model)).not.toMatch(/C_ASK|raw JSON|provider role|repair/);
   });
 
-  it("accepts clean streaming model updates without raw provider payloads", () => {
+  it("accepts deprecated clean-event compatibility updates without raw provider payloads", () => {
     const model = createModel();
     model.secretary.turns = [
       {
@@ -179,7 +179,7 @@ describe("workspace secretary RPC schemas", () => {
         text: "hi",
       },
     ];
-    model.secretary.liveEvents = [
+    model.secretary.deprecatedLiveEvents = [
       {
         id: "event-secretary-draft",
         kind: "secretary_reply_delta",
@@ -196,8 +196,27 @@ describe("workspace secretary RPC schemas", () => {
       },
     });
 
-    expect(update.payload.model.secretary.liveEvents?.[0]?.kind).toBe("secretary_reply_delta");
+    expect(update.payload.model.secretary.deprecatedLiveEvents?.[0]?.kind).toBe(
+      "secretary_reply_delta",
+    );
     expect(JSON.stringify(update)).not.toMatch(/raw JSON|schema error|provider role|C_DIRECT/);
+  });
+
+  it("still parses legacy liveEvents for old payload compatibility", () => {
+    const model = createModel();
+    delete (model.secretary as { deprecatedLiveEvents?: unknown }).deprecatedLiveEvents;
+    model.secretary.liveEvents = [
+      {
+        id: "event-legacy",
+        kind: "provider_turn_started",
+        title: "Legacy provider event",
+        status: "running",
+      },
+    ];
+
+    const parsed = ThothCleanUiModelSchema.parse(model);
+
+    expect(parsed.secretary.liveEvents?.[0]?.kind).toBe("provider_turn_started");
   });
 
   it("accepts provider-required status with a disabled composer", () => {

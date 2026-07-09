@@ -213,7 +213,6 @@ function createSecretaryModel(): ThothCleanUiModel {
         authorityLabel: "codex",
         authorityReady: true,
       },
-      liveEvents: [],
     },
     settings: {
       runtime: [],
@@ -237,7 +236,11 @@ function createFakeSecretaryClient(model = createSecretaryModel()) {
     images?: Array<{ data: string; mimeType: string }>;
     attachments?: unknown[];
   }> = [];
-  const payload: WorkspaceSecretaryResponsePayload = { model };
+  const payload: WorkspaceSecretaryResponsePayload = {
+    requestId: "fake-secretary-response",
+    model,
+    error: null,
+  };
   return {
     calls,
     sendWorkspaceSecretaryMessage: async (input: {
@@ -562,7 +565,7 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
   it("does not use Workspace Secretary liveEvents as the realtime timeline source", async () => {
     const model = createSecretaryModel();
     model.secretary.turns = [];
-    model.secretary.liveEvents = [
+    model.secretary.deprecatedLiveEvents = [
       {
         id: "evt-start",
         kind: "provider_turn_started",
@@ -605,6 +608,57 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
     });
 
     expect(stream.tail.get("agent")?.map((item) => item.kind)).toEqual(["user_message"]);
+  });
+
+  it("preserves live AgentTimeline head items when merging Workspace Secretary clean turns", async () => {
+    const client = createFakeSecretaryClient();
+    const runningTool: StreamItem = {
+      kind: "tool_call",
+      id: "agent_tool_shell-1",
+      timestamp: new Date(1),
+      payload: {
+        source: "agent",
+        data: {
+          provider: "codex",
+          callId: "shell-1",
+          name: "CodexBash",
+          status: "running",
+          error: null,
+          detail: {
+            type: "shell",
+            command: "npm test",
+            cwd: "/repo",
+          },
+        },
+      },
+    };
+    const liveAssistant: StreamItem = {
+      kind: "assistant_message",
+      id: "assistant-live",
+      messageId: "assistant-live",
+      text: "continuing",
+      timestamp: new Date(2),
+    };
+    const stream = createFakeStream(new Map([["agent", [runningTool, liveAssistant]]]));
+
+    await dispatchWorkspaceSecretaryMessage({
+      client,
+      agentId: "agent",
+      text: "clarify this",
+      attachments: [],
+      composer: {
+        mode: "quick",
+        clarifyStrength: "dive",
+        loop: null,
+        authorityLabel: "codex",
+        authorityReady: true,
+      },
+      encodeImages: passthroughEncodeImages,
+      stream,
+    });
+
+    expect(stream.head.get("agent")).toEqual([runningTool, liveAssistant]);
+    expect(stream.tail.get("agent")?.map((item) => item.kind)).toEqual(["assistant_message"]);
   });
 });
 

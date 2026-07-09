@@ -3,11 +3,11 @@ import { Pressable, Text, TextInput, View, type PressableStateCallbackType } fro
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type {
   SecretaryApprovalActionPayload,
-  ThothGoalCardModel,
+  ThothApprovalGoalCardModel,
   ThothTaskCardModel,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 
-type ApprovalCardModel = ThothTaskCardModel | ThothGoalCardModel;
+type ApprovalCardModel = ThothTaskCardModel | ThothApprovalGoalCardModel;
 type ApprovalSubmitter = (payload: SecretaryApprovalActionPayload) => void | Promise<void>;
 
 interface SecretaryApprovalCardProps {
@@ -29,7 +29,7 @@ export function SecretaryApprovalCard({ card, kind, onSubmit }: SecretaryApprova
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const title = kind === "task" ? "任务总览确认" : "Pyramid Plan 确认";
+  const title = kind === "task" ? "任务总览确认" : "Goals Card 确认";
   const acceptLoopLabel = kind === "task" ? "注册后台" : "确认注册";
   const acceptQuickLabel = kind === "task" ? "保持 Quick" : "前台执行";
   const noteTrimmed = note.trim();
@@ -73,9 +73,23 @@ export function SecretaryApprovalCard({ card, kind, onSubmit }: SecretaryApprova
         { label: "验收", values: taskCard.acceptance },
       ];
     }
-    const goalCard = card as ThothGoalCardModel;
+    const goalCard = card as ThothApprovalGoalCardModel;
+    if ("goals" in goalCard) {
+      return goalCard.goals
+        .slice()
+        .sort((left, right) => left.order - right.order)
+        .map((goal) => ({
+          label: `Goal ${goal.order}`,
+          values: [
+            goal.title,
+            goal.goal,
+            `约束：${goal.constraints.join("；")}`,
+            `验收：${goal.acceptance.join("；")}`,
+          ],
+        }));
+    }
     return goalCard.pyramid.map((stage, index) => ({
-      label: `Stage ${index + 1}`,
+      label: `Legacy Stage ${index + 1}`,
       values: [
         stage.title,
         stage.goal,
@@ -91,7 +105,7 @@ export function SecretaryApprovalCard({ card, kind, onSubmit }: SecretaryApprova
 
   return (
     <View style={styles.card} testID={`secretary-${kind}-approval-card`}>
-      <Text style={styles.roundLabel}>{kind === "goal" ? "Pyramid Plan" : card.roundLabel}</Text>
+      <Text style={styles.roundLabel}>{kind === "goal" ? "Goals Card" : card.roundLabel}</Text>
       <Text style={styles.cardTitle}>{title}</Text>
       <Text style={styles.title}>{card.title}</Text>
       {"goal" in card ? null : <Text style={styles.summary}>{card.summary}</Text>}

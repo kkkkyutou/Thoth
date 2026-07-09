@@ -1,5 +1,5 @@
 import type { TurnTiming } from "@/timeline/turn-time";
-import type { StreamItem } from "@/types/stream";
+import { hasPendingAuthorityDecisionStreamItem, type StreamItem } from "@/types/stream";
 import { getAssistantBlockSpacing, getGapBetweenStreamItems } from "./spacing";
 import type { StreamFrameChildOrder, StreamStrategy } from "./strategy";
 
@@ -90,6 +90,12 @@ function findLatestAssistantIndexInTurn(input: {
 }
 
 function resolveAuxiliaryTurnFooter(input: StreamLayoutInput): TurnFooterHost | null {
+  if (
+    hasPendingAuthorityDecisionStreamItem(input.liveHead) ||
+    hasPendingAuthorityDecisionStreamItem(input.history)
+  ) {
+    return null;
+  }
   if (input.agentStatus === "running") {
     return null;
   }
@@ -155,7 +161,8 @@ function shouldRenderCompletedFooter(input: {
 }): boolean {
   if (
     input.item.kind !== "assistant_message" ||
-    input.auxiliaryTurnFooter?.itemId === input.item.id
+    input.auxiliaryTurnFooter?.itemId === input.item.id ||
+    hasPendingAuthorityDecisionStreamItem(input.items)
   ) {
     return false;
   }

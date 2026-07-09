@@ -117,6 +117,7 @@ import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./worksp
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
+import { summarizeLoopTask, ThothLoopTaskService } from "./thoth-loop/task-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore } from "./daemon-config-store.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
@@ -380,6 +381,7 @@ export interface ThothDaemonConfig {
     };
     mode?: "quick" | "loop";
     clarifyStrength?: "none" | "auto" | "light" | "balanced" | "dive";
+    loopStrength?: "auto" | "one_plan_one_do" | "light" | "balanced" | "run_until_stopped";
   };
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
@@ -801,6 +803,21 @@ export async function createThothDaemon(
   });
   await loopService.initialize();
   logger.info({ elapsed: elapsed() }, "Loop service initialized");
+  const loopTaskService = new ThothLoopTaskService({
+    thothHome: config.thothHome,
+    agentManager,
+    logger: logger.child({ module: "thoth-loop-task-service" }),
+    onTaskUpdated: (task) => {
+      emitExternalSessionMessage({
+        type: "background_task.update",
+        payload: {
+          task,
+          summary: summarizeLoopTask(task),
+        },
+      });
+    },
+  });
+  logger.info({ elapsed: elapsed() }, "Thoth Loop task service initialized");
   const scheduleService = new ScheduleService({
     thothHome: config.thothHome,
     logger,
@@ -976,10 +993,12 @@ export async function createThothDaemon(
     thothHome: config.thothHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
+    callerAgentConfig: runtime.callerAgentConfig,
     enableVoiceTools: runtime.enableVoiceTools,
     voiceOnly: runtime.voiceOnly,
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
+    loopTaskService,
     logger,
   });
   const createAgentToolCatalog = (runtime: ThothToolRuntimeContext) =>
@@ -1218,6 +1237,7 @@ export async function createThothDaemon(
               workspaceRegistry,
               chatService,
               loopService,
+              loopTaskService,
               scheduleService,
               checkoutDiffManager,
               serviceProxy,

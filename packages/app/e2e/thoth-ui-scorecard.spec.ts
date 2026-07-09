@@ -1,6 +1,5 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { TestInfo } from "@playwright/test";
 import { expect, test, type Page } from "./fixtures";
 import { buildSettingsSectionRoute } from "../src/utils/host-routes";
@@ -9,9 +8,9 @@ import { expectComposerVisible } from "./helpers/composer";
 import { clickNewChat, gotoWorkspace } from "./helpers/launcher";
 import { getServerId } from "./helpers/server-id";
 
-const captureDirectory = fileURLToPath(
-  new URL("../../../docs/ui-review-captures/loop2-paseo-surface/", import.meta.url),
-);
+const captureDirectory =
+  process.env.THOTH_UI_REVIEW_CAPTURE_DIR ??
+  "/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-paseo-surface";
 
 const forbiddenVisiblePatterns = [
   /Paseo/i,

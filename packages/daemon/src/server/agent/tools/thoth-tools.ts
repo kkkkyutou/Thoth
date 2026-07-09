@@ -59,24 +59,37 @@ import {
 import {
   ThothReportBlockedInputSchema,
   ThothSubmitClarifyCardInputSchema,
+  ThothSubmitGoalsCardInputSchema,
   ThothSubmitPyramidPlanInputSchema,
   ThothSubmitTaskCardInputSchema,
+  ThothLoopPlanExecResultInputSchema,
+  ThothLoopReportBlockedInputSchema,
+  ThothLoopReviewVerdictInputSchema,
+  type ClarifyConvergenceReview,
+  type ClarifyFrontierLedger,
+  type ThothLoopPlanExecResultInput,
+  type ThothLoopReportBlockedInput,
+  type ThothLoopReviewVerdictInput,
   type ThothReportBlockedInput,
   type ThothSubmitClarifyCardInput,
+  type ThothSubmitGoalsCardInput,
   type ThothSubmitPyramidPlanInput,
   type ThothSubmitTaskCardInput,
 } from "@thoth/protocol/thoth-runtime-contract";
 import type {
   ThothClarifyCardModel,
-  ThothGoalCardModel,
+  ThothApprovalGoalCardModel,
+  ThothGoalsCardModel,
   ThothTaskCardModel,
   WorkspaceSecretaryTurnActionPayload,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { ThothLoopTaskService } from "../../thoth-loop/task-service.js";
 import { sendPromptToAgent, setupFinishNotification } from "../agent-prompt.js";
 import { respondToAgentPermission } from "../permission-response.js";
 import {
   configureRuntimeAuthorityDecisionPersistence,
   createRuntimeAuthorityDecision,
+  listRuntimeAuthorityDecisionRecords,
 } from "../runtime-tool-decisions.js";
 import {
   archiveAgentCommand,
@@ -101,6 +114,7 @@ import type {
   ThothToolDefinition,
   ThothToolExecutionContext,
   ThothToolResult,
+  ThothToolRuntimeCallerConfig,
 } from "./types.js";
 
 export interface ThothToolHostDependencies {
@@ -132,6 +146,11 @@ export interface ThothToolHostDependencies {
    */
   callerAgentId?: string;
   /**
+   * Runtime-only config for the caller during session launch. The caller agent
+   * is not registered yet when native provider tools are mounted.
+   */
+  callerAgentConfig?: ThothToolRuntimeCallerConfig;
+  /**
    * Optional resolver for session-bound speak handlers.
    * Used by hidden voice agents to narrate through daemon-managed TTS.
    */
@@ -140,6 +159,7 @@ export interface ThothToolHostDependencies {
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
   logger: Logger;
+  loopTaskService?: ThothLoopTaskService | null;
 }
 
 function parseTimestamp(value: string | null | undefined): number {
@@ -253,7 +273,7 @@ function summarizeRuntimeAuthorityAnswer(answer: WorkspaceSecretaryTurnActionPay
     case "cancel":
       return "canceled";
     case "stop":
-      return "stopped";
+      return "paused_clarify_questions";
     case "recommend":
       return "user asked secretary to recommend";
     case "decide":
@@ -266,7 +286,7 @@ function summarizeRuntimeAuthorityAnswer(answer: WorkspaceSecretaryTurnActionPay
 function runtimeToolResultText(input: {
   answer: WorkspaceSecretaryTurnActionPayload;
   submittedSummary: string;
-  cardKind: "clarify_card" | "task_card" | "pyramid_plan_card" | "blocked_card";
+  cardKind: "clarify_card" | "task_card" | "goals_card" | "pyramid_plan_card" | "blocked_card";
 }): string {
   const answerSummary = summarizeRuntimeAuthorityAnswer(input.answer);
   if (input.cardKind === "task_card" && input.answer.intent === "accept_quick") {
@@ -274,8 +294,8 @@ function runtimeToolResultText(input: {
       "User approved the Task Card and chose the Quick foreground path.",
       `Visible answer summary: ${input.submittedSummary}`,
       `Answer: ${answerSummary}`,
-      "Next required runtime tool: thoth_submit_pyramid_plan.",
-      "Submit the Pyramid Plan as the second approval card, grounded in the clarify transcript and the approved Task Card.",
+      "Next required runtime tool: thoth_submit_goals_card.",
+      "Submit the Goals Card as the second approval card, grounded in the clarify transcript and the approved Task Card.",
       "Do not execute yet. Do not answer in prose. Do not submit another Task Card unless the user requested revisions.",
     ].join("\n");
   }
@@ -284,9 +304,9 @@ function runtimeToolResultText(input: {
       "User approved the Task Card and chose the Loop registration path.",
       `Visible answer summary: ${input.submittedSummary}`,
       `Answer: ${answerSummary}`,
-      "Next required runtime tool: thoth_submit_pyramid_plan.",
-      "Submit the Pyramid Plan as the second approval card, grounded in the clarify transcript and the approved Task Card.",
-      "Do not register, execute, or review yet. Registration is allowed only after the Pyramid Plan is approved.",
+      "Next required runtime tool: thoth_submit_goals_card.",
+      "Submit the Goals Card as the second approval card, grounded in the clarify transcript and the approved Task Card.",
+      "Do not register, execute, or review yet. Registration is allowed only after the Goals Card is approved.",
     ].join("\n");
   }
   if (input.answer.intent === "accept_quick") {
@@ -304,7 +324,8 @@ function runtimeToolResultText(input: {
     return [
       "User approved this card for Loop registration.",
       `Visible answer summary: ${input.submittedSummary}`,
-      "The task has been registered as registered_pending. Do not start background execution or review.",
+      "The task has been registered and handed to the Thoth background Loop scheduler.",
+      "Do not continue foreground execution for this task in the Workspace Secretary session.",
     ].join("\n");
   }
   if (input.answer.intent === "annotate") {
@@ -315,9 +336,18 @@ function runtimeToolResultText(input: {
       "Continue by submitting a revised authority card or a new clarify card if the annotation reopens a material decision.",
     ].join("\n");
   }
-  if (input.answer.intent === "cancel" || input.answer.intent === "stop") {
+  if (input.answer.intent === "stop") {
     return [
-      "User stopped this authority flow.",
+      "User paused further Clarify questioning for now.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      "Do not switch the user's selected mode or clarify strength.",
+      "Do not execute hidden work.",
+      "If the user later asks to continue, continue from the current Clarify context and strength.",
+    ].join("\n");
+  }
+  if (input.answer.intent === "cancel") {
+    return [
+      "User canceled this authority flow.",
       `Visible answer summary: ${input.submittedSummary}`,
       "Stop the structured flow and do not execute hidden work.",
     ].join("\n");
@@ -327,9 +357,42 @@ function runtimeToolResultText(input: {
     `Visible answer summary: ${input.submittedSummary}`,
     `Answer: ${answerSummary}`,
     "Continue according to the loaded Thoth Clarify Skill.",
-    "If the current clarify strength is dive, do not converge after a single Clarify card on a nontrivial implementation request unless the material decision frontier is exhausted.",
+    "If the current clarify strength is balanced or dive and the soft minimum has not been reached, normally continue with another Clarify card on the next material frontier.",
+    "Do not use an early Task Card unless the user explicitly stopped, the task is genuinely trivial, or every remaining material frontier category is grounded, agent-owned, discoverable, or standard practice.",
     "Submit another Clarify card if material user-owned decisions remain; otherwise submit the next authority card.",
   ].join("\n");
+}
+
+function clarifyDecisionRecordsForTopic(topicId: string | null) {
+  if (!topicId) {
+    return [];
+  }
+  return listRuntimeAuthorityDecisionRecords().filter(
+    (record) => record.topicId === topicId && record.cardKind === "clarify_card",
+  );
+}
+
+function countAnsweredClarifyCardsForTopic(topicId: string | null): number {
+  return clarifyDecisionRecordsForTopic(topicId).filter((record) => record.status === "answered")
+    .length;
+}
+
+function latestClarifyLedgerForTopic(topicId: string | null): ClarifyFrontierLedger | null {
+  return (
+    clarifyDecisionRecordsForTopic(topicId)
+      .filter((record) => record.frontierLedger)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]?.frontierLedger ?? null
+  );
+}
+
+function softClarifyMinimum(strength: string): number | null {
+  if (strength === "balanced") {
+    return 5;
+  }
+  if (strength === "dive") {
+    return 10;
+  }
+  return null;
 }
 
 function resolveScheduleProviderAndModel(params: {
@@ -570,6 +633,11 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
   const childLogger = logger.child({ module: "agent", component: "thoth-tool-catalog" });
   const waitTracker = new WaitForAgentTracker(logger);
   const callerContext = callerAgentId ? (resolveCallerContext?.(callerAgentId) ?? null) : null;
+  const toolCallerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+  const toolCallerConfig = toolCallerAgent?.config ?? options.callerAgentConfig;
+  const enableClarifyRuntimeTools =
+    toolCallerConfig?.extra?.codex?.thothClarifyRuntimeTools === true;
+  const enableLoopRuntimeTools = toolCallerConfig?.extra?.codex?.thothLoopRuntimeTools === true;
   if (options.thothHome) {
     configureRuntimeAuthorityDecisionPersistence({
       filePath: path.join(options.thothHome, "runtime-authority-decisions.json"),
@@ -822,10 +890,15 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     safeName: string;
     label: string;
     pendingText: string;
+    metadata?: Record<string, unknown>;
+    publicBadgeSummary?: string;
+    frontierLedger?: ClarifyFrontierLedger;
+    convergenceReview?: ClarifyConvergenceReview;
     card:
       | { kind: "clarify_card"; card: ThothClarifyCardModel }
       | { kind: "task_card"; card: ThothTaskCardModel }
-      | { kind: "pyramid_plan_card"; card: ThothGoalCardModel }
+      | { kind: "goals_card"; card: ThothApprovalGoalCardModel }
+      | { kind: "pyramid_plan_card"; card: ThothApprovalGoalCardModel }
       | { kind: "blocked_card"; title: string; reason: string };
     appendOpenCard: () => Promise<void>;
     appendSubmittedCard?: (summary: string) => Promise<void>;
@@ -835,14 +908,6 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     }
     const call = resolveRuntimeToolCallContext(input.context);
     const topicId = resolveRuntimeAuthorityTopicId();
-    await appendRuntimeAuthorityToolCall({
-      callId: call.callId,
-      safeName: input.safeName,
-      label: input.label,
-      text: input.pendingText,
-      status: "running",
-    });
-    await input.appendOpenCard();
     const { record, waitForAnswer } = createRuntimeAuthorityDecision({
       provider: call.provider,
       agentId: callerAgentId,
@@ -860,7 +925,26 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           topicId,
         }),
       ),
+      ...(input.publicBadgeSummary ? { publicBadgeSummary: input.publicBadgeSummary } : {}),
+      ...(input.frontierLedger ? { frontierLedger: input.frontierLedger } : {}),
+      ...(input.convergenceReview ? { convergenceReview: input.convergenceReview } : {}),
     });
+    await appendRuntimeAuthorityToolCall({
+      callId: call.callId,
+      safeName: input.safeName,
+      label: input.label,
+      text: input.pendingText,
+      status: "running",
+      metadata: {
+        thothAuthorityDecision: true,
+        pendingAuthorityDecision: true,
+        cardKind: input.card.kind,
+        authorityDecisionId: record.id,
+        cardId: record.cardId,
+        ...(input.metadata ?? {}),
+      },
+    });
+    await input.appendOpenCard();
     try {
       const result = await waitForAnswer;
       await input.appendSubmittedCard?.(result.submittedSummary);
@@ -871,9 +955,13 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         text: result.submittedSummary,
         status: "completed",
         metadata: {
+          thothAuthorityDecision: true,
+          pendingAuthorityDecision: false,
+          cardKind: input.card.kind,
           authorityDecisionId: record.id,
           cardId: record.cardId,
           status: "answered",
+          ...(input.metadata ?? {}),
         },
       });
       return {
@@ -903,6 +991,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         status: "failed",
         error: { message: error instanceof Error ? error.message : String(error) },
         metadata: {
+          thothAuthorityDecision: true,
+          pendingAuthorityDecision: false,
+          cardKind: input.card.kind,
           authorityDecisionId: record.id,
           cardId: record.cardId,
           status: "failed",
@@ -912,201 +1003,378 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     }
   };
 
-  registerTool(
-    "thoth_submit_clarify_card",
-    {
-      title: "Submit Thoth Clarify card",
-      description:
-        "Submit one high-value Thoth Clarify decision card. Use for user-owned route, scope, risk, acceptance, or irreversible decisions.",
-      inputSchema: ThothSubmitClarifyCardInputSchema,
-      outputSchema: z
-        .object({
-          ok: z.boolean(),
-          status: z.enum(["answered"]),
-          authorityDecisionId: z.string(),
-          cardId: z.string(),
-        })
-        .strict(),
-    },
-    async (input: ThothSubmitClarifyCardInput, context) => {
-      const card: ThothClarifyCardModel = {
-        id: `clarify-card-${randomUUID()}`,
-        roundLabel: "Clarify",
-        title: input.title,
-        whyNow: input.why_now,
-        continuesClarify: true,
-        submitted: false,
-        card: {
-          question_id: `question-card-${randomUUID()}`,
+  if (enableClarifyRuntimeTools) {
+    registerTool(
+      "thoth_submit_clarify_card",
+      {
+        title: "Submit Thoth Clarify card",
+        description:
+          "Submit one high-value Thoth Clarify decision card. Use for user-owned route, scope, risk, acceptance, or irreversible decisions; before balanced/dive soft minimum, keep expanding material frontiers instead of converging.",
+        inputSchema: ThothSubmitClarifyCardInputSchema,
+        outputSchema: z
+          .object({
+            ok: z.boolean(),
+            status: z.enum(["answered"]),
+            authorityDecisionId: z.string(),
+            cardId: z.string(),
+          })
+          .strict(),
+      },
+      async (input: ThothSubmitClarifyCardInput, context) => {
+        const topicId = resolveRuntimeAuthorityTopicId();
+        const roundIndex = countAnsweredClarifyCardsForTopic(topicId) + 1;
+        const frontierLedgerRef = `${input.frontier_ledger.clarify_strength}:frontier:${roundIndex}`;
+        const card: ThothClarifyCardModel = {
+          id: `clarify-card-${randomUUID()}`,
+          roundLabel: `Clarify ${roundIndex}`,
+          roundIndex,
           title: input.title,
-          behavior_tree_node: "runtime_tool_bridge",
-          why_now: input.why_now,
-          questions: input.questions.map((question, index) => ({
-            id: question.id || `q-${index + 1}`,
-            question: question.question,
-            behavior_tree_node: question.behavior_tree_node ?? `decision-${index + 1}`,
-            choices: question.choices,
-            ...(question.note ? { note: question.note } : {}),
-          })),
-          allow_choice_notes: true,
-          allow_note_only: true,
-        },
-      };
-      return waitForRuntimeAuthorityAnswer({
-        context,
-        safeName: "clarify",
-        label: "Clarify",
-        pendingText: input.decision_it_changes,
-        card: { kind: "clarify_card", card },
-        appendOpenCard: async () => {
-          if (callerAgentId) {
-            await agentManager.appendTimelineItem(callerAgentId, { type: "clarify_card", card });
-          }
-        },
-        appendSubmittedCard: async (summary) => {
-          if (callerAgentId) {
-            await agentManager.appendTimelineItem(callerAgentId, {
-              type: "clarify_card",
-              card: { ...card, submitted: true, submittedSummary: summary },
-            });
-          }
-        },
-      });
-    },
-  );
+          whyNow: input.why_now,
+          continuesClarify: input.frontier_ledger.convergence_state !== "ready_for_task",
+          publicBadgeSummary: input.public_badge_summary,
+          frontierLedger: input.frontier_ledger,
+          frontierLedgerRef,
+          submitted: false,
+          card: {
+            question_id: `question-card-${randomUUID()}`,
+            title: input.title,
+            behavior_tree_node: frontierLedgerRef,
+            why_now: input.why_now,
+            questions: input.questions.map((question, index) => ({
+              id: question.id || `q-${index + 1}`,
+              question: question.question,
+              behavior_tree_node: question.behavior_tree_node ?? `decision-${index + 1}`,
+              selection_mode: question.selection_mode,
+              choices: question.choices,
+              ...(question.note ? { note: question.note } : {}),
+            })),
+            allow_choice_notes: true,
+            allow_note_only: true,
+          },
+        };
+        return waitForRuntimeAuthorityAnswer({
+          context,
+          safeName: "clarify",
+          label: "需求拆解",
+          pendingText: input.public_badge_summary,
+          publicBadgeSummary: input.public_badge_summary,
+          frontierLedger: input.frontier_ledger,
+          metadata: {
+            publicBadgeSummary: input.public_badge_summary,
+            frontierLedger: input.frontier_ledger,
+            frontierLedgerRef,
+            roundIndex,
+          },
+          card: { kind: "clarify_card", card },
+          appendOpenCard: async () => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, { type: "clarify_card", card });
+            }
+          },
+          appendSubmittedCard: async (summary) => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, {
+                type: "clarify_card",
+                card: { ...card, submitted: true, submittedSummary: summary },
+              });
+            }
+          },
+        });
+      },
+    );
 
-  registerTool(
-    "thoth_submit_task_card",
-    {
-      title: "Submit Thoth Task card",
-      description:
-        "Submit the concise CEO Task Card after Clarify converges. It must contain only title, goal, constraints, and acceptance.",
-      inputSchema: ThothSubmitTaskCardInputSchema,
-      outputSchema: z
-        .object({
-          ok: z.boolean(),
-          status: z.enum(["answered"]),
-          authorityDecisionId: z.string(),
-          cardId: z.string(),
-        })
-        .strict(),
-    },
-    async (input: ThothSubmitTaskCardInput, context) => {
-      const card: ThothTaskCardModel = {
-        id: `task-card-${randomUUID()}`,
-        roundLabel: "Task",
-        title: input.task_card.title,
-        goal: input.task_card.goal,
-        constraints: input.task_card.constraints,
-        acceptance: input.task_card.acceptance,
-        provenanceSummary: "基于完整 Clarify 原文记录整理",
-        submitted: false,
-      };
-      return waitForRuntimeAuthorityAnswer({
-        context,
-        safeName: "task_approval",
-        label: "Task",
-        pendingText: "等待用户确认任务总览。",
-        card: { kind: "task_card", card },
-        appendOpenCard: async () => {
-          if (callerAgentId) {
-            await agentManager.appendTimelineItem(callerAgentId, { type: "task_card", card });
-          }
-        },
-        appendSubmittedCard: async (summary) => {
-          if (callerAgentId) {
-            await agentManager.appendTimelineItem(callerAgentId, {
-              type: "task_card",
-              card: { ...card, submitted: true, submittedSummary: summary },
-            });
-          }
-        },
-      });
-    },
-  );
+    registerTool(
+      "thoth_submit_task_card",
+      {
+        title: "Submit Thoth Task card",
+        description:
+          "Submit the concise CEO Task Card only after Clarify converges. Below balanced/dive soft minimum, convergence is exceptional and must account for every material frontier category.",
+        inputSchema: ThothSubmitTaskCardInputSchema,
+        outputSchema: z
+          .object({
+            ok: z.boolean(),
+            status: z.enum(["answered"]),
+            authorityDecisionId: z.string(),
+            cardId: z.string(),
+          })
+          .strict(),
+      },
+      async (input: ThothSubmitTaskCardInput, context) => {
+        const topicId = resolveRuntimeAuthorityTopicId();
+        const clarifyCount = countAnsweredClarifyCardsForTopic(topicId);
+        const latestLedger = latestClarifyLedgerForTopic(topicId);
+        const reviewStrength = input.convergence_review.frontier_ledger.clarify_strength;
+        if (latestLedger && latestLedger.clarify_strength !== reviewStrength) {
+          throw new Error(
+            `Clarify convergence review strength mismatch: expected ${latestLedger.clarify_strength} from the latest Clarify frontier ledger, got ${reviewStrength}.`,
+          );
+        }
+        const minimum = softClarifyMinimum(reviewStrength);
+        if (
+          minimum !== null &&
+          clarifyCount < minimum &&
+          !input.convergence_review.below_soft_target_rationale?.trim()
+        ) {
+          throw new Error(
+            `Clarify soft target not reviewed: ${input.convergence_review.frontier_ledger.clarify_strength} needs an explicit below_soft_target_rationale before Task when only ${clarifyCount} Clarify cards have been answered.`,
+          );
+        }
+        const card: ThothTaskCardModel = {
+          id: `task-card-${randomUUID()}`,
+          roundLabel: "Task",
+          title: input.task_card.title,
+          goal: input.task_card.goal,
+          constraints: input.task_card.constraints,
+          acceptance: input.task_card.acceptance,
+          provenanceSummary: "基于完整 Clarify 原文记录整理",
+          submitted: false,
+        };
+        return waitForRuntimeAuthorityAnswer({
+          context,
+          safeName: "task_approval",
+          label: "Task",
+          pendingText: "等待用户确认任务总览。",
+          convergenceReview: input.convergence_review,
+          metadata: {
+            convergenceReview: input.convergence_review,
+            clarifyCount,
+            softMinimum: minimum,
+          },
+          card: { kind: "task_card", card },
+          appendOpenCard: async () => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, { type: "task_card", card });
+            }
+          },
+          appendSubmittedCard: async (summary) => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, {
+                type: "task_card",
+                card: { ...card, submitted: true, submittedSummary: summary },
+              });
+            }
+          },
+        });
+      },
+    );
 
-  registerTool(
-    "thoth_submit_pyramid_plan",
-    {
-      title: "Submit Thoth Pyramid Plan card",
-      description:
-        "Submit the second approval card as a pyramid-shaped target breakdown, not implementation steps, commands, or file paths.",
-      inputSchema: ThothSubmitPyramidPlanInputSchema,
-      outputSchema: z
-        .object({
-          ok: z.boolean(),
-          status: z.enum(["answered"]),
-          authorityDecisionId: z.string(),
-          cardId: z.string(),
-        })
-        .strict(),
-    },
-    async (input: ThothSubmitPyramidPlanInput, context) => {
-      const card: ThothGoalCardModel = {
-        id: `pyramid-plan-card-${randomUUID()}`,
-        roundLabel: "Pyramid Plan",
-        title: input.pyramid_plan.title,
-        summary: input.pyramid_plan.summary,
-        pyramid: input.pyramid_plan.pyramid,
-        provenanceSummary: "受 Clarify 原文和已确认 CEO Task Card 约束",
-        submitted: false,
-      };
-      return waitForRuntimeAuthorityAnswer({
-        context,
-        safeName: "pyramid_approval",
-        label: "Pyramid Plan",
-        pendingText: "等待用户确认目标分拆。",
-        card: { kind: "pyramid_plan_card", card },
-        appendOpenCard: async () => {
-          if (callerAgentId) {
-            await agentManager.appendTimelineItem(callerAgentId, { type: "goal_card", card });
-          }
-        },
-        appendSubmittedCard: async (summary) => {
-          if (callerAgentId) {
-            await agentManager.appendTimelineItem(callerAgentId, {
-              type: "goal_card",
-              card: { ...card, submitted: true, submittedSummary: summary },
-            });
-          }
-        },
-      });
-    },
-  );
+    registerTool(
+      "thoth_submit_goals_card",
+      {
+        title: "Submit Thoth Goals card",
+        description:
+          "Submit the second approval card as a linear Goals Card with fine-grained ordered goals, each with goal, constraints, and acceptance. Do not include commands, file paths, or code-level steps.",
+        inputSchema: ThothSubmitGoalsCardInputSchema,
+        outputSchema: z
+          .object({
+            ok: z.boolean(),
+            status: z.enum(["answered"]),
+            authorityDecisionId: z.string(),
+            cardId: z.string(),
+          })
+          .strict(),
+      },
+      async (input: ThothSubmitGoalsCardInput, context) => {
+        const card: ThothGoalsCardModel = {
+          id: `goals-card-${randomUUID()}`,
+          roundLabel: "Goals",
+          title: input.goals_card.title,
+          summary: input.goals_card.summary,
+          goals: input.goals_card.goals,
+          provenanceSummary: "受 Clarify 原文和已确认 CEO Task Card 约束",
+          submitted: false,
+        };
+        return waitForRuntimeAuthorityAnswer({
+          context,
+          safeName: "goals_approval",
+          label: "Goals Card",
+          pendingText: "等待用户确认线性 goals。",
+          card: { kind: "goals_card", card },
+          appendOpenCard: async () => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, { type: "goal_card", card });
+            }
+          },
+          appendSubmittedCard: async (summary) => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, {
+                type: "goal_card",
+                card: { ...card, submitted: true, submittedSummary: summary },
+              });
+            }
+          },
+        });
+      },
+    );
 
-  registerTool(
-    "thoth_report_blocked",
-    {
-      title: "Report Thoth blocked state",
-      description:
-        "Report that the structured Workspace Secretary flow is blocked by a real user decision or external condition.",
-      inputSchema: ThothReportBlockedInputSchema,
-      outputSchema: z.object({ ok: z.boolean(), status: z.literal("blocked") }).strict(),
-    },
-    async (input: ThothReportBlockedInput, context) => {
-      if (!callerAgentId) {
-        throw new Error("thoth_report_blocked requires an agent-scoped caller");
-      }
-      const call = resolveRuntimeToolCallContext(context);
-      await appendRuntimeAuthorityToolCall({
-        callId: call.callId,
-        safeName: "blocked",
-        label: input.title,
-        text: input.reason,
-        status: "failed",
-        error: { message: input.reason },
-      });
-      await agentManager.appendTimelineItem(callerAgentId, {
-        type: "error",
-        message: input.reason,
-      });
-      return {
-        content: [{ type: "text", text: `Blocked: ${input.reason}` }],
-        structuredContent: { ok: true, status: "blocked" },
-        isError: true,
-      };
-    },
-  );
+    registerTool(
+      "thoth_submit_pyramid_plan",
+      {
+        title: "Submit Thoth Pyramid Plan card",
+        description:
+          "Submit the second approval card as a pyramid-shaped target breakdown, not implementation steps, commands, or file paths.",
+        inputSchema: ThothSubmitPyramidPlanInputSchema,
+        outputSchema: z
+          .object({
+            ok: z.boolean(),
+            status: z.enum(["answered"]),
+            authorityDecisionId: z.string(),
+            cardId: z.string(),
+          })
+          .strict(),
+      },
+      async (input: ThothSubmitPyramidPlanInput, context) => {
+        const card: ThothApprovalGoalCardModel = {
+          id: `pyramid-plan-card-${randomUUID()}`,
+          roundLabel: "Pyramid Plan",
+          title: input.pyramid_plan.title,
+          summary: input.pyramid_plan.summary,
+          pyramid: input.pyramid_plan.pyramid,
+          provenanceSummary: "受 Clarify 原文和已确认 CEO Task Card 约束",
+          submitted: false,
+        };
+        return waitForRuntimeAuthorityAnswer({
+          context,
+          safeName: "pyramid_approval",
+          label: "Pyramid Plan",
+          pendingText: "等待用户确认目标分拆。",
+          card: { kind: "pyramid_plan_card", card },
+          appendOpenCard: async () => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, { type: "goal_card", card });
+            }
+          },
+          appendSubmittedCard: async (summary) => {
+            if (callerAgentId) {
+              await agentManager.appendTimelineItem(callerAgentId, {
+                type: "goal_card",
+                card: { ...card, submitted: true, submittedSummary: summary },
+              });
+            }
+          },
+        });
+      },
+    );
+
+    registerTool(
+      "thoth_report_blocked",
+      {
+        title: "Report Thoth blocked state",
+        description:
+          "Report that the structured Workspace Secretary flow is blocked by a real user decision or external condition.",
+        inputSchema: ThothReportBlockedInputSchema,
+        outputSchema: z.object({ ok: z.boolean(), status: z.literal("blocked") }).strict(),
+      },
+      async (input: ThothReportBlockedInput, context) => {
+        if (!callerAgentId) {
+          throw new Error("thoth_report_blocked requires an agent-scoped caller");
+        }
+        const call = resolveRuntimeToolCallContext(context);
+        await appendRuntimeAuthorityToolCall({
+          callId: call.callId,
+          safeName: "blocked",
+          label: input.title,
+          text: input.reason,
+          status: "failed",
+          error: { message: input.reason },
+        });
+        await agentManager.appendTimelineItem(callerAgentId, {
+          type: "error",
+          message: input.reason,
+        });
+        return {
+          content: [{ type: "text", text: `Blocked: ${input.reason}` }],
+          structuredContent: { ok: true, status: "blocked" },
+          isError: true,
+        };
+      },
+    );
+  }
+
+  if (enableLoopRuntimeTools) {
+    registerTool(
+      "thoth_loop_submit_planexec_result",
+      {
+        title: "Submit Thoth Loop PlanExec result",
+        description:
+          "Submit the completed PlanExec result for the current Thoth background Loop goal. Use exactly once after planning, implementation, and local validation material are ready for Review.",
+        inputSchema: ThothLoopPlanExecResultInputSchema,
+        outputSchema: z.object({ ok: z.boolean(), status: z.literal("accepted") }).strict(),
+      },
+      async (input: ThothLoopPlanExecResultInput) => {
+        if (!callerAgentId) {
+          throw new Error("thoth_loop_submit_planexec_result requires an agent-scoped caller");
+        }
+        if (!options.loopTaskService?.resolvePlanExecResult(callerAgentId, input)) {
+          throw new Error("No active Thoth Loop PlanExec phase is waiting for this agent");
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                "PlanExec result accepted by Thoth Loop.",
+                "Wait for the independent Review phase. Do not continue to another goal in this session.",
+              ].join("\n"),
+            },
+          ],
+          structuredContent: { ok: true, status: "accepted" },
+        };
+      },
+    );
+
+    registerTool(
+      "thoth_loop_submit_review_verdict",
+      {
+        title: "Submit Thoth Loop Review verdict",
+        description:
+          "Submit the independent Review verdict for the current Thoth background Loop goal. Pass advances to the next goal; fail consumes one failed-review budget and guides the retry.",
+        inputSchema: ThothLoopReviewVerdictInputSchema,
+        outputSchema: z.object({ ok: z.boolean(), status: z.literal("accepted") }).strict(),
+      },
+      async (input: ThothLoopReviewVerdictInput) => {
+        if (!callerAgentId) {
+          throw new Error("thoth_loop_submit_review_verdict requires an agent-scoped caller");
+        }
+        if (!options.loopTaskService?.resolveReviewVerdict(callerAgentId, input)) {
+          throw new Error("No active Thoth Loop Review phase is waiting for this agent");
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Review verdict accepted by Thoth Loop. Stop this Review session now.",
+            },
+          ],
+          structuredContent: { ok: true, status: "accepted" },
+        };
+      },
+    );
+
+    registerTool(
+      "thoth_loop_report_blocked",
+      {
+        title: "Report Thoth Loop blocked state",
+        description:
+          "Report that the current background Loop phase is blocked by a real external condition or user-owned decision.",
+        inputSchema: ThothLoopReportBlockedInputSchema,
+        outputSchema: z.object({ ok: z.boolean(), status: z.literal("blocked") }).strict(),
+      },
+      async (input: ThothLoopReportBlockedInput) => {
+        if (!callerAgentId) {
+          throw new Error("thoth_loop_report_blocked requires an agent-scoped caller");
+        }
+        if (!options.loopTaskService?.resolveBlocked(callerAgentId, input)) {
+          throw new Error("No active Thoth Loop phase is waiting for this agent");
+        }
+        return {
+          content: [{ type: "text", text: `Loop blocked: ${input.reason}` }],
+          structuredContent: { ok: true, status: "blocked" },
+          isError: true,
+        };
+      },
+    );
+  }
 
   const ProviderModelInputSchema = AgentProviderEnum.trim()
     .refine((value) => value.includes("/"), {

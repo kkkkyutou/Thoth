@@ -12,6 +12,7 @@ import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { FileBackedChatService } from "./chat/chat-service.js";
 import type { LoopService } from "./loop-service.js";
+import type { ThothLoopTaskService } from "./thoth-loop/task-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
@@ -343,6 +344,7 @@ export class MissingDaemonVersionError extends Error {
 interface RequiredWebSocketServices {
   chatService: FileBackedChatService;
   loopService: LoopService;
+  loopTaskService?: ThothLoopTaskService | null;
   scheduleService: ScheduleService;
   checkoutDiffManager: CheckoutDiffManager;
 }
@@ -400,6 +402,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly chatService: FileBackedChatService;
   private readonly loopService: LoopService;
+  private readonly loopTaskService: ThothLoopTaskService | null;
   private readonly scheduleService: ScheduleService;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
@@ -465,6 +468,7 @@ export class VoiceAssistantWebSocketServer {
     workspaceRegistry?: WorkspaceRegistry,
     chatService?: FileBackedChatService,
     loopService?: LoopService,
+    loopTaskService?: ThothLoopTaskService | null,
     scheduleService?: ScheduleService,
     checkoutDiffManager?: CheckoutDiffManager,
     serviceProxy?: ServiceProxySubsystem | null,
@@ -516,6 +520,7 @@ export class VoiceAssistantWebSocketServer {
     });
     this.chatService = requiredServices.chatService;
     this.loopService = requiredServices.loopService;
+    this.loopTaskService = loopTaskService ?? null;
     this.scheduleService = requiredServices.scheduleService;
     this.checkoutDiffManager = requiredServices.checkoutDiffManager;
     this.github = github ?? createGitHubService();
@@ -994,6 +999,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceRegistry: this.workspaceRegistry,
       chatService: this.chatService,
       loopService: this.loopService,
+      loopTaskService: this.loopTaskService,
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,

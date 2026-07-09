@@ -70,6 +70,7 @@ function card(overrides: Partial<ThothClarifyCardModel> = {}): ThothClarifyCardM
           id: "scope",
           question: "优先哪条路线？",
           behavior_tree_node: "delivery-path/scope",
+          selection_mode: "single",
           choices: [
             { id: "ship", label: "上线", description: "真实发布" },
             { id: "demo", label: "演示", description: "先做演示" },
@@ -79,9 +80,20 @@ function card(overrides: Partial<ThothClarifyCardModel> = {}): ThothClarifyCardM
           id: "risk",
           question: "风险边界？",
           behavior_tree_node: "delivery-path/risk",
+          selection_mode: "single",
           choices: [
             { id: "safe", label: "保守", description: "少改动" },
             { id: "bold", label: "激进", description: "可重构" },
+          ],
+        },
+        {
+          id: "evidence",
+          question: "需要哪些验收？",
+          behavior_tree_node: "delivery-path/evidence",
+          selection_mode: "multiple",
+          choices: [
+            { id: "tests", label: "测试", description: "覆盖正确性" },
+            { id: "bench", label: "基准", description: "覆盖性能" },
           ],
         },
       ],
@@ -99,10 +111,21 @@ describe("ClarifyDecisionCard", () => {
     expect(screen.getByTestId("clarify-card-question-scope").textContent).toContain(
       "优先哪条路线？",
     );
+    expect(screen.getByTestId("clarify-card-question-mode-scope-single").textContent).toContain(
+      "单选",
+    );
     expect(screen.queryByTestId("clarify-card-question-risk")).toBeNull();
     fireEvent.click(screen.getByTestId("clarify-card-question-tab-2"));
     expect(screen.getByTestId("clarify-card-question-risk").textContent).toContain("风险边界？");
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-3"));
+    expect(
+      screen.getByTestId("clarify-card-question-mode-evidence-multiple").textContent,
+    ).toContain("多选");
     expect(screen.getByTestId("clarify-card-submit").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("clarify-card-decide")).toBeNull();
+    expect(screen.getByTestId("clarify-card-cancel").textContent).toContain("取消");
+    expect(screen.getByPlaceholderText("可补说明也可以只写备注。")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("可补一句说明")).toBeNull();
   });
 
   it("submits selected choices and per-option notes as a typed payload", async () => {
@@ -110,6 +133,9 @@ describe("ClarifyDecisionCard", () => {
     render(<ClarifyDecisionCard card={card()} onSubmit={onSubmit} />);
 
     fireEvent.click(screen.getByTestId("clarify-card-choice-scope-ship"));
+    expect(screen.getByTestId("clarify-card-question-risk").textContent).toContain("风险边界？");
+    expect(screen.getByTestId("clarify-card-submit").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-1"));
     fireEvent.change(screen.getByTestId("clarify-card-choice-note-scope-ship"), {
       target: { value: "必须是真的上线" },
     });
@@ -117,6 +143,10 @@ describe("ClarifyDecisionCard", () => {
     fireEvent.change(screen.getByTestId("clarify-card-question-note-risk"), {
       target: { value: "风险优先保守" },
     });
+    expect(screen.getByTestId("clarify-card-submit").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-3"));
+    fireEvent.click(screen.getByTestId("clarify-card-choice-evidence-tests"));
+    fireEvent.click(screen.getByTestId("clarify-card-choice-evidence-bench"));
     fireEvent.click(screen.getByTestId("clarify-card-submit"));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -137,8 +167,41 @@ describe("ClarifyDecisionCard", () => {
           choice_notes: {},
           note: "风险优先保守",
         },
+        {
+          question_id: "evidence",
+          choice_ids: ["tests", "bench"],
+          choice_notes: {},
+        },
       ],
     });
+  });
+
+  it("replaces single-choice selections, keeps multi-choice selections, and supports per-question recommendation", () => {
+    render(<ClarifyDecisionCard card={card()} onSubmit={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId("clarify-card-choice-scope-ship"));
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-1"));
+    fireEvent.click(screen.getByTestId("clarify-card-choice-scope-demo"));
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-1"));
+
+    expect(screen.queryByTestId("clarify-card-choice-note-scope-ship")).toBeNull();
+    expect(screen.getByTestId("clarify-card-choice-note-scope-demo")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-3"));
+    fireEvent.click(screen.getByTestId("clarify-card-choice-evidence-tests"));
+    fireEvent.click(screen.getByTestId("clarify-card-choice-evidence-bench"));
+    expect(screen.getByTestId("clarify-card-choice-note-evidence-tests")).toBeTruthy();
+    expect(screen.getByTestId("clarify-card-choice-note-evidence-bench")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-2"));
+    fireEvent.click(screen.getByTestId("clarify-card-recommend"));
+    expect(screen.getByTestId("clarify-card-question-evidence").textContent).toContain(
+      "需要哪些验收？",
+    );
+    fireEvent.click(screen.getByTestId("clarify-card-question-tab-2"));
+    expect(screen.getByTestId("clarify-card-question-note-risk").getAttribute("value")).toContain(
+      "自行推荐这个选项",
+    );
   });
 
   it("renders submitted cards as readonly history", () => {
@@ -153,18 +216,18 @@ describe("ClarifyDecisionCard", () => {
     expect(screen.queryByTestId("clarify-card-submit")).toBeNull();
   });
 
-  it("submits stop as a typed clarify answer without selecting a fallback choice", async () => {
+  it("submits cancel as a pause answer without selecting a fallback choice", async () => {
     const onSubmit = vi.fn();
     render(<ClarifyDecisionCard card={card()} onSubmit={onSubmit} />);
 
-    fireEvent.click(screen.getByTestId("clarify-card-stop"));
+    fireEvent.click(screen.getByTestId("clarify-card-cancel"));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith({
       intent: "stop",
       question_card_id: "clarify-card-1",
       title: "确认方向",
-      raw_answer: "停止 Clarify，回到 Quick",
+      raw_answer: "暂停继续询问",
       answers: [
         {
           question_id: "scope",
@@ -173,6 +236,11 @@ describe("ClarifyDecisionCard", () => {
         },
         {
           question_id: "risk",
+          choice_ids: [],
+          choice_notes: {},
+        },
+        {
+          question_id: "evidence",
           choice_ids: [],
           choice_notes: {},
         },

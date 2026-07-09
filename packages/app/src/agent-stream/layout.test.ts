@@ -54,6 +54,37 @@ function toolCall(id: string, seed: number): Extract<StreamItem, { kind: "tool_c
   };
 }
 
+function pendingAuthorityToolCall(
+  id: string,
+  seed: number,
+): Extract<StreamItem, { kind: "tool_call" }> {
+  return {
+    kind: "tool_call",
+    id,
+    timestamp: timestamp(seed),
+    payload: {
+      source: "agent",
+      data: {
+        provider: "codex",
+        callId: id,
+        name: "clarify",
+        status: "running",
+        error: null,
+        detail: {
+          type: "plain_text",
+          label: "需求拆解",
+          text: "正在拆解需求边界。",
+          icon: "brain",
+        },
+        metadata: {
+          thothAuthorityDecision: true,
+          pendingAuthorityDecision: true,
+        },
+      },
+    },
+  };
+}
+
 function thought(id: string, seed: number): Extract<StreamItem, { kind: "thought" }> {
   return {
     kind: "thought",
@@ -361,6 +392,24 @@ describe("layoutStream", () => {
       const layout = layoutFor({
         platform,
         agentStatus: "running",
+        tail: [userMessage("u1", 1), assistant, tool],
+        timingIds: [assistant.id],
+      });
+
+      expect(layout.auxiliaryTurnFooter).toBeNull();
+      expect(findLayoutItem(layout, assistant.id).completedFooter).toBeNull();
+      expect(footerOwners(layout)).toEqual([]);
+    },
+  );
+
+  it.each(["web", "android"] as const)(
+    "does not render a completed footer while a Thoth authority decision is pending on %s",
+    (platform) => {
+      const assistant = assistantMessage("a1", 2);
+      const tool = pendingAuthorityToolCall("authority-1", 3);
+      const layout = layoutFor({
+        platform,
+        agentStatus: "idle",
         tail: [userMessage("u1", 1), assistant, tool],
         timingIds: [assistant.id],
       });

@@ -182,6 +182,9 @@ const WorkspaceSecretaryConfigSchema = z
     providerSession: WorkspaceSecretaryProviderSessionSchema.optional(),
     mode: z.enum(["quick", "loop"]).optional(),
     clarifyStrength: z.enum(["none", "auto", "light", "balanced", "dive"]).optional(),
+    loopStrength: z
+      .enum(["auto", "one_plan_one_do", "light", "balanced", "run_until_stopped"])
+      .optional(),
     registeredTasks: z.array(z.unknown()).optional(),
     selectedBackgroundTaskId: z.string().min(1).nullable().optional(),
     topicSnapshots: z

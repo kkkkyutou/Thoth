@@ -3,8 +3,8 @@ import type { AgentProviderNotice } from "@thoth/protocol/agent-types";
 import type { AgentAttachment } from "@thoth/protocol/messages";
 import type {
   RegisteredTaskModel,
+  ThothApprovalGoalCardModel,
   ThothClarifyCardModel,
-  ThothGoalCardModel,
   ThothTaskCardModel,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import type { ThothToolCatalog } from "./tools/types.js";
@@ -377,7 +377,7 @@ export type AgentTimelineItem =
   | { type: "reasoning"; text: string }
   | { type: "clarify_card"; card: ThothClarifyCardModel }
   | { type: "task_card"; card: ThothTaskCardModel }
-  | { type: "goal_card"; card: ThothGoalCardModel }
+  | { type: "goal_card"; card: ThothApprovalGoalCardModel }
   | { type: "registered_task"; task: RegisteredTaskModel }
   | ToolCallTimelineItem
   | { type: "todo"; items: { text: string; completed: boolean }[] }

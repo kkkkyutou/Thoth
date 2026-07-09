@@ -96,6 +96,10 @@ import type {
   AgentSessionConfig,
 } from "@thoth/protocol/agent-types";
 import type {
+  BackgroundTaskAction,
+  BackgroundTaskActionResponse,
+  BackgroundTaskInspectResponse,
+  BackgroundTaskListResponse,
   WorkspaceSecretaryTurnActionPayload,
   ThothComposerModel,
   WorkspaceSecretarySendRequest,
@@ -342,6 +346,9 @@ type WorkspaceSecretaryModelUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "workspace_secretary.model.update" }
 >["payload"];
+type BackgroundTaskListPayload = BackgroundTaskListResponse["payload"];
+type BackgroundTaskInspectPayload = BackgroundTaskInspectResponse["payload"];
+type BackgroundTaskActionPayload = BackgroundTaskActionResponse["payload"];
 type FileExplorerPayload = FileExplorerResponse["payload"];
 export type FileExplorerDirectoryPayload = NonNullable<FileExplorerPayload["directory"]>;
 type LegacyFileExplorerFilePayload = NonNullable<FileExplorerPayload["file"]>;
@@ -2117,6 +2124,50 @@ export class DaemonClient {
     handler: (payload: WorkspaceSecretaryModelUpdatePayload) => void,
   ): () => void {
     return this.on("workspace_secretary.model.update", (message) => handler(message.payload));
+  }
+
+  async listBackgroundTasks(
+    input: { workspaceId?: string; workspacePath?: string; requestId?: string } = {},
+  ): Promise<BackgroundTaskListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "background_task.list.request",
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+      },
+      responseType: "background_task.list.response",
+    });
+  }
+
+  async inspectBackgroundTask(input: {
+    taskId: string;
+    requestId?: string;
+  }): Promise<BackgroundTaskInspectPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "background_task.inspect.request",
+        taskId: input.taskId,
+      },
+      responseType: "background_task.inspect.response",
+    });
+  }
+
+  async actOnBackgroundTask(input: {
+    taskId: string;
+    action: BackgroundTaskAction;
+    requestId?: string;
+  }): Promise<BackgroundTaskActionPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "background_task.action.request",
+        taskId: input.taskId,
+        action: input.action,
+      },
+      responseType: "background_task.action.response",
+    });
   }
 
   async fetchAgent(options: FetchAgentOptions): Promise<FetchAgentResult | null>;

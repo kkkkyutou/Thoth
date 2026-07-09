@@ -66,6 +66,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
+import { resolveProviderControlDisplayLabel } from "@/composer/agent-controls/provider-display";
 
 interface AgentControlOption {
   id: string;
@@ -465,6 +466,12 @@ function ControlledAgentControls({
     selectedProviderId,
     t("agentControls.provider.fallback"),
   );
+  const displayModel = resolveProviderControlDisplayLabel({
+    modelOptions,
+    selectedModelId,
+    provider,
+    providerLabel: displayProvider,
+  });
   const formattedThinkingOptions = useMemo(
     () => toThinkingControlOptions(thinkingOptions),
     [thinkingOptions],
@@ -635,7 +642,7 @@ function ControlledAgentControls({
           modelDisabled={modelDisabled}
           comboboxProviderOptions={comboboxProviderOptions}
           comboboxThinkingOptions={comboboxThinkingOptions}
-          displayProvider={displayProvider}
+          displayModel={displayModel}
           displayThinking={displayThinking}
           openSelector={openSelector}
           providerAnchorRef={providerAnchorRef}
@@ -684,6 +691,7 @@ function ControlledAgentControls({
           comboboxThinkingOptions={comboboxThinkingOptions}
           openSelector={openSelector}
           ProviderIcon={ProviderIcon}
+          displayModel={displayModel}
           activeSheet={activeSheet}
           runtimeControls={runtimeControls}
           controlExtras={controlExtras}
@@ -730,7 +738,7 @@ interface DesktopAgentControlsContentProps {
   modelDisabled: boolean;
   comboboxProviderOptions: ComboboxOption[];
   comboboxThinkingOptions: ComboboxOption[];
-  displayProvider: string;
+  displayModel: string;
   displayThinking: string;
   openSelector: AgentControlSelector | null;
   providerAnchorRef: RefObject<View | null>;
@@ -792,7 +800,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     modelDisabled,
     comboboxProviderOptions,
     comboboxThinkingOptions,
-    displayProvider,
+    displayModel,
     displayThinking,
     openSelector,
     providerAnchorRef,
@@ -828,7 +836,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
         onPress={handleProviderPress}
         open={activeSheet === "provider"}
         icon={resolveProviderIcon(provider)}
-        label={displayProvider}
+        label={displayModel}
         fallback={selectedModelId ?? provider}
       />
 
@@ -898,6 +906,7 @@ interface SheetAgentControlsContentProps {
   comboboxThinkingOptions: ComboboxOption[];
   openSelector: AgentControlSelector | null;
   ProviderIcon: ReturnType<typeof getProviderIcon> | null;
+  displayModel: string;
   activeSheet: ActiveSheet;
   runtimeControls?: ReactNode;
   controlExtras?: ReactNode;
@@ -944,6 +953,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
     comboboxThinkingOptions,
     openSelector,
     ProviderIcon,
+    displayModel,
     activeSheet,
     runtimeControls,
     controlExtras,
@@ -1023,7 +1033,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
           testID="agent-provider-config"
         >
           {renderModelTrigger({
-            selectedModelLabel: selectedModelId ?? provider,
+            selectedModelLabel: displayModel,
             onPress: handleProviderPress,
             disabled: disabled || !canSelectModel,
             isOpen: activeSheet === "provider",

@@ -3,11 +3,11 @@
 ## Current Truth
 
 1. Objective: `NTH-OBJ-001`
-2. Top next action: `NTH-TD-017`
+2. Top next action: `NTH-TD-021`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
-4. Active blockers: None for the current top next action. `NTH-TD-016` / `NTH-MS-013` passed the reopened Loop-2 reset under `NTH-EV-029`; provider-backed `thoth.loop` PlanExec / Review remains intentionally deferred to `NTH-TD-019`.
+4. Active blockers: None for the current top next action. `NTH-EV-030` now verifies the first real Codex Loop background path on local `8082` and public `8148`; `NTH-TD-021` remains for Loop+Light, complete all-goals-to-`done`, restart recovery and repeated real-provider hardening.
 5. Current branch: `agent/dev/mvp`
-6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; Thoth/Paseo parallel runtime isolation is verified with Thoth daemon on `127.0.0.1:6688`, local Paseo daemon preserved on `127.0.0.1:6767`, real web review on `8082 -> 8148`, independent test relay deployment at `relay.test.thoth.seeles.ai`, Linux AppImage, Android Debug APK and Codex provider smoke. Revised Loop Goal 1 `NTH-TD-015` is verified by `NTH-EV-025` for the pre-runtime-tool-bridge Clarify skill/golden contract. Loop Goal 2 `NTH-TD-016` / `NTH-MS-013` is verified by `NTH-EV-029`: the restored Paseo production app surface is again the main path; `Quick + none` is a bare Codex/Paseo foreground stream with no Clarify card/packet/repair; `Quick + Dive` uses Codex app-server `dynamicTools` / `item/tool/call` semantic Thoth runtime tools, persisted pending decisions and AgentTimeline rendering; Clarify cards submit to readonly folded summaries and continue provider timeline; Task Card is a compact CEO overview; Pyramid Plan Card is hierarchical; Quick approvals continue same-session `quick_exec` with real shell/edit timeline; Loop approvals register durable `registered_pending` tasks without fake PlanExec/Review. Evidence includes public `8148` and local `8082` real Codex journeys, desktop/mobile screenshots opened with `view_image`, Background Tasks list/detail recovery, mobile deep-link recovery, independent `codex exec` UI mental-model review PASS, focused protocol/client/daemon/app tests, `npm --workspace=@thoth/app run test`, `npm run build:web`, `npm run check:foundation` and `git diff --check`. Provider-backed `thoth.loop` PlanExec / Review runtime remains open for `NTH-TD-019`, not covered by Loop-2.
+6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; Thoth/Paseo parallel runtime isolation is verified with Thoth daemon on `127.0.0.1:6688`, local Paseo daemon preserved on `127.0.0.1:6767`, real web review on `8082 -> 8148`, independent test relay deployment at `relay.test.thoth.seeles.ai`, Linux AppImage, Android Debug APK and Codex provider smoke. Revised Loop Goal 1 `NTH-TD-015` is verified by `NTH-EV-025` for the pre-runtime-tool-bridge Clarify skill/golden contract. Loop Goal 2 `NTH-TD-016` / `NTH-MS-013` is partially revalidated under reopened `NTH-EV-029`: Codex dynamicTools now carry model-submitted `public_badge_summary`, `frontier_ledger` and convergence review; pending authority lifecycle guards suppress premature completed/idle UI; `balanced` reached 5 Clarify cards and `dive` reached 10-12 cards in real Codex tests; local and public web paths both ran. `NTH-CD-045` supersedes the old registered-pending-only Loop handoff: the code now has a durable Loop task service, `Goals Card` authority, PlanExec/Review semantic tools, worktree-lock scheduler, budgeted failed-Review loop semantics, and Background Tasks detail with embedded AgentTimeline. `NTH-EV-030` verifies the first real Codex Loop+Single local/public path, including Task/Goals approvals, background task detail, linear goal advancement, independent Review, Single budget failure handling and phase AgentTimeline events. Loop+Light, restart recovery and complete all-goals-to-`done` hardening continue under `NTH-TD-021`.
 
 ## Objective Summary
 
@@ -24,11 +24,11 @@
 
 ## Top Next Action
 
-`NTH-TD-017` `[ready]`: Start Loop Goal 3, the backend Task Contract Compiler and Approval Harness, now that Loop-2's restored Paseo surface, Codex runtime-tool Clarify bridge, AgentTimeline cards, Quick+none bare stream, Quick+Dive same-session `quick_exec`, Loop `registered_pending`, recovery evidence and gates are verified under `NTH-EV-029`.
+`NTH-TD-021` `[ready]`: Harden the verified Loop background path after first real-provider acceptance: promote repeatable real-provider coverage for Loop+Light, complete all-goals-to-`done`, restart recovery, pause/resume/stop and repeated phase AgentTimeline evidence.
 
 ## Active Blockers
 
-None. `NTH-TD-017` is unblocked by `NTH-EV-029`; `NTH-TD-019` remains a future scope item, not a blocker for the current top next action.
+None. `NTH-EV-030` closed the first real-provider acceptance gap; remaining work is hardening scope captured in `NTH-TD-021`.
 
 ## Recent Important Changes
 
@@ -89,6 +89,8 @@ None. `NTH-TD-017` is unblocked by `NTH-EV-029`; `NTH-TD-019` remains a future s
 55. `NTH-CD-041`: User superseded the Loop-2 frontend main path. Loop-2 must return to the original production-grade Paseo app surface and layout, preserve Paseo stream/timeline/composer/card/settings/host-provider/attachments/file-link/terminal/browser/file-pane/responsive/e2e capabilities, remove or isolate the Thoth toy shell, remap composer controls to Provider / Clarify / Mode, and connect Thoth runtime authority into restored Paseo without losing the original AgentTimeline substrate.
 56. `NTH-CD-042`: User refined runtime phase semantics: `Quick + none` is bare provider stream with no Clarify injection/packet/repair; `Quick + clarify` uses phase-aware structured turns and same-session `quick_exec`; `Loop` uses secretary Clarify plus two approvals before registered background task handoff.
 57. `NTH-CD-043`: Loop-2 Clarify bridge is now Codex app-server `dynamicTools` / `item/tool/call` with semantic Thoth tools, persisted pending authority decisions and AgentTimeline cards. `submit_clarify_packet`, native `outputSchema` packet and assistant markdown JSON are legacy/internal compatibility only, not Loop-2 acceptance paths; Loop-2 stops honestly at `registered_pending`.
+58. `NTH-CD-044`: Loop-2 Quick+Clarify acceptance now requires intelligent AgentTimeline badge summaries from `public_badge_summary`, model `frontier_ledger`, Task convergence review, pending user-decision lifecycle without premature completed/idle footer, `balanced` 5-10 card soft range and `dive` 10-20 card soft range; `NTH-EV-029` is reopened until this strengthened contract is revalidated on real Codex `8082` / `8148`.
+59. `NTH-CD-045`: Loop background mode is now a real durable task path after Task Card + Goals Card approval, with linear goals, PlanExec/Review phase sessions, failed-Review budgets, worktree locking, Background Tasks detail and embedded AgentTimeline. Old `registered_pending` is legacy-only, not the main Loop background path.
 
 ## Read Next
 

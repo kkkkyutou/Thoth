@@ -2,11 +2,17 @@
 
 ## Status
 
-1. 日期：`2026-07-07`
+1. 日期：`2026-07-09`
 2. 性质：Thoth MVP 的 6 个 Codex goal-mode loop 合同
 3. 适用范围：`packages/protocol`、`packages/core`、`packages/daemon`、`packages/drivers`、`packages/client`、`packages/app`、`packages/desktop`
 4. 上游合同：`.agent-os/designs/thoth-app-runtime-contract.md`、`packages/protocol/src/thoth-runtime-contract.ts`
 5. 状态：canonical execution plan；用于把 `agent/dev/mvp` 从设计合同推进到最小可验证 MVP 业务链路
+
+2026-07-09 update: `NTH-CD-045` supersedes the earlier strictly sequential Loop Goal 3/4/5/6
+implementation order for the current branch. The active Loop background path is merged: Clarify ->
+Task Card -> Goals Card -> durable background Loop task -> linear goals -> PlanExec / Review phases.
+Old `Pyramid Plan Card` and `registered_pending` wording below is historical or legacy compatibility
+unless a later section explicitly says otherwise.
 
 ## 1. 拆分原则
 

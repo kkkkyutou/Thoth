@@ -14,6 +14,7 @@ const { patchConfigMock, toastErrorMock, configState, theme } = vi.hoisted(() =>
       workspaceSecretary: {
         mode: "loop",
         clarifyStrength: "dive",
+        loopStrength: "balanced",
       },
     },
   },
@@ -41,6 +42,8 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("lucide-react-native", () => ({
+  ChevronLeft: () => React.createElement("span", { "data-icon": "ChevronLeft" }),
+  ChevronRight: () => React.createElement("span", { "data-icon": "ChevronRight" }),
   GitBranch: () => React.createElement("span", { "data-icon": "GitBranch" }),
   SearchCheck: () => React.createElement("span", { "data-icon": "SearchCheck" }),
 }));
@@ -91,6 +94,8 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     React.createElement("div", null, children),
   DropdownMenuContent: ({ children, testID }: React.PropsWithChildren<{ testID?: string }>) =>
     React.createElement("div", { "data-testid": testID }, children),
+  DropdownMenuLabel: ({ children }: React.PropsWithChildren) =>
+    React.createElement("div", null, children),
   DropdownMenuItem: ({
     children,
     onSelect,
@@ -135,6 +140,7 @@ afterEach(() => {
     workspaceSecretary: {
       mode: "loop",
       clarifyStrength: "dive",
+      loopStrength: "balanced",
     },
   };
 });
@@ -144,26 +150,74 @@ describe("RuntimeControls", () => {
     render(<RuntimeControls serverId="server-1" />);
 
     expect(screen.getByTestId("thoth-clarify-control").textContent).toContain("Dive");
-    expect(screen.getByTestId("thoth-mode-control").textContent).toContain("Loop");
+    expect(screen.getByTestId("thoth-mode-control").textContent).toContain("Balanced");
+    expect(screen.getByTestId("thoth-mode-control").textContent).not.toContain("Async");
     expect(screen.getByTestId("thoth-clarify-menu-dive").getAttribute("aria-selected")).toBe(
       "true",
     );
     expect(screen.getByTestId("thoth-mode-menu-loop").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("thoth-mode-menu-quick").textContent).toContain("Quick (Live)");
+    expect(screen.getByTestId("thoth-mode-menu-loop").textContent).toContain("Loop (Async)");
+    fireEvent.click(screen.getByTestId("thoth-mode-menu-loop"));
+    expect(screen.getByTestId("thoth-mode-menu-back").textContent).toBe("Loop");
+    expect(screen.getByTestId("thoth-mode-menu-loop-balanced").textContent).toBe("Balanced");
+    expect(screen.getByTestId("thoth-mode-menu-loop-balanced").textContent).not.toContain("Async");
+  });
+
+  it("defaults loop mode to Single when no loop strength is persisted", () => {
+    delete (configState.current.workspaceSecretary as { loopStrength?: string }).loopStrength;
+
+    render(<RuntimeControls serverId="server-1" />);
+
+    expect(screen.getByTestId("thoth-mode-control").textContent).toContain("Single");
+    expect(screen.getByTestId("thoth-mode-control").textContent).not.toContain("Async");
+  });
+
+  it("renders Quick as a short selected label without Live detail", () => {
+    configState.current.workspaceSecretary.mode = "quick";
+
+    render(<RuntimeControls serverId="server-1" />);
+
+    expect(screen.getByTestId("thoth-mode-control").textContent).toContain("Quick");
+    expect(screen.getByTestId("thoth-mode-control").textContent).not.toContain("Live");
+    expect(screen.getByTestId("thoth-mode-menu-quick").textContent).toContain("Quick (Live)");
   });
 
   it("patches only typed workspaceSecretary control fields", async () => {
     render(<RuntimeControls serverId="server-1" />);
 
     fireEvent.click(screen.getByTestId("thoth-clarify-menu-light"));
+    fireEvent.click(screen.getByTestId("thoth-mode-menu-loop"));
+    fireEvent.click(screen.getByTestId("thoth-mode-menu-loop-one_plan_one_do"));
+    fireEvent.click(screen.getByTestId("thoth-mode-menu-back"));
     fireEvent.click(screen.getByTestId("thoth-mode-menu-quick"));
 
-    await waitFor(() => expect(patchConfigMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(patchConfigMock).toHaveBeenCalledTimes(3));
     expect(patchConfigMock).toHaveBeenNthCalledWith(1, {
       workspaceSecretary: { clarifyStrength: "light" },
     });
     expect(patchConfigMock).toHaveBeenNthCalledWith(2, {
+      workspaceSecretary: { mode: "loop", loopStrength: "one_plan_one_do" },
+    });
+    expect(patchConfigMock).toHaveBeenNthCalledWith(3, {
       workspaceSecretary: { mode: "quick" },
     });
+  });
+
+  it("renders Infinite with the laser label in the menu and chip", () => {
+    configState.current.workspaceSecretary.loopStrength = "run_until_stopped";
+
+    render(<RuntimeControls serverId="server-1" />);
+
+    expect(screen.getByTestId("thoth-mode-control").textContent).toContain("Infinite");
+    expect(screen.getByTestId("thoth-mode-control").textContent).not.toContain("Async");
+    fireEvent.click(screen.getByTestId("thoth-mode-menu-loop"));
+    expect(screen.getByTestId("thoth-mode-menu-loop-run_until_stopped").textContent).toBe(
+      "Infinite",
+    );
+    expect(screen.getByTestId("thoth-mode-menu-loop-run_until_stopped").textContent).not.toContain(
+      "Async",
+    );
   });
 
   it("blocks writes without a real host connection", () => {

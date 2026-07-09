@@ -183,6 +183,7 @@ import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { LoopService } from "./loop-service.js";
+import type { ThothLoopTaskService } from "./thoth-loop/task-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { createGitHubService, type GitHubService } from "../services/github-service.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
@@ -423,6 +424,7 @@ export interface SessionOptions {
   chatService: FileBackedChatService;
   scheduleService: ScheduleService;
   loopService: LoopService;
+  loopTaskService?: ThothLoopTaskService | null;
   checkoutDiffManager: CheckoutDiffManager;
   github?: GitHubService;
   createAgentMcpTransport?: AgentMcpTransportFactory;
@@ -594,6 +596,7 @@ export class Session {
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
   private readonly workspaceSecretarySession: WorkspaceSecretarySession;
+  private readonly loopTaskService: ThothLoopTaskService | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
@@ -619,6 +622,7 @@ export class Session {
       chatService,
       scheduleService,
       loopService,
+      loopTaskService,
       checkoutDiffManager,
       github,
       renameCurrentBranch,
@@ -811,7 +815,9 @@ export class Session {
       },
       agentManager: this.agentManager,
       daemonConfigStore,
+      loopTaskService,
     });
+    this.loopTaskService = loopTaskService ?? null;
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
     this.terminalController = new TerminalSessionController({
@@ -1647,6 +1653,12 @@ export class Session {
         return this.handleWorkspaceClearAttentionRequest(msg);
       case "workspace.title.set.request":
         return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
+      case "background_task.list.request":
+        return this.handleBackgroundTaskListRequest(msg);
+      case "background_task.inspect.request":
+        return this.handleBackgroundTaskInspectRequest(msg);
+      case "background_task.action.request":
+        return this.handleBackgroundTaskActionRequest(msg);
       case "workspace_secretary.snapshot.request":
         return this.workspaceSecretarySession.handleSnapshotRequest(msg);
       case "workspace_secretary.send.request":
@@ -1667,6 +1679,85 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  private async resolveBackgroundTaskWorkspacePath(input: {
+    workspaceId?: string;
+    workspacePath?: string;
+  }): Promise<string | null> {
+    if (input.workspacePath?.trim()) {
+      return input.workspacePath.trim();
+    }
+    if (!input.workspaceId?.trim()) {
+      return null;
+    }
+    const workspace = await this.workspaceRegistry.get(input.workspaceId.trim());
+    return workspace?.cwd ?? null;
+  }
+
+  private async handleBackgroundTaskListRequest(
+    msg: Extract<SessionInboundMessage, { type: "background_task.list.request" }>,
+  ): Promise<void> {
+    if (!this.loopTaskService) {
+      this.emit({
+        type: "background_task.list.response",
+        payload: {
+          requestId: msg.requestId,
+          tasks: [],
+          error: "Thoth Loop background task service is unavailable.",
+        },
+      });
+      return;
+    }
+    const workspacePath = await this.resolveBackgroundTaskWorkspacePath(msg);
+    const tasks = this.loopTaskService.list(workspacePath ? { workspacePath } : undefined);
+    this.emit({
+      type: "background_task.list.response",
+      payload: {
+        requestId: msg.requestId,
+        tasks,
+        error: null,
+      },
+    });
+  }
+
+  private async handleBackgroundTaskInspectRequest(
+    msg: Extract<SessionInboundMessage, { type: "background_task.inspect.request" }>,
+  ): Promise<void> {
+    const task = this.loopTaskService?.inspect(msg.taskId) ?? null;
+    this.emit({
+      type: "background_task.inspect.response",
+      payload: {
+        requestId: msg.requestId,
+        task,
+        error: this.loopTaskService ? null : "Thoth Loop background task service is unavailable.",
+      },
+    });
+  }
+
+  private async handleBackgroundTaskActionRequest(
+    msg: Extract<SessionInboundMessage, { type: "background_task.action.request" }>,
+  ): Promise<void> {
+    if (!this.loopTaskService) {
+      this.emit({
+        type: "background_task.action.response",
+        payload: {
+          requestId: msg.requestId,
+          task: null,
+          error: "Thoth Loop background task service is unavailable.",
+        },
+      });
+      return;
+    }
+    const task = await this.loopTaskService.action(msg.taskId, msg.action);
+    this.emit({
+      type: "background_task.action.response",
+      payload: {
+        requestId: msg.requestId,
+        task,
+        error: task ? null : "Background task not found.",
+      },
+    });
   }
 
   private dispatchProviderMessage(msg: SessionInboundMessage): Promise<void> | undefined {

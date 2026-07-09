@@ -41,7 +41,7 @@ import {
   type InlinePathTarget,
 } from "@/components/message";
 import { PlanCard } from "@/components/plan-card";
-import type { StreamItem } from "@/types/stream";
+import { hasPendingAuthorityDecisionStreamItem, type StreamItem } from "@/types/stream";
 import type { PendingPermission } from "@/types/shared";
 import type {
   AgentCapabilityFlags,
@@ -542,27 +542,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
+    const hasPendingAuthorityDecision = useMemo(
+      () =>
+        hasPendingAuthorityDecisionStreamItem(effectiveStreamItems) ||
+        hasPendingAuthorityDecisionStreamItem(effectiveStreamHead ?? EMPTY_STREAM_HEAD),
+      [effectiveStreamHead, effectiveStreamItems],
+    );
+    const effectiveAgentStatus =
+      hasPendingAuthorityDecision && agent.status !== "running" ? "running" : agent.status;
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
-        agentStatus: agent.status,
+        agentStatus: effectiveAgentStatus,
         tail: effectiveStreamItems,
         head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
       });
-    }, [agent.status, isMobile, effectiveStreamHead, effectiveStreamItems]);
+    }, [effectiveAgentStatus, isMobile, effectiveStreamHead, effectiveStreamItems]);
     const streamLayout = useMemo(
       () =>
         layoutStream({
           strategy: streamRenderStrategy,
-          agentStatus: agent.status,
+          agentStatus: effectiveAgentStatus,
           history: baseRenderModel.history,
           liveHead: baseRenderModel.segments.liveHead,
           timingByAssistantId: baseRenderModel.turnTiming.byAssistantId,
         }),
       [
-        agent.status,
+        effectiveAgentStatus,
         baseRenderModel.history,
         baseRenderModel.segments.liveHead,
         baseRenderModel.turnTiming.byAssistantId,
@@ -813,7 +821,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [pendingPermissions, agentId],
     );
 
-    const showRunningTurnFooter = agent.status === "running";
+    const showRunningTurnFooter = effectiveAgentStatus === "running";
     const pendingPermissionsNode = useMemo(
       () =>
         renderPendingPermissionsNode({

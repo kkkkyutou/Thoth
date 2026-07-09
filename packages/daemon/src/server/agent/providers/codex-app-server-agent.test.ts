@@ -541,20 +541,84 @@ describe("Codex app-server provider", () => {
 
     const startCall = requests.find((req) => req.method === "thread/start");
     const params = startCall?.params as Record<string, unknown> | undefined;
-    expect(params?.dynamicTools).toEqual([
+    const dynamicTools = params?.dynamicTools as
+      | Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>
+      | undefined;
+    expect(dynamicTools).toEqual([
       expect.objectContaining({
         name: "thoth_submit_clarify_card",
-        description: expect.stringContaining("Clarify"),
+        description: expect.stringContaining("soft minimum"),
         inputSchema: expect.objectContaining({
           type: "object",
           required: expect.arrayContaining([
             "title",
             "why_now",
-            "decision_it_changes",
+            "public_badge_summary",
+            "frontier_ledger",
             "questions",
           ]),
         }),
       }),
+    ]);
+    const clarifyTool = dynamicTools?.find((tool) => tool.name === "thoth_submit_clarify_card");
+    const questionItems = (
+      (clarifyTool?.inputSchema?.properties as Record<string, unknown> | undefined)?.questions as
+        | { items?: Record<string, unknown> }
+        | undefined
+    )?.items;
+    expect(questionItems).toMatchObject({
+      required: expect.arrayContaining(["selection_mode"]),
+      properties: expect.objectContaining({
+        selection_mode: expect.objectContaining({ enum: ["single", "multiple"] }),
+      }),
+    });
+  });
+
+  test("does not pass Thoth runtime tool flags through Codex config", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const fakeClient: CodexClientLike = {
+      async request(method: string, params?: unknown) {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "dynamic-tool-thread" } };
+        }
+        return null;
+      },
+    };
+    const session = new CodexAppServerAgentSession(
+      createConfig({
+        thinkingOptionId: "medium",
+        extra: {
+          codex: {
+            thothClarifyRuntimeTools: true,
+            thothLoopRuntimeTools: true,
+            providerVisibleOption: "keep-me",
+          },
+        },
+      }),
+      null,
+      createTestLogger(),
+      () => {
+        throw new Error("Test session cannot spawn Codex app-server");
+      },
+      {},
+      false,
+      false,
+      false,
+      "agent-dynamic-tools",
+      createRuntimeToolCatalogStub(),
+    );
+    castInternals<{ client: CodexClientLike }>(session).client = fakeClient;
+
+    await asInternals(session as CodexTestSession).ensureThread();
+
+    const startCall = requests.find((req) => req.method === "thread/start");
+    const params = startCall?.params as Record<string, unknown> | undefined;
+    expect(params?.config).toEqual({ providerVisibleOption: "keep-me" });
+    expect(JSON.stringify(params?.config)).not.toContain("thothClarifyRuntimeTools");
+    expect(JSON.stringify(params?.config)).not.toContain("thothLoopRuntimeTools");
+    expect(params?.dynamicTools).toEqual([
+      expect.objectContaining({ name: "thoth_submit_clarify_card" }),
     ]);
   });
 

@@ -3766,13 +3766,19 @@ export class AgentManager {
       this.shouldUseNativeThothTools(launchConfig) &&
       this.thothToolCatalogFactory
     ) {
-      context.thothTools = await this.thothToolCatalogFactory({ callerAgentId: agentId });
+      context.thothTools = await this.thothToolCatalogFactory({
+        callerAgentId: agentId,
+        callerAgentConfig: launchConfig,
+      });
     }
     return context;
   }
 
   private shouldUseNativeThothTools(config: AgentSessionConfig): boolean {
-    return config.extra?.codex?.thothClarifyRuntimeTools === true;
+    return (
+      config.extra?.codex?.thothClarifyRuntimeTools === true ||
+      config.extra?.codex?.thothLoopRuntimeTools === true
+    );
   }
 
   private resolveProviderLaunchConfig(
