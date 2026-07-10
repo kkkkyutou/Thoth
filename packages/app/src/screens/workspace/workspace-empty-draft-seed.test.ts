@@ -7,8 +7,10 @@ const readyEmptyWorkspace = {
   hasWorkspaceDirectory: true,
   hasHydratedWorkspaceLayoutStore: true,
   hasHydratedAgents: true,
+  hasCheckedHistoricalAgents: true,
   hasLoadedTerminals: true,
   activeAgentCount: 0,
+  restorableAgentCount: 0,
   terminalCount: 0,
   tabCount: 0,
 };
@@ -30,6 +32,12 @@ describe("shouldSeedEmptyWorkspaceDraft", () => {
     expect(
       shouldSeedEmptyWorkspaceDraft({
         ...readyEmptyWorkspace,
+        hasCheckedHistoricalAgents: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldSeedEmptyWorkspaceDraft({
+        ...readyEmptyWorkspace,
         hasLoadedTerminals: false,
       }),
     ).toBe(false);
@@ -40,6 +48,12 @@ describe("shouldSeedEmptyWorkspaceDraft", () => {
       shouldSeedEmptyWorkspaceDraft({
         ...readyEmptyWorkspace,
         activeAgentCount: 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldSeedEmptyWorkspaceDraft({
+        ...readyEmptyWorkspace,
+        restorableAgentCount: 1,
       }),
     ).toBe(false);
     expect(

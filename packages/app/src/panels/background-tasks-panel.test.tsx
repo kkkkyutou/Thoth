@@ -224,6 +224,17 @@ function loopTask(status: LoopTaskModel["status"] = "running"): LoopTaskModel {
             summary: "Review passed.",
           },
         ],
+        latestPlanExecResult: {
+          goalId: "goal-1",
+          round: 1,
+          planSummary: "Plan core API.",
+          executionSummary: "Implemented API.",
+          evidence: ["Unit test evidence."],
+          validationPerformed: ["Ran unit tests."],
+          remainingRisks: [],
+          nextReviewFocus: "Confirm API behavior.",
+          createdAt: "2026-07-09T00:00:02.000Z",
+        },
       },
       {
         id: "goal-2",
@@ -249,6 +260,19 @@ function loopTask(status: LoopTaskModel["status"] = "running"): LoopTaskModel {
             agentId: "agent-review-2",
           },
         ],
+        latestPlanExecResult: {
+          goalId: "goal-2",
+          round: 2,
+          phaseRunId: "phase-plan-2",
+          resultToolCallId: "tool-plan-2",
+          planSummary: "Plan docs.",
+          executionSummary: "Updated docs.",
+          evidence: ["Docs include usage example."],
+          validationPerformed: ["Read rendered docs."],
+          remainingRisks: [],
+          nextReviewFocus: "Check example clarity.",
+          createdAt: "2026-07-09T00:00:03.000Z",
+        },
       },
     ],
     clarifyTranscript: "Approved context.",
@@ -343,6 +367,9 @@ describe("BackgroundTasksPanel", () => {
     expect(screen.getByText("Goal 1: Core API")).toBeTruthy();
     expect(screen.getByText("Goal 2: Documentation")).toBeTruthy();
     expect(screen.getByText("running_review · loop round 2")).toBeTruthy();
+    expect(screen.getByText("Latest PlanExec evidence")).toBeTruthy();
+    expect(screen.getByText("Updated docs.")).toBeTruthy();
+    expect(screen.getByText(/Docs include usage example/)).toBeTruthy();
     expect(screen.getByTestId("loop-phase-review")).toBeTruthy();
     await waitFor(() => expect(screen.getByTestId("agent-stream-agent-review-2")).toBeTruthy());
     expect(clientMock.fetchAgentTimeline).toHaveBeenCalledWith("agent-review-2", {

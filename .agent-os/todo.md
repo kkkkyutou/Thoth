@@ -17,7 +17,8 @@
 1. `NTH-TD-021` `[ready]`: Harden Loop background after first real-provider acceptance.
    - Goal: Promote the current verified Single-path Loop background path into repeatable guarded real-provider e2e coverage and address any discovered Codex/app-server timeout, permission, recovery or UI scaling issues.
    - Constraints: Do not reintroduce fake running/review/evidence; captures stay outside the git repo under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`; local Paseo/legacy `127.0.0.1:6767` remains untouched.
-   - Acceptance: A stable opt-in real-provider test or runbook covers Loop+Light, complete all-goals-to-`done`, pause/resume/stop, restart recovery and repeated phase AgentTimeline evidence beyond the first verified Single-path acceptance.
+   - Progress: Code hardening now covers full PlanExec evidence persistence, phase audit fields, durable worktree locks, strict phase-result matching, honest unsupported behavior when real Loop runtime is unavailable, richer Background Tasks evidence UI and `thoth.loop` positive/negative golden judge promotion.
+   - Acceptance: Remaining verification must still cover Loop+Light, complete all-goals-to-`done`, pause/resume/stop, restart recovery and repeated phase AgentTimeline evidence in stable opt-in real-provider runs beyond the first verified Single-path acceptance.
    - Depends on: `NTH-TD-019`
    - Related: `NTH-CD-045`, `NTH-EV-030`
 2. `NTH-TD-002` `[ready]`: Umbrella MVP implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing archived plugin runtime compatibility.

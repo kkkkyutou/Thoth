@@ -311,6 +311,7 @@ describe("workspace-layout-store actions", () => {
       splitSizesByWorkspace: {},
       pinnedAgentIdsByWorkspace: {},
       hiddenAgentIdsByWorkspace: {},
+      restoredAgentIdsByWorkspace: {},
       focusRestorationByWorkspace: {},
     });
   });
@@ -1494,6 +1495,56 @@ describe("workspace-layout-store actions", () => {
         .getWorkspaceTabs(workspaceKey)
         .map((tab) => tab.tabId),
     ).toEqual(["agent_parent-agent"]);
+  });
+
+  it("reconcileTabs preserves explicitly opened historical agent tabs", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "historical-agent" });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: [],
+      autoOpenAgentIds: [],
+      knownAgentIds: ["historical-agent"],
+      restorableAgentIds: ["historical-agent"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    expect(
+      workspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(workspaceKey)
+        .map((tab) => tab.tabId),
+    ).toEqual(["agent_historical-agent"]);
+  });
+
+  it("reconcileTabs preserves retained restored agent tabs before visibility catches up", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    store.retainRestoredAgent(workspaceKey, "historical-agent");
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "historical-agent" });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: [],
+      autoOpenAgentIds: [],
+      knownAgentIds: [],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    expect(
+      workspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(workspaceKey)
+        .map((tab) => tab.tabId),
+    ).toEqual(["agent_historical-agent"]);
   });
 
   it("openTabFocused reopens hidden subagent tabs and clears hidden intent", () => {

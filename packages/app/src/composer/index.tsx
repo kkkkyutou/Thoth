@@ -41,7 +41,7 @@ import {
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
-import { useSessionStore } from "@/stores/session-store";
+import { useSessionStore, type Agent } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
@@ -792,6 +792,10 @@ interface ComposerProps {
   submitIcon?: "arrow" | "return";
   /** Externally controlled loading state. When true, disables the submit button. */
   isSubmitLoading?: boolean;
+  /** Optional status override for virtual agent surfaces such as Workspace Secretary draft tabs. */
+  agentStatusOverride?: Agent["status"] | null;
+  /** Optional cancel hook for virtual agent surfaces that cannot use cancelAgent(agentId). */
+  onCancelRunningAgent?: () => Promise<void> | void;
   submitBehavior?: "clear" | "preserve-and-lock";
   /** When true, blurs the input immediately when submitting. */
   blurOnSubmit?: boolean;
@@ -1009,6 +1013,8 @@ export function Composer({
   submitButtonTestID,
   submitIcon = "arrow",
   isSubmitLoading = false,
+  agentStatusOverride,
+  onCancelRunningAgent,
   submitBehavior = "clear",
   blurOnSubmit = false,
   value,
@@ -1277,8 +1283,9 @@ export function Composer({
     onSubmitMessageRef.current = onSubmitMessage;
   }, [onSubmitMessage]);
 
-  const isAgentRunning = agentState.status === "running";
-  const hasAgent = agentState.status !== null;
+  const effectiveAgentStatus = agentStatusOverride ?? agentState.status;
+  const isAgentRunning = effectiveAgentStatus === "running";
+  const hasAgent = effectiveAgentStatus !== null;
 
   const queueWriter = useMemo<QueueWriter>(
     () => ({
@@ -1514,6 +1521,21 @@ export function Composer({
   }, [isAgentRunning, isConnected]);
 
   const handleCancelAgent = useCallback(() => {
+    if (onCancelRunningAgent) {
+      if (!isAgentRunning || isCancellingAgent || !isConnected) return;
+      setIsCancellingAgent(true);
+      setSendError(null);
+      void Promise.resolve(onCancelRunningAgent())
+        .catch((error) => {
+          console.error("[Composer] Failed to cancel running agent:", error);
+          setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
+        })
+        .finally(() => {
+          setIsCancellingAgent(false);
+        });
+      messageInputRef.current?.focus();
+      return;
+    }
     const didCancel = cancelComposerAgent({
       client,
       agentId: agentIdRef.current,
@@ -1524,7 +1546,7 @@ export function Composer({
     if (!didCancel) return;
     setIsCancellingAgent(true);
     messageInputRef.current?.focus();
-  }, [client, isAgentRunning, isCancellingAgent, isConnected]);
+  }, [client, isAgentRunning, isCancellingAgent, isConnected, onCancelRunningAgent, t]);
 
   const focusMessageInputForKeyboardAction = useCallback(() => {
     focusMessageInputWithPlatformStrategy(messageInputRef);
@@ -1729,8 +1751,7 @@ export function Composer({
     agentState.contextWindowUsedTokens,
   );
 
-  const contextWindowPending =
-    agentState.status === "initializing" || agentState.status === "running";
+  const contextWindowPending = effectiveAgentStatus === "initializing" || isAgentRunning;
 
   const contextWindowMeter = useMemo(
     () =>

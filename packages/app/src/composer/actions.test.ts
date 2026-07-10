@@ -10,6 +10,7 @@ import type { StreamItem } from "@/types/stream";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
+  dispatchWorkspaceSecretaryCancel,
   dispatchWorkspaceSecretaryMessage,
   editQueuedComposerMessage,
   findGithubItemByOption,
@@ -236,6 +237,7 @@ function createFakeSecretaryClient(model = createSecretaryModel()) {
     images?: Array<{ data: string; mimeType: string }>;
     attachments?: unknown[];
   }> = [];
+  const cancelCalls: Array<{ uiAgentId?: string; topicId?: string }> = [];
   const payload: WorkspaceSecretaryResponsePayload = {
     requestId: "fake-secretary-response",
     model,
@@ -243,6 +245,7 @@ function createFakeSecretaryClient(model = createSecretaryModel()) {
   };
   return {
     calls,
+    cancelCalls,
     sendWorkspaceSecretaryMessage: async (input: {
       text: string;
       messageId?: string;
@@ -253,6 +256,10 @@ function createFakeSecretaryClient(model = createSecretaryModel()) {
       return payload;
     },
     answerWorkspaceSecretaryClarify: async () => payload,
+    cancelWorkspaceSecretaryTurn: async (input: { uiAgentId?: string; topicId?: string }) => {
+      cancelCalls.push(input);
+      return payload;
+    },
   };
 }
 
@@ -659,6 +666,22 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
 
     expect(stream.head.get("agent")).toEqual([runningTool, liveAssistant]);
     expect(stream.tail.get("agent")?.map((item) => item.kind)).toEqual(["assistant_message"]);
+  });
+
+  it("cancels the Workspace Secretary provider turn with the draft ui agent id", async () => {
+    const client = createFakeSecretaryClient();
+    const stream = createFakeStream();
+
+    await dispatchWorkspaceSecretaryCancel({
+      client,
+      agentId: "draft-secretary",
+      stream,
+    });
+
+    expect(client.cancelCalls).toEqual([{ uiAgentId: "draft-secretary" }]);
+    expect(stream.tail.get("draft-secretary")?.map((item) => item.kind)).toEqual([
+      "assistant_message",
+    ]);
   });
 });
 

@@ -17,6 +17,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { stripHostWorkspaceRouteEchoSearchFromBrowserUrlAfterCommit } from "@/utils/host-route-browser";
 import { navigateToHostWorkspaceRoute } from "@/navigation/workspace-route-navigation";
+import { restoreWorkspaceAgentTabFromHistory } from "./workspace-agent-restore";
 
 export type { ActiveWorkspaceSelection } from "@/stores/last-workspace-selection";
 
@@ -42,8 +43,13 @@ function shouldPopToExistingHostRoute(options: NavigateToWorkspaceOptions): bool
 function navigateDeps(options: NavigateToWorkspaceOptions): NavigateToWorkspaceDeps {
   return {
     getSessionWorkspaces: (serverId) => useSessionStore.getState().sessions[serverId]?.workspaces,
-    getSessionAgents: (serverId) =>
-      useSessionStore.getState().sessions[serverId]?.agents.values() ?? [],
+    getSessionAgents: (serverId) => {
+      const session = useSessionStore.getState().sessions[serverId];
+      if (!session) {
+        return [];
+      }
+      return [...session.agents.values(), ...session.agentDetails.values()];
+    },
     openWorkspaceAgentTab: (workspaceKey, agentId) => {
       useWorkspaceLayoutStore.getState().openTabFocused(workspaceKey, { kind: "agent", agentId });
     },
@@ -75,6 +81,19 @@ export function navigateToWorkspace(
   options: NavigateToWorkspaceOptions = {},
 ) {
   navigateToWorkspacePure(serverId, workspaceId, navigateDeps(options));
+  const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
+  void restoreWorkspaceAgentTabFromHistory({
+    serverId,
+    workspaceId,
+    client,
+    force: true,
+  }).catch((error) => {
+    console.warn("[WorkspaceNavigation] failed to restore workspace agent history", {
+      serverId,
+      workspaceId,
+      error,
+    });
+  });
 }
 
 export function navigateToLastWorkspace(): boolean {

@@ -15,6 +15,9 @@ import {
   THOTH_LOOP_CODES,
   THOTH_RUNTIME_PACKET_FIELDS,
   ThothSubmitClarifyCardInputSchema,
+  ThothSubmitGoalsCardInputSchema,
+  ThothLoopPlanExecResultInputSchema,
+  ThothLoopReviewVerdictInputSchema,
   ThothSubmitTaskCardInputSchema,
   ThothProviderInputEnvelopeSchema,
   ThothRuntimePacketSchema,
@@ -786,5 +789,85 @@ describe("thoth runtime contract", () => {
         errors: [],
       }).type,
     ).toBe("loop");
+  });
+
+  it("requires a rationale when Goals Card count is outside the usual 8-16 range", () => {
+    const oneGoal = {
+      goals_card: {
+        title: "小型修复 goals",
+        summary: "单个 reviewable milestone 足够完成。",
+        goals: [
+          {
+            id: "goal-1",
+            order: 1,
+            title: "修复入口",
+            goal: "修复一个明确 UI 入口。",
+            constraints: ["不扩展范围。"],
+            acceptance: ["入口可点击。"],
+          },
+        ],
+      },
+      provenance: {
+        clarify_transcript_verbatim: "用户确认这是小型修复。",
+        approved_ceo_task_card_verbatim: "Task: 修复入口。",
+      },
+    };
+
+    expect(() => ThothSubmitGoalsCardInputSchema.parse(oneGoal)).toThrow(/goals_count_rationale/);
+    expect(
+      ThothSubmitGoalsCardInputSchema.parse({
+        ...oneGoal,
+        goals_card: {
+          ...oneGoal.goals_card,
+          goals_count_rationale: "这是小型修复；单个目标已足够细、线性且可 review。",
+        },
+      }).goals_card.goals_count_rationale,
+    ).toContain("小型修复");
+  });
+
+  it("parses Loop PlanExec and Review tool inputs with audit fields", () => {
+    expect(
+      ThothLoopPlanExecResultInputSchema.parse({
+        goal_id: "goal-1",
+        round: 2,
+        phase_run_id: "phase-plan-2",
+        result_tool_call_id: "tool-plan-2",
+        plan_summary: "Plan the focused retry.",
+        execution_summary: "Implemented the retry.",
+        evidence: ["Tests passed."],
+        validation_performed: ["Ran focused tests."],
+        remaining_risks: [],
+        next_review_focus: "Check the previously failed acceptance.",
+      }).phase_run_id,
+    ).toBe("phase-plan-2");
+
+    expect(
+      ThothLoopReviewVerdictInputSchema.parse({
+        goal_id: "goal-1",
+        round: 2,
+        result_tool_call_id: "tool-review-2",
+        outcome: "pass",
+        summary: "Accepted.",
+        acceptance_matrix: [{ acceptance: "Tests pass", status: "met", evidence: "green" }],
+        failed_acceptance: [],
+        anti_repeat_strategy: [],
+        evidence_summary: "Focused tests passed.",
+      }).result_tool_call_id,
+    ).toBe("tool-review-2");
+
+    expect(() =>
+      ThothLoopReviewVerdictInputSchema.parse({
+        goal_id: "goal-1",
+        round: 2,
+        outcome: "fail",
+        summary: "Rejected.",
+        acceptance_matrix: [{ acceptance: "Tests pass", status: "not_met", evidence: "red" }],
+        failed_acceptance: ["Tests pass"],
+        failure_root_cause: "No focused proof.",
+        next_round_guidance: "Add focused proof.",
+        anti_repeat_strategy: [],
+        evidence_summary: "Focused tests were missing.",
+      }),
+    ).toThrow(/anti_repeat_strategy/);
   });
 });

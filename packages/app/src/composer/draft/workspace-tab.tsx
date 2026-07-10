@@ -11,6 +11,7 @@ import { Composer } from "@/composer";
 import {
   applyWorkspaceSecretaryModelToStream,
   dispatchWorkspaceSecretaryAnswer,
+  dispatchWorkspaceSecretaryCancel,
   dispatchWorkspaceSecretaryMessage,
   type AgentStreamWriter,
 } from "@/composer/actions";
@@ -34,6 +35,9 @@ import { encodeImages } from "@/utils/encode-images";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
+  deriveWorkspaceSecretaryDraftTitleFromText,
+  isWorkspaceSecretaryModelRunning,
+  resolveWorkspaceSecretaryDraftTitleFromModel,
   shouldAllowEmptyDraftText,
   shouldHydrateWorkspaceSecretarySnapshotForDraft,
   shouldKeepWorkspaceSecretaryAuthorityTurnRunning,
@@ -391,6 +395,7 @@ interface WorkspaceDraftAgentTabProps {
   isPaneFocused: boolean;
   onCreated: (snapshot: AgentSnapshotPayload) => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
+  onDraftTitleChange?: (title: string | null) => void;
   onOpenImportSheet?: () => void;
 }
 
@@ -413,6 +418,7 @@ export function WorkspaceDraftAgentTab({
   isPaneFocused,
   onCreated,
   onOpenWorkspaceFile,
+  onDraftTitleChange,
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
   const { t } = useTranslation();
@@ -473,6 +479,7 @@ export function WorkspaceDraftAgentTab({
   const setDraftAttachments = draftInput.setAttachments;
   const [secretarySubmitted, setSecretarySubmitted] = useState(false);
   const [secretarySubmitting, setSecretarySubmitting] = useState(false);
+  const [secretaryTurnInFlight, setSecretaryTurnInFlight] = useState(false);
   const [secretaryErrorMessage, setSecretaryErrorMessage] = useState("");
   const secretaryTopicCreatedRef = useRef(false);
   const secretaryStreamItems =
@@ -480,7 +487,7 @@ export function WorkspaceDraftAgentTab({
     EMPTY_STREAM_ITEMS;
   const secretaryAuthorityTurnRunning = shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
     secretarySubmitted,
-    secretarySubmitting,
+    secretarySubmitting: secretaryTurnInFlight,
     clarifyStrength: workspaceSecretaryComposer.clarifyStrength,
     streamItems: secretaryStreamItems,
   });
@@ -548,6 +555,11 @@ export function WorkspaceDraftAgentTab({
           return;
         }
         applyWorkspaceSecretaryModelToStream(tabId, payload.model, getSecretaryStreamWriter());
+        setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(payload.model));
+        const restoredTitle = resolveWorkspaceSecretaryDraftTitleFromModel(payload.model);
+        if (restoredTitle) {
+          onDraftTitleChange?.(restoredTitle);
+        }
         if (payload.model.secretary.turns.length > 0) {
           setSecretarySubmitted(true);
         }
@@ -563,11 +575,31 @@ export function WorkspaceDraftAgentTab({
     client,
     draftWorkingDirectory,
     getSecretaryStreamWriter,
+    onDraftTitleChange,
     serverId,
     shouldHydrateSecretarySnapshot,
     tabId,
     workspaceFields?.id,
   ]);
+  useEffect(() => {
+    if (!client || !draftWorkingDirectory) {
+      return;
+    }
+    return client.subscribeWorkspaceSecretaryModelUpdates((payload) => {
+      if (payload.model.secretary.workspacePath !== draftWorkingDirectory) {
+        return;
+      }
+      applyWorkspaceSecretaryModelToStream(tabId, payload.model, getSecretaryStreamWriter());
+      setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(payload.model));
+      const restoredTitle = resolveWorkspaceSecretaryDraftTitleFromModel(payload.model);
+      if (restoredTitle) {
+        onDraftTitleChange?.(restoredTitle);
+      }
+      if (payload.model.secretary.turns.length > 0) {
+        setSecretarySubmitted(true);
+      }
+    });
+  }, [client, draftWorkingDirectory, getSecretaryStreamWriter, onDraftTitleChange, tabId]);
   const pendingAutoSubmit = useWorkspaceDraftSubmissionStore((state) => {
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
@@ -729,45 +761,61 @@ export function WorkspaceDraftAgentTab({
       if (!trimmedPrompt && attachments.length === 0) {
         throw new Error(t("composer.errors.initialPromptRequired"));
       }
+      const provisionalTitle = deriveWorkspaceSecretaryDraftTitleFromText(trimmedPrompt);
 
       setSecretaryErrorMessage("");
       setSecretarySubmitting(true);
-      try {
-        await composerState.persistFormPreferences();
-        if (isWeb) {
-          (document.activeElement as HTMLElement | null)?.blur?.();
-        }
-        Keyboard.dismiss();
-        if (!secretaryTopicCreatedRef.current) {
-          await client.createWorkspaceSecretaryTopic({
-            workspaceId: workspaceFields?.id ?? undefined,
-            workspacePath: draftWorkingDirectory,
-          });
-          secretaryTopicCreatedRef.current = true;
-        }
-        setSecretarySubmitted(true);
-        await dispatchWorkspaceSecretaryMessage({
-          client,
-          agentId: tabId,
-          text: trimmedPrompt,
-          attachments,
-          composer: workspaceSecretaryComposer,
-          encodeImages,
-          stream: getSecretaryStreamWriter(),
-        });
-        clearDraftInput("sent");
-        clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
-        useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        setSecretaryErrorMessage(message);
-        throw error;
-      } finally {
-        setSecretarySubmitting(false);
+      setSecretarySubmitted(true);
+      setSecretaryTurnInFlight(true);
+      if (provisionalTitle) {
+        onDraftTitleChange?.(provisionalTitle);
       }
+      void (async () => {
+        try {
+          await composerState.persistFormPreferences();
+          if (isWeb) {
+            (document.activeElement as HTMLElement | null)?.blur?.();
+          }
+          Keyboard.dismiss();
+          if (!secretaryTopicCreatedRef.current) {
+            await client.createWorkspaceSecretaryTopic({
+              workspaceId: workspaceFields?.id ?? undefined,
+              workspacePath: draftWorkingDirectory,
+            });
+            secretaryTopicCreatedRef.current = true;
+          }
+          const response = await dispatchWorkspaceSecretaryMessage({
+            client,
+            agentId: tabId,
+            text: trimmedPrompt,
+            attachments,
+            composer: workspaceSecretaryComposer,
+            encodeImages,
+            stream: getSecretaryStreamWriter(),
+          });
+          if (response.model) {
+            setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(response.model));
+            const responseTitle = resolveWorkspaceSecretaryDraftTitleFromModel(response.model);
+            if (responseTitle) {
+              onDraftTitleChange?.(responseTitle);
+            }
+          }
+          if (response.error) {
+            setSecretaryErrorMessage(response.error);
+            setSecretaryTurnInFlight(false);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setSecretaryErrorMessage(message);
+          setSecretaryTurnInFlight(false);
+        } finally {
+          setSecretarySubmitting(false);
+        }
+      })();
+      clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
+      useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
     },
     [
-      clearDraftInput,
       clearWorkspaceAttachments,
       client,
       composerState,
@@ -775,9 +823,11 @@ export function WorkspaceDraftAgentTab({
       draftId,
       draftWorkingDirectory,
       getSecretaryStreamWriter,
+      onDraftTitleChange,
       secretarySubmitting,
       t,
       tabId,
+      workspaceFields?.id,
       workspaceSecretaryComposer,
     ],
   );
@@ -786,16 +836,34 @@ export function WorkspaceDraftAgentTab({
       if (!client) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
-      await dispatchWorkspaceSecretaryAnswer({
+      const response = await dispatchWorkspaceSecretaryAnswer({
         client,
         agentId: tabId,
         cardId,
         answer,
         stream: getSecretaryStreamWriter(),
       });
+      if (response.model) {
+        setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(response.model));
+      }
     },
     [client, getSecretaryStreamWriter, t, tabId],
   );
+  const handleWorkspaceSecretaryCancel = useCallback(async () => {
+    if (!client) {
+      throw new Error(t("workspace.terminal.hostDisconnected"));
+    }
+    const response = await dispatchWorkspaceSecretaryCancel({
+      client,
+      agentId: tabId,
+      stream: getSecretaryStreamWriter(),
+    });
+    if (response.model) {
+      setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(response.model));
+    } else {
+      setSecretaryTurnInFlight(false);
+    }
+  }, [client, getSecretaryStreamWriter, t, tabId]);
 
   const isReadyForPendingAutoSubmit = Boolean(
     pendingAutoSubmit &&
@@ -953,7 +1021,10 @@ export function WorkspaceDraftAgentTab({
   const showWorkspaceSecretaryStream =
     Boolean(secretaryDraftAgent) && (secretarySubmitted || secretaryStreamItems.length > 0);
   const visibleFormErrorMessage = secretaryErrorMessage || formErrorMessage;
-  const visibleSubmitLoading = isSubmitting || secretaryAuthorityTurnRunning;
+  const visibleSubmitLoading = isSubmitting;
+  const composerStatusOverride: Agent["status"] = secretaryAuthorityTurnRunning
+    ? "running"
+    : "idle";
   return (
     <FileDropZone style={styles.container}>
       <View style={styles.contentContainer}>
@@ -1008,6 +1079,8 @@ export function WorkspaceDraftAgentTab({
           isPaneFocused={isPaneFocused}
           onSubmitMessage={handleWorkspaceSecretarySubmit}
           isSubmitLoading={visibleSubmitLoading}
+          agentStatusOverride={composerStatusOverride}
+          onCancelRunningAgent={handleWorkspaceSecretaryCancel}
           blurOnSubmit={true}
           value={draftInput.text}
           onChangeText={draftInput.setText}

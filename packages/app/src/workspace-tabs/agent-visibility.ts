@@ -7,6 +7,7 @@ export interface WorkspaceAgentVisibility {
   activeAgentIds: Set<string>;
   autoOpenAgentIds: Set<string>;
   knownAgentIds: Set<string>;
+  restorableAgentIds?: Set<string>;
 }
 
 function agentBelongsToWorkspace(agent: Agent, workspaceId: string): boolean {
@@ -25,12 +26,15 @@ export function deriveWorkspaceAgentVisibility(input: {
       activeAgentIds: new Set<string>(),
       autoOpenAgentIds: new Set<string>(),
       knownAgentIds: new Set<string>(),
+      restorableAgentIds: new Set<string>(),
     };
   }
 
   const activeAgentIds = new Set<string>();
   const autoOpenAgentIds = new Set<string>();
   const knownAgentIds = new Set<string>();
+  const restorableAgentIds = new Set<string>();
+  const sessionAgentIds = new Set(sessionAgents?.keys() ?? []);
   for (const agent of sessionAgents?.values() ?? []) {
     if (!agentBelongsToWorkspace(agent, workspaceId)) {
       continue;
@@ -48,9 +52,12 @@ export function deriveWorkspaceAgentVisibility(input: {
       continue;
     }
     knownAgentIds.add(agent.id);
+    if (!sessionAgentIds.has(agent.id)) {
+      restorableAgentIds.add(agent.id);
+    }
   }
 
-  return { activeAgentIds, autoOpenAgentIds, knownAgentIds };
+  return { activeAgentIds, autoOpenAgentIds, knownAgentIds, restorableAgentIds };
 }
 
 export function buildWorkspaceTabSnapshot(input: {
@@ -67,6 +74,7 @@ export function buildWorkspaceTabSnapshot(input: {
     activeAgentIds: input.agentVisibility.activeAgentIds,
     autoOpenAgentIds: input.agentVisibility.autoOpenAgentIds,
     knownAgentIds: input.agentVisibility.knownAgentIds,
+    restorableAgentIds: input.agentVisibility.restorableAgentIds ?? new Set<string>(),
     knownTerminalIds: input.knownTerminalIds,
     standaloneTerminalIds: input.standaloneTerminalIds,
     hasActivePendingDraftCreate: input.hasActivePendingDraftCreate,
@@ -80,7 +88,8 @@ export function workspaceAgentVisibilityEqual(
   return (
     setsEqual(a.activeAgentIds, b.activeAgentIds) &&
     setsEqual(a.autoOpenAgentIds, b.autoOpenAgentIds) &&
-    setsEqual(a.knownAgentIds, b.knownAgentIds)
+    setsEqual(a.knownAgentIds, b.knownAgentIds) &&
+    setsEqual(a.restorableAgentIds ?? new Set<string>(), b.restorableAgentIds ?? new Set<string>())
   );
 }
 
@@ -97,11 +106,13 @@ function setsEqual(a: Set<string>, b: Set<string>): boolean {
 }
 
 // Prune agent tabs that are no longer active once agents are hydrated.
-// Archived agents get pruned so that archiving on one client closes the tab on all clients.
+// Lazy restored history tabs are preserved, while archived session-directory agents
+// still get pruned so archiving on one client closes the tab on all clients.
 export function shouldPruneWorkspaceAgentTab(input: {
   agentId: string;
   agentsHydrated: boolean;
   activeAgentIds: Set<string>;
+  restorableAgentIds?: Set<string>;
 }): boolean {
   if (!input.agentId.trim()) {
     return false;
@@ -109,5 +120,5 @@ export function shouldPruneWorkspaceAgentTab(input: {
   if (!input.agentsHydrated) {
     return false;
   }
-  return !input.activeAgentIds.has(input.agentId);
+  return !input.activeAgentIds.has(input.agentId) && !input.restorableAgentIds?.has(input.agentId);
 }

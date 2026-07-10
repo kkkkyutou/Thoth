@@ -190,6 +190,26 @@ describe("workspace agent visibility", () => {
 
     expect(result.activeAgentIds).toEqual(new Set(["active-agent"]));
     expect(result.knownAgentIds).toEqual(new Set(["active-agent", "historical-agent"]));
+    expect(result.restorableAgentIds).toEqual(new Set(["historical-agent"]));
+  });
+
+  it("does not mark session-directory archived agents as restorable", () => {
+    const archived = makeAgent({
+      id: "archived-agent",
+      cwd: "/repo/worktree",
+      workspaceId: WORKSPACE_ID,
+      archivedAt: new Date("2026-03-04T00:01:00.000Z"),
+    });
+
+    const result = deriveWorkspaceAgentVisibility({
+      sessionAgents: new Map([[archived.id, archived]]),
+      agentDetails: new Map([[archived.id, archived]]),
+      workspaceId: WORKSPACE_ID,
+    });
+
+    expect(result.activeAgentIds).toEqual(new Set<string>());
+    expect(result.knownAgentIds).toEqual(new Set(["archived-agent"]));
+    expect(result.restorableAgentIds).toEqual(new Set<string>());
   });
 
   it("prunes archived agent tabs so archiving on one client closes tabs on all clients", () => {
@@ -222,6 +242,17 @@ describe("workspace agent visibility", () => {
         agentId: "active-agent",
         agentsHydrated: true,
         activeAgentIds,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not prune explicitly restored historical agent tabs", () => {
+    expect(
+      shouldPruneWorkspaceAgentTab({
+        agentId: "historical-agent",
+        agentsHydrated: true,
+        activeAgentIds: new Set<string>(),
+        restorableAgentIds: new Set(["historical-agent"]),
       }),
     ).toBe(false);
   });
@@ -297,6 +328,7 @@ describe("workspace agent visibility", () => {
       activeAgentIds: new Set(["active-agent"]),
       autoOpenAgentIds: new Set(["root-agent"]),
       knownAgentIds: new Set(["active-agent", "archived-agent"]),
+      restorableAgentIds: new Set(["historical-agent"]),
     };
 
     expect(
@@ -314,6 +346,7 @@ describe("workspace agent visibility", () => {
       activeAgentIds: agentVisibility.activeAgentIds,
       autoOpenAgentIds: agentVisibility.autoOpenAgentIds,
       knownAgentIds: agentVisibility.knownAgentIds,
+      restorableAgentIds: agentVisibility.restorableAgentIds,
       knownTerminalIds: ["terminal-1", "script-terminal"],
       standaloneTerminalIds: ["terminal-1"],
       hasActivePendingDraftCreate: false,
@@ -326,11 +359,13 @@ describe("workspace agent visibility", () => {
         activeAgentIds: new Set(["a", "b"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a", "b", "c"]),
+        restorableAgentIds: new Set(["c"]),
       };
       const b = {
         activeAgentIds: new Set(["a", "b"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a", "b", "c"]),
+        restorableAgentIds: new Set(["c"]),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(true);
     });
@@ -373,6 +408,22 @@ describe("workspace agent visibility", () => {
         activeAgentIds: new Set(["a"]),
         autoOpenAgentIds: new Set(["a"]),
         knownAgentIds: new Set(["a", "b"]),
+      };
+      expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
+    });
+
+    it("returns false when restorableAgentIds differ", () => {
+      const a = {
+        activeAgentIds: new Set(["a"]),
+        autoOpenAgentIds: new Set(["a"]),
+        knownAgentIds: new Set(["a", "b"]),
+        restorableAgentIds: new Set(["b"]),
+      };
+      const b = {
+        activeAgentIds: new Set(["a"]),
+        autoOpenAgentIds: new Set(["a"]),
+        knownAgentIds: new Set(["a", "b"]),
+        restorableAgentIds: new Set<string>(),
       };
       expect(workspaceAgentVisibilityEqual(a, b)).toBe(false);
     });

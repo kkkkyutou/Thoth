@@ -3,6 +3,8 @@ import {
   SecretaryClarifyAnswerPayloadSchema,
   ThothCleanUiModelSchema,
   WorkspaceSecretaryAnswerRequestSchema,
+  WorkspaceSecretaryCancelRequestSchema,
+  WorkspaceSecretaryCancelResponseSchema,
   WorkspaceSecretaryModelUpdateSchema,
   WorkspaceSecretarySendRequestSchema,
   WorkspaceSecretarySnapshotResponseSchema,
@@ -304,5 +306,25 @@ describe("workspace secretary RPC schemas", () => {
 
     expect(response.payload.model?.activeView).toBe("workspace-secretary");
     expect(request.answer.intent).toBe("decide");
+  });
+
+  it("accepts Workspace Secretary cancel request and response wire shapes", () => {
+    const request = WorkspaceSecretaryCancelRequestSchema.parse({
+      type: "workspace_secretary.cancel.request",
+      requestId: "req-cancel",
+      uiAgentId: "draft-tab-1",
+      topicId: "topic-main",
+    });
+    const response = WorkspaceSecretaryCancelResponseSchema.parse({
+      type: "workspace_secretary.cancel.response",
+      payload: {
+        requestId: "req-cancel",
+        model: createModel(),
+        error: null,
+      },
+    });
+
+    expect(request.uiAgentId).toBe("draft-tab-1");
+    expect(response.payload.model?.secretary.status.kind).toBe("ready");
   });
 });

@@ -5,11 +5,13 @@ import type { PanelDescriptor, PanelIconProps } from "@/panels/panel-registry";
 export function buildDraftPanelDescriptor(input: {
   isCreating: boolean;
   pendingPrompt?: string | null;
+  title?: string | null;
   icon: ComponentType<PanelIconProps>;
 }): PanelDescriptor {
   const { icon, isCreating, pendingPrompt } = input;
   const newAgentLabel = i18n.t("panels.draft.newAgent");
   const creatingLabel = pendingPrompt?.trim() || newAgentLabel;
+  const draftTitle = resolveDraftPanelTitle(input.title, newAgentLabel);
   if (isCreating) {
     return {
       label: creatingLabel,
@@ -21,10 +23,21 @@ export function buildDraftPanelDescriptor(input: {
   }
 
   return {
-    label: newAgentLabel,
-    subtitle: newAgentLabel,
+    label: draftTitle ?? newAgentLabel,
+    subtitle: draftTitle ?? newAgentLabel,
     titleState: "ready",
     icon,
     statusBucket: null,
   };
+}
+
+function resolveDraftPanelTitle(title: string | null | undefined, newAgentLabel: string) {
+  const normalized = title?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === newAgentLabel || normalized.toLowerCase() === "new agent") {
+    return null;
+  }
+  return normalized;
 }

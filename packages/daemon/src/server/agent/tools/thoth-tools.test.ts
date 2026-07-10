@@ -306,6 +306,7 @@ describe("Thoth runtime authority tools", () => {
         goals_card: {
           title: "高性能快速排序",
           summary: "按线性目标完成实现、验证和基准。",
+          goals_count_rationale: "这是单元测试级小任务，单个目标已经足够细粒度、线性且可 review。",
           goals: [
             {
               id: "goal-1",

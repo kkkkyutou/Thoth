@@ -54,6 +54,7 @@
     "eval:clarify": "npm run build:drivers && npm run eval:clarify --workspace=@thoth/drivers",
     "judge:clarify:golden": "npm run build:drivers && node scripts/judge-clarify-golden.mjs",
     "judge:clarify:user-simulation": "npm run build:drivers && node scripts/judge-clarify-user-simulation.mjs",
+    "judge:loop:golden": "npm run build:drivers && node scripts/judge-loop-golden.mjs",
     "test:client": "npm run test --workspace=@thoth/client",
     "test:foundation": "npm run test:highlight && npm run test:relay && npm run test:protocol && npm run test:client",
     "gh": "node scripts/gh-local.mjs",

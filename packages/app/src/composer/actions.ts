@@ -85,6 +85,10 @@ export interface WorkspaceSecretarySendClient {
     answer: WorkspaceSecretaryTurnActionPayload;
     uiAgentId?: string;
   }) => Promise<WorkspaceSecretaryResponsePayload>;
+  cancelWorkspaceSecretaryTurn: (input: {
+    uiAgentId?: string;
+    topicId?: string;
+  }) => Promise<WorkspaceSecretaryResponsePayload>;
 }
 
 export interface ComposerCancelClient {
@@ -221,7 +225,7 @@ export interface DispatchWorkspaceSecretaryMessageInput {
 
 export async function dispatchWorkspaceSecretaryMessage(
   input: DispatchWorkspaceSecretaryMessageInput,
-): Promise<void> {
+): Promise<WorkspaceSecretaryResponsePayload> {
   const wirePayload = splitComposerAttachmentsForSubmit(input.attachments);
   const messageId = generateMessageId();
   const userMessage = buildOptimisticUserMessage({
@@ -244,6 +248,7 @@ export async function dispatchWorkspaceSecretaryMessage(
   if (payload.model) {
     applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
   }
+  return payload;
 }
 
 export async function dispatchWorkspaceSecretaryAnswer(input: {
@@ -252,7 +257,7 @@ export async function dispatchWorkspaceSecretaryAnswer(input: {
   cardId: string;
   answer: WorkspaceSecretaryTurnActionPayload;
   stream: AgentStreamWriter;
-}): Promise<void> {
+}): Promise<WorkspaceSecretaryResponsePayload> {
   const payload = await input.client.answerWorkspaceSecretaryClarify({
     cardId: input.cardId,
     answer: input.answer,
@@ -261,6 +266,21 @@ export async function dispatchWorkspaceSecretaryAnswer(input: {
   if (payload.model) {
     applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
   }
+  return payload;
+}
+
+export async function dispatchWorkspaceSecretaryCancel(input: {
+  client: WorkspaceSecretarySendClient;
+  agentId: string;
+  stream: AgentStreamWriter;
+}): Promise<WorkspaceSecretaryResponsePayload> {
+  const payload = await input.client.cancelWorkspaceSecretaryTurn({
+    uiAgentId: input.agentId,
+  });
+  if (payload.model) {
+    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
+  }
+  return payload;
 }
 
 export function applyWorkspaceSecretaryModelToStream(

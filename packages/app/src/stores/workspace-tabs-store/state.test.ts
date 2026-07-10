@@ -262,6 +262,41 @@ describe("workspace-tabs-store reducers", () => {
     });
   });
 
+  it("updates an existing draft tab title without changing tab identity or order", () => {
+    let state = emptyState();
+    const first = applyOpenDraftTab(state, {
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      draftId: "draft-1",
+      now: NOW,
+    });
+    state = first.state;
+    const retargeted = applyRetargetTab(state, {
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      tabId: "draft-1",
+      target: {
+        kind: "draft",
+        draftId: "draft-1",
+        title: "实现高性能快速排序",
+      },
+    });
+
+    expect(retargeted.tabId).toBe("draft-1");
+    expect(retargeted.state.tabOrderByWorkspace[WORKSPACE_KEY]).toEqual(["draft-1"]);
+    expect(retargeted.state.uiTabsByWorkspace[WORKSPACE_KEY]).toEqual([
+      {
+        tabId: "draft-1",
+        target: {
+          kind: "draft",
+          draftId: "draft-1",
+          title: "实现高性能快速排序",
+        },
+        createdAt: NOW,
+      },
+    ]);
+  });
+
   it("retargeting a background draft keeps the currently focused tab focused", () => {
     const draftTabId = "draft_background";
 

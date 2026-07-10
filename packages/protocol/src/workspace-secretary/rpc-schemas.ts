@@ -195,6 +195,7 @@ export const ThothGoalsCardModelSchema = z
     roundLabel: NonEmptyStringSchema,
     title: NonEmptyStringSchema,
     summary: NonEmptyStringSchema,
+    goalsCountRationale: z.string().optional(),
     goals: z.array(ClarifyLinearGoalContractSchema).min(1),
     provenanceSummary: NonEmptyStringSchema,
     submitted: z.boolean(),
@@ -414,14 +415,37 @@ export const LoopReviewVerdictSchema = z
   })
   .strict();
 
+export const LoopPlanExecResultSchema = z
+  .object({
+    goalId: NonEmptyStringSchema,
+    round: z.number().int().positive(),
+    phaseRunId: z.string().optional(),
+    resultToolCallId: z.string().optional(),
+    planSummary: NonEmptyStringSchema,
+    executionSummary: NonEmptyStringSchema,
+    evidence: z.array(NonEmptyStringSchema).min(1),
+    validationPerformed: z.array(NonEmptyStringSchema).default([]),
+    remainingRisks: z.array(NonEmptyStringSchema).default([]),
+    nextReviewFocus: NonEmptyStringSchema,
+    createdAt: NonEmptyStringSchema,
+  })
+  .strict();
+
 export const LoopPhaseRecordSchema = z
   .object({
     phase: LoopPhaseKindSchema,
     status: LoopPhaseStatusSchema,
     round: z.number().int().positive(),
     agentId: NonEmptyStringSchema.optional(),
+    phaseRunId: NonEmptyStringSchema.optional(),
     startedAt: NonEmptyStringSchema.optional(),
+    attemptStartedAt: NonEmptyStringSchema.optional(),
     completedAt: NonEmptyStringSchema.optional(),
+    canceledReason: z.string().optional(),
+    providerExitStatus: z
+      .enum(["completed", "failed", "canceled", "timeout", "blocked"])
+      .optional(),
+    resultToolCallId: z.string().optional(),
     summary: z.string().optional(),
   })
   .strict();
@@ -437,6 +461,7 @@ export const LoopGoalRecordSchema = z
     status: LoopGoalStatusSchema,
     round: z.number().int().positive(),
     latestPlanExecSummary: z.string().optional(),
+    latestPlanExecResult: LoopPlanExecResultSchema.optional(),
     latestReview: LoopReviewVerdictSchema.optional(),
     phases: z.array(LoopPhaseRecordSchema),
   })
@@ -587,6 +612,15 @@ export const WorkspaceSecretaryAnswerRequestSchema = z
   })
   .strict();
 
+export const WorkspaceSecretaryCancelRequestSchema = z
+  .object({
+    type: z.literal("workspace_secretary.cancel.request"),
+    requestId: NonEmptyStringSchema,
+    uiAgentId: NonEmptyStringSchema.optional(),
+    topicId: NonEmptyStringSchema.optional(),
+  })
+  .strict();
+
 export const WorkspaceSecretaryTopicCreateRequestSchema = z
   .object({
     type: z.literal("workspace_secretary.topic.create.request"),
@@ -648,6 +682,13 @@ export const WorkspaceSecretarySendResponseSchema = z
 export const WorkspaceSecretaryAnswerResponseSchema = z
   .object({
     type: z.literal("workspace_secretary.answer.response"),
+    payload: WorkspaceSecretaryResponsePayloadSchema,
+  })
+  .strict();
+
+export const WorkspaceSecretaryCancelResponseSchema = z
+  .object({
+    type: z.literal("workspace_secretary.cancel.response"),
     payload: WorkspaceSecretaryResponsePayloadSchema,
   })
   .strict();
@@ -774,6 +815,7 @@ export type LoopGoalStatus = z.infer<typeof LoopGoalStatusSchema>;
 export type LoopPhaseStatus = z.infer<typeof LoopPhaseStatusSchema>;
 export type LoopBudget = z.infer<typeof LoopBudgetSchema>;
 export type LoopReviewVerdict = z.infer<typeof LoopReviewVerdictSchema>;
+export type LoopPlanExecResult = z.infer<typeof LoopPlanExecResultSchema>;
 export type LoopPhaseRecord = z.infer<typeof LoopPhaseRecordSchema>;
 export type LoopGoalRecord = z.infer<typeof LoopGoalRecordSchema>;
 export type LoopTaskModel = z.infer<typeof LoopTaskModelSchema>;
@@ -792,6 +834,7 @@ export type WorkspaceSecretarySnapshotRequest = z.infer<
 >;
 export type WorkspaceSecretarySendRequest = z.infer<typeof WorkspaceSecretarySendRequestSchema>;
 export type WorkspaceSecretaryAnswerRequest = z.infer<typeof WorkspaceSecretaryAnswerRequestSchema>;
+export type WorkspaceSecretaryCancelRequest = z.infer<typeof WorkspaceSecretaryCancelRequestSchema>;
 export type WorkspaceSecretaryTopicCreateRequest = z.infer<
   typeof WorkspaceSecretaryTopicCreateRequestSchema
 >;
@@ -807,6 +850,9 @@ export type WorkspaceSecretarySnapshotResponse = z.infer<
 export type WorkspaceSecretarySendResponse = z.infer<typeof WorkspaceSecretarySendResponseSchema>;
 export type WorkspaceSecretaryAnswerResponse = z.infer<
   typeof WorkspaceSecretaryAnswerResponseSchema
+>;
+export type WorkspaceSecretaryCancelResponse = z.infer<
+  typeof WorkspaceSecretaryCancelResponseSchema
 >;
 export type WorkspaceSecretaryTopicCreateResponse = z.infer<
   typeof WorkspaceSecretaryTopicCreateResponseSchema

@@ -110,6 +110,32 @@ function activeGoal(task: LoopTaskModel | null): LoopGoalRecord | null {
   return task.goals.find((goal) => goal.status !== "passed") ?? task.goals[0] ?? null;
 }
 
+function formatElapsed(startedAt: string | undefined, nowMs: number): string | null {
+  if (!startedAt) {
+    return null;
+  }
+  const startedMs = Date.parse(startedAt);
+  if (!Number.isFinite(startedMs)) {
+    return null;
+  }
+  const totalSeconds = Math.max(0, Math.floor((nowMs - startedMs) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function useNowTick(enabled: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) {
+      return () => {};
+    }
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [enabled]);
+  return now;
+}
+
 type ScrollMetrics = {
   clientHeight: number;
   scrollHeight: number;
@@ -292,6 +318,8 @@ function BackgroundTasksPanel() {
     () => new Map(),
   );
   const [error, setError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"pause" | "resume" | "stop" | null>(null);
+  const nowTick = useNowTick(Boolean(selectedTask?.status === "running"));
 
   const refreshList = useCallback(async () => {
     if (!client) {
@@ -403,6 +431,10 @@ function BackgroundTasksPanel() {
     [selectedGoal, selectedPhase],
   );
   const selectedPhaseAgentId = selectedPhaseRecord?.agentId ?? null;
+  const selectedPhaseElapsed = formatElapsed(
+    selectedPhaseRecord?.attemptStartedAt ?? selectedPhaseRecord?.startedAt,
+    nowTick,
+  );
 
   useLoopPhaseTimelineWheelBridge({
     attachmentKey: selectedPhaseAgentId ?? selectedGoal?.id ?? selectedTask?.id ?? null,
@@ -516,13 +548,18 @@ function BackgroundTasksPanel() {
       if (!client || !selectedTask) {
         return;
       }
-      const response = await client.actOnBackgroundTask({ taskId: selectedTask.id, action });
-      if (response.error) {
-        setError(response.error);
-      }
-      if (response.task) {
-        setSelectedTask(response.task);
-        void refreshList();
+      setPendingAction(action);
+      try {
+        const response = await client.actOnBackgroundTask({ taskId: selectedTask.id, action });
+        if (response.error) {
+          setError(response.error);
+        }
+        if (response.task) {
+          setSelectedTask(response.task);
+          void refreshList();
+        }
+      } finally {
+        setPendingAction(null);
       }
     },
     [client, refreshList, selectedTask],
@@ -590,19 +627,40 @@ function BackgroundTasksPanel() {
                 {selectedTask.status === "paused" || selectedTask.status === "interrupted" ? (
                   <ActionButton
                     label="Resume"
-                    icon={<Play size={14} />}
+                    icon={
+                      pendingAction === "resume" ? (
+                        <ActivityIndicator size="small" />
+                      ) : (
+                        <Play size={14} />
+                      )
+                    }
+                    disabled={pendingAction !== null}
                     onPress={() => void handleTaskAction("resume")}
                   />
                 ) : (
                   <ActionButton
                     label="Pause"
-                    icon={<Pause size={14} />}
+                    icon={
+                      pendingAction === "pause" ? (
+                        <ActivityIndicator size="small" />
+                      ) : (
+                        <Pause size={14} />
+                      )
+                    }
+                    disabled={pendingAction !== null}
                     onPress={() => void handleTaskAction("pause")}
                   />
                 )}
                 <ActionButton
                   label="Stop"
-                  icon={<Square size={14} />}
+                  icon={
+                    pendingAction === "stop" ? (
+                      <ActivityIndicator size="small" />
+                    ) : (
+                      <Square size={14} />
+                    )
+                  }
+                  disabled={pendingAction !== null}
                   onPress={() => void handleTaskAction("stop")}
                 />
               </View>
@@ -675,11 +733,27 @@ function BackgroundTasksPanel() {
                         <Text style={styles.phaseTitle}>{phaseLabel(phase)}</Text>
                         <Text style={styles.phaseMeta}>
                           round {record?.round ?? selectedGoal.round} · {record?.status ?? "queued"}
+                          {active && selectedPhaseElapsed ? ` · ${selectedPhaseElapsed}` : ""}
                         </Text>
                       </Pressable>
                     );
                   })}
                 </View>
+
+                {selectedGoal.latestPlanExecResult ? (
+                  <View style={styles.phaseResultBox} testID="loop-planexec-result-summary">
+                    <Text style={styles.sectionTitle}>Latest PlanExec evidence</Text>
+                    <Text style={styles.sectionBody}>
+                      {selectedGoal.latestPlanExecResult.executionSummary}
+                    </Text>
+                    <Text style={styles.sectionMuted}>
+                      Evidence: {selectedGoal.latestPlanExecResult.evidence.join("；")}
+                    </Text>
+                    <Text style={styles.sectionMuted}>
+                      Review focus: {selectedGoal.latestPlanExecResult.nextReviewFocus}
+                    </Text>
+                  </View>
+                ) : null}
 
                 <View
                   ref={timelineShellRef}
@@ -726,14 +800,20 @@ function BackgroundTasksPanel() {
 function ActionButton({
   label,
   icon,
+  disabled,
   onPress,
 }: {
   label: string;
   icon: ReactNode;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={styles.actionButton}>
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.actionButton, disabled && styles.actionButtonDisabled]}
+    >
       {icon}
       <Text style={styles.actionText}>{label}</Text>
     </Pressable>
@@ -837,6 +917,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     backgroundColor: theme.colors.surface1,
   },
+  actionButtonDisabled: {
+    opacity: 0.6,
+  },
   actionText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
@@ -889,6 +972,18 @@ const styles = StyleSheet.create((theme) => ({
   sectionBody: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  sectionMuted: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  phaseResultBox: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+    padding: theme.spacing[3],
+    gap: theme.spacing[2],
   },
   phaseTabs: {
     flexDirection: "row",

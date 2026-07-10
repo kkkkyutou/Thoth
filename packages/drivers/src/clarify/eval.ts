@@ -44,6 +44,7 @@ function questionItems(questionCard: ClarifyQuestionCard): ClarifyQuestionItem[]
       id: questionCard.question_id,
       question: questionCard.question,
       behavior_tree_node: questionCard.behavior_tree_node,
+      selection_mode: "single",
       choices: questionCard.choices,
     },
   ];

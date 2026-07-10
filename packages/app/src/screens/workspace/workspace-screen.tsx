@@ -99,6 +99,7 @@ import {
 } from "@/runtime/host-runtime";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { shouldShowWorkspaceSetup, useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
+import { restoreWorkspaceAgentTabFromHistory } from "@/stores/navigation-active-workspace-store/workspace-agent-restore";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { useWorkspaceTerminalSessionRetention } from "@/terminal/hooks/use-workspace-terminal-session-retention";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
@@ -1883,6 +1884,74 @@ function WorkspaceScreenContent({
     [workspaceLayout],
   );
   useSyncWorkspaceActiveBrowser({ workspaceLayout, isRouteFocused });
+  const [workspaceHistoryRestoreState, setWorkspaceHistoryRestoreState] = useState<{
+    workspaceKey: string | null;
+    status: "idle" | "pending" | "checked";
+  }>({ workspaceKey: null, status: "idle" });
+  const hasCheckedWorkspaceAgentHistory =
+    Boolean(persistenceKey) &&
+    workspaceHistoryRestoreState.workspaceKey === persistenceKey &&
+    workspaceHistoryRestoreState.status === "checked";
+
+  useEffect(() => {
+    if (!isRouteFocused || !client || !isConnected) {
+      return;
+    }
+    if (
+      !normalizedServerId ||
+      !normalizedWorkspaceId ||
+      !hasHydratedWorkspaces ||
+      !hasHydratedWorkspaceLayoutStore ||
+      !hasHydratedAgents
+    ) {
+      return;
+    }
+    const workspaceKey = persistenceKey;
+    if (!workspaceKey) {
+      return;
+    }
+
+    let disposed = false;
+    setWorkspaceHistoryRestoreState((current) =>
+      current.workspaceKey === workspaceKey && current.status === "pending"
+        ? current
+        : { workspaceKey, status: "pending" },
+    );
+
+    void (async () => {
+      try {
+        await restoreWorkspaceAgentTabFromHistory({
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          client,
+        });
+      } catch (error) {
+        console.warn("[WorkspaceScreen] failed to restore workspace agent history", {
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          error,
+        });
+      } finally {
+        if (!disposed) {
+          setWorkspaceHistoryRestoreState({ workspaceKey, status: "checked" });
+        }
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [
+    client,
+    hasHydratedAgents,
+    hasHydratedWorkspaceLayoutStore,
+    hasHydratedWorkspaces,
+    isConnected,
+    isRouteFocused,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    persistenceKey,
+  ]);
   const openWorkspaceTabInBackground = useWorkspaceLayoutStore(
     (state) => state.openTabInBackground,
   );
@@ -2114,8 +2183,10 @@ function WorkspaceScreenContent({
         hasWorkspaceDirectory: Boolean(workspaceDirectory),
         hasHydratedWorkspaceLayoutStore,
         hasHydratedAgents,
+        hasCheckedHistoricalAgents: hasCheckedWorkspaceAgentHistory,
         hasLoadedTerminals: terminalsQuery.isSuccess,
         activeAgentCount: workspaceAgentVisibility.activeAgentIds.size,
+        restorableAgentCount: workspaceAgentVisibility.restorableAgentIds?.size ?? 0,
         terminalCount: terminals.length,
         tabCount: tabs.length,
       })
@@ -2135,6 +2206,7 @@ function WorkspaceScreenContent({
     openWorkspaceDraftTab,
     persistenceKey,
     hasHydratedAgents,
+    hasCheckedWorkspaceAgentHistory,
     hasHydratedWorkspaceLayoutStore,
     isRouteFocused,
     terminals.length,
@@ -2142,6 +2214,7 @@ function WorkspaceScreenContent({
     tabs.length,
     workspaceDirectory,
     workspaceAgentVisibility.activeAgentIds.size,
+    workspaceAgentVisibility.restorableAgentIds?.size,
   ]);
 
   useEffect(() => {

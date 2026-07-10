@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -21,6 +22,7 @@ import type {
   BackgroundTaskAction,
   BackgroundTaskModel,
   LoopGoalRecord,
+  LoopPlanExecResult,
   LoopPhaseKind,
   LoopPhaseRecord,
   LoopReviewVerdict,
@@ -73,6 +75,20 @@ interface PersistedLoopTaskFile {
   tasks: LoopTaskModel[];
 }
 
+interface LoopWorktreeLockRecord {
+  workspacePath: string;
+  taskId: string;
+  phase: LoopPhaseKind | null;
+  phaseAgentId?: string;
+  createdAt: string;
+  heartbeatAt: string;
+}
+
+interface PersistedLoopWorktreeLockFile {
+  version: 1;
+  locks: LoopWorktreeLockRecord[];
+}
+
 type PhaseResult =
   | { kind: "planexec"; result: ThothLoopPlanExecResultInput }
   | { kind: "review"; result: ThothLoopReviewVerdictInput }
@@ -111,17 +127,30 @@ function budgetForStrength(strength: ThothRuntimeLoopStrength): number {
 }
 
 function toBackgroundTaskModel(task: LoopTaskModel): BackgroundTaskModel {
+  const currentGoal = task.currentGoalId
+    ? task.goals.find((goal) => goal.id === task.currentGoalId)
+    : null;
+  const phaseLabelText =
+    task.status === "running"
+      ? `${task.currentPhase === "review" ? "Review" : "PlanExec"} in progress`
+      : task.status;
+  const budgetLabel = `failed reviews ${task.budget.usedFailedReviews}/${task.budget.maxFailedReviews}`;
   return BackgroundTaskModelSchema.parse({
     id: task.id,
     title: task.title,
     status: task.status,
-    summary: task.summary,
+    summary: task.latestVerdictSummary
+      ? `${task.summary} Latest Review: ${task.latestVerdictSummary}`
+      : task.summary,
     workspaceName: task.workspaceName,
     sourceTopicId: task.sourceTopicId,
-    detailLabel:
-      task.status === "running"
-        ? `${task.currentPhase === "review" ? "Review" : "PlanExec"} in progress`
-        : task.status,
+    detailLabel: [
+      phaseLabelText,
+      currentGoal ? `Goal ${currentGoal.order}: ${currentGoal.title}` : null,
+      budgetLabel,
+    ]
+      .filter(Boolean)
+      .join(" · "),
   });
 }
 
@@ -199,14 +228,18 @@ function prepareCodexLoopSessionHome(input: { thothHome: string; sessionId: stri
 export class ThothLoopTaskService {
   private readonly tasks = new Map<string, LoopTaskModel>();
   private readonly providerByTask = new Map<string, ProviderSessionConfig>();
-  private readonly activeWorkspaces = new Map<string, string>();
+  private readonly worktreeLocks = new Map<string, LoopWorktreeLockRecord>();
   private readonly pendingByAgent = new Map<string, PendingPhaseResult>();
   private readonly storePath: string;
+  private readonly lockStorePath: string;
   private schedulerRunning = false;
 
   constructor(private readonly options: ThothLoopTaskServiceOptions) {
     this.storePath = path.join(options.thothHome, "thoth-loop", "tasks.json");
+    this.lockStorePath = path.join(options.thothHome, "thoth-loop", "worktree-locks.json");
     this.load();
+    this.loadLocks();
+    this.reconcileLoadedLocks();
   }
 
   list(input?: { workspacePath?: string }): BackgroundTaskModel[] {
@@ -334,10 +367,47 @@ export class ThothLoopTaskService {
     if (!pending) {
       return false;
     }
+    const mismatch = this.validatePendingPhaseResult(pending, result);
+    if (mismatch) {
+      clearTimeout(pending.timeout);
+      this.pendingByAgent.delete(agentId);
+      const task = this.tasks.get(pending.taskId);
+      const goal = task?.goals.find((entry) => entry.id === pending.goalId);
+      if (task && goal) {
+        this.blockTask(task, goal, mismatch);
+      }
+      pending.reject(new Error(mismatch));
+      return false;
+    }
     clearTimeout(pending.timeout);
     this.pendingByAgent.delete(agentId);
     pending.resolve(result);
     return true;
+  }
+
+  private validatePendingPhaseResult(
+    pending: PendingPhaseResult,
+    result: PhaseResult,
+  ): string | null {
+    if (result.kind === "blocked") {
+      if (result.result.goal_id && result.result.goal_id !== pending.goalId) {
+        return `Loop blocked result targeted ${result.result.goal_id}, but current goal is ${pending.goalId}.`;
+      }
+      if (result.result.phase && result.result.phase !== pending.phase) {
+        return `Loop blocked result targeted ${result.result.phase}, but current phase is ${pending.phase}.`;
+      }
+      return null;
+    }
+    if (result.kind !== pending.phase) {
+      return `Loop result used ${result.kind}, but current phase is ${pending.phase}.`;
+    }
+    if (result.result.goal_id !== pending.goalId) {
+      return `Loop result targeted ${result.result.goal_id}, but current goal is ${pending.goalId}.`;
+    }
+    if (result.result.round !== pending.round) {
+      return `Loop result targeted round ${result.result.round}, but current round is ${pending.round}.`;
+    }
+    return null;
   }
 
   private load(): void {
@@ -370,6 +440,56 @@ export class ThothLoopTaskService {
     }
   }
 
+  private loadLocks(): void {
+    if (!existsSync(this.lockStorePath)) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(
+        readFileSync(this.lockStorePath, "utf8"),
+      ) as PersistedLoopWorktreeLockFile;
+      for (const raw of parsed.locks ?? []) {
+        if (!raw?.workspacePath || !raw.taskId || !raw.createdAt || !raw.heartbeatAt) {
+          continue;
+        }
+        this.worktreeLocks.set(resolve(raw.workspacePath), {
+          workspacePath: resolve(raw.workspacePath),
+          taskId: raw.taskId,
+          phase: raw.phase ?? null,
+          ...(raw.phaseAgentId ? { phaseAgentId: raw.phaseAgentId } : {}),
+          createdAt: raw.createdAt,
+          heartbeatAt: raw.heartbeatAt,
+        });
+      }
+    } catch (error) {
+      this.options.logger.warn({ err: error }, "Failed to load Thoth loop worktree locks");
+    }
+  }
+
+  private reconcileLoadedLocks(): void {
+    let changed = false;
+    for (const [workspacePath, lock] of Array.from(this.worktreeLocks.entries())) {
+      const task = this.tasks.get(lock.taskId);
+      if (!task || task.status !== "running") {
+        this.worktreeLocks.delete(workspacePath);
+        changed = true;
+        continue;
+      }
+      task.status = "interrupted";
+      task.summary = "daemon 重启后检测到后台 Loop worktree lock；Resume 会从当前阶段重开。";
+      const goal = this.currentGoal(task);
+      if (goal && (goal.status === "running_planexec" || goal.status === "running_review")) {
+        goal.status = "interrupted";
+      }
+      this.worktreeLocks.delete(workspacePath);
+      changed = true;
+    }
+    if (changed) {
+      this.persist();
+      this.persistLocks();
+    }
+  }
+
   private persist(): void {
     try {
       mkdirSync(path.dirname(this.storePath), { recursive: true });
@@ -380,6 +500,64 @@ export class ThothLoopTaskService {
       );
     } catch (error) {
       this.options.logger.warn({ err: error }, "Failed to persist Thoth loop tasks");
+    }
+  }
+
+  private persistLocks(): void {
+    try {
+      mkdirSync(path.dirname(this.lockStorePath), { recursive: true });
+      const locks = Array.from(this.worktreeLocks.values());
+      if (locks.length === 0) {
+        rmSync(this.lockStorePath, { force: true });
+        return;
+      }
+      writeFileSync(
+        this.lockStorePath,
+        `${JSON.stringify({ version: 1, locks }, null, 2)}\n`,
+        "utf8",
+      );
+    } catch (error) {
+      this.options.logger.warn({ err: error }, "Failed to persist Thoth loop worktree locks");
+    }
+  }
+
+  private acquireWorktreeLock(task: LoopTaskModel): boolean {
+    const workspacePath = resolve(task.workspacePath);
+    if (this.worktreeLocks.has(workspacePath)) {
+      return false;
+    }
+    const now = nowIso();
+    this.worktreeLocks.set(workspacePath, {
+      workspacePath,
+      taskId: task.id,
+      phase: task.currentPhase,
+      createdAt: now,
+      heartbeatAt: now,
+    });
+    this.persistLocks();
+    return true;
+  }
+
+  private updateWorktreeLock(task: LoopTaskModel, input: { phaseAgentId?: string } = {}): void {
+    const workspacePath = resolve(task.workspacePath);
+    const current = this.worktreeLocks.get(workspacePath);
+    if (!current || current.taskId !== task.id) {
+      return;
+    }
+    this.worktreeLocks.set(workspacePath, {
+      ...current,
+      phase: task.currentPhase,
+      ...(input.phaseAgentId ? { phaseAgentId: input.phaseAgentId } : {}),
+      heartbeatAt: nowIso(),
+    });
+    this.persistLocks();
+  }
+
+  private releaseWorktreeLock(task: LoopTaskModel): void {
+    const workspacePath = resolve(task.workspacePath);
+    if (this.worktreeLocks.get(workspacePath)?.taskId === task.id) {
+      this.worktreeLocks.delete(workspacePath);
+      this.persistLocks();
     }
   }
 
@@ -411,18 +589,17 @@ export class ThothLoopTaskService {
       const next = Array.from(this.tasks.values())
         .filter((task) => task.status === "queued")
         .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
-        .find((task) => !this.activeWorkspaces.has(resolve(task.workspacePath)));
+        .find((task) => !this.worktreeLocks.has(resolve(task.workspacePath)));
       if (!next) {
         return;
       }
-      const workspaceKey = resolve(next.workspacePath);
-      this.activeWorkspaces.set(workspaceKey, next.id);
+      if (!this.acquireWorktreeLock(next)) {
+        return;
+      }
       try {
         await this.runTask(next);
       } finally {
-        if (this.activeWorkspaces.get(workspaceKey) === next.id) {
-          this.activeWorkspaces.delete(workspaceKey);
-        }
+        this.releaseWorktreeLock(next);
       }
     }
   }
@@ -487,17 +664,24 @@ export class ThothLoopTaskService {
     const phase = goalPhase(goal, "planexec", goal.round);
     phase.status = "running";
     phase.startedAt = nowIso();
+    phase.attemptStartedAt = phase.startedAt;
+    phase.phaseRunId = `loop-phase-${randomUUID()}`;
+    phase.providerExitStatus = undefined;
+    phase.canceledReason = undefined;
+    phase.resultToolCallId = undefined;
     task.summary = `正在执行 Goal ${goal.order}: ${goal.title}`;
     this.touch(task);
+    this.updateWorktreeLock(task);
 
-    const reusedAgentId =
-      phase.agentId ??
-      goal.phases
-        .filter((entry) => entry.phase === "planexec" && entry.agentId)
-        .sort((left, right) => right.round - left.round)[0]?.agentId;
+    const reusedAgentId = goal.phases
+      .filter(
+        (entry) => entry.phase === "planexec" && entry.agentId && entry.status === "completed",
+      )
+      .sort((left, right) => right.round - left.round)[0]?.agentId;
     const agentId = reusedAgentId ?? (await this.createPlanExecAgent(task, goal, provider));
     phase.agentId = agentId;
     this.touch(task);
+    this.updateWorktreeLock(task, { phaseAgentId: agentId });
     const result = await this.runPhaseAndWait({
       task,
       goal,
@@ -516,9 +700,13 @@ export class ThothLoopTaskService {
       this.blockTask(task, goal, "PlanExec 阶段提交了错误类型的 Loop 结果。");
       return;
     }
+    const planExecResult = this.toPlanExecResult(result.result, phase.phaseRunId);
     goal.latestPlanExecSummary = result.result.execution_summary;
+    goal.latestPlanExecResult = planExecResult;
     phase.status = "completed";
     phase.completedAt = nowIso();
+    phase.providerExitStatus = "completed";
+    phase.resultToolCallId = planExecResult.resultToolCallId;
     phase.summary = result.result.execution_summary;
     goal.status = "running_review";
     this.touch(task);
@@ -534,12 +722,19 @@ export class ThothLoopTaskService {
     const phase = goalPhase(goal, "review", goal.round);
     phase.status = "running";
     phase.startedAt = nowIso();
+    phase.attemptStartedAt = phase.startedAt;
+    phase.phaseRunId = `loop-phase-${randomUUID()}`;
+    phase.providerExitStatus = undefined;
+    phase.canceledReason = undefined;
+    phase.resultToolCallId = undefined;
     task.summary = `正在 Review Goal ${goal.order}: ${goal.title}`;
     this.touch(task);
+    this.updateWorktreeLock(task);
 
     const agentId = await this.createReviewAgent(task, goal, provider);
     phase.agentId = agentId;
     this.touch(task);
+    this.updateWorktreeLock(task, { phaseAgentId: agentId });
     const result = await this.runPhaseAndWait({
       task,
       goal,
@@ -562,6 +757,8 @@ export class ThothLoopTaskService {
     goal.latestReview = verdict;
     task.latestVerdictSummary = verdict.summary;
     phase.completedAt = nowIso();
+    phase.providerExitStatus = verdict.outcome === "blocked" ? "blocked" : "completed";
+    phase.resultToolCallId = result.result.result_tool_call_id;
     phase.summary = verdict.summary;
     if (verdict.outcome === "pass") {
       phase.status = "completed";
@@ -605,7 +802,7 @@ export class ThothLoopTaskService {
   }): Promise<PhaseResult | null> {
     const waitForResult = this.createPendingPhaseResult(input);
     const events = this.options.agentManager.streamAgent(input.agentId, input.prompt);
-    void this.consumePhaseEvents(input.task, input.agentId, input.phase, events);
+    void this.consumePhaseEvents(input.task, input.goal, input.agentId, input.phase, events);
     try {
       return await waitForResult;
     } catch (error) {
@@ -630,7 +827,14 @@ export class ThothLoopTaskService {
     return new Promise((resolvePromise, rejectPromise) => {
       const timeout = setTimeout(() => {
         this.pendingByAgent.delete(input.agentId);
-        rejectPromise(new Error(`${phaseTitle(input.phase)} 阶段没有提交可验证的 Loop 结果。`));
+        const message = `${phaseTitle(input.phase)} 阶段没有提交可验证的 Loop 结果。`;
+        const record = goalPhase(input.goal, input.phase, input.goal.round);
+        record.status = "blocked";
+        record.providerExitStatus = "timeout";
+        record.completedAt = nowIso();
+        record.summary = message;
+        this.touch(input.task);
+        rejectPromise(new Error(message));
       }, PHASE_RESULT_TIMEOUT_MS);
       timeout.unref?.();
       this.pendingByAgent.set(input.agentId, {
@@ -647,6 +851,7 @@ export class ThothLoopTaskService {
 
   private async consumePhaseEvents(
     task: LoopTaskModel,
+    goal: LoopGoalRecord,
     agentId: string,
     phase: LoopPhaseKind,
     events: AsyncGenerator<AgentStreamEvent>,
@@ -664,6 +869,23 @@ export class ThothLoopTaskService {
         }
         if (event.type === "turn_failed") {
           task.summary = `${phaseTitle(phase)} provider 回合失败：${event.error}`;
+          const record = goalPhase(goal, phase, goal.round);
+          record.providerExitStatus = "failed";
+          record.summary = task.summary;
+          this.touch(task);
+          const pending = this.pendingByAgent.get(agentId);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            this.pendingByAgent.delete(agentId);
+            pending.reject(new Error(task.summary));
+          }
+          return;
+        }
+        if (event.type === "turn_canceled") {
+          const record = goalPhase(goal, phase, goal.round);
+          record.providerExitStatus = "canceled";
+          record.canceledReason = "provider turn canceled";
+          record.summary = "Provider turn canceled.";
           this.touch(task);
         }
       }
@@ -816,6 +1038,7 @@ export class ThothLoopTaskService {
     const planExecPhase = goal.phases.find(
       (phase) => phase.phase === "planexec" && phase.round === goal.round,
     );
+    const planExecResult = goal.latestPlanExecResult;
     return [
       "You are the independent Thoth Loop Review agent.",
       "Strictly validate the current goal against the approved cards and acceptance criteria.",
@@ -839,7 +1062,8 @@ export class ThothLoopTaskService {
       `Goal acceptance:\n${goal.acceptance.map((item) => `- ${item}`).join("\n")}`,
       `Round: ${goal.round}`,
       `PlanExec agent id: ${planExecPhase?.agentId ?? "unknown"}`,
-      `PlanExec summary: ${goal.latestPlanExecSummary ?? "not submitted"}`,
+      `PlanExec phase run id: ${planExecPhase?.phaseRunId ?? "unknown"}`,
+      `PlanExec result:\n${planExecResult ? JSON.stringify(planExecResult, null, 2) : "not submitted"}`,
       `Full Clarify and approval transcript:\n${task.clarifyTranscript ?? "not captured"}`,
       `Failed Review budget: ${task.budget.usedFailedReviews}/${task.budget.maxFailedReviews}`,
       `Earlier passed goals:\n${
@@ -851,6 +1075,25 @@ export class ThothLoopTaskService {
           .join("\n") || "none"
       }`,
     ].join("\n\n");
+  }
+
+  private toPlanExecResult(
+    input: ThothLoopPlanExecResultInput,
+    phaseRunId: string | undefined,
+  ): LoopPlanExecResult {
+    return {
+      goalId: input.goal_id,
+      round: input.round,
+      phaseRunId: input.phase_run_id ?? phaseRunId,
+      resultToolCallId: input.result_tool_call_id,
+      planSummary: input.plan_summary,
+      executionSummary: input.execution_summary,
+      evidence: input.evidence,
+      validationPerformed: input.validation_performed,
+      remainingRisks: input.remaining_risks,
+      nextReviewFocus: input.next_review_focus,
+      createdAt: nowIso(),
+    };
   }
 
   private toReviewVerdict(input: ThothLoopReviewVerdictInput): LoopReviewVerdict {
@@ -890,6 +1133,13 @@ export class ThothLoopTaskService {
   }
 
   private blockTask(task: LoopTaskModel, goal: LoopGoalRecord, reason: string): void {
+    if (task.currentPhase) {
+      const phase = goalPhase(goal, task.currentPhase, goal.round);
+      phase.status = "blocked";
+      phase.providerExitStatus = "blocked";
+      phase.completedAt = phase.completedAt ?? nowIso();
+      phase.summary = reason;
+    }
     task.status = "blocked";
     task.currentGoalId = goal.id;
     task.currentPhase = null;
@@ -907,6 +1157,8 @@ export class ThothLoopTaskService {
       await this.options.agentManager.cancelAgentRun(phase.agentId).catch(() => false);
       phase.status = "canceled";
       phase.completedAt = nowIso();
+      phase.providerExitStatus = "canceled";
+      phase.canceledReason = task.status === "paused" ? "user paused task" : "user stopped task";
     }
     if (phase?.agentId) {
       const pending = this.pendingByAgent.get(phase.agentId);

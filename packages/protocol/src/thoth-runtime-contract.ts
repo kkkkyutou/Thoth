@@ -273,6 +273,7 @@ export const ClarifyGoalsCardContractSchema = z
     title: NonEmptyStringSchema,
     summary: NonEmptyStringSchema,
     goals: z.array(ClarifyLinearGoalContractSchema).min(1),
+    goals_count_rationale: z.string().optional(),
   })
   .strict()
   .superRefine((card, ctx) => {
@@ -297,6 +298,13 @@ export const ClarifyGoalsCardContractSchema = z
         });
         break;
       }
+    }
+    if ((card.goals.length < 8 || card.goals.length > 16) && !card.goals_count_rationale?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Goals Card outside the usual 8-16 range requires goals_count_rationale",
+        path: ["goals_count_rationale"],
+      });
     }
   });
 
@@ -914,6 +922,8 @@ export const ThothLoopPlanExecResultInputSchema = z
   .object({
     goal_id: NonEmptyStringSchema,
     round: z.number().int().positive(),
+    phase_run_id: z.string().optional(),
+    result_tool_call_id: z.string().optional(),
     plan_summary: NonEmptyStringSchema,
     execution_summary: NonEmptyStringSchema,
     evidence: z.array(NonEmptyStringSchema).min(1),
@@ -932,6 +942,7 @@ export const ThothLoopReviewVerdictInputSchema = z
   .object({
     goal_id: NonEmptyStringSchema,
     round: z.number().int().positive(),
+    result_tool_call_id: z.string().optional(),
     outcome: ThothLoopReviewOutcomeSchema,
     summary: NonEmptyStringSchema,
     acceptance_matrix: z
@@ -968,11 +979,45 @@ export const ThothLoopReviewVerdictInputSchema = z
         path: ["next_round_guidance"],
       });
     }
+    if (input.outcome === "fail" && input.anti_repeat_strategy.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "failed Review verdicts must include anti_repeat_strategy",
+        path: ["anti_repeat_strategy"],
+      });
+    }
+    if (input.outcome === "fail" && input.failed_acceptance.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "failed Review verdicts must list failed_acceptance",
+        path: ["failed_acceptance"],
+      });
+    }
     if (input.outcome === "pass" && input.failed_acceptance.length > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "pass Review verdicts must not list failed acceptance items",
         path: ["failed_acceptance"],
+      });
+    }
+    if (
+      input.outcome === "pass" &&
+      input.acceptance_matrix.some((entry) => entry.status !== "met")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "pass Review verdicts must mark every acceptance as met",
+        path: ["acceptance_matrix"],
+      });
+    }
+    if (
+      input.outcome === "blocked" &&
+      input.acceptance_matrix.every((entry) => entry.status === "met")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "blocked Review verdicts must not mark every acceptance as met",
+        path: ["acceptance_matrix"],
       });
     }
   });

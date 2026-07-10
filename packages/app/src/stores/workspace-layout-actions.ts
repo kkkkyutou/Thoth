@@ -195,6 +195,7 @@ export interface WorkspaceTabReconcileState {
   layout: WorkspaceLayout;
   pinnedAgentIds?: ReadonlySet<string> | null;
   hiddenAgentIds?: ReadonlySet<string> | null;
+  retainedAgentIds?: ReadonlySet<string> | null;
 }
 
 export interface WorkspaceTabSnapshot {
@@ -203,6 +204,7 @@ export interface WorkspaceTabSnapshot {
   activeAgentIds: Iterable<string>;
   autoOpenAgentIds: Iterable<string>;
   knownAgentIds: Iterable<string>;
+  restorableAgentIds?: Iterable<string>;
   knownTerminalIds?: Iterable<string>;
   standaloneTerminalIds: Iterable<string>;
   hasActivePendingDraftCreate?: boolean;
@@ -1650,13 +1652,13 @@ function buildEntityTabGroups(initialTabs: WorkspaceTab[]): Map<string, EntityTa
 function collapseStaleEntityTabs(input: {
   layout: WorkspaceLayout;
   snapshot: WorkspaceTabSnapshot;
-  visibleAgentIds: Set<string>;
+  retainedAgentIds: Set<string>;
   knownTerminalIds: Set<string>;
 }): WorkspaceLayout {
-  const { snapshot, visibleAgentIds, knownTerminalIds } = input;
+  const { snapshot, retainedAgentIds, knownTerminalIds } = input;
   let nextLayout = input.layout;
   for (const tab of collectAllTabs(nextLayout.root)) {
-    if (isAgentTab(tab) && snapshot.agentsHydrated && !visibleAgentIds.has(tab.target.agentId)) {
+    if (isAgentTab(tab) && snapshot.agentsHydrated && !retainedAgentIds.has(tab.target.agentId)) {
       nextLayout =
         closeTabInLayout({
           layout: nextLayout,
@@ -1739,9 +1741,13 @@ export function reconcileWorkspaceTabs(
   let reconciledFocusedTabId = originalFocusedTabId;
   const pinnedAgentIds = new Set(state.pinnedAgentIds ?? []);
   const hiddenAgentIds = new Set(state.hiddenAgentIds ?? []);
+  const stateRetainedAgentIds = new Set(state.retainedAgentIds ?? []);
   const activeAgentIds = normalizeStringSet(snapshot.activeAgentIds);
   const autoOpenAgentIds = normalizeStringSet(snapshot.autoOpenAgentIds);
   const knownAgentIds = normalizeStringSet(snapshot.knownAgentIds);
+  const restorableAgentIds = snapshot.restorableAgentIds
+    ? normalizeStringSet(snapshot.restorableAgentIds)
+    : new Set<string>();
   const standaloneTerminalIds = normalizeStringSet(snapshot.standaloneTerminalIds);
   const knownTerminalIds = snapshot.knownTerminalIds
     ? normalizeStringSet(snapshot.knownTerminalIds)
@@ -1758,6 +1764,11 @@ export function reconcileWorkspaceTabs(
     hiddenAgentIds,
     knownAgentIds,
   });
+  const retainedAgentIds = new Set([
+    ...visibleAgentIds,
+    ...restorableAgentIds,
+    ...stateRetainedAgentIds,
+  ]);
 
   const initialTabs = collectAllTabs(nextLayout.root);
   const representedAgentIds = new Set(
@@ -1800,7 +1811,7 @@ export function reconcileWorkspaceTabs(
   nextLayout = collapseStaleEntityTabs({
     layout: nextLayout,
     snapshot,
-    visibleAgentIds,
+    retainedAgentIds,
     knownTerminalIds,
   });
 

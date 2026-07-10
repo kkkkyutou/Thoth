@@ -17,7 +17,7 @@ export interface WorkspaceDraftTabSetup {
 }
 
 export type WorkspaceTabTarget =
-  | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
+  | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup; title?: string }
   | { kind: "agent"; agentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
@@ -500,9 +500,11 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   const kind = typeof raw.kind === "string" ? raw.kind : null;
   if (kind === "draft" && typeof raw.draftId === "string") {
     const setup = normalizeWorkspaceDraftTabSetup(raw.setup);
+    const title = trimNonEmpty(typeof raw.title === "string" ? raw.title : null);
     return normalizeWorkspaceTabTarget({
       kind: "draft",
       draftId: raw.draftId,
+      ...(title ? { title } : {}),
       ...(setup ? { setup } : {}),
     });
   }

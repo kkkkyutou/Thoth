@@ -43,6 +43,36 @@ describe("buildDraftPanelDescriptor", () => {
     });
   });
 
+  it("uses a submitted Workspace Secretary draft title instead of the new-agent fallback", () => {
+    const descriptor = buildDraftPanelDescriptor({
+      isCreating: false,
+      title: "实现高性能快速排序",
+      icon: TestIcon,
+    });
+
+    expect(descriptor).toMatchObject({
+      label: "实现高性能快速排序",
+      subtitle: "实现高性能快速排序",
+      titleState: "ready",
+      statusBucket: null,
+    });
+  });
+
+  it("keeps the pending create prompt above a stored draft title while creating", () => {
+    const descriptor = buildDraftPanelDescriptor({
+      isCreating: true,
+      pendingPrompt: "Build the dashboard",
+      title: "Older secretary title",
+      icon: TestIcon,
+    });
+
+    expect(descriptor).toMatchObject({
+      label: "Build the dashboard",
+      subtitle: "Creating agent",
+      statusBucket: "running",
+    });
+  });
+
   it("uses the active language for draft descriptor chrome", async () => {
     await i18n.changeLanguage("zh-CN");
     const idleDescriptor = buildDraftPanelDescriptor({

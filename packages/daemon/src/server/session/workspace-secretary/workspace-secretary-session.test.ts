@@ -155,6 +155,7 @@ function createSession(input?: {
   const runOptions: unknown[] = [];
   const createdAgentConfigs: AgentSessionConfig[] = [];
   const permissionResponses: Array<{ agentId: string; requestId: string; response: unknown }> = [];
+  const canceledAgentIds: string[] = [];
   const thothHome = mkdtempSync(join(tmpdir(), "thoth-workspace-secretary-"));
   const streamRuns = [...(input?.streamRuns ?? [])];
   let streamIndex = 0;
@@ -192,6 +193,10 @@ function createSession(input?: {
     },
     respondToPermission: async (agentId: string, requestId: string, response: unknown) => {
       permissionResponses.push({ agentId, requestId, response });
+    },
+    cancelAgentRun: async (agentId: string) => {
+      canceledAgentIds.push(agentId);
+      return true;
     },
     appendTimelineItem: async (_agentId: string, item: unknown) => {
       emitted.push({
@@ -235,6 +240,7 @@ function createSession(input?: {
     runOptions,
     createdAgentConfigs,
     permissionResponses,
+    canceledAgentIds,
     cleanup: () => rmSync(thothHome, { recursive: true, force: true }),
   };
 }
@@ -245,7 +251,8 @@ function lastWorkspaceModel(emitted: SessionOutboundMessage[]) {
     .find(
       (entry) =>
         entry.type === "workspace_secretary.send.response" ||
-        entry.type === "workspace_secretary.answer.response",
+        entry.type === "workspace_secretary.answer.response" ||
+        entry.type === "workspace_secretary.cancel.response",
     );
   if (!message || !("payload" in message) || !message.payload.model) {
     throw new Error("Workspace Secretary model response missing");
@@ -387,6 +394,145 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       expect(model.secretary.turns).toEqual([
         expect.objectContaining({ kind: "message", speaker: "user", text: "hi" }),
       ]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("renames the active Workspace Secretary topic from the first user prompt", async () => {
+    const { session, emitted, cleanup } = createSession();
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-title",
+        text: "  实现一个高性能快速排序  \n需要 benchmark",
+        uiAgentId: "draft-secretary",
+        messageId: "message-title",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "balanced",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+
+      const model = lastWorkspaceModel(emitted);
+      const activeTopic = model.secretary.topics.find(
+        (topic) => topic.id === model.secretary.activeTopicId,
+      );
+      expect(activeTopic?.title).toBe("实现一个高性能快速排序");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("cancels the active topic provider agent instead of the draft ui agent", async () => {
+    const { session, emitted, canceledAgentIds, cleanup } = createSession({
+      streamRuns: [nativeStream({ type: "turn_started", provider: "codex", turnId: "turn-1" })],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-cancel-provider",
+        text: "实现一个高性能快速排序",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "dive",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      await session.handleCancelRequest({
+        type: "workspace_secretary.cancel.request",
+        requestId: "cancel-1",
+        uiAgentId: "draft-secretary",
+      });
+
+      expect(canceledAgentIds).toEqual(["agent-workspace-secretary"]);
+      const response = emitted.findLast(
+        (message) => message.type === "workspace_secretary.cancel.response",
+      );
+      expect(response?.payload.model?.secretary.status).toMatchObject({
+        kind: "ready",
+        detail: "已中断当前请求，可继续输入。",
+      });
+      expect(canceledAgentIds).not.toContain("draft-secretary");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("folds pending authority cards when the user cancels the secretary turn", async () => {
+    const card = clarifyCard("clarify-card-cancel");
+    const { session, emitted, cleanup } = createSession({
+      streamRuns: [
+        nativeStream({
+          type: "timeline",
+          provider: "codex",
+          turnId: "turn-1",
+          item: { type: "clarify_card", card },
+        }),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-cancel-card",
+        text: "实现一个高性能快速排序",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "dive",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      const { waitForAnswer } = createRuntimeAuthorityDecision({
+        provider: "codex",
+        agentId: "agent-workspace-secretary",
+        topicId: "topic-main",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        callId: "call-cancel",
+        toolName: "thoth_submit_clarify_card",
+        phase: "clarify",
+        card: { kind: "clarify_card", card },
+        redactedRawInputHash:
+          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      });
+
+      await session.handleCancelRequest({
+        type: "workspace_secretary.cancel.request",
+        requestId: "cancel-card",
+        uiAgentId: "draft-secretary",
+      });
+
+      await expect(waitForAnswer).resolves.toMatchObject({
+        submittedSummary: "已中断当前请求，可继续输入。",
+        answer: { intent: "stop" },
+      });
+      const model = lastWorkspaceModel(emitted);
+      const folded = model.secretary.turns.find(
+        (turn) => turn.kind === "clarify_card" && turn.card.id === card.id,
+      );
+      expect(folded).toMatchObject({
+        kind: "clarify_card",
+        card: {
+          submitted: true,
+          submittedSummary: "已中断当前请求，可继续输入。",
+        },
+      });
     } finally {
       cleanup();
     }

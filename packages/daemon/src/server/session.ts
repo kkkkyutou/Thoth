@@ -1665,6 +1665,8 @@ export class Session {
         return this.workspaceSecretarySession.handleSendRequest(msg);
       case "workspace_secretary.answer.request":
         return this.workspaceSecretarySession.handleAnswerRequest(msg);
+      case "workspace_secretary.cancel.request":
+        return this.workspaceSecretarySession.handleCancelRequest(msg);
       case "workspace_secretary.topic.create.request":
         return this.workspaceSecretarySession.handleTopicCreateRequest(msg);
       case "file_explorer_request":

@@ -1175,6 +1175,7 @@ const goalsCardJsonSchema = {
     title: { type: "string", minLength: 1 },
     summary: { type: "string", minLength: 1 },
     goals: { type: "array", minItems: 1, items: linearGoalJsonSchema },
+    goals_count_rationale: { type: "string" },
   },
 };
 
@@ -1229,7 +1230,7 @@ const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, Code
     thoth_submit_goals_card: {
       name: "thoth_submit_goals_card",
       description:
-        "Submit the second approval card as a linear Goals Card. Split the approved task into ordered, fine-grained goals with clear constraints and acceptance; do not include commands, file paths, or code-level execution steps.",
+        "Submit the second approval card as a linear Goals Card. Normally split the approved task into 8-16 ordered, fine-grained goals with clear constraints and acceptance; include goals_count_rationale if the count is outside that range. Do not include commands, file paths, or code-level execution steps.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
@@ -1275,6 +1276,8 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
       properties: {
         goal_id: { type: "string", minLength: 1 },
         round: { type: "integer", minimum: 1 },
+        phase_run_id: { type: "string" },
+        result_tool_call_id: { type: "string" },
         plan_summary: { type: "string", minLength: 1 },
         execution_summary: { type: "string", minLength: 1 },
         evidence: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
@@ -1287,7 +1290,7 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
   thoth_loop_submit_review_verdict: {
     name: "thoth_loop_submit_review_verdict",
     description:
-      "Submit the independent Review verdict for the current Thoth background Loop goal. Pass advances; fail consumes one failed-review budget and must include root cause plus next-round guidance.",
+      "Submit the independent Review verdict for the current Thoth background Loop goal. Pass advances and must bind concrete evidence to every acceptance. Fail consumes one failed-review budget and must include failed acceptance, root cause, next-round guidance and anti-repeat strategy.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1295,6 +1298,7 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
       properties: {
         goal_id: { type: "string", minLength: 1 },
         round: { type: "integer", minimum: 1 },
+        result_tool_call_id: { type: "string" },
         outcome: { type: "string", enum: ["pass", "fail", "blocked"] },
         summary: { type: "string", minLength: 1 },
         acceptance_matrix: {

@@ -1180,6 +1180,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           roundLabel: "Goals",
           title: input.goals_card.title,
           summary: input.goals_card.summary,
+          goalsCountRationale: input.goals_card.goals_count_rationale,
           goals: input.goals_card.goals,
           provenanceSummary: "受 Clarify 原文和已确认 CEO Task Card 约束",
           submitted: false,

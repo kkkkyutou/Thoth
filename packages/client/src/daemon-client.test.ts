@@ -703,6 +703,51 @@ test("lets Workspace Secretary provider turns outlive the default session RPC ti
   await expect(responsePromise).rejects.toThrow("Timeout waiting for message (300000ms)");
 });
 
+test("cancels a Workspace Secretary provider turn through the dedicated RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const responsePromise = client.cancelWorkspaceSecretaryTurn({
+    requestId: "req-secretary-cancel",
+    uiAgentId: "draft-tab-1",
+  });
+
+  expect(parseSentFrame(mock.sent[0])).toMatchObject({
+    type: "workspace_secretary.cancel.request",
+    requestId: "req-secretary-cancel",
+    uiAgentId: "draft-tab-1",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "workspace_secretary.cancel.response",
+      payload: {
+        requestId: "req-secretary-cancel",
+        model: createWorkspaceSecretaryModelForClientTest(),
+        error: null,
+      },
+    }),
+  );
+
+  await expect(responsePromise).resolves.toMatchObject({
+    requestId: "req-secretary-cancel",
+    error: null,
+  });
+});
+
 test("subscribes to Workspace Secretary clean model updates", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

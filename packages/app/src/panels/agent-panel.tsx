@@ -371,6 +371,22 @@ function DraftPanel() {
     [retargetCurrentTab, serverId],
   );
 
+  const handleDraftTitleChange = useCallback(
+    (title: string | null) => {
+      const normalizedTitle = title?.trim() || null;
+      if ((target.title ?? null) === normalizedTitle) {
+        return;
+      }
+      retargetCurrentTab({
+        kind: "draft",
+        draftId: target.draftId,
+        ...(target.setup ? { setup: target.setup } : {}),
+        ...(normalizedTitle ? { title: normalizedTitle } : {}),
+      });
+    },
+    [retargetCurrentTab, target.draftId, target.setup, target.title],
+  );
+
   return (
     <WorkspaceDraftAgentTab
       serverId={serverId}
@@ -381,6 +397,7 @@ function DraftPanel() {
       isPaneFocused={isInteractive}
       onOpenWorkspaceFile={openFileInWorkspace}
       onCreated={handleCreated}
+      onDraftTitleChange={handleDraftTitleChange}
       onOpenImportSheet={openImportSheet}
     />
   );
@@ -425,6 +442,7 @@ export function useDraftPanelDescriptor(
 
   return buildDraftPanelDescriptor({
     ...createDescriptorState,
+    title: target.title ?? null,
     icon: SquarePen,
   });
 }

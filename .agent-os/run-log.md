@@ -2061,3 +2061,152 @@ types/stream` passed 4 files / 52 tests. `npm --workspace=@thoth/app run test` p
 - Verification passed: `npm --workspace=@thoth/app run test -- background-tasks-panel` passed 1 file
   / 6 tests. `npm run build:web` passed. `npm --workspace=@thoth/app run test` passed 319 files /
   2648 tests. `npm run format:check` and `git diff --check` passed.
+
+## 2026-07-09 [Workspace Secretary draft tab semantic title repair]
+
+- Worked on: Workspace Secretary / Clarify tab chrome bug where a newly submitted secretary session
+  stayed labeled `新建 Agent` instead of adopting a semantic session title.
+- Root cause: The new Workspace Secretary / Clarify path runs inside the original `draft` tab using
+  `uiAgentId=tabId` and does not retarget the tab to a normal `{ kind: "agent" }` target. Ordinary
+  agent creation still uses `onCreated -> retargetCurrentTab`, but the secretary path only dispatches
+  `workspace_secretary.send`, so `buildDraftPanelDescriptor()` kept returning the static
+  `panels.draft.newAgent` label. Daemon topic titles were also generic (`当前话题` / `话题 N`), so the
+  draft descriptor had no semantic title source.
+- Implementation summary: Draft tab targets now carry an optional persisted `title` chrome field.
+  Workspace Secretary submit derives a provisional title from the first non-empty user prompt line,
+  stores it on the current draft tab, and then refreshes it from the active topic title when a daemon
+  response or snapshot provides a semantic title. Generic topic names are ignored so a fresh draft
+  still does not hydrate or display an unrelated previous workspace topic.
+- Implementation summary: Workspace Secretary daemon send handling now renames the active topic from
+  the first user prompt using the same provisional-title logic as ordinary agent creation, but only
+  while the topic title is still generic.
+- Test coverage: Added app tests for draft descriptor semantic titles, Workspace Secretary title
+  derivation/model-title filtering, and draft tab title retargeting without changing tab identity.
+  Added daemon test proving `workspace_secretary.send` renames the active topic from the first prompt.
+- Verification passed: `npm --workspace=@thoth/app run test -- agent-panel-descriptor
+workspace-tab-core workspace-tabs-store/state composer/actions` passed 4 files / 65 tests.
+  `npm --workspace=@thoth/daemon run test:unit --
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 1 file / 11
+  tests. `npm --workspace=@thoth/app run test -- background-tasks-panel` passed 1 file / 6 tests.
+  `npm run build:web`, `npm run check:foundation`, and `git diff --check` passed.
+- Verification note: A full `npm --workspace=@thoth/app run test` run was attempted and failed once
+  on the unrelated `background-tasks-panel` phase-switching test while looking for
+  `agent-stream-agent-plan-2`; the same file passed when rerun narrowly, so app full-suite pass is
+  not claimed for this session.
+
+## 2026-07-09 [Workspace Secretary interrupt button and cancel bridge]
+
+- Worked on: Workspace Secretary draft composer interruption bug where a running provider turn did
+  not show the red square cancel button, leaving users unable to actively interrupt a long turn.
+- Root cause: Workspace Secretary runs inside a virtual draft tab whose `uiAgentId` is not the real
+  provider agent id. The draft tab passed the running virtual status to `AgentStreamView`, but
+  `Composer` only read the normal session-store agent status, so it believed no agent was running
+  and never switched the empty-input submit button into cancel mode.
+- Implementation summary: Added `workspace_secretary.cancel.request/response`, exposed
+  `DaemonClient.cancelWorkspaceSecretaryTurn()`, routed Workspace Secretary draft cancellation
+  through a dedicated app action, and gave `Composer` an `agentStatusOverride` plus
+  `onCancelRunningAgent` hook for virtual agent surfaces.
+- Implementation summary: Workspace Secretary cancel now resolves the active topic, cancels the
+  real provider agent ids recorded for that topic instead of the draft `uiAgentId`, marks user
+  initiated cancellation as `ready`, and suppresses later provider `turn_canceled`/cancel-related
+  failure events from becoming `recoverable_error`.
+- Authority cleanup: If a runtime authority card is pending during user cancel, the daemon folds the
+  card with submitted summary `已中断当前请求，可继续输入。` and resolves the waiting runtime decision
+  with stop/cancel semantics so dynamic tool calls do not hang.
+- UI behavior: Workspace Secretary running + empty input now uses the existing Paseo-style red
+  square cancel button. Once the user types, the composer returns to the green send arrow and keeps
+  the existing queue/interrupt send preference behavior.
+- Verification passed: `npm --workspace=@thoth/protocol run test --
+workspace-secretary/rpc-schemas.test.ts` passed 1 file / 8 tests.
+  `npm --workspace=@thoth/client run test -- daemon-client` passed 2 files / 106 tests.
+  `npm --workspace=@thoth/daemon run test:unit --
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 1 file / 13
+  tests. `npm --workspace=@thoth/app run test -- actions.test.ts workspace-tab.test.ts
+input/state.test.ts input/labels.test.ts` passed 4 files / 55 tests. `npm run build:web`,
+  `npm run check:foundation`, and `git diff --check` passed.
+- Verification note: `npm --workspace=@thoth/app run test -- composer actions workspace-tab input`
+  was attempted but hit the unrelated `src/composer/draft/input-draft.live.test.tsx` `beforeAll`
+  hook timeout from the broad pattern. File-level app tests above are the claimed app evidence for
+  this change.
+- Browser acceptance passed: Started the Thoth daemon on `127.0.0.1:6688` and the real web export on
+  `127.0.0.1:8082`, then ran a Playwright/Chromium smoke against a throwaway `/tmp` git workspace.
+  Capture directory: `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-secretary-cancel-20260709T132555Z/`.
+  Screenshots confirm running + empty input shows the red `Stop agent` square, running + typed input
+  shows the green `Send and interrupt` arrow, and after clicking `Stop agent` the composer returns to
+  editable ready state with no red stop button. Daemon metrics for the same run recorded
+  `workspace_secretary.cancel.request`, `workspace_secretary.cancel.response`, and `turn_canceled`.
+
+## 2026-07-09 [Original workspace session restore repair]
+
+- Worked on: Original/historical workspace sessions opened from the sidebar restoring as a blank
+  `New Agent` draft instead of focusing the existing provider agent timeline.
+- Root cause: Sidebar workspace clicks navigated to the workspace route, but historical/completed
+  agents are not returned by the active-agent subscription. The app could fetch the historical agent
+  and timeline, but the workspace tab reconciliation path only retained `activeAgentIds`; the restored
+  historical tab was pruned before the UI could render it. Empty-workspace draft seeding also only
+  looked at active agent count, so historical workspaces were briefly treated as empty.
+- Implementation summary: Added `restoreWorkspaceAgentTabFromHistory()` to fetch agent history on
+  workspace navigation/route mount, upsert matching historical agents into `agentDetails`, and focus
+  the newest matching agent tab. Workspace visibility now separates `restorableAgentIds` from
+  `activeAgentIds`, so restored history is preserved without auto-opening every historical session or
+  weakening archive pruning.
+- Implementation summary: Added a non-persisted workspace-layout restored-agent retention set to
+  protect the explicitly restored agent tab across the cross-store update race between session details
+  and layout reconciliation. Empty draft seeding now waits for the historical-agent probe and refuses
+  to seed when restorable history exists.
+- Test coverage: Added app tests for history restore, restorable visibility, stale-tab reconciliation,
+  restore retention, and empty-draft seeding after history checks.
+- Verification passed: `npm --workspace=@thoth/app run test -- agent-visibility
+workspace-empty-draft-seed workspace-layout-store workspace-agent-restore navigation
+workspace-tab-core` passed 10 files / 135 tests. `npm run build:web` passed.
+  `npm --workspace=@thoth/app run test` passed 320 files / 2663 tests. `npm run check:foundation`
+  passed. `git diff --check` passed.
+- Browser acceptance passed: Real web export on `127.0.0.1:8082` restored two original sessions from
+  current daemon state. `Greeting` opened `workspace-tab-agent_e5d25a98-a773-4978-a5f5-8e996a6e2c8a`
+  with tab text `hi`, historical user message `hi`, and the Chinese assistant reply; capture:
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/session-restore-20260709T151455Z/`.
+  `yzy` opened `workspace-tab-agent_5fb3a0ea-5d71-4de6-b712-f1ea56143815` with no draft tab; capture:
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/session-restore-yzy-20260709T151530Z/`.
+
+## 2026-07-09 [Loop Background hardening and golden judge promotion]
+
+- Worked on: `NTH-TD-021`, `NTH-CD-045`, `NTH-EV-030`
+- User-visible request: Continue the approved Loop Background complete-body repair plan, harden the
+  Codex main path beyond the first Single acceptance, and do not fall back to fake
+  `registered_pending` tasks when true Loop runtime/capability is missing.
+- Implementation summary: Extended Loop protocol/runtime contracts with full PlanExec result
+  persistence, `goals_count_rationale`, phase audit metadata, stricter Review verdict validation and
+  typed PlanExec result projection into Background Tasks. Failed Review verdicts now require failed
+  acceptance, root cause, next-round guidance and anti-repeat strategy; pass verdicts must bind all
+  acceptance entries as met; blocked verdicts cannot mark every acceptance as met.
+- Implementation summary: Hardened `ThothLoopTaskService` with durable worktree locks, restart
+  reconciliation to `interrupted`, strict pending phase result matching for `goal_id` / `round` /
+  `phase`, provider exit status/cancel/timeout metadata, complete PlanExec evidence in Review
+  prompts and richer task summaries. Goals accept now emits honest `provider_unsupported` when the
+  real Loop service/capability is unavailable instead of manufacturing legacy `registered_pending`.
+- Implementation summary: Promoted `thoth.loop` quality coverage with
+  `packages/drivers/src/loop/golden.ts`, `packages/drivers/src/loop/eval.ts` and
+  `scripts/judge-loop-golden.mjs`. The golden set now includes positive and negative fixtures for
+  frozen-contract no-question behavior, current-goal boundaries, concrete Review evidence, no Review
+  source mutation, non-mechanical retry, provider/permission failure budget semantics, failed-review
+  budget exhaustion and all-goals completion.
+- UI summary: Background Tasks detail now shows richer budget/current phase detail, pending
+  Pause/Resume/Stop button states and a selected-goal PlanExec evidence block.
+- Documentation/state updates: Updated `.agent-os/project-index.md`, `.agent-os/todo.md`,
+  `.agent-os/acceptance-report.md`, `.agent-os/run-log.md` and `docs/testing.md` to record that code
+  hardening and `thoth.loop` judge promotion passed, while Loop+Light, complete all-goals-to-`done`
+  and restart recovery still need real-provider evidence.
+- Verification passed: `npm --workspace=@thoth/protocol run test -- thoth-runtime-contract
+workspace-secretary` passed 2 files / 40 tests. `npm --workspace=@thoth/daemon run test:unit --
+src/server/thoth-loop/task-service.test.ts src/server/agent/tools/thoth-tools.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 3 files / 32
+  tests. `npm --workspace=@thoth/app run test -- background-tasks-panel` passed 1 file / 6 tests.
+  `npm run test:drivers -- loop/eval` passed 1 file / 1 test. `npm --workspace=@thoth/app run test`
+  passed 320 files / 2663 tests. `npm run build:daemon`, `npm run build:web`,
+  `npm run check:foundation` and `git diff --check` passed.
+- Judge evidence: `npm run judge:loop:golden` passed. Deterministic report:
+  `.agent-os/artifacts/loop-golden-eval-2026-07-09T16-47-13-651Z.json`. Independent Codex judge
+  report: `.agent-os/artifacts/loop-golden-codex-judge-2026-07-09T16-47-13-651Z.md`.
+- Remaining limitation: This session did not run new real Codex Loop+Light, all-goals-to-`done`,
+  pause/resume/stop or daemon restart recovery acceptance. `NTH-TD-021` remains open for those
+  real-provider hardening runs.

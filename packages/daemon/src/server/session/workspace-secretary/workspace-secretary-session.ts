@@ -15,7 +15,10 @@ import {
   answerRuntimeAuthorityDecision,
   getPendingRuntimeAuthorityDecisionByCardId,
   listPendingRuntimeAuthorityDecisions,
+  rejectRuntimeAuthorityDecision,
+  type RuntimeAuthorityDecisionRecord,
 } from "../../agent/runtime-tool-decisions.js";
+import { resolveCreateAgentTitles } from "../../agent/create-agent-title.js";
 import {
   BackgroundTaskModelSchema,
   RegisteredTaskModelSchema,
@@ -36,6 +39,7 @@ import {
   type ThothGoalsCardModel,
   type ThothTaskCardModel,
   type WorkspaceSecretaryAnswerRequest,
+  type WorkspaceSecretaryCancelRequest,
   type WorkspaceSecretaryProviderBridge,
   type WorkspaceSecretaryProviderRuntimeModel,
   type WorkspaceSecretarySendRequest,
@@ -78,6 +82,7 @@ interface WorkspaceSecretaryState {
   topicAgents: Map<string, string>;
   topicRuntimeInjectionKeys: Map<string, string>;
   topicSkillMounts: Map<string, RuntimeSkillMount>;
+  userCanceledAgentIds: Set<string>;
   activeTopicProviderBacked: boolean;
   activeTurnPhase: ClarifyTurnPhase;
 }
@@ -170,6 +175,118 @@ function createStatusModel(
     title: "真实 provider 已连接",
     detail: detailOverride ?? "Quick 和 Loop 都会通过真实 provider 结果写入历史。",
   };
+}
+
+const WORKSPACE_SECRETARY_USER_CANCEL_SUMMARY = "已中断当前请求，可继续输入。";
+
+function providerAgentIdsForTopic(state: WorkspaceSecretaryState, topicId: string): string[] {
+  const prefix = `${topicId}:`;
+  return Array.from(
+    new Set(
+      Array.from(state.topicAgents.entries())
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([, agentId]) => agentId),
+    ),
+  );
+}
+
+function resolveCancelTopicId(
+  state: WorkspaceSecretaryState,
+  requestedTopicId: string | undefined,
+): string {
+  if (
+    requestedTopicId &&
+    state.model.secretary.topics.some((topic) => topic.id === requestedTopicId)
+  ) {
+    return requestedTopicId;
+  }
+  return state.model.secretary.activeTopicId;
+}
+
+function foldSubmittedAuthorityCard(
+  state: WorkspaceSecretaryState,
+  cardId: string,
+  submittedSummary: string,
+): void {
+  for (const turn of state.model.secretary.turns) {
+    if (
+      (turn.kind === "clarify_card" || turn.kind === "task_card" || turn.kind === "goal_card") &&
+      turn.card.id === cardId
+    ) {
+      turn.card = {
+        ...turn.card,
+        submitted: true,
+        submittedSummary,
+      };
+    }
+  }
+}
+
+function buildUserCancelAuthorityAnswer(
+  decision: RuntimeAuthorityDecisionRecord,
+  submittedSummary: string,
+): WorkspaceSecretaryTurnActionPayload | null {
+  const authorityCard = decision.authorityCard;
+  if (authorityCard.kind === "clarify_card") {
+    return {
+      intent: "stop",
+      question_card_id: authorityCard.card.id,
+      title: authorityCard.card.title,
+      answers: [],
+      note: submittedSummary,
+      raw_answer: submittedSummary,
+    };
+  }
+  if (
+    authorityCard.kind === "task_card" ||
+    authorityCard.kind === "goals_card" ||
+    authorityCard.kind === "pyramid_plan_card"
+  ) {
+    return {
+      intent: "cancel",
+      card_id: authorityCard.card.id,
+      title: authorityCard.card.title,
+      note: submittedSummary,
+      raw_answer: submittedSummary,
+    };
+  }
+  return null;
+}
+
+function resolvePendingAuthorityDecisionsForUserCancel(input: {
+  state: WorkspaceSecretaryState;
+  topicId: string;
+  providerAgentIds: Set<string>;
+  submittedSummary: string;
+}): number {
+  let resolvedCount = 0;
+  for (const decision of listPendingRuntimeAuthorityDecisions()) {
+    if (decision.topicId !== input.topicId && !input.providerAgentIds.has(decision.agentId)) {
+      continue;
+    }
+    foldSubmittedAuthorityCard(input.state, decision.cardId, input.submittedSummary);
+    const answer = buildUserCancelAuthorityAnswer(decision, input.submittedSummary);
+    if (answer) {
+      const answered = answerRuntimeAuthorityDecision({
+        cardId: decision.cardId,
+        answer,
+        submittedSummary: input.submittedSummary,
+      });
+      if (answered) {
+        resolvedCount += 1;
+      }
+      continue;
+    }
+    const rejected = rejectRuntimeAuthorityDecision({
+      cardId: decision.cardId,
+      message: input.submittedSummary,
+      status: "blocked",
+    });
+    if (rejected) {
+      resolvedCount += 1;
+    }
+  }
+  return resolvedCount;
 }
 
 function isRelayHealthPayload(value: unknown): value is {
@@ -365,22 +482,6 @@ function persistTopicSnapshot(store: DaemonConfigStore, state: WorkspaceSecretar
   });
 }
 
-function persistRegisteredTasks(
-  store: DaemonConfigStore,
-  tasks: RegisteredTaskModel[],
-  selectedTaskId: string | null,
-): void {
-  if (typeof (store as { patch?: unknown }).patch !== "function") {
-    return;
-  }
-  store.patch({
-    workspaceSecretary: {
-      registeredTasks: tasks,
-      selectedBackgroundTaskId: selectedTaskId,
-    },
-  });
-}
-
 function normalizeLoopStrength(value: unknown): ThothRuntimeLoopStrength | null {
   return value === "one_plan_one_do" ||
     value === "light" ||
@@ -469,6 +570,35 @@ const CLARIFY_MATERIAL_FRONTIER_CATEGORIES = [
   "testing_evidence_docs_and_comparison_baseline",
   "user_owned_tradeoffs",
 ] as const;
+
+const GENERIC_WORKSPACE_SECRETARY_TOPIC_TITLES =
+  /^(当前话题|话题\s+\d+|current topic|topic\s+\d+)$/i;
+
+function deriveWorkspaceSecretaryTopicTitle(text: string): string | null {
+  return resolveCreateAgentTitles({ initialPrompt: text }).provisionalTitle;
+}
+
+function updateActiveTopicTitleFromUserInput(
+  state: WorkspaceSecretaryState,
+  text: string,
+): boolean {
+  const title = deriveWorkspaceSecretaryTopicTitle(text);
+  if (!title) {
+    return false;
+  }
+  let changed = false;
+  state.model.secretary.topics = state.model.secretary.topics.map((topic) => {
+    if (topic.id !== state.model.secretary.activeTopicId) {
+      return topic;
+    }
+    if (!GENERIC_WORKSPACE_SECRETARY_TOPIC_TITLES.test(topic.title.trim())) {
+      return topic;
+    }
+    changed = true;
+    return { ...topic, title };
+  });
+  return changed;
+}
 
 function clarifyBelowSoftTargetPolicy(input: {
   strength: Exclude<ThothRuntimeClarifyStrength, "deep">;
@@ -809,30 +939,6 @@ function toSafeRuntimeErrorMessage(message: string): string {
   return limitText(message, 160) ?? "真实 provider 回合没有成功完成。";
 }
 
-function buildRegisteredTaskModel(input: {
-  workspaceName: string;
-  workspacePath: string;
-  sourceTopicId: string;
-  taskCard: ThothTaskCardModel;
-  goalCard: ThothApprovalGoalCardModel;
-}): RegisteredTaskModel {
-  const firstGoalTitle =
-    "goals" in input.goalCard ? input.goalCard.goals[0]?.title : input.goalCard.pyramid[0]?.title;
-  return {
-    id: `registered-task-${randomUUID()}`,
-    title: input.taskCard.title,
-    workspaceName: input.workspaceName,
-    workspacePath: input.workspacePath,
-    sourceTopicId: input.sourceTopicId,
-    status: "registered_pending",
-    summary: "已确认并注册，等待后续 Loop 后端执行。",
-    taskCard: input.taskCard,
-    goalCard: input.goalCard,
-    currentGoalTitle: firstGoalTitle,
-    currentRoundLabel: "Pending execution",
-  };
-}
-
 function registeredTaskToBackgroundTask(task: RegisteredTaskModel): BackgroundTaskModel {
   return BackgroundTaskModelSchema.parse({
     id: task.id,
@@ -1077,6 +1183,7 @@ export class WorkspaceSecretarySession {
         text: request.text,
       };
       state.model.secretary.turns.push(userTurn);
+      updateActiveTopicTitleFromUserInput(state, request.text);
       state.model.secretary.composer = request.composer;
       state.activeTurnPhase = isQuickNoneForeground(request.composer) ? "quick_exec" : "clarify";
       this.applyResolvedRuntime(state, provider.runtime);
@@ -1165,7 +1272,6 @@ export class WorkspaceSecretarySession {
             ? "approval_task"
             : "approval_breakdown";
 
-      let registeredTask: RegisteredTaskModel | undefined;
       let loopTask: LoopTaskModel | undefined;
       if (
         targetTurn.kind === "goal_card" &&
@@ -1201,44 +1307,31 @@ export class WorkspaceSecretarySession {
               text: `后台任务已注册并开始排队：${loopTask.title}`,
             },
           });
-        } else if (taskTurn) {
-          registeredTask = buildRegisteredTaskModel({
-            workspaceName: state.model.secretary.workspaceName,
-            workspacePath: state.model.secretary.workspacePath,
-            sourceTopicId: state.model.secretary.activeTopicId,
-            taskCard: taskTurn.card,
-            goalCard: targetTurn.card,
-          });
-          state.model.secretary.turns.push({
-            id: `turn-registered-${randomUUID()}`,
-            kind: "registered_task",
-            task: registeredTask,
-          });
-          const tasks = [
-            ...readRegisteredTasks(this.options.daemonConfigStore).filter(
-              (task) => task.id !== registeredTask!.id,
-            ),
-            registeredTask,
-          ];
-          applyRegisteredTasksToModel(state, tasks, registeredTask.id);
-          persistRegisteredTasks(this.options.daemonConfigStore, tasks, registeredTask.id);
-          await this.options.agentManager.appendTimelineItem(pendingDecision.agentId, {
-            type: "registered_task",
-            task: registeredTask,
-          });
+        } else {
+          const detail =
+            "当前 host 缺少真实 Loop background runtime，无法把 Goals Card 降级成旧 registered_pending。";
+          state.model.secretary.status = createStatusModel("provider_unsupported", detail);
           this.emitMirroredAgentStream(request.uiAgentId, {
             type: "timeline",
             provider: provider.config.provider,
-            item: { type: "registered_task", task: registeredTask },
+            item: {
+              type: "assistant_message",
+              text: detail,
+            },
           });
         }
-        state.model.secretary.composer = {
-          ...state.model.secretary.composer,
-          mode: "quick",
-          loop: null,
-        };
-        state.activeTurnPhase = "quick_exec";
-        state.currentClarifyState = "C_DIRECT";
+        if (loopTask) {
+          state.model.secretary.composer = {
+            ...state.model.secretary.composer,
+            mode: "quick",
+            loop: null,
+          };
+          state.activeTurnPhase = "quick_exec";
+          state.currentClarifyState = "C_DIRECT";
+        } else {
+          state.activeTurnPhase = "repair";
+          state.currentClarifyState = "C_BLOCKED";
+        }
       }
 
       if (
@@ -1259,7 +1352,6 @@ export class WorkspaceSecretarySession {
         cardId: request.cardId,
         answer: request.answer,
         submittedSummary,
-        ...(registeredTask ? { registeredTask } : {}),
       });
       if (!answered) {
         state.model.secretary.status = createStatusModel(
@@ -1273,6 +1365,34 @@ export class WorkspaceSecretarySession {
       state.model.secretary.status = createStatusModel(
         "ready",
         "已提交给真实 provider，后续会在同一 timeline 继续。",
+      );
+      this.emitModelUpdate(state, "provider_progress");
+      persistTopicSnapshot(this.options.daemonConfigStore, state);
+      return state;
+    });
+  }
+
+  async handleCancelRequest(request: WorkspaceSecretaryCancelRequest): Promise<void> {
+    await this.emitResponse("workspace_secretary.cancel.response", request.requestId, async () => {
+      const state = await this.ensureState();
+      const topicId = resolveCancelTopicId(state, request.topicId);
+      const providerAgentIds = new Set(providerAgentIdsForTopic(state, topicId));
+
+      resolvePendingAuthorityDecisionsForUserCancel({
+        state,
+        topicId,
+        providerAgentIds,
+        submittedSummary: WORKSPACE_SECRETARY_USER_CANCEL_SUMMARY,
+      });
+
+      for (const agentId of providerAgentIds) {
+        state.userCanceledAgentIds.add(agentId);
+        await this.options.agentManager.cancelAgentRun(agentId).catch(() => false);
+      }
+
+      state.model.secretary.status = createStatusModel(
+        "ready",
+        WORKSPACE_SECRETARY_USER_CANCEL_SUMMARY,
       );
       this.emitModelUpdate(state, "provider_progress");
       persistTopicSnapshot(this.options.daemonConfigStore, state);
@@ -1372,6 +1492,7 @@ export class WorkspaceSecretarySession {
       topicAgents: new Map(),
       topicRuntimeInjectionKeys: new Map(),
       topicSkillMounts: new Map(),
+      userCanceledAgentIds: new Set(),
       activeTopicProviderBacked: false,
       activeTurnPhase: "clarify",
     };
@@ -1819,6 +1940,15 @@ export class WorkspaceSecretarySession {
           this.emitModelUpdate(input.state, "provider_turn_completed");
           persistTopicSnapshot(this.options.daemonConfigStore, input.state);
         } else if (event.type === "turn_failed") {
+          if (input.state.userCanceledAgentIds.delete(input.agentId)) {
+            input.state.model.secretary.status = createStatusModel(
+              "ready",
+              WORKSPACE_SECRETARY_USER_CANCEL_SUMMARY,
+            );
+            this.emitModelUpdate(input.state, "provider_progress");
+            persistTopicSnapshot(this.options.daemonConfigStore, input.state);
+            continue;
+          }
           input.state.model.secretary.status = createStatusModel(
             "recoverable_error",
             toSafeRuntimeErrorMessage(event.error),
@@ -1826,6 +1956,15 @@ export class WorkspaceSecretarySession {
           this.emitModelUpdate(input.state, "provider_error");
           persistTopicSnapshot(this.options.daemonConfigStore, input.state);
         } else if (event.type === "turn_canceled") {
+          if (input.state.userCanceledAgentIds.delete(input.agentId)) {
+            input.state.model.secretary.status = createStatusModel(
+              "ready",
+              WORKSPACE_SECRETARY_USER_CANCEL_SUMMARY,
+            );
+            this.emitModelUpdate(input.state, "provider_progress");
+            persistTopicSnapshot(this.options.daemonConfigStore, input.state);
+            continue;
+          }
           input.state.model.secretary.status = createStatusModel(
             "recoverable_error",
             toSafeRuntimeErrorMessage(event.reason || "provider turn canceled"),
@@ -1993,6 +2132,7 @@ export class WorkspaceSecretarySession {
       | "workspace_secretary.snapshot.response"
       | "workspace_secretary.send.response"
       | "workspace_secretary.answer.response"
+      | "workspace_secretary.cancel.response"
       | "workspace_secretary.topic.create.response",
     requestId: string,
     run: () => Promise<WorkspaceSecretaryState>,

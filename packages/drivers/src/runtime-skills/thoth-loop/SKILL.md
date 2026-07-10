@@ -51,11 +51,12 @@ In PlanExec:
 
 The PlanExec result must include:
 
+- `plan_summary`: the concise plan used for this goal and round.
 - `execution_summary`: what was done for the current goal.
-- `evidence_summary`: tests, checks, files inspected/changed, or other evidence.
-- `review_material`: what Review should inspect.
-- `known_limitations`: honest unresolved limits.
-- `ready_for_review`: true unless blocked before review.
+- `evidence`: tests, checks, files inspected/changed, or other concrete evidence.
+- `validation_performed`: validation commands, inspections, or checks that actually ran.
+- `remaining_risks`: honest unresolved risks or empty list.
+- `next_review_focus`: what Review should inspect most carefully.
 
 ## Review Rules
 

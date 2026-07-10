@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -227,8 +227,26 @@ describe("ThothLoopTaskService", () => {
     expect(service.list({ workspacePath })[0]).toMatchObject({
       id: task.id,
       status: "running",
-      detailLabel: "PlanExec in progress",
+      detailLabel: "PlanExec in progress · Goal 1: Core API · failed reviews 0/10",
     });
+  });
+
+  it.each([
+    ["light", 5],
+    ["balanced", 10],
+    ["run_until_stopped", 30],
+  ] as const)("sets %s failed-review budget to %i", async (loopStrength, expectedBudget) => {
+    const { service, workspacePath } = createService();
+    const input = baseRegisterInput(workspacePath);
+    input.loopStrength = loopStrength;
+    const task = await service.register(input);
+
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "planexec",
+      "PlanExec should start",
+    );
+
+    expect(service.inspect(task.id)?.budget.maxFailedReviews).toBe(expectedBudget);
   });
 
   it("advances linearly when Review passes and pass reviews do not consume budget", async () => {
@@ -259,6 +277,47 @@ describe("ThothLoopTaskService", () => {
     const current = service.inspect(task.id);
     expect(current?.goals[0]?.status).toBe("passed");
     expect(current?.currentPhase).toBe("planexec");
+    expect(current?.budget.usedFailedReviews).toBe(0);
+  });
+
+  it("reaches done when every goal passes Review", async () => {
+    const { service, workspacePath } = createService();
+    const task = await service.register(baseRegisterInput(workspacePath));
+
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "planexec",
+      "first PlanExec should start",
+    );
+    service.resolvePlanExecResult(
+      latestAgentIdFor(service, task.id, "goal-1", "planexec"),
+      planexecResult("goal-1", 1),
+    );
+    await waitFor(() => service.inspect(task.id)?.currentPhase === "review", "Review should start");
+    service.resolveReviewVerdict(
+      latestAgentIdFor(service, task.id, "goal-1", "review"),
+      reviewVerdict("goal-1", 1, "pass"),
+    );
+    await waitFor(
+      () => service.inspect(task.id)?.currentGoalId === "goal-2",
+      "second goal should start",
+    );
+    service.resolvePlanExecResult(
+      latestAgentIdFor(service, task.id, "goal-2", "planexec"),
+      planexecResult("goal-2", 1),
+    );
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "review",
+      "second Review should start",
+    );
+    service.resolveReviewVerdict(
+      latestAgentIdFor(service, task.id, "goal-2", "review"),
+      reviewVerdict("goal-2", 1, "pass"),
+    );
+    await waitFor(() => service.inspect(task.id)?.status === "done", "task should be done");
+
+    const current = service.inspect(task.id);
+    expect(current?.currentGoalId).toBeNull();
+    expect(current?.goals.every((goal) => goal.status === "passed")).toBe(true);
     expect(current?.budget.usedFailedReviews).toBe(0);
   });
 
@@ -296,6 +355,47 @@ describe("ThothLoopTaskService", () => {
     expect(secondReviewAgent).not.toBe(firstReviewAgent);
   });
 
+  it("rejects Loop tool results that target the wrong goal or round", async () => {
+    const { service, workspacePath } = createService();
+    const task = await service.register(baseRegisterInput(workspacePath));
+
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "planexec",
+      "PlanExec should start",
+    );
+    const planExecAgent = latestAgentIdFor(service, task.id, "goal-1", "planexec");
+
+    expect(service.resolvePlanExecResult(planExecAgent, planexecResult("goal-2", 1))).toBe(false);
+    await waitFor(() => service.inspect(task.id)?.status === "blocked", "task should block");
+    expect(service.inspect(task.id)?.summary).toContain("current goal is goal-1");
+  });
+
+  it("feeds the full PlanExec result into the Review prompt", async () => {
+    const { service, agentManager, workspacePath } = createService();
+    const task = await service.register(baseRegisterInput(workspacePath));
+
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "planexec",
+      "PlanExec should start",
+    );
+    service.resolvePlanExecResult(latestAgentIdFor(service, task.id, "goal-1", "planexec"), {
+      ...planexecResult("goal-1", 1),
+      evidence: ["Specific evidence A.", "Specific evidence B."],
+      validation_performed: ["Ran npm test."],
+      remaining_risks: ["Benchmark not yet broad."],
+      next_review_focus: "Inspect the specific evidence and risk.",
+    });
+    await waitFor(() => service.inspect(task.id)?.currentPhase === "review", "Review should start");
+
+    const reviewPrompt = agentManager.streamCalls.find((call) =>
+      call.prompt.includes("You are the independent Thoth Loop Review agent."),
+    )?.prompt;
+    expect(reviewPrompt).toContain("Specific evidence A.");
+    expect(reviewPrompt).toContain("Ran npm test.");
+    expect(reviewPrompt).toContain("Benchmark not yet broad.");
+    expect(reviewPrompt).toContain("Inspect the specific evidence and risk.");
+  });
+
   it("blocks Single after the first failed Review because the failed-review budget is exhausted", async () => {
     const { service, workspacePath } = createService();
     const input = baseRegisterInput(workspacePath);
@@ -324,7 +424,7 @@ describe("ThothLoopTaskService", () => {
   });
 
   it("keeps one active task per worktree and queues the next task until the lock is released", async () => {
-    const { service, agentManager, workspacePath } = createService();
+    const { service, agentManager, thothHome, workspacePath } = createService();
     const first = await service.register(baseRegisterInput(workspacePath));
     const second = await service.register({
       ...baseRegisterInput(workspacePath),
@@ -347,6 +447,7 @@ describe("ThothLoopTaskService", () => {
     expect(service.inspect(first.id)?.status).toBe("running");
     expect(service.inspect(second.id)?.status).toBe("queued");
     expect(agentManager.createAgentCalls).toHaveLength(1);
+    expect(existsSync(join(thothHome, "thoth-loop", "worktree-locks.json"))).toBe(true);
   });
 
   it("pauses, resumes, and stops without converting a canceled phase into blocked", async () => {
@@ -391,5 +492,6 @@ describe("ThothLoopTaskService", () => {
     expect(current?.status).toBe("interrupted");
     expect(current?.goals[0]?.status).toBe("interrupted");
     expect(current?.summary).toContain("Resume");
+    expect(existsSync(join(thothHome, "thoth-loop", "worktree-locks.json"))).toBe(false);
   });
 });

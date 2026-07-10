@@ -2097,6 +2097,25 @@ export class DaemonClient {
     });
   }
 
+  async cancelWorkspaceSecretaryTurn(
+    input: {
+      uiAgentId?: string;
+      topicId?: string;
+      requestId?: string;
+    } = {},
+  ): Promise<WorkspaceSecretaryPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "workspace_secretary.cancel.request",
+        ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
+        ...(input.topicId ? { topicId: input.topicId } : {}),
+      },
+      responseType: "workspace_secretary.cancel.response",
+      timeout: WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS,
+    });
+  }
+
   async createWorkspaceSecretaryTopic(
     input?:
       | string

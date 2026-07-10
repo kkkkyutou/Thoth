@@ -15,7 +15,13 @@ export function normalizeWorkspaceTabTarget(
       return null;
     }
     const setup = normalizeWorkspaceDraftTabSetup(value.setup);
-    return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+    const title = trimOptionalString(typeof value.title === "string" ? value.title : null);
+    return {
+      kind: "draft",
+      draftId,
+      ...(setup ? { setup } : {}),
+      ...(title ? { title } : {}),
+    };
   }
   if (value.kind === "agent") {
     const agentId = trimNonEmpty(value.agentId);
@@ -75,7 +81,11 @@ export function workspaceTabTargetsEqual(
     return false;
   }
   if (left.kind === "draft" && right.kind === "draft") {
-    return left.draftId === right.draftId && workspaceDraftTabSetupsEqual(left.setup, right.setup);
+    return (
+      left.draftId === right.draftId &&
+      workspaceDraftTabSetupsEqual(left.setup, right.setup) &&
+      (left.title ?? null) === (right.title ?? null)
+    );
   }
   if (left.kind === "agent" && right.kind === "agent") {
     return left.agentId === right.agentId;

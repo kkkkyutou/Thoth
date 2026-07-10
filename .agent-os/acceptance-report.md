@@ -1928,6 +1928,38 @@ types/stream` passed 4 files / 52 tests. The Background Tasks panel test now ver
    build, foundation typecheck and foundation tests all passed.
 9. `git diff --check` passed.
 
+Loop hardening verification passed later on `2026-07-09` under `NTH-TD-021`:
+
+1. Protocol/runtime schemas now persist full PlanExec result evidence, Goals Card count rationale,
+   phase audit fields and stricter Review verdict semantics. Failed Review verdicts must include
+   failed acceptance, root cause, next-round guidance and anti-repeat strategy; pass verdicts must
+   mark all acceptance entries as met; blocked verdicts cannot mark every acceptance as met.
+2. Daemon Loop task service now persists full `latestPlanExecResult`, records phase run metadata,
+   validates `goal_id` / `round` / `phase` against the pending phase before resolving dynamic tool
+   results, uses durable worktree locks, reloads stale running locks as `interrupted`, and feeds the
+   complete PlanExec evidence into Review prompts.
+3. Workspace Secretary Goals accept no longer falls back to legacy `registered_pending` production
+   tasks when the real Loop service/capability is missing. It emits an honest
+   `provider_unsupported` status and visible timeline message instead.
+4. Background Tasks detail now exposes richer task budget/current phase summaries, pending
+   Pause/Resume/Stop states and the latest PlanExec evidence block for selected goals.
+5. `thoth.loop` golden coverage was promoted from shape-only examples to positive and negative
+   behavior fixtures for current-goal boundaries, frozen-contract no-question behavior, concrete
+   Review evidence, no Review source mutation, non-mechanical retry, provider/permission failure
+   budget semantics, failed-review budget exhaustion and all-goals completion.
+6. `npm run judge:loop:golden` passed. Evidence:
+   `.agent-os/artifacts/loop-golden-eval-2026-07-09T16-47-13-651Z.json` and
+   `.agent-os/artifacts/loop-golden-codex-judge-2026-07-09T16-47-13-651Z.md`.
+7. Narrow and build gates passed after the hardening changes:
+   `npm --workspace=@thoth/protocol run test -- thoth-runtime-contract workspace-secretary`
+   passed 2 files / 40 tests; `npm --workspace=@thoth/daemon run test:unit --
+src/server/thoth-loop/task-service.test.ts src/server/agent/tools/thoth-tools.test.ts
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 3 files / 32
+   tests; `npm --workspace=@thoth/app run test -- background-tasks-panel` passed 1 file / 6 tests;
+   `npm run test:drivers -- loop/eval` passed 1 file / 1 test; `npm --workspace=@thoth/app run test`
+   passed 320 files / 2663 tests; `npm run build:daemon`, `npm run build:web`,
+   `npm run check:foundation` and `git diff --check` passed.
+
 Real Codex evidence captured on `2026-07-09`:
 
 1. Local `http://127.0.0.1:8082/` Loop+Single / Clarify Balanced run used throwaway workspace
@@ -1966,17 +1998,15 @@ Known follow-ups, not claimed by this evidence:
 1. Loop+Light, restart recovery and complete all-goals-to-`done` real-provider runs remain
    hardening work under `NTH-TD-021`.
 2. No Claude/OpenCode native question or custom runtime-tool Loop adapter is claimed.
-3. Golden/judge evaluation for `thoth.loop` PlanExec/Review quality remains to be promoted beyond
-   unit-level behavior tests.
-4. `npm --workspace=@thoth/app run typecheck` was previously attempted and still fails on broad
+3. `npm --workspace=@thoth/app run typecheck` was previously attempted and still fails on broad
    pre-existing app type issues unrelated to the new Background Tasks panel; app tests and web export
    passed.
 
 ## Failed Or Not-Yet-Passed Checks
 
 1. The full MVP loop remains open because Loop background still needs Loop+Light real-provider
-   hardening, complete all-goals-to-`done` dogfood, restart recovery evidence and golden/judge
-   promotion for `thoth.loop` quality beyond the current verified Single-path evidence.
+   hardening, complete all-goals-to-`done` dogfood and restart recovery evidence beyond the current
+   verified Single-path evidence and promoted `thoth.loop` golden judge.
 2. Full daemon/app/desktop/CLI/driver build and test suites are still outside the foundation gate and may remain expected-broken until their dedicated migration milestones.
 3. Some old `.tmp_pytest` fixture entries could not be unlinked promptly on NFS and were moved under ignored `.agent-os/.trash/tmp_pytest-nfs-stale-20260628`; this is not part of the committed source tree.
 4. Android build currently emits upstream Expo/React Native/Gradle deprecation warnings; the Debug APK is still produced successfully.

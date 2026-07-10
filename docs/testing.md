@@ -131,6 +131,33 @@ the public web test app. It is not part of `check:foundation`.
      reopened until mobile recovery and the complex Dive quick_exec residual are fixed or explicitly
      descoped.
 
+## Loop Golden Judge
+
+Run this when changing `thoth.loop`, Loop PlanExec/Review schemas, Loop retry behavior or Background
+Loop scheduler semantics:
+
+```bash
+npm run judge:loop:golden
+```
+
+The command builds drivers, runs deterministic positive/negative Loop golden evaluation, then asks an
+independent read-only `codex exec` judge to review the installed `thoth.loop` Skill artifact,
+deterministic eval report and golden scenarios. It must end with `JUDGE_RESULT: PASS`.
+
+The deterministic eval must cover both passing and intentionally failing fixtures for:
+
+- PlanExec staying inside the current goal and not asking new clarification after Task/Goals are
+  frozen.
+- Review binding concrete evidence to each acceptance item instead of only saying tests passed.
+- Review not modifying workspace files.
+- Failed Review carrying failed acceptance, root cause, next-round guidance and anti-repeat strategy.
+- Retry PlanExec addressing previous Review guidance instead of mechanically repeating the failed
+  strategy.
+- Provider/permission failures not consuming failed-review budget.
+- All-goals completion being claimed only after every linear goal passes Review.
+
+Evidence is written under ignored `.agent-os/artifacts/`, not under `docs/`.
+
 ## Loop Background Real-Provider Runbook
 
 Use this opt-in runbook when validating `NTH-CD-045` / `NTH-EV-030`. It is not part of
@@ -213,8 +240,9 @@ Current `NTH-EV-030` acceptance evidence:
 - Scope note: this evidence verifies the first real Codex Loop+Single local/public path, including
   dynamicTools, Task/Goals approvals, durable background task registration, Background Tasks detail,
   linear goal advancement, independent Review, Single failed-review budget behavior and phase
-  AgentTimeline events. Loop+Light, complete all-goals-to-`done` and restart recovery remain
-  `NTH-TD-021` hardening work.
+  AgentTimeline events. Later `NTH-TD-021` code hardening and `npm run judge:loop:golden` promoted
+  the deterministic `thoth.loop` quality gate, but Loop+Light, complete all-goals-to-`done` and
+  restart recovery still need real-provider hardening evidence.
 
 ## Test Suffixes
 
