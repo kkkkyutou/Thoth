@@ -2012,3 +2012,21 @@ Known follow-ups, not claimed by this evidence:
 4. Android build currently emits upstream Expo/React Native/Gradle deprecation warnings; the Debug APK is still produced successfully.
 5. Real iOS build was not run because the current environment is Linux and lacks macOS/Xcode.
 6. The Code4Agent hosted relay preview path was abandoned after protected-path blockers; independent `SeeleAI/Thoth-Relay` is now the verified test relay authority.
+
+### `NTH-EV-031` Loop Engineering Authority And Scripted Native-Codex Flow Verification
+
+Status: `partial_verification`
+
+Evidence recorded on `2026-07-11`:
+
+1. The daemon Loop authority now uses `node:sqlite` WAL storage with append-only events, projection revision CAS, task memory nodes, durable worktree leases and one-time legacy JSON migration. `tasks.json` is no longer a scheduler truth source.
+2. Task registration seals a workspace baseline. PlanExec and Review persist phase/timeline/command/diff/usage evidence manifests. Review source mutation, evidence mismatch and concurrent workspace change enter recoverable evidence holds instead of silently advancing a goal.
+3. `thoth_submit_task_card` now launches an independent Codex Clarify convergence audit. The real trace found and fixed a catalog lifecycle defect: AgentManager builds a dynamic-tool catalog before registering the caller agent, so audit handlers now resolve the live caller at execution time. The regression unit test covers the pre-registration catalog path.
+4. The opt-in native provider suite passed `5/5` in `345.73s` with no OpenRouter or generic model API: `npm run test:e2e:real:flow --workspace=@thoth/daemon -- --reporter=verbose`. It covers Quick direct, Quick Clarify foreground handoff, Clarify cancel/recover/resume, Loop+Single two linear goals to `done`, and Loop+Light Review fail -> same-goal retry -> pass -> next goal. The test uses real Codex app-server sessions and dynamic tools, but injects literal fixture arguments into every independent Secretary/PlanExec/Review session so it tests transport/state authority rather than provider planning intelligence.
+5. Current-tree verification passed: daemon typecheck; `thoth-tools`, `task-service` and deterministic flow tests `43/43`; final daemon combination `146/146`; app Vitest `322/322`, `2703/2703`; `npm run check:foundation`; `npm run build:web`; `git diff --check`; `judge:clarify:golden`; `judge:clarify:user-simulation`; and `judge:loop:golden`. The user-simulation judge initially caught missing companion questions and regressed transcript refs in Task/Goals provenance; the fixture now preserves every asked question and validator rejects omissions or ref regression. Final judge evidence is `.agent-os/artifacts/clarify-golden-codex-judge-2026-07-11T21-10-00-748Z.md`, `.agent-os/artifacts/clarify-user-simulation-2026-07-11T21-07-21-858Z.md` and `.agent-os/artifacts/loop-golden-codex-judge-2026-07-11T21-08-13-725Z.md`. Trace files stay outside git at `/tmp/thoth-ut04-continuation-trace.ndjson`, `/tmp/thoth-ut04-scripted-phase-trace.ndjson` and `/tmp/thoth-ut05-scripted-phase-trace.ndjson`.
+
+Not yet promoted by this evidence:
+
+1. Real browser/device acceptance for `budget_wait`, pause/resume/stop and daemon restart/reconnect with the Background Tasks control surface and restored phase AgentTimeline.
+2. Claude/OpenCode Loop execution adapters. They remain honest unsupported/contract-only paths.
+3. This record remains partial only because the browser/device recovery evidence above is still absent, not because a current repository gate or independent judge is pending.

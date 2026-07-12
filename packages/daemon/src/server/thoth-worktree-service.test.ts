@@ -146,13 +146,11 @@ test.skipIf(isPlatform("win32"))(
     expect(second.created).toBe(false);
     expect(second.worktree.worktreePath).toBe(first.worktree.worktreePath);
     expect(events).toContain(`workspace:${second.workspace.workspaceId}`);
-    // Creation never dedupes by directory: the same worktree path yields a
-    // distinct workspace record on the second call.
-    expect(second.workspace.workspaceId).not.toBe(first.workspace.workspaceId);
+    expect(second.workspace.workspaceId).toBe(first.workspace.workspaceId);
   },
 );
 
-test("creates a distinct local checkout workspace for the same cwd on every call", async () => {
+test("reuses a local checkout workspace for the same cwd", async () => {
   const { repoDir, tempDir } = createGitRepo();
   cleanupPaths.push(tempDir);
   const deps = createDeps();
@@ -161,8 +159,8 @@ test("creates a distinct local checkout workspace for the same cwd on every call
   const second = await createLocalCheckoutWorkspace({ cwd: repoDir }, deps);
 
   expect(first.cwd).toBe(second.cwd);
-  expect(first.workspaceId).not.toBe(second.workspaceId);
-  expect(deps.workspaces.size).toBe(2);
+  expect(first.workspaceId).toBe(second.workspaceId);
+  expect(deps.workspaces.size).toBe(1);
 });
 
 test("renames an eligible unnamed branch-off worktree once on first agent context", async () => {

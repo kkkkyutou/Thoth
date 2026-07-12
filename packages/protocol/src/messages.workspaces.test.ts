@@ -693,6 +693,14 @@ describe("workspace message schemas", () => {
       type: "fetch_workspaces_response",
       payload: {
         requestId: "req-workspaces",
+        workspaceRedirects: [
+          {
+            fromWorkspaceId: "ws-duplicate",
+            toWorkspaceId: "ws-main",
+            reason: "merged_duplicate_workspace",
+          },
+        ],
+        dedupeNotice: "Merged duplicate workspace records.",
         entries: [
           {
             id: "ws-main",
@@ -745,6 +753,14 @@ describe("workspace message schemas", () => {
     });
 
     expect(parsed.type).toBe("fetch_workspaces_response");
+    expect(parsed.payload.workspaceRedirects).toEqual([
+      {
+        fromWorkspaceId: "ws-duplicate",
+        toWorkspaceId: "ws-main",
+        reason: "merged_duplicate_workspace",
+      },
+    ]);
+    expect(parsed.payload.dedupeNotice).toBe("Merged duplicate workspace records.");
     expect(parsed.payload.entries[0]?.gitRuntime).toMatchObject({
       currentBranch: "main",
       isDirty: true,

@@ -8,7 +8,7 @@ import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 
 interface RenamingTabState {
-  kind: "terminal" | "agent";
+  kind: "terminal" | "agent" | "draft";
   id: string;
   currentTitle: string;
 }
@@ -19,6 +19,7 @@ interface UseWorkspaceTabRenameInput {
   queryClient: QueryClient;
   terminalsData: ListTerminalsResponse["payload"] | undefined;
   terminalsQueryKey: readonly unknown[];
+  onRenameDraft?: (input: { tabId: string; title: string }) => void;
 }
 
 interface UseWorkspaceTabRenameResult {
@@ -31,7 +32,14 @@ interface UseWorkspaceTabRenameResult {
 export function useWorkspaceTabRename(
   input: UseWorkspaceTabRenameInput,
 ): UseWorkspaceTabRenameResult {
-  const { client, normalizedServerId, queryClient, terminalsData, terminalsQueryKey } = input;
+  const {
+    client,
+    normalizedServerId,
+    queryClient,
+    terminalsData,
+    terminalsQueryKey,
+    onRenameDraft,
+  } = input;
   const { t } = useTranslation();
   const [renamingTab, setRenamingTab] = useState<RenamingTabState | null>(null);
 
@@ -50,6 +58,14 @@ export function useWorkspaceTabRename(
           useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
         const currentTitle = agent?.title ?? "";
         setRenamingTab({ kind: "agent", id: agentId, currentTitle });
+        return;
+      }
+      if (tab.target.kind === "draft") {
+        setRenamingTab({
+          kind: "draft",
+          id: tab.tabId,
+          currentTitle: tab.target.title ?? "",
+        });
       }
     },
     [normalizedServerId, terminalsData],
@@ -62,6 +78,10 @@ export function useWorkspaceTabRename(
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
       const trimmed = nextTitle.trim();
+      if (renamingTab.kind === "draft") {
+        onRenameDraft?.({ tabId: renamingTab.id, title: trimmed });
+        return;
+      }
       if (renamingTab.kind === "terminal") {
         const result = await client.renameTerminal({
           terminalId: renamingTab.id,
@@ -81,7 +101,7 @@ export function useWorkspaceTabRename(
         queryKey: ["allAgents", normalizedServerId],
       });
     },
-    [client, normalizedServerId, queryClient, renamingTab, terminalsQueryKey, t],
+    [client, normalizedServerId, onRenameDraft, queryClient, renamingTab, terminalsQueryKey, t],
   );
 
   const handleRenameModalClose = useCallback(() => {
@@ -111,7 +131,9 @@ export function WorkspaceTabRenameModal({
   const title =
     renamingTab?.kind === "terminal"
       ? t("workspace.tabs.menu.renameTerminal")
-      : t("workspace.tabs.menu.renameAgent");
+      : renamingTab?.kind === "agent"
+        ? t("workspace.tabs.menu.renameAgent")
+        : t("workspace.tabs.menu.rename");
   const initialValue = renamingTab?.currentTitle ?? "";
   const testID = renamingTab
     ? `workspace-tab-rename-modal-${renamingTab.kind}-${renamingTab.id}`

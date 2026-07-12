@@ -11,6 +11,7 @@ import { useHasHydratedWorkspaces, useWorkspaceExists } from "@/stores/session-s
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { WorkspaceScreen } from "@/screens/workspace/workspace-screen";
 import { useWorkspaceLayoutStoreHydrated } from "@/stores/workspace-layout-store";
+import { useBackgroundTasksSurfaceStore } from "@/stores/background-tasks-surface-store";
 import {
   areWorkspaceSelectionListsEqual,
   areWorkspaceSelectionsEqual,
@@ -42,7 +43,7 @@ function getParamValue(value: string | string[] | undefined): string {
   return "";
 }
 
-function getOpenIntentTarget(openIntent: WorkspaceOpenIntent): WorkspaceTabTarget {
+function getOpenIntentTarget(openIntent: WorkspaceOpenIntent): WorkspaceTabTarget | null {
   if (openIntent.kind === "agent") {
     return { kind: "agent", agentId: openIntent.agentId };
   }
@@ -50,7 +51,7 @@ function getOpenIntentTarget(openIntent: WorkspaceOpenIntent): WorkspaceTabTarge
     return { kind: "terminal", terminalId: openIntent.terminalId };
   }
   if (openIntent.kind === "background_tasks") {
-    return { kind: "background_tasks", workspaceId: openIntent.workspaceId };
+    return null;
   }
   if (openIntent.kind === "file") {
     return { kind: "file", path: openIntent.path };
@@ -94,6 +95,7 @@ function HostWorkspaceRouteContent() {
   const navigation = useNavigation();
   const rootNavigationState = useRootNavigationState();
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
+  const openBackgroundTasksSurface = useBackgroundTasksSurfaceStore((state) => state.openSurface);
   const consumedIntentRef = useRef<string | null>(null);
   const [intentConsumed, setIntentConsumed] = useState(false);
   const params = useLocalSearchParams<{
@@ -141,12 +143,22 @@ function HostWorkspaceRouteContent() {
 
     const openIntent = parseWorkspaceOpenIntent(openValue);
     if (openIntent) {
-      prepareWorkspaceTab({
-        serverId,
-        workspaceId,
-        target: getOpenIntentTarget(openIntent),
-        pin: openIntent.kind === "agent",
-      });
+      if (openIntent.kind === "background_tasks") {
+        openBackgroundTasksSurface({
+          serverId,
+          workspaceId: openIntent.workspaceId || workspaceId,
+        });
+      } else {
+        const target = getOpenIntentTarget(openIntent);
+        if (target) {
+          prepareWorkspaceTab({
+            serverId,
+            workspaceId,
+            target,
+            pin: openIntent.kind === "agent",
+          });
+        }
+      }
     }
 
     // Expo Router's replace ignores query-param-only changes (findDivergentState
@@ -163,6 +175,7 @@ function HostWorkspaceRouteContent() {
     hasHydratedWorkspaceLayoutStore,
     navigation,
     openValue,
+    openBackgroundTasksSurface,
     rootNavigationState?.key,
     serverId,
     workspaceId,

@@ -17,11 +17,16 @@ export interface WorkspaceDraftTabSetup {
 }
 
 export type WorkspaceTabTarget =
-  | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup; title?: string }
+  | {
+      kind: "draft";
+      draftId: string;
+      setup?: WorkspaceDraftTabSetup;
+      title?: string;
+      secretaryTopicId?: string;
+    }
   | { kind: "agent"; agentId: string }
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser"; browserId: string }
-  | { kind: "background_tasks"; workspaceId: string }
   | WorkspaceFileTabTarget
   | { kind: "setup"; workspaceId: string };
 
@@ -501,10 +506,14 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   if (kind === "draft" && typeof raw.draftId === "string") {
     const setup = normalizeWorkspaceDraftTabSetup(raw.setup);
     const title = trimNonEmpty(typeof raw.title === "string" ? raw.title : null);
+    const secretaryTopicId = trimNonEmpty(
+      typeof raw.secretaryTopicId === "string" ? raw.secretaryTopicId : null,
+    );
     return normalizeWorkspaceTabTarget({
       kind: "draft",
       draftId: raw.draftId,
       ...(title ? { title } : {}),
+      ...(secretaryTopicId ? { secretaryTopicId } : {}),
       ...(setup ? { setup } : {}),
     });
   }
@@ -517,8 +526,8 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   if (kind === "browser" && typeof raw.browserId === "string") {
     return normalizeWorkspaceTabTarget({ kind: "browser", browserId: raw.browserId });
   }
-  if (kind === "background_tasks" && typeof raw.workspaceId === "string") {
-    return normalizeWorkspaceTabTarget({ kind: "background_tasks", workspaceId: raw.workspaceId });
+  if (kind === "background_tasks") {
+    return null;
   }
   if (kind === "file" && typeof raw.path === "string") {
     return normalizeWorkspaceTabTarget({
@@ -680,6 +689,33 @@ function migrateFocusedTabIds(
   }
 }
 
+function pruneTabOrderAndFocusToExistingTabs(
+  state: WorkspaceTabsCoreState,
+): WorkspaceTabsCoreState {
+  const nextOrderByWorkspace: Record<string, string[]> = {};
+  const nextFocusedByWorkspace: Record<string, string> = {};
+
+  for (const key in state.uiTabsByWorkspace) {
+    const tabIds = new Set((state.uiTabsByWorkspace[key] ?? []).map((tab) => tab.tabId));
+    const order = normalizeTabOrder(state.tabOrderByWorkspace[key] ?? []).filter((tabId) =>
+      tabIds.has(tabId),
+    );
+    if (order.length > 0) {
+      nextOrderByWorkspace[key] = order;
+    }
+    const focusedTabId = trimNonEmpty(state.focusedTabIdByWorkspace[key]);
+    if (focusedTabId && tabIds.has(focusedTabId)) {
+      nextFocusedByWorkspace[key] = focusedTabId;
+    }
+  }
+
+  return {
+    uiTabsByWorkspace: state.uiTabsByWorkspace,
+    tabOrderByWorkspace: nextOrderByWorkspace,
+    focusedTabIdByWorkspace: nextFocusedByWorkspace,
+  };
+}
+
 export function migrateWorkspaceTabsState(
   persistedState: unknown,
   options: { now: number },
@@ -708,11 +744,11 @@ export function migrateWorkspaceTabsState(
   mergeLegacyTabOrder(tabOrderByWorkspace, legacyOrder);
   migrateFocusedTabIds(focusedTabIdByWorkspace, rawFocused);
 
-  return {
+  return pruneTabOrderAndFocusToExistingTabs({
     uiTabsByWorkspace,
     tabOrderByWorkspace,
     focusedTabIdByWorkspace,
-  };
+  });
 }
 
 export function partializeWorkspaceTabsState(
@@ -756,9 +792,9 @@ export function partializeWorkspaceTabsState(
     }
   }
 
-  return {
+  return pruneTabOrderAndFocusToExistingTabs({
     uiTabsByWorkspace: nextUiTabsByWorkspace,
     tabOrderByWorkspace: nextTabOrderByWorkspace,
     focusedTabIdByWorkspace: nextFocusedTabIdByWorkspace,
-  };
+  });
 }

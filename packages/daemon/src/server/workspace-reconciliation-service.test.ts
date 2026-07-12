@@ -721,6 +721,237 @@ describe("WorkspaceReconciliationService", () => {
     expect(onChanges.mock.calls[0][0].length).toBeGreaterThan(0);
   });
 
+  test("merges duplicate workspaces for the same directory into the earliest workspace", async () => {
+    const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
+    const dir = mkdtempSync(path.join(tmpdir(), "reconcile-duplicate-workspace-"));
+    tempDirs.push(dir);
+    projects.set(
+      "p1",
+      createPersistedProjectRecord({
+        projectId: "p1",
+        rootPath: dir,
+        kind: "non_git",
+        displayName: "repo",
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "newer",
+      createPersistedWorkspaceRecord({
+        workspaceId: "newer",
+        projectId: "p1",
+        cwd: dir,
+        kind: "directory",
+        displayName: "newer",
+        createdAt: "2025-01-03T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "earliest",
+      createPersistedWorkspaceRecord({
+        workspaceId: "earliest",
+        projectId: "p1",
+        cwd: dir,
+        kind: "directory",
+        displayName: "earliest",
+        createdAt: "2025-01-02T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    const reassignWorkspaceDependents = vi.fn(async () => undefined);
+
+    const service = new WorkspaceReconciliationService({
+      projectRegistry,
+      workspaceRegistry,
+      logger: createTestLogger(),
+      reassignWorkspaceDependents,
+    });
+
+    const result = await service.runOnce();
+
+    expect(workspaces.get("earliest")?.archivedAt).toBeNull();
+    expect(workspaces.get("newer")?.archivedAt).toBeTruthy();
+    expect(reassignWorkspaceDependents).toHaveBeenCalledWith({
+      fromWorkspaceId: "newer",
+      toWorkspaceId: "earliest",
+    });
+    expect(result.changesApplied).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "workspace_merged",
+          workspaceId: "newer",
+          canonicalWorkspaceId: "earliest",
+        }),
+      ]),
+    );
+  });
+
+  test("merges git subdirectory workspace into the repo-root workspace", async () => {
+    const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
+    const repo = createTempGitRepo("reconcile-subdir-workspace-");
+    tempDirs.push(repo);
+    const subdir = path.join(repo, "packages", "app");
+    mkdirSync(subdir, { recursive: true });
+    projects.set(
+      "p1",
+      createPersistedProjectRecord({
+        projectId: "p1",
+        rootPath: repo,
+        kind: "git",
+        displayName: "repo",
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "root",
+      createPersistedWorkspaceRecord({
+        workspaceId: "root",
+        projectId: "p1",
+        cwd: repo,
+        kind: "local_checkout",
+        displayName: "main",
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "subdir",
+      createPersistedWorkspaceRecord({
+        workspaceId: "subdir",
+        projectId: "p1",
+        cwd: subdir,
+        kind: "local_checkout",
+        displayName: "main",
+        createdAt: "2025-01-02T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    const reassignWorkspaceDependents = vi.fn(async () => undefined);
+    const workspaceGitService = createWorkspaceGitServiceStub({
+      [repo]: {
+        projectKind: "git",
+        projectDisplayName: "repo",
+        workspaceDisplayName: "main",
+        currentBranch: "main",
+      },
+      [subdir]: {
+        projectKind: "git",
+        projectDisplayName: "repo",
+        workspaceDisplayName: "main",
+        currentBranch: "main",
+      },
+    });
+    workspaceGitService.getWorkspaceGitMetadata.mockImplementation(
+      async (cwd: string, options?: { directoryName?: string }) => ({
+        projectKind: "git" as const,
+        projectDisplayName: "repo",
+        workspaceDisplayName: "main",
+        gitRemote: null,
+        isWorktree: false,
+        projectSlug: "repo",
+        repoRoot: repo,
+        currentBranch: "main",
+        remoteUrl: null,
+        ...(options?.directoryName ? {} : {}),
+        ...(cwd === repo || cwd === subdir ? {} : {}),
+      }),
+    );
+
+    const service = new WorkspaceReconciliationService({
+      projectRegistry,
+      workspaceRegistry,
+      logger: createTestLogger(),
+      workspaceGitService,
+      reassignWorkspaceDependents,
+    });
+
+    await service.runOnce();
+
+    expect(workspaces.get("root")?.archivedAt).toBeNull();
+    expect(workspaces.get("subdir")?.archivedAt).toBeTruthy();
+    expect(reassignWorkspaceDependents).toHaveBeenCalledWith({
+      fromWorkspaceId: "subdir",
+      toWorkspaceId: "root",
+    });
+  });
+
+  test("does not merge distinct git worktree roots for the same project", async () => {
+    const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
+    const repo = createTempGitRepo("reconcile-distinct-worktree-main-");
+    const worktree = mkdtempSync(path.join(tmpdir(), "reconcile-distinct-worktree-feature-"));
+    tempDirs.push(repo, worktree);
+    projects.set(
+      "p1",
+      createPersistedProjectRecord({
+        projectId: "p1",
+        rootPath: repo,
+        kind: "git",
+        displayName: "repo",
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "main",
+      createPersistedWorkspaceRecord({
+        workspaceId: "main",
+        projectId: "p1",
+        cwd: repo,
+        kind: "local_checkout",
+        displayName: "main",
+        createdAt: "2025-01-01T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "feature",
+      createPersistedWorkspaceRecord({
+        workspaceId: "feature",
+        projectId: "p1",
+        cwd: worktree,
+        kind: "worktree",
+        displayName: "feature",
+        createdAt: "2025-01-02T00:00:00.000Z",
+        updatedAt: timestamp,
+      }),
+    );
+    const reassignWorkspaceDependents = vi.fn(async () => undefined);
+    const workspaceGitService = createWorkspaceGitServiceStub({
+      [repo]: {
+        projectKind: "git",
+        projectDisplayName: "repo",
+        workspaceDisplayName: "main",
+        currentBranch: "main",
+      },
+      [worktree]: {
+        projectKind: "git",
+        projectDisplayName: "repo",
+        workspaceDisplayName: "feature",
+        currentBranch: "feature",
+      },
+    });
+
+    const service = new WorkspaceReconciliationService({
+      projectRegistry,
+      workspaceRegistry,
+      logger: createTestLogger(),
+      workspaceGitService,
+      reassignWorkspaceDependents,
+    });
+
+    const result = await service.runOnce();
+
+    expect(workspaces.get("main")?.archivedAt).toBeNull();
+    expect(workspaces.get("feature")?.archivedAt).toBeNull();
+    expect(reassignWorkspaceDependents).not.toHaveBeenCalled();
+    expect(result.changesApplied).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "workspace_merged" })]),
+    );
+  });
+
   test("logs reconciliation changes with affected paths and reasons", async () => {
     const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
     const { logger, infoRecords } = createCapturingLogger();

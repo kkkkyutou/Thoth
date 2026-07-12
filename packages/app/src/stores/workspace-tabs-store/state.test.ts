@@ -8,6 +8,8 @@ import {
   applyRetargetTab,
   buildWorkspaceTabPersistenceKey,
   initialWorkspaceTabsCoreState,
+  migrateWorkspaceTabsState,
+  partializeWorkspaceTabsState,
   type WorkspaceTabsCoreState,
 } from "./state";
 
@@ -175,6 +177,46 @@ describe("workspace-tabs-store reducers", () => {
     ]);
   });
 
+  it("drops legacy background task tabs from persisted tabs, order, and focus", () => {
+    const migrated = migrateWorkspaceTabsState(
+      {
+        uiTabsByWorkspace: {
+          [WORKSPACE_KEY]: [
+            {
+              tabId: "background_tasks_workspace",
+              target: { kind: "background_tasks", workspaceId: WORKSPACE_ID },
+              createdAt: NOW,
+            },
+            {
+              tabId: "agent_agent-1",
+              target: { kind: "agent", agentId: "agent-1" },
+              createdAt: NOW,
+            },
+          ],
+        },
+        tabOrderByWorkspace: {
+          [WORKSPACE_KEY]: ["background_tasks_workspace", "agent_agent-1"],
+        },
+        focusedTabIdByWorkspace: {
+          [WORKSPACE_KEY]: "background_tasks_workspace",
+        },
+      },
+      { now: NOW },
+    );
+
+    expect(migrated.uiTabsByWorkspace[WORKSPACE_KEY]).toEqual([
+      {
+        tabId: "agent_agent-1",
+        target: { kind: "agent", agentId: "agent-1" },
+        createdAt: NOW,
+      },
+    ]);
+    expect(migrated.tabOrderByWorkspace[WORKSPACE_KEY]).toEqual(["agent_agent-1"]);
+    expect(migrated.focusedTabIdByWorkspace[WORKSPACE_KEY]).toBeUndefined();
+
+    expect(partializeWorkspaceTabsState(migrated, { now: NOW })).toEqual(migrated);
+  });
+
   it("keeps draft setup on a retargeted tab", () => {
     let state = emptyState();
     const ensured = applyEnsureTab(state, {
@@ -295,6 +337,66 @@ describe("workspace-tabs-store reducers", () => {
         createdAt: NOW,
       },
     ]);
+  });
+
+  it("persists a Workspace Secretary topic binding on a draft tab", () => {
+    let state = emptyState();
+    const first = applyOpenDraftTab(state, {
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      draftId: "draft-1",
+      now: NOW,
+    });
+    state = first.state;
+    const retargeted = applyRetargetTab(state, {
+      serverId: SERVER_ID,
+      workspaceId: WORKSPACE_ID,
+      tabId: "draft-1",
+      target: {
+        kind: "draft",
+        draftId: "draft-1",
+        title: "实现一个渲染器",
+        secretaryTopicId: "topic-renderer",
+      },
+    });
+
+    expect(retargeted.tabId).toBe("draft-1");
+    expect(retargeted.state.uiTabsByWorkspace[WORKSPACE_KEY]?.[0]?.target).toEqual({
+      kind: "draft",
+      draftId: "draft-1",
+      title: "实现一个渲染器",
+      secretaryTopicId: "topic-renderer",
+    });
+    expect(partializeWorkspaceTabsState(retargeted.state, { now: NOW })).toEqual(retargeted.state);
+  });
+
+  it("migrates persisted draft Workspace Secretary topic bindings", () => {
+    const migrated = migrateWorkspaceTabsState(
+      {
+        uiTabsByWorkspace: {
+          [WORKSPACE_KEY]: [
+            {
+              tabId: "draft-1",
+              target: {
+                kind: "draft",
+                draftId: "draft-1",
+                title: "实现一个渲染器",
+                secretaryTopicId: "topic-renderer",
+              },
+              createdAt: NOW,
+            },
+          ],
+        },
+      },
+      { now: NOW },
+    );
+
+    expect(migrated.uiTabsByWorkspace[WORKSPACE_KEY]?.[0]?.target).toEqual({
+      kind: "draft",
+      draftId: "draft-1",
+      title: "实现一个渲染器",
+      secretaryTopicId: "topic-renderer",
+    });
   });
 
   it("retargeting a background draft keeps the currently focused tab focused", () => {

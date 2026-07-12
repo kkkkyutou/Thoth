@@ -52,7 +52,9 @@ export function deriveWorkspaceAgentVisibility(input: {
       continue;
     }
     knownAgentIds.add(agent.id);
-    if (!sessionAgentIds.has(agent.id)) {
+    // An archived record can exist only in the detail cache after the active directory has already
+    // removed it. It is history, never a restorable foreground tab.
+    if (!agent.archivedAt && !sessionAgentIds.has(agent.id)) {
       restorableAgentIds.add(agent.id);
     }
   }

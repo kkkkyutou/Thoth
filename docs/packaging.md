@@ -62,7 +62,7 @@ Commands:
 
 ```bash
 npm run build:web
-HOST=0.0.0.0 PORT=8082 npm run serve:web
+THOTH_DAEMON_PROXY_TARGET=127.0.0.1:6688 HOST=0.0.0.0 PORT=8082 npm run serve:web
 ```
 
 Local human review URL:
@@ -77,7 +77,9 @@ Current public mapping for this environment:
 http://180.76.242.105:8148/
 ```
 
-The public web entry may be unable to use direct local network access to `127.0.0.1:6688` from an external browser. It must still render the real Welcome / Add Host / Paste pairing link experience and use relay pairing for external devices.
+The public web entry proxies `/ws` back to the local Thoth daemon when
+`THOTH_DAEMON_PROXY_TARGET` is set. External devices that cannot use that direct web entry must
+still render the real Welcome / Add Host / Paste pairing link experience and use relay pairing.
 
 ## Relay
 

@@ -66,6 +66,7 @@ export function buildConfigOverrides(record: StoredAgentRecord): Partial<AgentSe
   return stripInternalThothMcpServer({
     provider: record.provider,
     cwd: record.cwd,
+    internal: record.internal ?? false,
     modeId: record.lastModeId ?? record.config?.modeId ?? undefined,
     model: record.config?.model ?? undefined,
     thinkingOptionId: record.config?.thinkingOptionId ?? undefined,
@@ -87,6 +88,7 @@ export function buildSessionConfig(
   return stripInternalThothMcpServer({
     provider: record.provider,
     cwd: record.cwd,
+    internal: record.internal ?? false,
     modeId: overrides.modeId,
     model: overrides.model,
     thinkingOptionId: overrides.thinkingOptionId,

@@ -200,6 +200,8 @@ test("createThothClient exposes workspace list through the daemon client", async
     requestId: request.requestId,
     entries: [],
     emptyProjects: [],
+    workspaceRedirects: [],
+    dedupeNotice: null,
     pageInfo: {
       nextCursor: null,
       prevCursor: null,

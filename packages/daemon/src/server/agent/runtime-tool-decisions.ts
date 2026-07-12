@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
   ClarifyConvergenceReview,
+  ClarifyDecisionDelta,
   ClarifyFrontierLedger,
 } from "@thoth/protocol/thoth-runtime-contract";
 import type {
@@ -53,6 +54,7 @@ export interface RuntimeAuthorityDecisionRecord {
   authorityCard: RuntimeAuthorityCard;
   publicBadgeSummary?: string;
   frontierLedger?: ClarifyFrontierLedger;
+  decisionDelta?: ClarifyDecisionDelta;
   convergenceReview?: ClarifyConvergenceReview;
 }
 
@@ -167,6 +169,7 @@ export function createRuntimeAuthorityDecision(input: {
   redactedRawInputHash: string;
   publicBadgeSummary?: string;
   frontierLedger?: ClarifyFrontierLedger;
+  decisionDelta?: ClarifyDecisionDelta;
   convergenceReview?: ClarifyConvergenceReview;
   timeoutMs?: number;
 }): {
@@ -200,6 +203,7 @@ export function createRuntimeAuthorityDecision(input: {
     authorityCard: input.card,
     ...(input.publicBadgeSummary ? { publicBadgeSummary: input.publicBadgeSummary } : {}),
     ...(input.frontierLedger ? { frontierLedger: input.frontierLedger } : {}),
+    ...(input.decisionDelta ? { decisionDelta: input.decisionDelta } : {}),
     ...(input.convergenceReview ? { convergenceReview: input.convergenceReview } : {}),
   };
 

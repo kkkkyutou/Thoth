@@ -706,4 +706,102 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  test("round-trips Workspace Secretary per-topic runtime status", () => {
+    const home = createTempHome();
+    try {
+      savePersistedConfig(home, {
+        workspaceSecretary: {
+          topicSnapshots: [
+            {
+              workspacePath: "/workspace/thoth",
+              workspaceName: "Thoth",
+              activeTopicId: "topic-running",
+              topics: [
+                {
+                  id: "topic-running",
+                  title: "Running topic",
+                  status: "current",
+                  updatedLabel: "刚刚",
+                },
+              ],
+              turns: [],
+              topicStates: [
+                {
+                  topicId: "topic-running",
+                  turns: [],
+                  currentClarifyState: "C_DIRECT",
+                  activeTurnPhase: "clarify",
+                  status: {
+                    kind: "loading",
+                    title: "正在处理",
+                    detail: "provider turn 正在运行。",
+                  },
+                },
+              ],
+              nextTopicIndex: 2,
+              currentClarifyState: "C_DIRECT",
+              activeTurnPhase: "clarify",
+            },
+          ],
+        },
+      });
+
+      expect(
+        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0]?.status,
+      ).toEqual({
+        kind: "loading",
+        title: "正在处理",
+        detail: "provider turn 正在运行。",
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("round-trips Workspace Secretary topic provider agent mappings", () => {
+    const home = createTempHome();
+    try {
+      savePersistedConfig(home, {
+        workspaceSecretary: {
+          topicSnapshots: [
+            {
+              workspacePath: "/workspace/thoth",
+              workspaceName: "Thoth",
+              activeTopicId: "topic-running",
+              topics: [
+                {
+                  id: "topic-running",
+                  title: "Running topic",
+                  status: "current",
+                  updatedLabel: "刚刚",
+                },
+              ],
+              turns: [],
+              topicAgents: [
+                {
+                  agentKey: "topic-running:structured:codex:gpt-5.6",
+                  agentId: "secretary-agent-1",
+                },
+              ],
+              nextTopicIndex: 2,
+              currentClarifyState: "C_DIRECT",
+              activeTurnPhase: "clarify",
+            },
+          ],
+        },
+      });
+
+      expect(
+        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicAgents,
+      ).toEqual([
+        {
+          agentKey: "topic-running:structured:codex:gpt-5.6",
+          agentId: "secretary-agent-1",
+        },
+      ]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });

@@ -82,7 +82,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     ]);
   });
 
-  it("omits agent copy actions and rename for draft tabs", () => {
+  it("keeps draft tabs renameable while omitting operations that require a real agent", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "mobile",
       tab: {
@@ -111,8 +111,10 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(entries.some((entry) => entry.kind === "item" && entry.label === "Reload agent")).toBe(
       false,
     );
-    expect(entries.some((entry) => entry.kind === "item" && entry.label === "Rename")).toBe(false);
-    expect(entries.some((entry) => entry.kind === "separator")).toBe(false);
+    expect(entries.some((entry) => entry.kind === "item" && entry.label === "Rename")).toBe(true);
+    expect(
+      entries.some((entry) => entry.kind === "separator" && entry.key === "rename-separator"),
+    ).toBe(true);
   });
 
   it("adds reload tooltip copy for agent tabs", () => {

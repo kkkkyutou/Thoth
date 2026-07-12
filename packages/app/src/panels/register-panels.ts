@@ -1,5 +1,4 @@
 import { agentPanelRegistration } from "@/panels/agent-panel";
-import { backgroundTasksPanelRegistration } from "@/panels/background-tasks-panel";
 import { browserPanelRegistration } from "@/panels/browser-panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
 import { filePanelRegistration } from "@/panels/file-panel";
@@ -15,7 +14,6 @@ export function ensurePanelsRegistered(): void {
   }
   registerPanel(draftPanelRegistration);
   registerPanel(agentPanelRegistration);
-  registerPanel(backgroundTasksPanelRegistration);
   registerPanel(setupPanelRegistration);
   registerPanel(terminalPanelRegistration);
   registerPanel(browserPanelRegistration);

@@ -669,6 +669,9 @@ test("lets Workspace Secretary provider turns outlive the default session RPC ti
 
   const responsePromise = client.sendWorkspaceSecretaryMessage({
     requestId: "req-secretary-hi",
+    workspaceId: "workspace-1",
+    workspacePath: "/workspace/thoth",
+    topicId: "topic-main",
     text: "hi",
     composer: {
       mode: "quick",
@@ -693,6 +696,9 @@ test("lets Workspace Secretary provider turns outlive the default session RPC ti
   expect(parseSentFrame(mock.sent[0])).toMatchObject({
     type: "workspace_secretary.send.request",
     requestId: "req-secretary-hi",
+    workspaceId: "workspace-1",
+    workspacePath: "/workspace/thoth",
+    topicId: "topic-main",
     text: "hi",
   });
 
@@ -701,6 +707,51 @@ test("lets Workspace Secretary provider turns outlive the default session RPC ti
 
   await vi.advanceTimersByTimeAsync(240_000);
   await expect(responsePromise).rejects.toThrow("Timeout waiting for message (300000ms)");
+});
+
+test("requests a Workspace Secretary snapshot for a specific topic", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const responsePromise = client.fetchWorkspaceSecretarySnapshot({
+    workspaceId: "workspace-1",
+    topicId: "topic-renderer",
+  });
+  const sent = parseSentFrame(mock.sent[0]);
+
+  expect(sent).toMatchObject({
+    type: "workspace_secretary.snapshot.request",
+    workspaceId: "workspace-1",
+    topicId: "topic-renderer",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "workspace_secretary.snapshot.response",
+      payload: {
+        requestId: String(sent.requestId),
+        model: createWorkspaceSecretaryModelForClientTest(),
+        error: null,
+      },
+    }),
+  );
+
+  await expect(responsePromise).resolves.toMatchObject({
+    model: expect.objectContaining({ activeView: "workspace-secretary" }),
+  });
 });
 
 test("cancels a Workspace Secretary provider turn through the dedicated RPC", async () => {
@@ -722,12 +773,18 @@ test("cancels a Workspace Secretary provider turn through the dedicated RPC", as
 
   const responsePromise = client.cancelWorkspaceSecretaryTurn({
     requestId: "req-secretary-cancel",
+    workspaceId: "workspace-1",
+    workspacePath: "/workspace/thoth",
+    topicId: "topic-main",
     uiAgentId: "draft-tab-1",
   });
 
   expect(parseSentFrame(mock.sent[0])).toMatchObject({
     type: "workspace_secretary.cancel.request",
     requestId: "req-secretary-cancel",
+    workspaceId: "workspace-1",
+    workspacePath: "/workspace/thoth",
+    topicId: "topic-main",
     uiAgentId: "draft-tab-1",
   });
 

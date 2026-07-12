@@ -18,6 +18,7 @@ import {
   type AgentPromptInput,
   type AgentRunOptions,
   type AgentRunResult,
+  type AgentResumeSessionOptions,
   type AgentRuntimeInfo,
   type AgentSession,
   type AgentSessionConfig,
@@ -1179,6 +1180,36 @@ const goalsCardJsonSchema = {
   },
 };
 
+const clarifyDecisionDeltaJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["affected_contract_fields", "safe_if_unanswered", "downstream_refs"],
+  properties: {
+    affected_contract_fields: {
+      type: "array",
+      minItems: 1,
+      items: { type: "string", minLength: 1 },
+    },
+    safe_if_unanswered: { type: "string", minLength: 1 },
+    eliminated_routes: { type: "array", items: { type: "string", minLength: 1 } },
+    irreversible_or_cost_impact: { type: "string" },
+    downstream_refs: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+  },
+};
+
+const clarifyConvergenceAuditJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["outcome", "summary"],
+  properties: {
+    outcome: { type: "string", enum: ["proceed", "revise_frontier", "blocked"] },
+    summary: { type: "string", minLength: 1 },
+    missing_material_frontier: { type: "array", items: { type: "string", minLength: 1 } },
+    rejected_question_patterns: { type: "array", items: { type: "string", minLength: 1 } },
+    task_memory_refs: { type: "array", items: { type: "string", minLength: 1 } },
+  },
+};
+
 const loopAcceptanceMatrixEntryJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -1199,13 +1230,21 @@ const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, Code
       inputSchema: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "why_now", "public_badge_summary", "frontier_ledger", "questions"],
+        required: [
+          "title",
+          "why_now",
+          "public_badge_summary",
+          "frontier_ledger",
+          "decision_delta",
+          "questions",
+        ],
         properties: {
           title: { type: "string", minLength: 1 },
           why_now: { type: "string", minLength: 1 },
           decision_it_changes: { type: "string", minLength: 1 },
           public_badge_summary: { type: "string", minLength: 1 },
           frontier_ledger: clarifyFrontierLedgerJsonSchema,
+          decision_delta: clarifyDecisionDeltaJsonSchema,
           questions: { type: "array", minItems: 2, maxItems: 4, items: clarifyQuestionJsonSchema },
           allow_choice_notes: { type: "boolean", const: true },
           allow_note_only: { type: "boolean", const: true },
@@ -1226,6 +1265,12 @@ const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, Code
           convergence_review: clarifyConvergenceReviewJsonSchema,
         },
       },
+    },
+    thoth_submit_clarify_convergence_audit: {
+      name: "thoth_submit_clarify_convergence_audit",
+      description:
+        "Submit the internal independent Clarify convergence audit. It never asks the user or creates a card. Use proceed only when the supplied contract is genuinely grounded; otherwise identify the next material user-owned frontier.",
+      inputSchema: clarifyConvergenceAuditJsonSchema,
     },
     thoth_submit_goals_card: {
       name: "thoth_submit_goals_card",
@@ -1261,7 +1306,7 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
   thoth_loop_submit_planexec_result: {
     name: "thoth_loop_submit_planexec_result",
     description:
-      "Submit the completed PlanExec result for the current Thoth background Loop goal after planning, implementing only this goal, and collecting validation evidence.",
+      "Submit the completed PlanExec result for the current Thoth background Loop goal after planning, implementing only this goal, and collecting validation evidence. goal_id must exactly equal the stable Current goal id supplied in the phase prompt, never its display ordinal.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1290,7 +1335,7 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
   thoth_loop_submit_review_verdict: {
     name: "thoth_loop_submit_review_verdict",
     description:
-      "Submit the independent Review verdict for the current Thoth background Loop goal. Pass advances and must bind concrete evidence to every acceptance. Fail consumes one failed-review budget and must include failed acceptance, root cause, next-round guidance and anti-repeat strategy.",
+      "Submit the independent Review verdict for the current Thoth background Loop goal. goal_id must exactly equal the stable Current goal id supplied in the phase prompt, never its display ordinal. Pass advances and must bind concrete evidence to every acceptance. Fail consumes one failed-review budget and must include failed acceptance, root cause, next-round guidance and anti-repeat strategy.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1311,6 +1356,43 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
         next_round_guidance: { type: "string" },
         anti_repeat_strategy: { type: "array", items: { type: "string", minLength: 1 } },
         evidence_summary: { type: "string", minLength: 1 },
+        deferred_goal_replan_proposal: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "base_goals_revision",
+            "rationale",
+            "expected_benefit",
+            "affected_goal_ids",
+            "goals",
+          ],
+          properties: {
+            base_goals_revision: { type: "integer", minimum: 0 },
+            rationale: { type: "string", minLength: 1 },
+            expected_benefit: { type: "string", minLength: 1 },
+            affected_goal_ids: {
+              type: "array",
+              minItems: 1,
+              items: { type: "string", minLength: 1 },
+            },
+            goals: { type: "array", minItems: 1, items: linearGoalJsonSchema },
+          },
+        },
+      },
+    },
+  },
+  thoth_submit_contract_preservation_audit: {
+    name: "thoth_submit_contract_preservation_audit",
+    description:
+      "Submit the independent internal audit of a proposed automatic replan. Proceed only if every changed future goal preserves the user-approved task goal, constraints, and acceptance.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["outcome", "summary"],
+      properties: {
+        outcome: { type: "string", enum: ["proceed", "reject", "blocked"] },
+        summary: { type: "string", minLength: 1 },
+        affected_goal_ids: { type: "array", items: { type: "string", minLength: 1 } },
       },
     },
   },
@@ -1422,7 +1504,11 @@ function stripInternalCodexRuntimeConfig(
   }
   const {
     thothClarifyRuntimeTools: _thothClarifyRuntimeTools,
+    thothClarifyAuditRuntimeTools: _thothClarifyAuditRuntimeTools,
+    thothContractAuditRuntimeTools: _thothContractAuditRuntimeTools,
     thothLoopRuntimeTools: _thothLoopRuntimeTools,
+    thothLoopSessionHome: _thothLoopSessionHome,
+    thothLoopPhase: _thothLoopPhase,
     ...providerConfig
   } = config;
   return providerConfig;
@@ -3328,6 +3414,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     private readonly autoReviewEnabled: boolean = false,
     private readonly agentId?: string,
     private readonly thothTools?: ThothToolCatalog,
+    private readonly historyOnly: boolean = false,
   ) {
     this.logger = logger.child({
       module: "agent",
@@ -3381,7 +3468,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     await this.loadSkills();
 
     if (this.currentThreadId) {
-      await this.ensureThreadLoaded();
+      if (!this.historyOnly) {
+        await this.ensureThreadLoaded();
+      }
       await this.loadPersistedHistory();
     }
 
@@ -5897,6 +5986,7 @@ export class CodexAppServerAgentClient implements AgentClient {
     handle: { sessionId: string; metadata?: Record<string, unknown> },
     overrides?: Partial<AgentSessionConfig>,
     launchContext?: AgentLaunchContext,
+    options?: AgentResumeSessionOptions,
   ): Promise<AgentSession> {
     const storedConfig = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
     const merged: AgentSessionConfig = {
@@ -5919,6 +6009,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       autoReviewEnabled,
       launchContext?.agentId,
       launchContext?.thothTools,
+      options?.historyOnly === true,
     );
     await session.connect();
     return session;

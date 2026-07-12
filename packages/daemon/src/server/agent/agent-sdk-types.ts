@@ -671,6 +671,14 @@ export interface ProviderCatalog {
   modes: AgentMode[];
 }
 
+export interface AgentResumeSessionOptions {
+  /**
+   * Hydrate persisted history without activating the provider session. This is
+   * used for archived agents so opening history remains a read-only operation.
+   */
+  historyOnly?: boolean;
+}
+
 export interface AgentClient {
   readonly provider: AgentProvider;
   readonly capabilities: AgentCapabilityFlags;
@@ -683,6 +691,7 @@ export interface AgentClient {
     handle: AgentPersistenceHandle,
     overrides?: Partial<AgentSessionConfig>,
     launchContext?: AgentLaunchContext,
+    options?: AgentResumeSessionOptions,
   ): Promise<AgentSession>;
   /**
    * Discover models and modes together. Implementations may use one upstream

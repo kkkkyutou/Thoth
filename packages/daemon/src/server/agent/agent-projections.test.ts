@@ -305,6 +305,12 @@ describe("toAgentPayload", () => {
     expect(payload.pendingPermissions).toEqual([]);
   });
 
+  it("marks daemon-owned agents so scoped timeline consumers can keep them out of the workspace directory", () => {
+    const payload = toAgentPayload(createManagedAgent({ internal: true }));
+
+    expect(payload.internal).toBe(true);
+  });
+
   it("propagates lifecycle status for all states", () => {
     for (const status of AGENT_LIFECYCLE_STATUSES) {
       const agent = createManagedAgent({ lifecycle: status });

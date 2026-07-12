@@ -9,7 +9,7 @@ import type {
   LoopTaskModel,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import {
-  backgroundTasksPanelRegistration,
+  BackgroundTasksSurface,
   shouldForwardLoopPhaseTimelineWheel,
 } from "./background-tasks-panel";
 
@@ -60,6 +60,7 @@ vi.mock("react-native-unistyles", () => ({
       const { uniProps: _uniProps, ...rest } = props;
       return React.createElement(Component, rest);
     },
+  useUnistyles: () => ({ theme }),
 }));
 
 vi.mock("lucide-react-native", () => ({
@@ -81,13 +82,6 @@ vi.mock("lucide-react-native", () => ({
 
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeClient: () => clientMock,
-}));
-
-vi.mock("@/panels/pane-context", () => ({
-  usePaneContext: () => ({
-    serverId: "server-1",
-    target: { kind: "background_tasks", workspaceId: "workspace-1" },
-  }),
 }));
 
 vi.mock("@/agent-stream/view", () => ({
@@ -158,6 +152,9 @@ function loopTask(status: LoopTaskModel["status"] = "running"): LoopTaskModel {
       maxFailedReviews: 10,
       usedFailedReviews: 1,
     },
+    recentEvents: [],
+    taskMemoryRefs: [],
+    replanHistory: [],
     currentGoalId: "goal-2",
     currentPhase: "review",
     goalRound: 2,
@@ -317,7 +314,9 @@ function setupClient(task = loopTask()): void {
   });
 }
 
-const Panel = backgroundTasksPanelRegistration.component;
+function renderSurface() {
+  return render(<BackgroundTasksSurface serverId="server-1" workspaceId="workspace-1" />);
+}
 
 afterEach(() => {
   cleanup();
@@ -325,7 +324,7 @@ afterEach(() => {
   listeners.clear();
 });
 
-describe("BackgroundTasksPanel", () => {
+describe("BackgroundTasksSurface", () => {
   it("detects when nested phase timeline wheel input should chain to the outer detail scroll", () => {
     expect(
       shouldForwardLoopPhaseTimelineWheel({
@@ -360,7 +359,7 @@ describe("BackgroundTasksPanel", () => {
   it("lists Loop tasks, opens detail, shows linear goals, and embeds the selected phase timeline", async () => {
     setupClient();
 
-    render(<Panel />);
+    renderSurface();
 
     await waitFor(() => expect(screen.getByText("Sortable library")).toBeTruthy());
     await waitFor(() => expect(screen.getByText(/failed reviews 1\/10/)).toBeTruthy());
@@ -378,12 +377,23 @@ describe("BackgroundTasksPanel", () => {
       projection: "projected",
     });
     await waitFor(() => expect(scrollToBottomMock).toHaveBeenCalledWith("jump-to-bottom"));
+    expect(screen.getByRole("separator")).toBeTruthy();
+  });
+
+  it("shows a real phase loading error instead of claiming a completed phase has no session", async () => {
+    setupClient();
+    clientMock.fetchAgentTimeline.mockRejectedValueOnce(new Error("Phase agent record not found"));
+
+    renderSurface();
+
+    await waitFor(() => expect(screen.getByText("Phase agent record not found")).toBeTruthy());
+    expect(screen.queryByText("This phase has not created a provider session yet.")).toBeNull();
   });
 
   it("chains mouse wheel from the phase timeline to the outer detail scroll at timeline edges", async () => {
     setupClient();
 
-    render(<Panel />);
+    renderSurface();
 
     await waitFor(() => expect(screen.getByTestId("agent-chat-scroll")).toBeTruthy());
     const detailScroll = screen.getByTestId("background-task-detail-scroll");
@@ -401,7 +411,7 @@ describe("BackgroundTasksPanel", () => {
   it("keeps wheel input inside the phase timeline while that timeline can still scroll", async () => {
     setupClient();
 
-    render(<Panel />);
+    renderSurface();
 
     await waitFor(() => expect(screen.getByTestId("agent-chat-scroll")).toBeTruthy());
     const detailScroll = screen.getByTestId("background-task-detail-scroll");
@@ -419,7 +429,7 @@ describe("BackgroundTasksPanel", () => {
   it("allows phase switching and refreshes detail from background task updates", async () => {
     setupClient();
 
-    render(<Panel />);
+    renderSurface();
     await waitFor(() => expect(screen.getByTestId("loop-phase-planexec")).toBeTruthy());
 
     fireEvent.click(screen.getByTestId("loop-phase-planexec"));
@@ -444,7 +454,7 @@ describe("BackgroundTasksPanel", () => {
   it("routes Pause/Resume/Stop actions through the daemon client", async () => {
     setupClient();
 
-    render(<Panel />);
+    renderSurface();
     await waitFor(() => expect(screen.getByText("Pause")).toBeTruthy());
 
     fireEvent.click(screen.getByText("Pause"));
@@ -454,5 +464,119 @@ describe("BackgroundTasksPanel", () => {
         action: "pause",
       }),
     );
+  });
+
+  it("shows the durable budget envelope and sends only explicit budget decisions", async () => {
+    const task: LoopTaskModel = {
+      ...loopTask("budget_wait"),
+      budgetEnvelope: {
+        maxActiveDurationMs: 7_200_000,
+        maxTokens: 1_000_000,
+        maxToolCalls: 300,
+        maxChangedFiles: 75,
+        maxChangedLines: 25_000,
+        maxReplans: 1,
+        maxConsecutiveSameRootCause: 1,
+      },
+      budgetUsage: {
+        activeDurationMs: 245_000,
+        tokens: 0,
+        toolCalls: 12,
+        changedFiles: 2,
+        changedLines: 40,
+        replans: 0,
+        consecutiveSameRootCause: 0,
+        tokenMetered: false,
+      },
+      budgetWait: {
+        reason: "Changed-file limit reached.",
+        exhaustedDimensions: ["changed files"],
+        enteredAt: "2026-07-10T00:00:00.000Z",
+      },
+    };
+    setupClient(task);
+    clientMock.actOnBackgroundTask.mockResolvedValue({ requestId: "action-budget", task });
+
+    renderSurface();
+
+    await waitFor(() => expect(screen.getByTestId("loop-budget-envelope")).toBeTruthy());
+    expect(screen.getByText(/Active 4m \/ 2h 0m/)).toBeTruthy();
+    expect(screen.getByText(/tokens unmetered/)).toBeTruthy();
+    expect(screen.getByTestId("loop-budget-wait")).toBeTruthy();
+    expect(screen.getByText("Changed-file limit reached.")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("background-task-budget-continue"));
+    await waitFor(() =>
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith({
+        taskId: "loop-task-1",
+        action: "budget_continue",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("background-task-review-only").getAttribute("aria-disabled"),
+      ).not.toBe("true"),
+    );
+    fireEvent.click(screen.getByTestId("background-task-review-only"));
+    await waitFor(() =>
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith({
+        taskId: "loop-task-1",
+        action: "review_only",
+      }),
+    );
+  });
+
+  it("keeps evidence-invalid and concurrent-workspace authority states visible", async () => {
+    setupClient(loopTask("evidence_invalid"));
+
+    renderSurface();
+
+    await waitFor(() =>
+      expect(screen.getByText(/Evidence needs attention · failed reviews/)).toBeTruthy(),
+    );
+    expect(screen.getByTestId("loop-evidence-warning")).toBeTruthy();
+    expect(screen.getByText("Evidence held")).toBeTruthy();
+
+    emit("background_task.update", {
+      type: "background_task.update",
+      payload: {
+        task: loopTask("workspace_changed_concurrently"),
+        summary: summary("workspace_changed_concurrently"),
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText(/Workspace changed · failed reviews/)).toBeTruthy(),
+    );
+  });
+
+  it("keeps Resume left of Pause and enables it only after the task has stopped", async () => {
+    setupClient();
+
+    renderSurface();
+    await waitFor(() => expect(screen.getByTestId("background-task-resume")).toBeTruthy());
+    const resume = screen.getByTestId("background-task-resume");
+    const pause = screen.getByTestId("background-task-pause");
+    const stop = screen.getByTestId("background-task-stop");
+    expect(resume.compareDocumentPosition(pause) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    emit("background_task.update", {
+      type: "background_task.update",
+      payload: {
+        task: loopTask("stopped"),
+        summary: summary("stopped"),
+      },
+    });
+    await waitFor(() => expect(screen.getByText(/Stopped · failed reviews/)).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("background-task-resume"));
+    await waitFor(() =>
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith({
+        taskId: "loop-task-1",
+        action: "resume",
+      }),
+    );
+    expect(stop).toBeTruthy();
   });
 });

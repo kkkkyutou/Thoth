@@ -3,7 +3,10 @@ import type { StreamItem } from "@/types/stream";
 import {
   deriveWorkspaceSecretaryDraftTitleFromText,
   isWorkspaceSecretaryModelRunning,
+  resolveWorkspaceSecretaryTurnInFlight,
   resolveWorkspaceSecretaryDraftTitleFromModel,
+  shouldApplyWorkspaceSecretaryModelUpdateForDraft,
+  shouldApplyWorkspaceSecretarySnapshotForDraft,
   shouldHydrateWorkspaceSecretarySnapshotForDraft,
   shouldKeepWorkspaceSecretaryAuthorityTurnRunning,
 } from "@/composer/draft/workspace-tab-core";
@@ -11,13 +14,78 @@ import type { ThothCleanUiModel } from "@thoth/protocol/workspace-secretary/rpc-
 
 describe("shouldHydrateWorkspaceSecretarySnapshotForDraft", () => {
   it("keeps a fresh New Agent draft empty instead of hydrating the workspace active topic", () => {
-    expect(shouldHydrateWorkspaceSecretarySnapshotForDraft({ localStreamItemCount: 0 })).toBe(
-      false,
-    );
+    expect(shouldHydrateWorkspaceSecretarySnapshotForDraft({})).toBe(false);
   });
 
-  it("allows snapshot merge once the draft already owns local secretary stream items", () => {
-    expect(shouldHydrateWorkspaceSecretarySnapshotForDraft({ localStreamItemCount: 1 })).toBe(true);
+  it("allows snapshot merge for a persisted draft bound to a Workspace Secretary topic", () => {
+    expect(
+      shouldHydrateWorkspaceSecretarySnapshotForDraft({
+        secretaryTopicId: "topic-renderer",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("shouldApplyWorkspaceSecretaryModelUpdateForDraft", () => {
+  it("ignores workspace-wide model updates for a fresh New Agent draft", () => {
+    expect(shouldApplyWorkspaceSecretaryModelUpdateForDraft({})).toBe(false);
+  });
+
+  it("rejects model updates when a local stream exists but the draft is still unbound", () => {
+    expect(
+      shouldApplyWorkspaceSecretaryModelUpdateForDraft({
+        modelActiveTopicId: "topic-other",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a stale workspace broadcast while this draft is beginning submission", () => {
+    expect(
+      shouldApplyWorkspaceSecretaryModelUpdateForDraft({
+        modelActiveTopicId: "topic-other",
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts model updates for a matching persisted Workspace Secretary topic binding", () => {
+    expect(
+      shouldApplyWorkspaceSecretaryModelUpdateForDraft({
+        secretaryTopicId: "topic-renderer",
+        modelActiveTopicId: "topic-renderer",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects model updates for a different Workspace Secretary topic binding", () => {
+    expect(
+      shouldApplyWorkspaceSecretaryModelUpdateForDraft({
+        secretaryTopicId: "topic-renderer",
+        modelActiveTopicId: "topic-other",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldApplyWorkspaceSecretarySnapshotForDraft", () => {
+  it("rejects an unbound draft snapshot and accepts only a matching bound topic", () => {
+    expect(
+      shouldApplyWorkspaceSecretarySnapshotForDraft({ modelActiveTopicId: "topic-current" }),
+    ).toBe(false);
+    expect(
+      shouldApplyWorkspaceSecretarySnapshotForDraft({
+        secretaryTopicId: "topic-current",
+        modelActiveTopicId: "topic-current",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a snapshot from another topic", () => {
+    expect(
+      shouldApplyWorkspaceSecretarySnapshotForDraft({
+        secretaryTopicId: "topic-current",
+        modelActiveTopicId: "topic-stale",
+      }),
+    ).toBe(false);
   });
 });
 
@@ -53,6 +121,44 @@ describe("Workspace Secretary draft title helpers", () => {
     expect(
       isWorkspaceSecretaryModelRunning(createSecretaryModelWithTopicTitle("实现高性能快速排序")),
     ).toBe(false);
+  });
+});
+
+describe("resolveWorkspaceSecretaryTurnInFlight", () => {
+  it("keeps an authority continuation running across a stale ready progress snapshot", () => {
+    expect(
+      resolveWorkspaceSecretaryTurnInFlight({
+        current: true,
+        model: createSecretaryModelWithTopicTitle("实现高性能快速排序"),
+        reason: "provider_progress",
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps a submitted card continuation running when the RPC response is ready but nonterminal", () => {
+    expect(
+      resolveWorkspaceSecretaryTurnInFlight({
+        current: true,
+        model: createSecretaryModelWithTopicTitle("实现高性能快速排序"),
+      }),
+    ).toBe(true);
+  });
+
+  it("stops only on an explicit provider terminal update", () => {
+    expect(
+      resolveWorkspaceSecretaryTurnInFlight({
+        current: true,
+        model: createSecretaryModelWithTopicTitle("实现高性能快速排序"),
+        reason: "provider_turn_completed",
+      }),
+    ).toBe(false);
+  });
+
+  it("starts when the daemon reports loading", () => {
+    const model = createSecretaryModelWithTopicTitle("实现高性能快速排序");
+    model.secretary.status = { kind: "loading", title: "loading", detail: "loading" };
+
+    expect(resolveWorkspaceSecretaryTurnInFlight({ current: false, model })).toBe(true);
   });
 });
 
@@ -102,6 +208,34 @@ function assistantItem(id: string): StreamItem {
     id,
     text: "正在拆解需求",
     timestamp: new Date(1000),
+  };
+}
+
+function userItem(id: string): StreamItem {
+  return {
+    kind: "user_message",
+    id,
+    text: "实现一个渲染器",
+    timestamp: new Date(1000),
+  };
+}
+
+function runningToolItem(id: string, status: "running" | "completed" = "running"): StreamItem {
+  return {
+    kind: "tool_call",
+    id,
+    timestamp: new Date(1000),
+    payload: {
+      source: "agent",
+      data: {
+        provider: "codex",
+        callId: id,
+        name: "Shell",
+        status,
+        error: null,
+        detail: { type: "shell", command: "npm test", cwd: "/repo" },
+      },
+    },
   };
 }
 
@@ -176,69 +310,116 @@ function goalCardItem(input?: { submitted?: boolean }): StreamItem {
 }
 
 describe("shouldKeepWorkspaceSecretaryAuthorityTurnRunning", () => {
-  it("keeps a non-none Clarify draft running before the first authority card arrives", () => {
+  it("uses the daemon in-flight state before the first authority card arrives", () => {
     expect(
       shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-        secretarySubmitted: true,
-        secretarySubmitting: false,
-        clarifyStrength: "dive",
+        secretaryTurnInFlight: true,
         streamItems: [assistantItem("assistant-1")],
       }),
     ).toBe(true);
   });
 
-  it("does not keep Quick + none running after ordinary assistant output", () => {
+  it("restores running from retained live tool state while a remounted tab hydrates", () => {
     expect(
       shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-        secretarySubmitted: true,
-        secretarySubmitting: false,
-        clarifyStrength: "none",
-        streamItems: [assistantItem("assistant-1")],
+        secretaryTurnInFlight: false,
+        streamItems: [userItem("user-1"), runningToolItem("shell-1")],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat a completed retained tool as live work", () => {
+    expect(
+      shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
+        secretaryTurnInFlight: false,
+        streamItems: [userItem("user-1"), runningToolItem("shell-1", "completed")],
       }),
     ).toBe(false);
   });
 
-  it("keeps a submitted Clarify card running while the next Clarify or Task card is expected", () => {
+  it("does not turn a completed Direct conversation back into running after config changes", () => {
     expect(
       shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-        secretarySubmitted: true,
-        secretarySubmitting: false,
-        clarifyStrength: "dive",
+        secretaryTurnInFlight: false,
+        streamItems: [userItem("user-1"), assistantItem("assistant-1")],
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores stale authority cards from before the latest user message", () => {
+    expect(
+      shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
+        secretaryTurnInFlight: false,
+        streamItems: [
+          clarifyCardItem({ submitted: true, submittedSummary: "已确认 3 个分支维度" }),
+          userItem("user-2"),
+          assistantItem("assistant-2"),
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("does not infer a live turn from a submitted Clarify card without daemon or tool evidence", () => {
+    expect(
+      shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
+        secretaryTurnInFlight: false,
         streamItems: [
           clarifyCardItem({ submitted: true, submittedSummary: "已确认 3 个分支维度" }),
         ],
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("stops keeping the turn running when Clarify was paused", () => {
     expect(
       shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-        secretarySubmitted: true,
-        secretarySubmitting: false,
-        clarifyStrength: "dive",
+        secretaryTurnInFlight: false,
         streamItems: [clarifyCardItem({ submitted: true, submittedSummary: "已暂停继续询问" })],
       }),
     ).toBe(false);
   });
 
-  it("keeps a submitted Task card running while the Pyramid Plan card is expected", () => {
+  it("stops keeping the turn running when the user interrupted it", () => {
     expect(
       shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-        secretarySubmitted: true,
-        secretarySubmitting: false,
-        clarifyStrength: "balanced",
+        secretaryTurnInFlight: false,
+        streamItems: [
+          clarifyCardItem({
+            submitted: true,
+            submittedSummary: "已中断当前请求，可继续输入。",
+          }),
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("does not resurrect an expired Clarify card as a running turn after refresh", () => {
+    expect(
+      shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
+        secretaryTurnInFlight: false,
+        streamItems: [
+          clarifyCardItem({
+            submitted: true,
+            submittedSummary: "这张询问已经失效；请使用当前 topic 最新显示的卡片。",
+          }),
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("does not infer a live turn from a submitted Task card without daemon or tool evidence", () => {
+    expect(
+      shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
+        secretaryTurnInFlight: false,
         streamItems: [taskCardItem({ submitted: true, submittedSummary: "已确认 Task" })],
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("does not keep running after a submitted Pyramid Plan card", () => {
     expect(
       shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-        secretarySubmitted: true,
-        secretarySubmitting: false,
-        clarifyStrength: "balanced",
+        secretaryTurnInFlight: false,
         streamItems: [goalCardItem({ submitted: true })],
       }),
     ).toBe(false);

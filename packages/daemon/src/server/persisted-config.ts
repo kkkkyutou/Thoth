@@ -12,6 +12,7 @@ import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.j
 import { TerminalProfileSchema } from "@thoth/protocol/messages";
 import { DEFAULT_DIRECT_DAEMON_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
 import {
+  SecretaryRuntimeStatusModelSchema,
   SecretaryTopicModelSchema,
   SecretaryTurnSchema,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
@@ -196,6 +197,33 @@ const WorkspaceSecretaryConfigSchema = z
             activeTopicId: z.string().min(1),
             topics: z.array(SecretaryTopicModelSchema).min(1),
             turns: z.array(SecretaryTurnSchema),
+            topicStates: z
+              .array(
+                z
+                  .object({
+                    topicId: z.string().min(1),
+                    turns: z.array(SecretaryTurnSchema),
+                    currentClarifyState: z.string().min(1),
+                    activeTurnPhase: z.string().min(1),
+                    activeTopicProviderBacked: z.boolean().optional(),
+                    status: SecretaryRuntimeStatusModelSchema.optional(),
+                  })
+                  .strict(),
+              )
+              .optional(),
+            // Workspace Secretary provider agents are daemon-owned and hidden from the normal
+            // Agent surface. Keep their topic mapping so a restarted daemon can resume the
+            // correct provider session instead of silently creating an unrelated turn.
+            topicAgents: z
+              .array(
+                z
+                  .object({
+                    agentKey: z.string().min(1),
+                    agentId: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .optional(),
             nextTopicIndex: z.number().int().min(1),
             currentClarifyState: z.string().min(1),
             activeTurnPhase: z.string().min(1),

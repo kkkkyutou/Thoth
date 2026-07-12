@@ -111,23 +111,24 @@ function asInternals(session: CodexTestSession): CodexSessionTestAccess {
 }
 
 function createRuntimeToolCatalogStub(input?: {
+  toolNames?: string[];
   execute?: (
     name: string,
     args: unknown,
     context: unknown,
   ) => Promise<{ text: string; isError?: boolean }>;
 }): ThothToolCatalog {
-  const tools = new Map([
-    [
-      "thoth_submit_clarify_card",
+  const tools = new Map(
+    (input?.toolNames ?? ["thoth_submit_clarify_card"]).map((name) => [
+      name,
       {
-        name: "thoth_submit_clarify_card",
-        title: "Clarify",
-        description: "Submit a Thoth Clarify card",
+        name,
+        title: name,
+        description: `Submit ${name}`,
         handler: async () => ({ content: [{ type: "text", text: "ok" }] }),
       },
-    ],
-  ]);
+    ]),
+  );
   return {
     tools,
     getTool: (name) => tools.get(name),
@@ -591,7 +592,11 @@ describe("Codex app-server provider", () => {
         extra: {
           codex: {
             thothClarifyRuntimeTools: true,
+            thothClarifyAuditRuntimeTools: true,
+            thothContractAuditRuntimeTools: true,
             thothLoopRuntimeTools: true,
+            thothLoopSessionHome: "/tmp/loop-session-home",
+            thothLoopPhase: "planexec",
             providerVisibleOption: "keep-me",
           },
         },
@@ -616,10 +621,94 @@ describe("Codex app-server provider", () => {
     const params = startCall?.params as Record<string, unknown> | undefined;
     expect(params?.config).toEqual({ providerVisibleOption: "keep-me" });
     expect(JSON.stringify(params?.config)).not.toContain("thothClarifyRuntimeTools");
+    expect(JSON.stringify(params?.config)).not.toContain("thothClarifyAuditRuntimeTools");
+    expect(JSON.stringify(params?.config)).not.toContain("thothContractAuditRuntimeTools");
     expect(JSON.stringify(params?.config)).not.toContain("thothLoopRuntimeTools");
+    expect(JSON.stringify(params?.config)).not.toContain("thothLoopSessionHome");
+    expect(JSON.stringify(params?.config)).not.toContain("thothLoopPhase");
     expect(params?.dynamicTools).toEqual([
       expect.objectContaining({ name: "thoth_submit_clarify_card" }),
     ]);
+  });
+
+  test("exposes only the convergence-audit semantic tool to an audit session", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const fakeClient: CodexClientLike = {
+      async request(method: string, params?: unknown) {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "clarify-audit-thread" } };
+        }
+        return null;
+      },
+    };
+    const session = new CodexAppServerAgentSession(
+      createConfig({
+        thinkingOptionId: "medium",
+        extra: { codex: { thothClarifyAuditRuntimeTools: true } },
+      }),
+      null,
+      createTestLogger(),
+      () => {
+        throw new Error("Test session cannot spawn Codex app-server");
+      },
+      {},
+      false,
+      false,
+      false,
+      "clarify-audit-agent",
+      createRuntimeToolCatalogStub({ toolNames: ["thoth_submit_clarify_convergence_audit"] }),
+    );
+    castInternals<{ client: CodexClientLike }>(session).client = fakeClient;
+
+    await asInternals(session as CodexTestSession).ensureThread();
+
+    const startCall = requests.find((request) => request.method === "thread/start");
+    const params = startCall?.params as Record<string, unknown> | undefined;
+    expect(
+      (params?.dynamicTools as Array<{ name: string }> | undefined)?.map((tool) => tool.name),
+    ).toEqual(["thoth_submit_clarify_convergence_audit"]);
+    expect(params?.config).toBeUndefined();
+  });
+
+  test("exposes only the contract-audit semantic tool to a replan audit session", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const fakeClient: CodexClientLike = {
+      async request(method: string, params?: unknown) {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "contract-audit-thread" } };
+        }
+        return null;
+      },
+    };
+    const session = new CodexAppServerAgentSession(
+      createConfig({
+        thinkingOptionId: "medium",
+        extra: { codex: { thothContractAuditRuntimeTools: true } },
+      }),
+      null,
+      createTestLogger(),
+      () => {
+        throw new Error("Test session cannot spawn Codex app-server");
+      },
+      {},
+      false,
+      false,
+      false,
+      "contract-audit-agent",
+      createRuntimeToolCatalogStub({ toolNames: ["thoth_submit_contract_preservation_audit"] }),
+    );
+    castInternals<{ client: CodexClientLike }>(session).client = fakeClient;
+
+    await asInternals(session as CodexTestSession).ensureThread();
+
+    const startCall = requests.find((request) => request.method === "thread/start");
+    const params = startCall?.params as Record<string, unknown> | undefined;
+    expect(
+      (params?.dynamicTools as Array<{ name: string }> | undefined)?.map((tool) => tool.name),
+    ).toEqual(["thoth_submit_contract_preservation_audit"]);
+    expect(params?.config).toBeUndefined();
   });
 
   test("handles Codex item/tool/call through the Thoth runtime catalog", async () => {
@@ -1044,6 +1133,78 @@ describe("Codex app-server provider", () => {
 
     expect(threadRequests).toEqual(["thread/loaded/list", "thread/resume"]);
     expect(outcome).toBe("rejected");
+    appServer.assertNoErrors();
+  });
+
+  test("history-only resume reads an archived thread without activating it", async () => {
+    const threadRequests: string[] = [];
+    const appServer = createFakeCodexAppServer({
+      "thread/loaded/list": () => {
+        threadRequests.push("thread/loaded/list");
+        return { data: [] };
+      },
+      "thread/resume": () => {
+        threadRequests.push("thread/resume");
+        return Promise.reject(
+          new Error("archived thread must not be resumed while viewing history"),
+        );
+      },
+      "thread/read": () => {
+        threadRequests.push("thread/read");
+        return {
+          thread: {
+            id: "archived-thread-id",
+            turns: [
+              {
+                items: [
+                  {
+                    type: "userMessage",
+                    id: "history-user",
+                    content: [{ type: "text", text: "Original question" }],
+                  },
+                  {
+                    type: "agentMessage",
+                    id: "history-assistant",
+                    text: "Original answer",
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      },
+    });
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    castInternals<{ goalsEnabledPromise: Promise<boolean> | null }>(provider).goalsEnabledPromise =
+      Promise.resolve(false);
+    castInternals<{ spawnAppServer: () => Promise<ChildProcessWithoutNullStreams> }>(
+      provider,
+    ).spawnAppServer = async () => appServer.child;
+
+    const session = await provider.resumeSession(
+      {
+        sessionId: "archived-thread-id",
+        metadata: {
+          cwd: "/tmp/codex-history-only-test",
+          modeId: "auto",
+          model: "gpt-5.4",
+        },
+      },
+      undefined,
+      undefined,
+      { historyOnly: true },
+    );
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      history.push(event);
+    }
+
+    expect(threadRequests).toEqual(["thread/read"]);
+    expect(
+      history.map((event) => (event.type === "timeline" ? event.item.type : event.type)),
+    ).toEqual(["user_message", "assistant_message"]);
+
+    await session.close();
     appServer.assertNoErrors();
   });
 

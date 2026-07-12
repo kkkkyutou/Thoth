@@ -16,11 +16,15 @@ export function normalizeWorkspaceTabTarget(
     }
     const setup = normalizeWorkspaceDraftTabSetup(value.setup);
     const title = trimOptionalString(typeof value.title === "string" ? value.title : null);
+    const secretaryTopicId = trimOptionalString(
+      typeof value.secretaryTopicId === "string" ? value.secretaryTopicId : null,
+    );
     return {
       kind: "draft",
       draftId,
       ...(setup ? { setup } : {}),
       ...(title ? { title } : {}),
+      ...(secretaryTopicId ? { secretaryTopicId } : {}),
     };
   }
   if (value.kind === "agent") {
@@ -34,10 +38,6 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "browser") {
     const browserId = trimNonEmpty(value.browserId);
     return browserId ? { kind: "browser", browserId } : null;
-  }
-  if (value.kind === "background_tasks") {
-    const workspaceId = trimNonEmpty(value.workspaceId);
-    return workspaceId ? { kind: "background_tasks", workspaceId } : null;
   }
   if (value.kind === "file") {
     return normalizeFileTabTarget(value);
@@ -84,7 +84,8 @@ export function workspaceTabTargetsEqual(
     return (
       left.draftId === right.draftId &&
       workspaceDraftTabSetupsEqual(left.setup, right.setup) &&
-      (left.title ?? null) === (right.title ?? null)
+      (left.title ?? null) === (right.title ?? null) &&
+      (left.secretaryTopicId ?? null) === (right.secretaryTopicId ?? null)
     );
   }
   if (left.kind === "agent" && right.kind === "agent") {
@@ -95,9 +96,6 @@ export function workspaceTabTargetsEqual(
   }
   if (left.kind === "browser" && right.kind === "browser") {
     return left.browserId === right.browserId;
-  }
-  if (left.kind === "background_tasks" && right.kind === "background_tasks") {
-    return left.workspaceId === right.workspaceId;
   }
   if (left.kind === "file" && right.kind === "file") {
     return workspaceFileLocationsEqual(left, right);
@@ -153,9 +151,6 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "browser") {
     return `browser_${target.browserId}`;
-  }
-  if (target.kind === "background_tasks") {
-    return `background_tasks_${target.workspaceId}`;
   }
   if (target.kind === "setup") {
     return `setup_${target.workspaceId}`;

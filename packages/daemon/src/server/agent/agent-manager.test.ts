@@ -25,6 +25,7 @@ import type {
   AgentPromptInput,
   AgentProvider,
   AgentPersistenceHandle,
+  AgentResumeSessionOptions,
   AgentRunOptions,
   AgentRunResult,
   AgentSession,
@@ -1741,6 +1742,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     readonly capabilities = TEST_CAPABILITIES;
     lastResumeOverrides: Partial<AgentSessionConfig> | undefined;
     lastResumeLaunchContext: AgentLaunchContext | undefined;
+    lastResumeOptions: AgentResumeSessionOptions | undefined;
 
     async isAvailable(): Promise<boolean> {
       return true;
@@ -1768,9 +1770,11 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
       handle: AgentPersistenceHandle,
       overrides?: Partial<AgentSessionConfig>,
       launchContext?: AgentLaunchContext,
+      options?: AgentResumeSessionOptions,
     ): Promise<AgentSession> {
       this.lastResumeOverrides = overrides;
       this.lastResumeLaunchContext = launchContext;
+      this.lastResumeOptions = options;
       const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
       const merged: AgentSessionConfig = {
         ...metadata,
@@ -1809,17 +1813,27 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     },
   };
 
-  const resumed = await manager.resumeAgentFromPersistence(handle, {
-    cwd: workdir,
-    systemPrompt: "new prompt",
-    mcpServers: {
-      thoth: {
-        type: "stdio",
-        command: "node",
-        args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/thoth.sock"],
+  const resumed = await manager.resumeAgentFromPersistence(
+    handle,
+    {
+      cwd: workdir,
+      systemPrompt: "new prompt",
+      extra: {
+        codex: {
+          thothLoopSessionHome: "/tmp/thoth-loop-session-home",
+        },
+      },
+      mcpServers: {
+        thoth: {
+          type: "stdio",
+          command: "node",
+          args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/thoth.sock"],
+        },
       },
     },
-  });
+    undefined,
+    { historyOnly: true },
+  );
 
   expect(resumed.config.systemPrompt).toBe("new prompt");
   expect(resumed.config.mcpServers).toEqual({
@@ -1844,9 +1858,11 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
   expect(client.lastResumeLaunchContext).toEqual({
     agentId: resumed.id,
     env: {
+      CODEX_HOME: "/tmp/thoth-loop-session-home",
       THOTH_AGENT_ID: resumed.id,
     },
   });
+  expect(client.lastResumeOptions).toEqual({ historyOnly: true });
 });
 
 test("importProviderSession imports the selected session without listing and publishes ready state", async () => {
@@ -4407,6 +4423,43 @@ test("listAgents excludes internal agents", async () => {
   const agents = manager.listAgents();
   expect(agents).toHaveLength(1);
   expect(agents[0]?.config.title).toBe("Normal Agent");
+});
+
+test("persistInternal stores a hidden internal agent for later timeline recovery", async () => {
+  const internalAgentId = "00000000-0000-4000-8000-000000000205";
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-durable-internal-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+    idFactory: () => internalAgentId,
+  });
+
+  await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Loop PlanExec",
+      internal: true,
+    },
+    undefined,
+    {
+      persistInternal: true,
+      initialTitle: "PlanExec: Core API",
+      labels: { surface: "thoth-loop" },
+    },
+  );
+
+  expect(manager.listAgents()).toEqual([]);
+  expect(await storage.get(internalAgentId)).toMatchObject({
+    id: internalAgentId,
+    internal: true,
+    title: "PlanExec: Core API",
+    labels: { surface: "thoth-loop" },
+    persistence: { provider: "codex" },
+  });
 });
 
 test("getAgent returns internal agents by ID", async () => {

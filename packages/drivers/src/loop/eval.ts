@@ -275,9 +275,9 @@ function evaluateScenario(scenario: LoopGoldenScenario): LoopEvalScenarioResult 
     if (
       after >= scenario.budgetTransition.maxFailedReviews &&
       scenario.budgetTransition.reviewOutcome === "fail" &&
-      scenario.budgetTransition.expectedTaskStatus !== "blocked"
+      scenario.budgetTransition.expectedTaskStatus !== "budget_wait"
     ) {
-      observedFailures.push("Budget exhaustion must block with latest Review verdict");
+      observedFailures.push("Budget exhaustion must enter budget_wait with latest Review verdict");
     }
   }
   if (scenario.providerFailure) {

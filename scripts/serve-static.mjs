@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { request as httpsRequest } from "node:https";
 import { createServer } from "node:http";
 import { createConnection } from "node:net";
 import { extname, join, normalize, resolve, sep } from "node:path";
@@ -89,15 +90,47 @@ function isRelayHealthPayload(value) {
   );
 }
 
-async function serveRelayHealth(res) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6_000);
-  try {
-    const response = await fetch(relayHealthUrl, {
-      method: "GET",
-      signal: controller.signal,
+function fetchRelayHealthPayload() {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      relayHealthUrl,
+      {
+        family: 4,
+        timeout: 6_000,
+        headers: {
+          accept: "application/json",
+        },
+      },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          if ((response.statusCode ?? 500) < 200 || (response.statusCode ?? 500) >= 300) {
+            reject(new Error(`Relay health returned ${response.statusCode ?? "unknown"}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy(new Error("Relay health timed out"));
     });
-    const payload = response.ok ? await response.json() : null;
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function serveRelayHealth(res) {
+  try {
+    const payload = await fetchRelayHealthPayload();
     if (!isRelayHealthPayload(payload)) {
       res.writeHead(502, {
         "Content-Type": "application/json; charset=utf-8",
@@ -124,8 +157,6 @@ async function serveRelayHealth(res) {
       "Cache-Control": "no-store",
     });
     res.end(JSON.stringify({ status: "unavailable", service: "thoth-relay" }));
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

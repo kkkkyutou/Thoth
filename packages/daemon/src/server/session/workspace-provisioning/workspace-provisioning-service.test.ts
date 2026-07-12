@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 
 import { afterEach, beforeEach, expect, test } from "vitest";
 
@@ -121,18 +121,18 @@ test("re-opening an archived workspace by its exact path unarchives it and keeps
   expect(reopened.archivedAt).toBeNull();
 });
 
-test("opening a subpath of an archived git workspace mints a fresh workspace at the exact subpath", async () => {
+test("opening a subpath of an archived git workspace unarchives the canonical root workspace", async () => {
   const repo = path.join(tmpDir, "repo");
   gitRoots.add(repo);
   const canonical = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await workspaceRegistry.archive(canonical.workspaceId, ARCHIVED_AT);
   const sub = path.join(repo, "packages", "app");
 
-  const fresh = await provisioning.findOrCreateWorkspaceForDirectory(sub);
+  const reopened = await provisioning.findOrCreateWorkspaceForDirectory(sub);
 
-  expect(fresh.cwd).toBe(sub);
-  expect(fresh.workspaceId).not.toBe(canonical.workspaceId);
-  expect((await workspaceRegistry.get(canonical.workspaceId))?.archivedAt).toBe(ARCHIVED_AT);
+  expect(reopened.cwd).toBe(repo);
+  expect(reopened.workspaceId).toBe(canonical.workspaceId);
+  expect((await workspaceRegistry.get(canonical.workspaceId))?.archivedAt).toBeNull();
 });
 
 test("ensureWorkspaceRecordUnarchived clears archivedAt on the workspace and its project", async () => {
@@ -193,15 +193,29 @@ test("resolveOrCreateWorkspaceIdForCreateAgent creates a titled workspace when n
   expect(created?.title).toBe("My Title");
 });
 
-test("createWorkspaceForDirectory always mints a fresh workspace even when one already occupies the cwd", async () => {
+test("createWorkspaceForDirectory reuses the canonical workspace when one already occupies the cwd", async () => {
   const repo = path.join(tmpDir, "repo");
   gitRoots.add(repo);
 
   const first = await provisioning.createWorkspaceForDirectory(repo);
   const second = await provisioning.createWorkspaceForDirectory(repo);
 
-  expect(second.workspaceId).not.toBe(first.workspaceId);
-  expect(await workspaceRegistry.list()).toHaveLength(2);
+  expect(second.workspaceId).toBe(first.workspaceId);
+  expect(await workspaceRegistry.list()).toHaveLength(1);
+});
+
+test("symlink-equivalent directories reuse the same workspace", async () => {
+  const repo = path.join(tmpDir, "repo");
+  const link = path.join(tmpDir, "repo-link");
+  mkdirSync(repo, { recursive: true });
+  symlinkSync(repo, link, "dir");
+  gitRoots.add(repo);
+
+  const first = await provisioning.findOrCreateWorkspaceForDirectory(repo);
+  const second = await provisioning.findOrCreateWorkspaceForDirectory(link);
+
+  expect(second.workspaceId).toBe(first.workspaceId);
+  expect(await workspaceRegistry.list()).toHaveLength(1);
 });
 
 test("findOrCreateProjectForDirectory reuses the active project for the same root", async () => {

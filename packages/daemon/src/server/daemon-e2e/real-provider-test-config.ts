@@ -1,5 +1,5 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 import type { Logger } from "pino";
@@ -27,6 +27,37 @@ const OPENCODE_REAL_TEST_MODEL = "openrouter/google/gemini-2.5-flash-lite";
 const PI_REAL_TEST_MODEL = "openrouter/google/gemini-2.5-flash-lite";
 
 const availabilityCache = new Map<RealProvider, Promise<boolean>>();
+let nativeCodexAvailability: Promise<boolean> | null = null;
+
+/**
+ * Uses the logged-in Codex CLI exactly as the local Thoth daemon does. It deliberately does not
+ * configure an OpenAI-compatible API endpoint or API key.
+ */
+export function getNativeCodexProviderConfig(): RealProviderConfig {
+  return {
+    provider: "codex",
+    thinkingOptionId: "low",
+    modeId: "full-access",
+  };
+}
+
+export function createNativeCodexProviderClient(logger: Logger): AgentClient {
+  return new CodexAppServerAgentClient(logger);
+}
+
+export function canRunNativeCodexProvider(): Promise<boolean> {
+  if (nativeCodexAvailability) {
+    return nativeCodexAvailability;
+  }
+  nativeCodexAvailability = (async () => {
+    if (!(await isCommandAvailable("codex"))) {
+      return false;
+    }
+    const codexHome = process.env.CODEX_HOME?.trim() || path.join(homedir(), ".codex");
+    return existsSync(path.join(codexHome, "auth.json"));
+  })();
+  return nativeCodexAvailability;
+}
 
 export function getRealProviderConfig(provider: RealProvider): RealProviderConfig {
   switch (provider) {

@@ -442,3 +442,19 @@ is native `outputSchema` and whether clean progress events are present. Do not a
 markdown/code-fence parsing, raw delta display or local card fallback to manufacture token-level
 streaming. If a public screenshot shows host unavailable, wait for the ready status and confirm the
 current bundle plus `__THOTH_INITIAL_DAEMON_CONNECTION__` before changing runtime code.
+
+## `NTH-EXP-017` Dynamic Tool Catalog Creation Is Earlier Than Provider Session Registration
+
+Observed on `2026-07-11` during the real Codex Loop fixture:
+
+1. The Clarify -> Task continuation did start and `thoth_submit_task_card` was called. It did not hang in app-server replacement handling.
+2. The Task tool then failed its required independent convergence audit because its catalog had captured `agentManager.getAgent(callerAgentId)` while `AgentManager.buildLaunchContext()` ran before `registerSession()`.
+3. The result looked like a loading timeout because the provider correctly received the audit-unavailable tool result and ended its turn, while the Secretary continued waiting for a Task Card that was never created.
+
+Conclusion:
+
+Catalog registration may use the launch config, but handlers that need a live provider caller must resolve it at invocation time. Real-provider fixtures must emit enough trace to distinguish a missing `turn/start` from a successful tool call that returned an authority error.
+
+Retry condition:
+
+When adding an audit, child session or caller-scoped tool, test both catalog creation before caller registration and execution after caller registration. For real transport tests, inject literal tool arguments into every newly-created PlanExec/Review session; otherwise a new provider session will improvise equivalent prose and accidentally turn a flow test into an intelligence test.

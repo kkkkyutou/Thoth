@@ -59,6 +59,8 @@ import {
 import {
   ThothReportBlockedInputSchema,
   ThothSubmitClarifyCardInputSchema,
+  ThothSubmitClarifyConvergenceAuditInputSchema,
+  ThothSubmitContractPreservationAuditInputSchema,
   ThothSubmitGoalsCardInputSchema,
   ThothSubmitPyramidPlanInputSchema,
   ThothSubmitTaskCardInputSchema,
@@ -66,16 +68,25 @@ import {
   ThothLoopReportBlockedInputSchema,
   ThothLoopReviewVerdictInputSchema,
   type ClarifyConvergenceReview,
+  type ClarifyConvergenceAudit,
   type ClarifyFrontierLedger,
   type ThothLoopPlanExecResultInput,
   type ThothLoopReportBlockedInput,
   type ThothLoopReviewVerdictInput,
   type ThothReportBlockedInput,
   type ThothSubmitClarifyCardInput,
+  type ThothSubmitClarifyConvergenceAuditInput,
+  type ThothSubmitContractPreservationAuditInput,
   type ThothSubmitGoalsCardInput,
   type ThothSubmitPyramidPlanInput,
   type ThothSubmitTaskCardInput,
 } from "@thoth/protocol/thoth-runtime-contract";
+import {
+  rejectClarifyConvergenceAudit,
+  resolveContractPreservationAudit,
+  resolveClarifyConvergenceAudit,
+  waitForClarifyConvergenceAudit,
+} from "../clarify-audit-broker.js";
 import type {
   ThothClarifyCardModel,
   ThothApprovalGoalCardModel,
@@ -287,6 +298,7 @@ function runtimeToolResultText(input: {
   answer: WorkspaceSecretaryTurnActionPayload;
   submittedSummary: string;
   cardKind: "clarify_card" | "task_card" | "goals_card" | "pyramid_plan_card" | "blocked_card";
+  clarifyConverged?: boolean;
 }): string {
   const answerSummary = summarizeRuntimeAuthorityAnswer(input.answer);
   if (input.cardKind === "task_card" && input.answer.intent === "accept_quick") {
@@ -307,6 +319,16 @@ function runtimeToolResultText(input: {
       "Next required runtime tool: thoth_submit_goals_card.",
       "Submit the Goals Card as the second approval card, grounded in the clarify transcript and the approved Task Card.",
       "Do not register, execute, or review yet. Registration is allowed only after the Goals Card is approved.",
+    ].join("\n");
+  }
+  if (input.cardKind === "clarify_card" && input.clarifyConverged) {
+    return [
+      "The user completed this converged Clarify card.",
+      `Visible answer summary: ${input.submittedSummary}`,
+      `Answer: ${answerSummary}`,
+      "Next required runtime tool: thoth_submit_task_card.",
+      "Submit the Task Card now. Do not submit a Goals Card, register a task, or execute before the user approves that Task Card.",
+      "The independent Clarify convergence audit will either permit the Task Card or return a concrete frontier for another Clarify card.",
     ].join("\n");
   }
   if (input.answer.intent === "accept_quick") {
@@ -633,11 +655,27 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
   const childLogger = logger.child({ module: "agent", component: "thoth-tool-catalog" });
   const waitTracker = new WaitForAgentTracker(logger);
   const callerContext = callerAgentId ? (resolveCallerContext?.(callerAgentId) ?? null) : null;
-  const toolCallerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
-  const toolCallerConfig = toolCallerAgent?.config ?? options.callerAgentConfig;
+  // AgentManager builds the native dynamic-tool catalog before it registers the
+  // provider session. Read the caller lazily for handlers that need a live
+  // session, otherwise a valid Clarify -> Task transition falsely loses its
+  // independent audit capability.
+  const initialToolCallerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+  const toolCallerConfig = initialToolCallerAgent?.config ?? options.callerAgentConfig;
   const enableClarifyRuntimeTools =
     toolCallerConfig?.extra?.codex?.thothClarifyRuntimeTools === true;
+  const enableClarifyAuditTools =
+    toolCallerConfig?.extra?.codex?.thothClarifyAuditRuntimeTools === true;
+  const enableContractAuditTools =
+    toolCallerConfig?.extra?.codex?.thothContractAuditRuntimeTools === true;
   const enableLoopRuntimeTools = toolCallerConfig?.extra?.codex?.thothLoopRuntimeTools === true;
+  const loopRuntimePhase =
+    toolCallerConfig?.extra?.codex?.thothLoopPhase === "planexec" ||
+    toolCallerConfig?.extra?.codex?.thothLoopPhase === "review"
+      ? toolCallerConfig.extra.codex.thothLoopPhase
+      : initialToolCallerAgent?.labels.loopPhase === "planexec" ||
+          initialToolCallerAgent?.labels.loopPhase === "review"
+        ? initialToolCallerAgent.labels.loopPhase
+        : null;
   if (options.thothHome) {
     configureRuntimeAuthorityDecisionPersistence({
       filePath: path.join(options.thothHome, "runtime-authority-decisions.json"),
@@ -691,6 +729,113 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       return tool.handler(await parseToolInput(tool, input), context);
     },
   });
+
+  const runClarifyConvergenceAudit = async (input: {
+    taskCard: ThothSubmitTaskCardInput["task_card"];
+    convergenceReview: ClarifyConvergenceReview;
+    clarifyCount: number;
+    clarifyTranscript: string;
+  }): Promise<ClarifyConvergenceAudit> => {
+    const toolCallerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+    if (!toolCallerAgent || toolCallerAgent.provider !== "codex") {
+      throw new Error("Clarify convergence audit requires the active Codex dynamicTools session.");
+    }
+    const auditAgent = await agentManager.createAgent(
+      {
+        provider: toolCallerAgent.provider,
+        cwd: toolCallerAgent.cwd,
+        internal: true,
+        ...(toolCallerAgent.config.model ? { model: toolCallerAgent.config.model } : {}),
+        modeId: "auto",
+        ...(toolCallerAgent.config.thinkingOptionId
+          ? { thinkingOptionId: toolCallerAgent.config.thinkingOptionId }
+          : {}),
+        extra: { codex: { thothClarifyAuditRuntimeTools: true } },
+        systemPrompt:
+          "You are an independent Thoth Clarify convergence auditor. Do not ask the user questions and do not write files. Judge whether a candidate Task Card is grounded by the supplied frontier ledger and transcript. Call thoth_submit_clarify_convergence_audit exactly once with proceed, revise_frontier, or blocked.",
+      },
+      undefined,
+      {
+        labels: { surface: "thoth-clarify-audit", sourceAgentId: toolCallerAgent.id },
+        persistSession: true,
+        persistInternal: true,
+        initialTitle: "Clarify convergence audit",
+      },
+    );
+    const wait = waitForClarifyConvergenceAudit(auditAgent.id);
+    const prompt = [
+      "Audit this candidate without creating a user-facing card.",
+      `Clarify cards answered: ${input.clarifyCount}`,
+      `Candidate Task Card:\n${JSON.stringify(input.taskCard, null, 2)}`,
+      `Convergence review:\n${JSON.stringify(input.convergenceReview, null, 2)}`,
+      `Clarify transcript:\n${input.clarifyTranscript}`,
+      "A revise_frontier result must name only material user-owned assumptions. Proceed only when no such assumption remains.",
+    ].join("\n\n");
+    void (async () => {
+      try {
+        for await (const event of agentManager.streamAgent(auditAgent.id, prompt)) {
+          if (event.type === "turn_failed") {
+            rejectClarifyConvergenceAudit(auditAgent.id, event.error);
+            return;
+          }
+          if (event.type === "turn_canceled") {
+            rejectClarifyConvergenceAudit(auditAgent.id, event.reason);
+            return;
+          }
+        }
+      } catch (error) {
+        rejectClarifyConvergenceAudit(
+          auditAgent.id,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    })();
+    return wait;
+  };
+
+  if (enableClarifyAuditTools) {
+    registerTool(
+      "thoth_submit_clarify_convergence_audit",
+      {
+        title: "Submit Clarify convergence audit",
+        description:
+          "Submit the independent internal Clarify audit. Proceed only when no material user-owned assumption remains; revise_frontier must identify the missing frontier.",
+        inputSchema: ThothSubmitClarifyConvergenceAuditInputSchema,
+        outputSchema: z.object({ ok: z.literal(true) }).strict(),
+      },
+      async (input: ThothSubmitClarifyConvergenceAuditInput) => {
+        if (!callerAgentId || !resolveClarifyConvergenceAudit(callerAgentId, input)) {
+          throw new Error("No pending Clarify convergence audit owns this result.");
+        }
+        return {
+          content: [{ type: "text", text: "Clarify convergence audit recorded." }],
+          structuredContent: { ok: true },
+        };
+      },
+    );
+  }
+
+  if (enableContractAuditTools) {
+    registerTool(
+      "thoth_submit_contract_preservation_audit",
+      {
+        title: "Submit contract preservation audit",
+        description:
+          "Submit the internal audit for an automatic future-goal replan. Proceed only if the proposal preserves the approved task goal, constraints, and acceptance.",
+        inputSchema: ThothSubmitContractPreservationAuditInputSchema,
+        outputSchema: z.object({ ok: z.literal(true) }).strict(),
+      },
+      async (input: ThothSubmitContractPreservationAuditInput) => {
+        if (!callerAgentId || !resolveContractPreservationAudit(callerAgentId, input)) {
+          throw new Error("No pending contract preservation audit owns this result.");
+        }
+        return {
+          content: [{ type: "text", text: "Contract preservation audit recorded." }],
+          structuredContent: { ok: true },
+        };
+      },
+    );
+  }
 
   const buildCronScheduleCadence = (input: {
     cron: string | undefined;
@@ -893,6 +1038,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     metadata?: Record<string, unknown>;
     publicBadgeSummary?: string;
     frontierLedger?: ClarifyFrontierLedger;
+    decisionDelta?: import("@thoth/protocol/thoth-runtime-contract").ClarifyDecisionDelta;
     convergenceReview?: ClarifyConvergenceReview;
     card:
       | { kind: "clarify_card"; card: ThothClarifyCardModel }
@@ -927,6 +1073,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       ),
       ...(input.publicBadgeSummary ? { publicBadgeSummary: input.publicBadgeSummary } : {}),
       ...(input.frontierLedger ? { frontierLedger: input.frontierLedger } : {}),
+      ...(input.decisionDelta ? { decisionDelta: input.decisionDelta } : {}),
       ...(input.convergenceReview ? { convergenceReview: input.convergenceReview } : {}),
     });
     await appendRuntimeAuthorityToolCall({
@@ -972,6 +1119,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
               answer: result.answer,
               submittedSummary: result.submittedSummary,
               cardKind: input.card.kind,
+              clarifyConverged:
+                input.card.kind === "clarify_card" &&
+                input.frontierLedger?.convergence_state === "ready_for_task",
             }),
           },
         ],
@@ -1001,6 +1151,44 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       });
       throw error;
     }
+  };
+
+  const requireApprovedTaskCardForGoals = async (
+    context: ThothToolExecutionContext,
+  ): Promise<ThothToolResult | null> => {
+    const hasApprovedTaskCard = callerAgentId
+      ? agentManager
+          .getTimeline(callerAgentId)
+          .some((item) => item.type === "task_card" && item.card.submitted === true)
+      : false;
+    if (hasApprovedTaskCard) {
+      return null;
+    }
+
+    const call = resolveRuntimeToolCallContext(context);
+    const message = [
+      "Goals Card was rejected because this topic has no user-approved Task Card.",
+      "Required authority order: Clarify -> Task Card -> user approval -> Goals Card.",
+      "Submit or repair thoth_submit_task_card first. Do not create a Goals Card before that approval.",
+    ].join("\n");
+    await appendRuntimeAuthorityToolCall({
+      callId: call.callId,
+      safeName: "goals_approval",
+      label: "Goals Card",
+      text: message,
+      status: "failed",
+      error: { message },
+      metadata: {
+        thothAuthorityDecision: true,
+        transitionRejected: true,
+        requiredPreviousCard: "task_card",
+      },
+    });
+    return {
+      content: [{ type: "text", text: message }],
+      structuredContent: { ok: false, status: "rejected" },
+      isError: true,
+    };
   };
 
   if (enableClarifyRuntimeTools) {
@@ -1033,7 +1221,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           continuesClarify: input.frontier_ledger.convergence_state !== "ready_for_task",
           publicBadgeSummary: input.public_badge_summary,
           frontierLedger: input.frontier_ledger,
+          decisionDelta: input.decision_delta,
           frontierLedgerRef,
+          ...(input.decision_delta ? { decisionDelta: input.decision_delta } : {}),
           submitted: false,
           card: {
             question_id: `question-card-${randomUUID()}`,
@@ -1093,9 +1283,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         outputSchema: z
           .object({
             ok: z.boolean(),
-            status: z.enum(["answered"]),
-            authorityDecisionId: z.string(),
-            cardId: z.string(),
+            status: z.enum(["answered", "revise_frontier", "blocked"]),
+            authorityDecisionId: z.string().optional(),
+            cardId: z.string().optional(),
           })
           .strict(),
       },
@@ -1119,6 +1309,52 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
             `Clarify soft target not reviewed: ${input.convergence_review.frontier_ledger.clarify_strength} needs an explicit below_soft_target_rationale before Task when only ${clarifyCount} Clarify cards have been answered.`,
           );
         }
+        let audit: ClarifyConvergenceAudit;
+        try {
+          audit = await runClarifyConvergenceAudit({
+            taskCard: input.task_card,
+            convergenceReview: input.convergence_review,
+            clarifyCount,
+            clarifyTranscript: input.provenance.clarify_transcript_verbatim,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Clarify convergence audit is unavailable; Task Card was not created: ${reason}`,
+              },
+            ],
+            structuredContent: { ok: true, status: "blocked" },
+            isError: true,
+          };
+        }
+        if (audit.outcome === "blocked") {
+          return {
+            content: [
+              { type: "text", text: `Clarify convergence audit blocked: ${audit.summary}` },
+            ],
+            structuredContent: { ok: true, status: "blocked" },
+            isError: true,
+          };
+        }
+        if (audit.outcome === "revise_frontier") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: [
+                  "Independent Clarify convergence audit requires another material frontier before Task Card.",
+                  `Missing frontier: ${audit.missing_material_frontier.join("; ")}`,
+                  `Audit summary: ${audit.summary}`,
+                  "Continue the same Clarify session with thoth_submit_clarify_card. Do not create a Task Card yet.",
+                ].join("\n"),
+              },
+            ],
+            structuredContent: { ok: true, status: "revise_frontier" },
+          };
+        }
         const card: ThothTaskCardModel = {
           id: `task-card-${randomUUID()}`,
           roundLabel: "Task",
@@ -1139,6 +1375,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
             convergenceReview: input.convergence_review,
             clarifyCount,
             softMinimum: minimum,
+            convergenceAudit: audit,
           },
           card: { kind: "task_card", card },
           appendOpenCard: async () => {
@@ -1168,13 +1405,17 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         outputSchema: z
           .object({
             ok: z.boolean(),
-            status: z.enum(["answered"]),
-            authorityDecisionId: z.string(),
-            cardId: z.string(),
+            status: z.enum(["answered", "rejected"]),
+            authorityDecisionId: z.string().optional(),
+            cardId: z.string().optional(),
           })
           .strict(),
       },
       async (input: ThothSubmitGoalsCardInput, context) => {
+        const rejected = await requireApprovedTaskCardForGoals(context);
+        if (rejected) {
+          return rejected;
+        }
         const card: ThothGoalsCardModel = {
           id: `goals-card-${randomUUID()}`,
           roundLabel: "Goals",
@@ -1292,7 +1533,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     );
   }
 
-  if (enableLoopRuntimeTools) {
+  if (enableLoopRuntimeTools && loopRuntimePhase !== "review") {
     registerTool(
       "thoth_loop_submit_planexec_result",
       {
@@ -1302,11 +1543,18 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         inputSchema: ThothLoopPlanExecResultInputSchema,
         outputSchema: z.object({ ok: z.boolean(), status: z.literal("accepted") }).strict(),
       },
-      async (input: ThothLoopPlanExecResultInput) => {
+      async (input: ThothLoopPlanExecResultInput, context: ThothToolExecutionContext) => {
         if (!callerAgentId) {
           throw new Error("thoth_loop_submit_planexec_result requires an agent-scoped caller");
         }
-        if (!options.loopTaskService?.resolvePlanExecResult(callerAgentId, input)) {
+        const resultToolCallId =
+          input.result_tool_call_id ?? resolveRuntimeToolCallContext(context).callId;
+        if (
+          !options.loopTaskService?.resolvePlanExecResult(callerAgentId, {
+            ...input,
+            result_tool_call_id: resultToolCallId,
+          })
+        ) {
           throw new Error("No active Thoth Loop PlanExec phase is waiting for this agent");
         }
         return {
@@ -1323,7 +1571,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         };
       },
     );
+  }
 
+  if (enableLoopRuntimeTools && loopRuntimePhase !== "planexec") {
     registerTool(
       "thoth_loop_submit_review_verdict",
       {
@@ -1333,11 +1583,18 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         inputSchema: ThothLoopReviewVerdictInputSchema,
         outputSchema: z.object({ ok: z.boolean(), status: z.literal("accepted") }).strict(),
       },
-      async (input: ThothLoopReviewVerdictInput) => {
+      async (input: ThothLoopReviewVerdictInput, context: ThothToolExecutionContext) => {
         if (!callerAgentId) {
           throw new Error("thoth_loop_submit_review_verdict requires an agent-scoped caller");
         }
-        if (!options.loopTaskService?.resolveReviewVerdict(callerAgentId, input)) {
+        const resultToolCallId =
+          input.result_tool_call_id ?? resolveRuntimeToolCallContext(context).callId;
+        if (
+          !options.loopTaskService?.resolveReviewVerdict(callerAgentId, {
+            ...input,
+            result_tool_call_id: resultToolCallId,
+          })
+        ) {
           throw new Error("No active Thoth Loop Review phase is waiting for this agent");
         }
         return {
@@ -1351,7 +1608,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         };
       },
     );
+  }
 
+  if (enableLoopRuntimeTools) {
     registerTool(
       "thoth_loop_report_blocked",
       {

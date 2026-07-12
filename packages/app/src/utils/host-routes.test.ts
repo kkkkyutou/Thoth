@@ -3,6 +3,7 @@ import {
   buildHostAgentDetailRoute,
   buildHostRootRoute,
   buildHostWorkspaceOpenRoute,
+  buildHostWorkspaceBackgroundTasksRoute,
   buildHostWorkspaceRoute,
   buildNewWorkspaceRoute,
   buildOpenProjectRoute,
@@ -74,6 +75,18 @@ describe("workspace route parsing", () => {
     expect(
       parseHostWorkspaceRouteFromPathname("/h/local/workspace/L3RtcC9yZXBv/tab/draft_abc123"),
     ).toBeNull();
+  });
+
+  it("parses the workspace background tasks control-plane route", () => {
+    expect(
+      parseHostWorkspaceRouteFromPathname("/h/local/workspace/b64_L3RtcC9yZXBv/background-tasks"),
+    ).toEqual({
+      serverId: "local",
+      workspaceId: "/tmp/repo",
+    });
+    expect(buildHostWorkspaceBackgroundTasksRoute("local", "/tmp/repo")).toBe(
+      "/h/local/workspace/b64_L3RtcC9yZXBv/background-tasks",
+    );
   });
 
   it("builds plain workspace routes for URL-safe ids", () => {

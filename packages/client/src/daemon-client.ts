@@ -2036,7 +2036,12 @@ export class DaemonClient {
   }
 
   async fetchWorkspaceSecretarySnapshot(
-    input: { workspaceId?: string; workspacePath?: string; workspaceName?: string } = {},
+    input: {
+      workspaceId?: string;
+      workspacePath?: string;
+      workspaceName?: string;
+      topicId?: string;
+    } = {},
     requestId?: string,
   ): Promise<WorkspaceSecretaryPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2046,12 +2051,16 @@ export class DaemonClient {
         workspaceId: input.workspaceId,
         workspacePath: input.workspacePath,
         workspaceName: input.workspaceName,
+        ...(input.topicId ? { topicId: input.topicId } : {}),
       },
       responseType: "workspace_secretary.snapshot.response",
     });
   }
 
   async sendWorkspaceSecretaryMessage(input: {
+    workspaceId?: string;
+    workspacePath?: string;
+    topicId?: string;
     text: string;
     composer: ThothComposerModel;
     uiAgentId?: string;
@@ -2064,6 +2073,9 @@ export class DaemonClient {
       requestId: input.requestId,
       message: {
         type: "workspace_secretary.send.request",
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+        ...(input.topicId ? { topicId: input.topicId } : {}),
         text: input.text,
         ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
         ...(input.messageId ? { messageId: input.messageId } : {}),
@@ -2079,6 +2091,9 @@ export class DaemonClient {
   }
 
   async answerWorkspaceSecretaryClarify(input: {
+    workspaceId?: string;
+    workspacePath?: string;
+    topicId?: string;
     cardId: string;
     answer: WorkspaceSecretaryTurnActionPayload;
     uiAgentId?: string;
@@ -2088,6 +2103,9 @@ export class DaemonClient {
       requestId: input.requestId,
       message: {
         type: "workspace_secretary.answer.request",
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+        ...(input.topicId ? { topicId: input.topicId } : {}),
         cardId: input.cardId,
         ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
         answer: input.answer,
@@ -2099,6 +2117,8 @@ export class DaemonClient {
 
   async cancelWorkspaceSecretaryTurn(
     input: {
+      workspaceId?: string;
+      workspacePath?: string;
       uiAgentId?: string;
       topicId?: string;
       requestId?: string;
@@ -2108,6 +2128,8 @@ export class DaemonClient {
       requestId: input.requestId,
       message: {
         type: "workspace_secretary.cancel.request",
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
         ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
         ...(input.topicId ? { topicId: input.topicId } : {}),
       },

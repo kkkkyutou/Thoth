@@ -443,7 +443,6 @@ function getFallbackTabLabel(
     newAgent: string;
     setup: string;
     terminal: string;
-    backgroundTasks: string;
     agent: string;
   },
 ): string {
@@ -455,9 +454,6 @@ function getFallbackTabLabel(
   }
   if (tab.target.kind === "terminal") {
     return labels.terminal;
-  }
-  if (tab.target.kind === "background_tasks") {
-    return labels.backgroundTasks;
   }
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
@@ -809,7 +805,6 @@ export function WorkspaceDesktopTabsRow({
       newAgent: t("workspace.tabs.fallback.newAgent"),
       setup: t("workspace.tabs.fallback.setup"),
       terminal: t("workspace.tabs.fallback.terminal"),
-      backgroundTasks: t("workspace.tabs.fallback.backgroundTasks"),
       agent: t("workspace.tabs.fallback.agent"),
     }),
     [t],

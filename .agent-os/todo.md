@@ -14,13 +14,13 @@
 
 ## Ready
 
-1. `NTH-TD-021` `[ready]`: Harden Loop background after first real-provider acceptance.
-   - Goal: Promote the current verified Single-path Loop background path into repeatable guarded real-provider e2e coverage and address any discovered Codex/app-server timeout, permission, recovery or UI scaling issues.
+1. `NTH-TD-021` `[doing]`: Harden Loop background into Loop Engineering authority.
+   - Goal: Promote the verified Codex Loop path into a replayable SQLite authority/event ledger with Task Memory, sealed evidence, independent audits and budget envelopes, then close the remaining restart/control/browser recovery evidence.
    - Constraints: Do not reintroduce fake running/review/evidence; captures stay outside the git repo under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`; local Paseo/legacy `127.0.0.1:6767` remains untouched.
-   - Progress: Code hardening now covers full PlanExec evidence persistence, phase audit fields, durable worktree locks, strict phase-result matching, honest unsupported behavior when real Loop runtime is unavailable, richer Background Tasks evidence UI and `thoth.loop` positive/negative golden judge promotion.
-   - Acceptance: Remaining verification must still cover Loop+Light, complete all-goals-to-`done`, pause/resume/stop, restart recovery and repeated phase AgentTimeline evidence in stable opt-in real-provider runs beyond the first verified Single-path acceptance.
+   - Progress: SQLite event/projection/CAS/lease persistence, Task Memory, baseline and phase evidence manifests, Review mutation holds, replan audit, budget wait, phase isolation and scoped Codex dynamicTools are implemented. The scripted native-Codex flow suite passed all five journeys on `2026-07-11`: Quick direct, Quick Clarify foreground, cancel/recover/resume, Loop+Single all-goals pass and Loop+Light fail/retry/pass. The fixture gives literal tool payloads to each independent phase session so it does not evaluate provider creativity.
+   - Acceptance: Remaining verification must still add real browser/device evidence for `budget_wait`, pause/resume/stop and daemon restart/reconnect, including Background Task detail and phase AgentTimeline restoration. Deterministic unit coverage exists for those state transitions; they are not yet claimed as full browser/provider acceptance.
    - Depends on: `NTH-TD-019`
-   - Related: `NTH-CD-045`, `NTH-EV-030`
+   - Related: `NTH-CD-045`, `NTH-CD-047`, `NTH-EV-030`, `NTH-EV-031`
 2. `NTH-TD-002` `[ready]`: Umbrella MVP implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing archived plugin runtime compatibility.
    - Scope: include a stable Thoth I human dogfood entry whose development build uses the same UI/UX as the releasable product UI; agents validate code through standard repository tests and gates.
    - Operational decomposition: execute `NTH-TD-015` through `NTH-TD-020` in order instead of treating this as one large loop.

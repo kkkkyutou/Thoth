@@ -26,6 +26,7 @@ import {
   EllipsisVertical,
   Globe,
   Import as ImportIcon,
+  ListTodo,
   PanelRight,
   Pencil,
   RotateCw,
@@ -59,6 +60,7 @@ import {
   FloatingPanelPortalHostNameProvider,
 } from "@/components/ui/floating-panel-portal";
 import { ExplorerSidebar } from "@/components/explorer-sidebar";
+import { ResizeHandle } from "@/components/resize-handle";
 import { MountedTabActiveContext, SplitContainer } from "@/components/split-container";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { WorkspaceGitActions } from "@/git/workspace-actions";
@@ -117,6 +119,14 @@ import {
   WorkspaceTabOptionRow,
   type WorkspaceTabPresentation,
 } from "@/screens/workspace/workspace-tab-presentation";
+import { BackgroundTasksSurface } from "@/panels/background-tasks-panel";
+import {
+  BACKGROUND_TASKS_SURFACE_DEFAULT_WIDTH,
+  clampBackgroundTasksSurfaceWidth,
+  buildBackgroundTasksSurfaceKey,
+  resolveBackgroundTasksSurfaceOpen,
+  useBackgroundTasksSurfaceStore,
+} from "@/stores/background-tasks-surface-store";
 import {
   useWorkspaceTabRename,
   WorkspaceTabRenameModal,
@@ -243,6 +253,7 @@ const ThemedSquarePen = withUnistyles(SquarePen);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
 const ThemedImport = withUnistyles(ImportIcon);
+const ThemedListTodo = withUnistyles(ListTodo);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedPanelRight = withUnistyles(PanelRight);
 const ThemedSourceControlPanelIcon = withUnistyles(SourceControlPanelIcon);
@@ -324,7 +335,6 @@ function getFallbackTabOptionLabel(
     setup: string;
     terminal: string;
     browser: string;
-    backgroundTasks: string;
     agent: string;
   },
 ): string {
@@ -340,9 +350,6 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "browser") {
     return labels.browser;
   }
-  if (tab.target.kind === "background_tasks") {
-    return labels.backgroundTasks;
-  }
   if (tab.target.kind === "file") {
     return tab.target.path.split("/").findLast(Boolean) ?? tab.target.path;
   }
@@ -357,7 +364,6 @@ function getFallbackTabOptionDescription(
     agent: string;
     terminal: string;
     browser: string;
-    backgroundTasks: string;
   },
 ): string {
   if (tab.target.kind === "draft") {
@@ -374,9 +380,6 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "browser") {
     return labels.browser;
-  }
-  if (tab.target.kind === "background_tasks") {
-    return labels.backgroundTasks;
   }
   return tab.target.path;
 }
@@ -649,7 +652,6 @@ function MobileWorkspaceTabOption({
       setup: t("workspace.tabs.fallback.setup"),
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
-      backgroundTasks: t("workspace.tabs.fallback.backgroundTasks"),
       agent: t("workspace.tabs.fallback.agent"),
     }),
     [t],
@@ -1667,6 +1669,84 @@ function WorkspaceScreenContent({
     () => resolveWorkspaceRouteId({ routeWorkspaceId: workspaceId }) ?? "",
     [workspaceId],
   );
+  const backgroundTasksSurfaceKey = useMemo(
+    () =>
+      normalizedServerId && normalizedWorkspaceId
+        ? buildBackgroundTasksSurfaceKey({
+            serverId: normalizedServerId,
+            workspaceId: normalizedWorkspaceId,
+          })
+        : null,
+    [normalizedServerId, normalizedWorkspaceId],
+  );
+  const persistedBackgroundTasksSurface = useBackgroundTasksSurfaceStore((state) =>
+    backgroundTasksSurfaceKey ? (state.byWorkspaceKey[backgroundTasksSurfaceKey] ?? null) : null,
+  );
+  const isBackgroundTasksSurfaceOpen = resolveBackgroundTasksSurfaceOpen(
+    persistedBackgroundTasksSurface,
+    !isMobile,
+  );
+  const closeBackgroundTasksSurface = useBackgroundTasksSurfaceStore((state) => state.closeSurface);
+  const updateBackgroundTasksSurface = useBackgroundTasksSurfaceStore(
+    (state) => state.updateSurface,
+  );
+  const [backgroundTasksRowWidth, setBackgroundTasksRowWidth] = useState(0);
+  const backgroundTasksSidebarWidth = useMemo(
+    () =>
+      clampBackgroundTasksSurfaceWidth(
+        persistedBackgroundTasksSurface?.sidebarWidth ?? BACKGROUND_TASKS_SURFACE_DEFAULT_WIDTH,
+        backgroundTasksRowWidth,
+      ),
+    [backgroundTasksRowWidth, persistedBackgroundTasksSurface?.sidebarWidth],
+  );
+  const backgroundTasksResizeSizes = useMemo(() => {
+    if (backgroundTasksRowWidth <= 0) {
+      return [0.7, 0.3];
+    }
+    const right = Math.min(
+      0.9,
+      Math.max(0.1, backgroundTasksSidebarWidth / backgroundTasksRowWidth),
+    );
+    return [1 - right, right];
+  }, [backgroundTasksRowWidth, backgroundTasksSidebarWidth]);
+  const handleBackgroundTasksRowLayout = useCallback(
+    (event: { nativeEvent: { layout: { width: number } } }) => {
+      setBackgroundTasksRowWidth(event.nativeEvent.layout.width);
+    },
+    [],
+  );
+  const handleResizeBackgroundTasksSurface = useCallback(
+    (_groupId: string, sizes: number[]) => {
+      if (!normalizedServerId || !normalizedWorkspaceId || backgroundTasksRowWidth <= 0) {
+        return;
+      }
+      const nextRightRatio = sizes[1] ?? backgroundTasksResizeSizes[1] ?? 0;
+      updateBackgroundTasksSurface({
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+        sidebarWidth: clampBackgroundTasksSurfaceWidth(
+          backgroundTasksRowWidth * nextRightRatio,
+          backgroundTasksRowWidth,
+        ),
+      });
+    },
+    [
+      backgroundTasksResizeSizes,
+      backgroundTasksRowWidth,
+      normalizedServerId,
+      normalizedWorkspaceId,
+      updateBackgroundTasksSurface,
+    ],
+  );
+  const handleCloseBackgroundTasksSurface = useCallback(() => {
+    if (!normalizedServerId || !normalizedWorkspaceId) {
+      return;
+    }
+    closeBackgroundTasksSurface({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+    });
+  }, [closeBackgroundTasksSurface, normalizedServerId, normalizedWorkspaceId]);
   const workspaceDescriptor = useWorkspace(normalizedServerId, normalizedWorkspaceId);
   const workspaceScripts = getWorkspaceScripts(workspaceDescriptor);
   const { handleRetryHost, handleManageHost, handleDismissMissingWorkspace } =
@@ -2395,6 +2475,30 @@ function WorkspaceScreenContent({
   });
 
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
+  const handleRenameDraftTab = useCallback(
+    ({ tabId, title }: { tabId: string; title: string }) => {
+      if (!persistenceKey) {
+        return;
+      }
+      const currentTab = useWorkspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(persistenceKey)
+        .find((tab) => tab.tabId === tabId);
+      if (!currentTab || currentTab.target.kind !== "draft") {
+        return;
+      }
+      const { title: _previousTitle, ...draftTarget } = currentTab.target;
+      const nextTarget = normalizeWorkspaceTabTarget({
+        ...draftTarget,
+        ...(title ? { title } : {}),
+      });
+      if (!nextTarget || nextTarget.kind !== "draft") {
+        return;
+      }
+      retargetWorkspaceTab(persistenceKey, tabId, nextTarget);
+    },
+    [persistenceKey, retargetWorkspaceTab],
+  );
   const { handleRenameTab, renamingTab, handleRenameModalSubmit, handleRenameModalClose } =
     useWorkspaceTabRename({
       client,
@@ -2402,6 +2506,7 @@ function WorkspaceScreenContent({
       queryClient,
       terminalsData: terminalsQuery.data,
       terminalsQueryKey,
+      onRenameDraft: handleRenameDraftTab,
     });
 
   const tabByKey = useMemo(() => {
@@ -2463,7 +2568,6 @@ function WorkspaceScreenContent({
       workspaceSetup: t("workspace.tabs.fallback.workspaceSetup"),
       terminal: t("workspace.tabs.fallback.terminal"),
       browser: t("workspace.tabs.fallback.browser"),
-      backgroundTasks: t("workspace.tabs.fallback.backgroundTasks"),
       agent: t("workspace.tabs.fallback.agent"),
     }),
     [t],
@@ -3575,6 +3679,47 @@ function WorkspaceScreenContent({
   ]);
   const desktopContent = desktopSplitContent ?? content;
 
+  const backgroundTasksControlPlane =
+    normalizedServerId && normalizedWorkspaceId ? (
+      <View
+        style={
+          isMobile
+            ? styles.backgroundTasksMobileSurface
+            : [styles.backgroundTasksSidebar, { width: backgroundTasksSidebarWidth }]
+        }
+        testID="workspace-background-tasks-surface"
+      >
+        {!isMobile ? (
+          <View style={styles.backgroundTasksHeader}>
+            <View style={styles.backgroundTasksHeaderTitle}>
+              <ThemedListTodo size={16} uniProps={mutedColorMapping} />
+              <Text style={styles.backgroundTasksHeaderText}>Background Tasks</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close Background Tasks"
+              onPress={handleCloseBackgroundTasksSurface}
+              style={styles.backgroundTasksCloseButton}
+              testID="workspace-background-tasks-close"
+            >
+              {({ hovered, pressed }) => (
+                <ThemedX
+                  size={16}
+                  uniProps={hovered || pressed ? foregroundColorMapping : mutedColorMapping}
+                />
+              )}
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={styles.backgroundTasksSurfaceBody}>
+          <BackgroundTasksSurface
+            serverId={normalizedServerId}
+            workspaceId={normalizedWorkspaceId}
+          />
+        </View>
+      </View>
+    ) : null;
+
   const workspaceCenterColumn = (
     <View style={styles.centerColumn}>
       {showScreenHeader && (
@@ -3623,7 +3768,7 @@ function WorkspaceScreenContent({
         />
       )}
 
-      {isMobile ? (
+      {isMobile && !isBackgroundTasksSurfaceOpen ? (
         <MobileWorkspaceTabSwitcher
           tabs={tabs}
           activeTabKey={activeTabKey}
@@ -3677,7 +3822,9 @@ function WorkspaceScreenContent({
       ) : null}
 
       <View style={styles.centerContent}>
-        {isMobile ? (
+        {isMobile && isBackgroundTasksSurfaceOpen ? (
+          backgroundTasksControlPlane
+        ) : isMobile ? (
           <View style={styles.content}>{content}</View>
         ) : (
           <View style={styles.content}>{desktopContent}</View>
@@ -3697,12 +3844,25 @@ function WorkspaceScreenContent({
               workspaceId={normalizedWorkspaceId}
               isRouteFocused={isRouteFocused}
             />
-            <View style={styles.threePaneRow}>
+            <View style={styles.threePaneRow} onLayout={handleBackgroundTasksRowLayout}>
               <FloatingPanelPortalHostNameProvider hostName={workspaceFloatingPanelPortalHostName}>
                 {workspaceCenterColumn}
               </FloatingPanelPortalHostNameProvider>
 
               <FloatingPanelPortalHost name={workspaceFloatingPanelPortalHostName} />
+
+              {!isMobile && isBackgroundTasksSurfaceOpen ? (
+                <>
+                  <ResizeHandle
+                    direction="horizontal"
+                    groupId="workspace-background-tasks"
+                    index={0}
+                    sizes={backgroundTasksResizeSizes}
+                    onResizeSplit={handleResizeBackgroundTasksSurface}
+                  />
+                  {backgroundTasksControlPlane}
+                </>
+              ) : null}
 
               {showExplorerSidebar && workspaceDirectory ? (
                 <ExplorerSidebar
@@ -3749,6 +3909,49 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "stretch",
   },
   centerColumn: {
+    flex: 1,
+    minHeight: 0,
+  },
+  backgroundTasksSidebar: {
+    flexShrink: 0,
+    minHeight: 0,
+    backgroundColor: theme.colors.surface0,
+  },
+  backgroundTasksMobileSurface: {
+    flex: 1,
+    minHeight: 0,
+    backgroundColor: theme.colors.surface0,
+  },
+  backgroundTasksHeader: {
+    height: 42,
+    paddingHorizontal: theme.spacing[3],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  backgroundTasksHeaderTitle: {
+    minWidth: 0,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  backgroundTasksHeaderText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  backgroundTasksCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backgroundTasksSurfaceBody: {
     flex: 1,
     minHeight: 0,
   },

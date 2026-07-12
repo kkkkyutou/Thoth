@@ -74,7 +74,7 @@ import {
 } from "@/contexts/session-workspace-upserts";
 import { isNative } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
-import { toErrorMessage } from "@/utils/error-messages";
+import { isDaemonClientClosedError, toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
 import {
@@ -1022,6 +1022,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           isCancelled: () => cancelled,
         });
       } catch (error) {
+        if (cancelled || isDaemonClientClosedError(error)) {
+          return;
+        }
         console.error("[Session] Failed to hydrate workspaces:", error);
       }
     })();
@@ -1310,7 +1313,20 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     const unsubAgentStream = client.on("agent_stream", (message) => {
       if (message.type !== "agent_stream") return;
-      const { agentId, event, timestamp, seq, epoch } = message.payload;
+      const { agentId, event, timestamp, seq, epoch, internal } = message.payload;
+      // Loop phase sessions use the same transport so Background Tasks can
+      // render their live timeline. They are never normal workspace agents.
+      if (internal) {
+        setAgents(serverId, (previous) => {
+          if (!previous.has(agentId)) {
+            return previous;
+          }
+          const next = new Map(previous);
+          next.delete(agentId);
+          return next;
+        });
+        return;
+      }
       const parsedTimestamp = new Date(timestamp);
       const streamEvent = event;
       if (
@@ -1348,6 +1364,15 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     const unsubAgentTimeline = client.on("fetch_agent_timeline_response", (message) => {
       if (message.type !== "fetch_agent_timeline_response") return;
+      // Background Tasks fetches internal PlanExec/Review timelines through
+      // the shared client. Its scoped panel consumes this response directly;
+      // the global agent store must not turn it into a foreground tab.
+      if (
+        message.payload.agent?.internal === true ||
+        message.payload.agent?.labels.surface === "thoth-loop"
+      ) {
+        return;
+      }
       agentStreamReducerQueue.flushAgent(message.payload.agentId);
       applyTimelineResponse(message.payload);
     });

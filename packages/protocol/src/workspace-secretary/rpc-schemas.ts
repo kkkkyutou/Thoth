@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ClarifyFrontierLedgerSchema,
+  ClarifyDecisionDeltaSchema,
   ClarifyLinearGoalContractSchema,
   ClarifyQuestionCardSchema,
   ThothRuntimeClarifyStrengthSchema,
@@ -137,9 +138,25 @@ export const ThothClarifyCardModelSchema = z
     publicBadgeSummary: NonEmptyStringSchema.optional(),
     frontierLedger: ClarifyFrontierLedgerSchema.optional(),
     frontierLedgerRef: NonEmptyStringSchema.optional(),
+    decisionDelta: ClarifyDecisionDeltaSchema.optional(),
     card: ClarifyQuestionCardSchema,
     submitted: z.boolean(),
     submittedSummary: NonEmptyStringSchema.optional(),
+    // Persist the actual user decisions so a later foreground execution handoff
+    // receives the full Clarify context rather than only a submission count.
+    submittedAnswers: z
+      .array(
+        z
+          .object({
+            questionId: NonEmptyStringSchema,
+            choiceIds: z.array(NonEmptyStringSchema),
+            choiceNotes: z.record(NonEmptyStringSchema, z.string()).default({}),
+            note: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    submittedNote: z.string().optional(),
   })
   .strict();
 
@@ -342,6 +359,9 @@ export const BackgroundTaskModelSchema = z
       "queued",
       "running",
       "paused",
+      "budget_wait",
+      "evidence_invalid",
+      "workspace_changed_concurrently",
       "blocked",
       "done",
       "stopped",
@@ -359,6 +379,9 @@ export const LoopTaskStatusSchema = z.enum([
   "queued",
   "running",
   "paused",
+  "budget_wait",
+  "evidence_invalid",
+  "workspace_changed_concurrently",
   "blocked",
   "done",
   "stopped",
@@ -392,11 +415,146 @@ export const LoopBudgetSchema = z
   })
   .strict();
 
+export const LoopBudgetEnvelopeSchema = z
+  .object({
+    maxActiveDurationMs: z.number().int().positive(),
+    maxTokens: z.number().int().positive(),
+    maxToolCalls: z.number().int().positive(),
+    maxChangedFiles: z.number().int().positive(),
+    maxChangedLines: z.number().int().positive(),
+    maxReplans: z.number().int().nonnegative(),
+    maxConsecutiveSameRootCause: z.number().int().positive(),
+  })
+  .strict();
+
+export const LoopBudgetUsageSchema = z
+  .object({
+    activeDurationMs: z.number().int().nonnegative().default(0),
+    tokens: z.number().int().nonnegative().default(0),
+    toolCalls: z.number().int().nonnegative().default(0),
+    changedFiles: z.number().int().nonnegative().default(0),
+    changedLines: z.number().int().nonnegative().default(0),
+    replans: z.number().int().nonnegative().default(0),
+    consecutiveSameRootCause: z.number().int().nonnegative().default(0),
+    tokenMetered: z.boolean().default(false),
+  })
+  .strict();
+
+export const LoopBudgetWaitSchema = z
+  .object({
+    reason: NonEmptyStringSchema,
+    exhaustedDimensions: z.array(NonEmptyStringSchema).min(1),
+    enteredAt: NonEmptyStringSchema,
+  })
+  .strict();
+
+export const LoopEvidenceRefSchema = z
+  .object({
+    id: NonEmptyStringSchema,
+    manifestPath: NonEmptyStringSchema,
+    sha256: NonEmptyStringSchema,
+    kind: z.enum([
+      "task_baseline",
+      "planexec_start",
+      "planexec_result",
+      "review_start",
+      "review_result",
+    ]),
+    createdAt: NonEmptyStringSchema,
+  })
+  .strict();
+
+export const TaskMemoryKindSchema = z.enum([
+  "clarify_transcript",
+  "task_card",
+  "goals_card",
+  "baseline_evidence",
+  "planexec_result",
+  "review_verdict",
+  "workspace_fact",
+  "execution_note",
+]);
+
+export const TaskMemoryNodeRefSchema = z
+  .object({
+    id: NonEmptyStringSchema,
+    taskId: NonEmptyStringSchema,
+    kind: TaskMemoryKindSchema,
+    revision: z.number().int().nonnegative(),
+    contentSha256: NonEmptyStringSchema,
+    createdAt: NonEmptyStringSchema,
+  })
+  .strict();
+
+export const LoopTaskEventSchema = z
+  .object({
+    eventId: NonEmptyStringSchema,
+    taskId: NonEmptyStringSchema,
+    revision: z.number().int().positive(),
+    kind: NonEmptyStringSchema,
+    goalId: NonEmptyStringSchema.optional(),
+    phaseRunId: NonEmptyStringSchema.optional(),
+    causationId: NonEmptyStringSchema,
+    correlationId: NonEmptyStringSchema,
+    occurredAt: NonEmptyStringSchema,
+    payloadSha256: NonEmptyStringSchema,
+  })
+  .strict();
+
+export const LoopWorktreeLeaseSchema = z
+  .object({
+    workspacePath: NonEmptyStringSchema,
+    taskId: NonEmptyStringSchema,
+    phase: LoopPhaseKindSchema.nullable(),
+    phaseAgentId: NonEmptyStringSchema.optional(),
+    createdAt: NonEmptyStringSchema,
+    heartbeatAt: NonEmptyStringSchema,
+    expiresAt: NonEmptyStringSchema,
+  })
+  .strict();
+
+export const LoopReplanRecordSchema = z
+  .object({
+    id: NonEmptyStringSchema,
+    baseGoalsRevision: z.number().int().nonnegative(),
+    appliedGoalsRevision: z.number().int().positive(),
+    status: z.enum(["proposed", "auditing", "applied", "rejected"]),
+    rationale: NonEmptyStringSchema,
+    expectedBenefit: NonEmptyStringSchema,
+    affectedGoalIds: z.array(NonEmptyStringSchema).min(1),
+    auditSummary: z.string().optional(),
+    createdAt: NonEmptyStringSchema,
+  })
+  .strict();
+
 export const LoopReviewAcceptanceMatrixEntrySchema = z
   .object({
     acceptance: NonEmptyStringSchema,
     status: z.enum(["met", "not_met", "unclear"]),
     evidence: z.string().optional(),
+  })
+  .strict();
+
+export const LoopDeferredGoalReplanProposalSchema = z
+  .object({
+    baseGoalsRevision: z.number().int().nonnegative(),
+    rationale: NonEmptyStringSchema,
+    expectedBenefit: NonEmptyStringSchema,
+    affectedGoalIds: z.array(NonEmptyStringSchema).min(1),
+    goals: z
+      .array(
+        z
+          .object({
+            id: NonEmptyStringSchema,
+            order: z.number().int().positive(),
+            title: NonEmptyStringSchema,
+            goal: NonEmptyStringSchema,
+            constraints: StringListSchema,
+            acceptance: StringListSchema,
+          })
+          .strict(),
+      )
+      .min(1),
   })
   .strict();
 
@@ -411,6 +569,8 @@ export const LoopReviewVerdictSchema = z
     nextRoundGuidance: z.string().optional(),
     antiRepeatStrategy: z.array(NonEmptyStringSchema).default([]),
     evidenceSummary: NonEmptyStringSchema,
+    evidenceRef: LoopEvidenceRefSchema.optional(),
+    deferredGoalReplanProposal: LoopDeferredGoalReplanProposalSchema.optional(),
     createdAt: NonEmptyStringSchema,
   })
   .strict();
@@ -427,6 +587,7 @@ export const LoopPlanExecResultSchema = z
     validationPerformed: z.array(NonEmptyStringSchema).default([]),
     remainingRisks: z.array(NonEmptyStringSchema).default([]),
     nextReviewFocus: NonEmptyStringSchema,
+    evidenceRef: LoopEvidenceRefSchema.optional(),
     createdAt: NonEmptyStringSchema,
   })
   .strict();
@@ -447,6 +608,7 @@ export const LoopPhaseRecordSchema = z
       .optional(),
     resultToolCallId: z.string().optional(),
     summary: z.string().optional(),
+    evidenceRef: LoopEvidenceRefSchema.optional(),
   })
   .strict();
 
@@ -478,8 +640,26 @@ export const LoopTaskModelSchema = z
     summary: NonEmptyStringSchema,
     loopStrength: ThothRuntimeLoopStrengthSchema,
     budget: LoopBudgetSchema,
+    budgetEnvelope: LoopBudgetEnvelopeSchema.optional(),
+    budgetUsage: LoopBudgetUsageSchema.optional(),
+    budgetWait: LoopBudgetWaitSchema.optional(),
+    authorityRevision: z.number().int().nonnegative().optional(),
+    currentLease: LoopWorktreeLeaseSchema.optional(),
+    recentEvents: z.array(LoopTaskEventSchema).default([]),
+    taskMemoryRefs: z.array(TaskMemoryNodeRefSchema).default([]),
+    goalsRevision: z.number().int().nonnegative().optional(),
+    baselineEvidence: LoopEvidenceRefSchema.optional(),
+    replanHistory: z.array(LoopReplanRecordSchema).default([]),
     currentGoalId: NonEmptyStringSchema.nullable(),
     currentPhase: LoopPhaseKindSchema.nullable(),
+    /**
+     * Durable scheduler intent. `pause_after_phase` never cancels a provider
+     * run; it becomes `paused` only once the active PlanExec or Review settles.
+     */
+    controlIntent: z.enum(["run", "pause_after_phase", "stopped"]).optional(),
+    pauseRequestedAt: NonEmptyStringSchema.optional(),
+    stoppedAt: NonEmptyStringSchema.optional(),
+    resumeKind: z.enum(["paused_continuation", "stopped_recovery"]).optional(),
     goalRound: z.number().int().positive(),
     globalFailureCount: z.number().int().min(0),
     goals: z.array(LoopGoalRecordSchema).min(1),
@@ -501,7 +681,13 @@ export const LoopTaskModelSchema = z
   })
   .strict();
 
-export const BackgroundTaskActionSchema = z.enum(["pause", "resume", "stop"]);
+export const BackgroundTaskActionSchema = z.enum([
+  "pause",
+  "resume",
+  "stop",
+  "budget_continue",
+  "review_only",
+]);
 
 export const BackgroundTasksModelSchema = z
   .object({
@@ -586,6 +772,7 @@ export const WorkspaceSecretarySnapshotRequestSchema = z
     workspaceId: NonEmptyStringSchema.optional(),
     workspacePath: NonEmptyStringSchema.optional(),
     workspaceName: NonEmptyStringSchema.optional(),
+    topicId: NonEmptyStringSchema.optional(),
   })
   .strict();
 
@@ -593,6 +780,9 @@ export const WorkspaceSecretarySendRequestSchema = z
   .object({
     type: z.literal("workspace_secretary.send.request"),
     requestId: NonEmptyStringSchema,
+    workspaceId: NonEmptyStringSchema.optional(),
+    workspacePath: NonEmptyStringSchema.optional(),
+    topicId: NonEmptyStringSchema.optional(),
     text: NonEmptyStringSchema,
     uiAgentId: NonEmptyStringSchema.optional(),
     messageId: NonEmptyStringSchema.optional(),
@@ -606,6 +796,9 @@ export const WorkspaceSecretaryAnswerRequestSchema = z
   .object({
     type: z.literal("workspace_secretary.answer.request"),
     requestId: NonEmptyStringSchema,
+    workspaceId: NonEmptyStringSchema.optional(),
+    workspacePath: NonEmptyStringSchema.optional(),
+    topicId: NonEmptyStringSchema.optional(),
     cardId: NonEmptyStringSchema,
     uiAgentId: NonEmptyStringSchema.optional(),
     answer: WorkspaceSecretaryTurnActionPayloadSchema,
@@ -616,6 +809,8 @@ export const WorkspaceSecretaryCancelRequestSchema = z
   .object({
     type: z.literal("workspace_secretary.cancel.request"),
     requestId: NonEmptyStringSchema,
+    workspaceId: NonEmptyStringSchema.optional(),
+    workspacePath: NonEmptyStringSchema.optional(),
     uiAgentId: NonEmptyStringSchema.optional(),
     topicId: NonEmptyStringSchema.optional(),
   })
@@ -814,6 +1009,16 @@ export type LoopTaskStatus = z.infer<typeof LoopTaskStatusSchema>;
 export type LoopGoalStatus = z.infer<typeof LoopGoalStatusSchema>;
 export type LoopPhaseStatus = z.infer<typeof LoopPhaseStatusSchema>;
 export type LoopBudget = z.infer<typeof LoopBudgetSchema>;
+export type LoopDeferredGoalReplanProposal = z.infer<typeof LoopDeferredGoalReplanProposalSchema>;
+export type LoopBudgetEnvelope = z.infer<typeof LoopBudgetEnvelopeSchema>;
+export type LoopBudgetUsage = z.infer<typeof LoopBudgetUsageSchema>;
+export type LoopBudgetWait = z.infer<typeof LoopBudgetWaitSchema>;
+export type LoopEvidenceRef = z.infer<typeof LoopEvidenceRefSchema>;
+export type TaskMemoryKind = z.infer<typeof TaskMemoryKindSchema>;
+export type TaskMemoryNodeRef = z.infer<typeof TaskMemoryNodeRefSchema>;
+export type LoopTaskEvent = z.infer<typeof LoopTaskEventSchema>;
+export type LoopWorktreeLease = z.infer<typeof LoopWorktreeLeaseSchema>;
+export type LoopReplanRecord = z.infer<typeof LoopReplanRecordSchema>;
 export type LoopReviewVerdict = z.infer<typeof LoopReviewVerdictSchema>;
 export type LoopPlanExecResult = z.infer<typeof LoopPlanExecResultSchema>;
 export type LoopPhaseRecord = z.infer<typeof LoopPhaseRecordSchema>;

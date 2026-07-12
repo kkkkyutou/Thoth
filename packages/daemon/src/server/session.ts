@@ -196,7 +196,6 @@ import {
 import { shouldEmitPendingBootstrapUpdate } from "./workspace-bootstrap-dedupe.js";
 import {
   attemptFirstAgentBranchAutoName,
-  createLocalCheckoutWorkspace,
   createThothWorktree,
   type CreateThothWorktreeInput,
   type CreateThothWorktreeResult,
@@ -367,6 +366,7 @@ type FetchWorkspacesResponsePayload = Extract<
 type FetchWorkspacesResponseEntry = FetchWorkspacesResponsePayload["entries"][number];
 type FetchWorkspacesResponsePageInfo = FetchWorkspacesResponsePayload["pageInfo"];
 type WorkspaceProjectDescriptorPayload = FetchWorkspacesResponsePayload["emptyProjects"][number];
+type WorkspaceRedirectPayload = FetchWorkspacesResponsePayload["workspaceRedirects"][number];
 type WorkspaceUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "workspace_update" }
@@ -815,6 +815,8 @@ export class Session {
       },
       agentManager: this.agentManager,
       daemonConfigStore,
+      agentStorage,
+      logger: this.sessionLogger,
       loopTaskService,
     });
     this.loopTaskService = loopTaskService ?? null;
@@ -1170,6 +1172,13 @@ export class Session {
     this.unsubscribeAgentEvents = this.agentManager.subscribe(
       (event) => {
         if (event.type === "agent_state") {
+          // Loop PlanExec/Review agents can be lazily restored when the
+          // Background Tasks surface fetches their timeline. That restoration
+          // emits a normal manager state event, but it must never enter the
+          // workspace agent directory or create a foreground tab.
+          if (event.agent.internal) {
+            return;
+          }
           this.sessionLogger.trace(
             {
               agentId: event.agent.id,
@@ -1256,8 +1265,10 @@ export class Session {
     event: Extract<AgentManagerEvent, { type: "agent_stream" }>,
     serializedEvent: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
   ): Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"] {
+    const agent = this.agentManager.getAgent(event.agentId);
     return {
       agentId: event.agentId,
+      ...(agent?.internal ? { internal: true } : {}),
       event: serializedEvent,
       timestamp: event.timestamp ?? new Date().toISOString(),
       ...(typeof event.seq === "number" ? { seq: event.seq } : {}),
@@ -3928,10 +3939,19 @@ export class Session {
   ): Promise<{
     entries: FetchWorkspacesResponseEntry[];
     emptyProjects: WorkspaceProjectDescriptorPayload[];
+    workspaceRedirects: WorkspaceRedirectPayload[];
+    dedupeNotice: string | null;
     pageInfo: FetchWorkspacesResponsePageInfo;
   }> {
     try {
-      return await this.workspaceDirectory.listFetchEntries(request);
+      const result = await this.workspaceDirectory.listFetchEntries(request);
+      return {
+        ...result,
+        // Reconciliation can emit a redirect through the workspace update
+        // path. A normal list still owns hydrated defaults for both fields.
+        workspaceRedirects: [],
+        dedupeNotice: null,
+      };
     } catch (error) {
       if (error instanceof CursorError) {
         throw new SessionRequestError("invalid_cursor", error.message);
@@ -4201,6 +4221,7 @@ export class Session {
       workspaceRegistry: this.workspaceRegistry,
       logger: this.sessionLogger,
       workspaceGitService: this.workspaceGitService,
+      reassignWorkspaceDependents: (input) => this.reassignWorkspaceDependents(input),
     });
     const result = await service.runOnce();
     const changedWorkspaceIds = new Set<string>();
@@ -4215,6 +4236,14 @@ export class Session {
               cwd: change.directory,
             });
             changedWorkspaceIds.add(change.workspaceId);
+            break;
+          case "workspace_merged":
+            await this.teardownArchivedWorkspace({
+              workspaceId: change.workspaceId,
+              cwd: change.directory,
+            });
+            changedWorkspaceIds.add(change.workspaceId);
+            changedWorkspaceIds.add(change.canonicalWorkspaceId);
             break;
           case "workspace_updated":
             changedWorkspaceIds.add(change.workspaceId);
@@ -4236,6 +4265,30 @@ export class Session {
     }
 
     return changedWorkspaceIds;
+  }
+
+  private async reassignWorkspaceDependents(input: {
+    fromWorkspaceId: string;
+    toWorkspaceId: string;
+  }): Promise<void> {
+    const records = await this.agentStorage.list();
+    await Promise.all(
+      records
+        .filter((record) => record.workspaceId === input.fromWorkspaceId)
+        .map(async (record) => {
+          if (this.agentManager.hasInFlightRun(record.id)) {
+            await cancelAgentRunCommand(
+              { agentManager: this.agentManager, logger: this.sessionLogger },
+              record.id,
+            );
+          }
+          await this.agentStorage.upsert({
+            ...record,
+            workspaceId: input.toWorkspaceId,
+            updatedAt: new Date().toISOString(),
+          });
+        }),
+    );
   }
 
   private async emitWorkspaceUpdatesForWorkspaceIds(
@@ -4529,14 +4582,15 @@ export class Session {
       );
       const snapshot = this.buildBootstrapSnapshot(payload.entries);
 
-      this.emit({
+      const response: Extract<SessionOutboundMessage, { type: "fetch_workspaces_response" }> = {
         type: "fetch_workspaces_response",
         payload: {
           requestId: request.requestId,
           ...(subscriptionId ? { subscriptionId } : {}),
           ...payload,
         },
-      });
+      };
+      this.emit(response);
 
       if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
         this.flushBootstrappedWorkspaceUpdates(snapshot);
@@ -4655,13 +4709,9 @@ export class Session {
 
     const explicitTitle = request.title?.trim() || null;
     const promptTitle = resolveFirstAgentPromptTitle(request.firstAgentContext);
-    const workspace = await createLocalCheckoutWorkspace(
-      { cwd, title: explicitTitle ?? promptTitle },
-      {
-        projectRegistry: this.projectRegistry,
-        workspaceRegistry: this.workspaceRegistry,
-        workspaceGitService: this.workspaceGitService,
-      },
+    const workspace = await this.workspaceProvisioning.findOrCreateWorkspaceForDirectory(
+      cwd,
+      explicitTitle ?? promptTitle,
     );
     await this.syncWorkspaceGitObserverForWorkspace(workspace);
     const descriptor = await this.describeWorkspaceRecord(workspace);
@@ -5384,6 +5434,7 @@ export class Session {
       : undefined;
 
     try {
+      await this.loopTaskService?.recoverPhaseAgent(msg.agentId);
       const snapshot = await ensureAgentLoaded(msg.agentId, {
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,

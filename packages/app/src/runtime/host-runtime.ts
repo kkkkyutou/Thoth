@@ -116,6 +116,10 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isDaemonClientClosedError(error: unknown): boolean {
+  return toErrorMessage(error).trim().toLowerCase() === "daemon client closed";
+}
+
 function hashForLog(value: string): string {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -2042,6 +2046,9 @@ export class HostRuntimeStore {
       )
       .then(() => undefined)
       .catch((error) => {
+        if (isDaemonClientClosedError(error)) {
+          return;
+        }
         console.error("[HostRuntime] agent directory bootstrap failed", {
           serverId,
           error: toErrorMessage(error),

@@ -356,6 +356,18 @@ function DraftPanel() {
   } = usePaneContext();
   const { isInteractive } = usePaneFocus();
   invariant(target.kind === "draft", "DraftPanel requires draft target");
+  const workspacePersistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
+  const resolveLatestDraftTarget = useCallback(() => {
+    if (!workspacePersistenceKey) {
+      return target;
+    }
+    const latestTarget =
+      useWorkspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(workspacePersistenceKey)
+        .find((tab) => tab.tabId === tabId)?.target ?? target;
+    return latestTarget.kind === "draft" ? latestTarget : target;
+  }, [tabId, target, workspacePersistenceKey]);
 
   const handleCreated = useCallback(
     (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
@@ -374,21 +386,44 @@ function DraftPanel() {
   const handleDraftTitleChange = useCallback(
     (title: string | null) => {
       const normalizedTitle = title?.trim() || null;
-      if ((target.title ?? null) === normalizedTitle) {
+      const latestTarget = resolveLatestDraftTarget();
+      if ((latestTarget.title ?? null) === normalizedTitle) {
         return;
       }
       retargetCurrentTab({
         kind: "draft",
-        draftId: target.draftId,
-        ...(target.setup ? { setup: target.setup } : {}),
+        draftId: latestTarget.draftId,
+        ...(latestTarget.setup ? { setup: latestTarget.setup } : {}),
         ...(normalizedTitle ? { title: normalizedTitle } : {}),
+        ...(latestTarget.secretaryTopicId
+          ? { secretaryTopicId: latestTarget.secretaryTopicId }
+          : {}),
       });
     },
-    [retargetCurrentTab, target.draftId, target.setup, target.title],
+    [resolveLatestDraftTarget, retargetCurrentTab],
+  );
+
+  const handleDraftSecretaryTopicChange = useCallback(
+    (topicId: string) => {
+      const normalizedTopicId = topicId.trim();
+      const latestTarget = resolveLatestDraftTarget();
+      if (!normalizedTopicId || latestTarget.secretaryTopicId === normalizedTopicId) {
+        return;
+      }
+      retargetCurrentTab({
+        kind: "draft",
+        draftId: latestTarget.draftId,
+        ...(latestTarget.setup ? { setup: latestTarget.setup } : {}),
+        ...(latestTarget.title ? { title: latestTarget.title } : {}),
+        secretaryTopicId: normalizedTopicId,
+      });
+    },
+    [resolveLatestDraftTarget, retargetCurrentTab],
   );
 
   return (
     <WorkspaceDraftAgentTab
+      key={`${serverId}:${tabId}:${target.draftId}`}
       serverId={serverId}
       workspaceId={workspaceId}
       tabId={tabId}
@@ -398,6 +433,8 @@ function DraftPanel() {
       onOpenWorkspaceFile={openFileInWorkspace}
       onCreated={handleCreated}
       onDraftTitleChange={handleDraftTitleChange}
+      secretaryTopicId={target.secretaryTopicId ?? null}
+      onDraftSecretaryTopicChange={handleDraftSecretaryTopicChange}
       onOpenImportSheet={openImportSheet}
     />
   );

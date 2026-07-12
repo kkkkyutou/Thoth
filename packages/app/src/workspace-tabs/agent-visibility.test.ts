@@ -169,7 +169,7 @@ describe("workspace agent visibility", () => {
     expect(result.knownAgentIds.has("other-workspace-agent")).toBe(false);
   });
 
-  it("treats lazy historical details as known without making them active", () => {
+  it("keeps archived lazy history known without treating it as a restorable tab", () => {
     const active = makeAgent({
       id: "active-agent",
       cwd: "/repo/worktree",
@@ -190,7 +190,7 @@ describe("workspace agent visibility", () => {
 
     expect(result.activeAgentIds).toEqual(new Set(["active-agent"]));
     expect(result.knownAgentIds).toEqual(new Set(["active-agent", "historical-agent"]));
-    expect(result.restorableAgentIds).toEqual(new Set(["historical-agent"]));
+    expect(result.restorableAgentIds).toEqual(new Set<string>());
   });
 
   it("does not mark session-directory archived agents as restorable", () => {

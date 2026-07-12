@@ -160,6 +160,20 @@ describe("shared messages stream parsing", () => {
     }
   });
 
+  it("preserves the internal marker for daemon-owned phase timelines", () => {
+    const parsed = AgentStreamMessageSchema.parse({
+      type: "agent_stream",
+      payload: {
+        agentId: "loop-phase-agent",
+        internal: true,
+        timestamp: "2026-07-11T12:00:00.000Z",
+        event: { type: "turn_started", provider: "codex" },
+      },
+    });
+
+    expect(parsed.payload.internal).toBe(true);
+  });
+
   it("parses clean clarify card timeline events", () => {
     const parsed = AgentStreamMessageSchema.parse({
       type: "agent_stream",

@@ -391,10 +391,9 @@ test("S8: open child of archived non-git ancestor creates fresh workspace; ances
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S9. Open a child of an archived GIT ancestor: canonical resolves UP to the
-//     archived root. Per "no auto-unarchive", the archived state is sticky.
-//     This is the headline issue #564 reproduction (Edolce's video).
+//     archived root and restores the same workspace.
 // ─────────────────────────────────────────────────────────────────────────────
-test("S9: opening child of archived git workspace does NOT auto-unarchive the parent", async () => {
+test("S9: opening child of archived git workspace restores the canonical parent", async () => {
   const archivedAt = "2026-04-22T13:08:05.400Z";
   const h = createHarness({
     workspaces: [gitWorkspace(TOOLBOX, archivedAt)],
@@ -402,7 +401,7 @@ test("S9: opening child of archived git workspace does NOT auto-unarchive the pa
     gitRoots: [TOOLBOX],
   });
   await openProject(h.session, TOOLBOX_FLOMO);
-  expect(workspaceByCwd(h.workspaces, TOOLBOX)?.archivedAt).toBe(archivedAt);
+  expect(workspaceByCwd(h.workspaces, TOOLBOX)?.archivedAt).toBeNull();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -473,15 +472,9 @@ test("S12: resolveWorkspaceIdForPath does not return archived ancestor via prefi
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S13. Open a subfolder of an archived git repo when that subfolder is not
-//      itself a separate git project: the new workspace is a plain directory.
-//
-// Archive is sticky (S9). The archived parent is out of scope, so there is
-// no git project that owns the subfolder. Reviving the parent or inventing
-// a second git project pointing at the same repo would both be worse than
-// being explicit. To get git features back the user unarchives the parent
-// (S6/S11).
+//      itself a separate git project: the canonical repo workspace is restored.
 // ─────────────────────────────────────────────────────────────────────────────
-test("S13: subfolder of an archived git repo opens as a directory workspace", async () => {
+test("S13: subfolder of an archived git repo opens the restored repo workspace", async () => {
   const archivedAt = "2026-04-22T13:08:05.400Z";
   const h = createHarness({
     workspaces: [gitWorkspace(TOOLBOX, archivedAt)],
@@ -491,5 +484,6 @@ test("S13: subfolder of an archived git repo opens as a directory workspace", as
   await openProject(h.session, TOOLBOX_FLOMO);
   const resp = getOpenResponse(h.emitted, "req-1");
   expect(resp?.error).toBeNull();
-  expect(resp?.workspace?.workspaceKind).toBe("directory");
+  expect(resp?.workspace?.workspaceKind).toBe("local_checkout");
+  expect(resp?.workspace?.workspaceDirectory).toBe(TOOLBOX);
 });

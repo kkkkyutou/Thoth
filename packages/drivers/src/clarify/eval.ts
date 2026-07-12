@@ -322,19 +322,20 @@ function evaluateRuntimeInputPacketChecks(): ClarifyEvalScenarioResult[] {
 function evaluateSkillRulesLiveInSkillMd(): ClarifyEvalScenarioResult {
   const artifact = loadRuntimeSkillArtifact("thoth.clarify");
   const required = [
-    "## Mental Model",
-    "## Clarify Strength Strategy",
-    "## Assumption Ledger",
-    "## Decision Tree Frontier",
-    "## State Codes",
+    "## Role",
+    "## Runtime Tools",
+    "## Runtime Context",
+    "## Clarify Strength",
+    "## Assumption Ownership",
+    "## Clarify Cards",
+    "## Task Card",
+    "## Goals Card",
     "## Transition Rules",
-    "## Question Rules",
-    "## Good Cases",
-    "## Bad Cases",
-    "## Output Contract",
-    "## Repair Contract",
-    "effective_clarify_strength",
-    "remaining_material_assumptions",
+    "## Loop And Quick Handoff",
+    "## Repair",
+    "frontier_ledger",
+    "decision_delta",
+    "remaining material user-owned assumptions",
     "user_must_decide",
     "agent_can_discover",
   ];
@@ -576,7 +577,7 @@ export function evaluateClarifyGoldenDataset(
   ];
   return {
     passed: results.every((result) => result.passed),
-    scenarioCount: scenarios.length,
+    scenarioCount: results.length,
     results,
   };
 }

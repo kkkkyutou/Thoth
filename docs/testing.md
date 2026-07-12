@@ -34,6 +34,61 @@ npm run typecheck:protocol
 npm run typecheck:client
 ```
 
+## Deterministic Thoth Flow Fixtures
+
+The five deterministic Workspace Secretary / Loop journeys live in:
+
+- `packages/daemon/src/test-fixtures/thoth-flow-contract.ts`
+- `packages/daemon/src/server/thoth-flow-fixtures.test.ts`
+
+Run them with:
+
+```bash
+npm --workspace=@thoth/daemon run test:unit -- src/server/thoth-flow-fixtures.test.ts
+```
+
+These are flow tests, not provider-intelligence tests. The fixture provider emits predeclared
+assistant timeline items, authority cards, PlanExec results, and Review verdicts. It does not call
+Codex, write workspace files, decide which tool to call, generate a plan, or judge implementation
+quality. Assertions cover authority ownership, card lifecycle, topic recovery, foreground handoff,
+durable Loop registration, linear goal sequencing, retry context, and failed-Review budgets.
+
+The contract currently covers:
+
+1. Quick + Direct native passthrough.
+2. Quick + Clarify to Task/Goals approval, then a same-agent/session foreground Plan+Exec user turn that executes every approved goal.
+3. Quick + Clarify pause, workspace/topic recovery, resume, and foreground execution.
+4. Clarify + Loop registration with two linear goals that both pass Review.
+5. Clarify + Loop failed Review retry, repair context injection, progression after pass, and the
+   Light failed-Review budget exhaustion boundary.
+
+## Scripted Real-Provider Flow Fixtures
+
+The companion real Codex suite uses the same five journeys but makes no claim about provider
+intelligence. Its actor script supplies every card argument, PlanExec result, Review verdict, user
+answer and marker up front; the live Codex session must only execute those literal actions through
+the real app-server dynamicTools bridge.
+
+- Contract: `packages/daemon/src/test-fixtures/thoth-real-provider-flow-script.ts`
+- E2E: `packages/daemon/src/server/daemon-e2e/thoth-flow-fixtures.real.e2e.test.ts`
+
+Run only this suite with:
+
+```bash
+npm run test:thoth-flow:real
+```
+
+It requires the `codex` executable and its native logged-in auth file at `$CODEX_HOME/auth.json`
+(or `~/.codex/auth.json`). It does not use OpenRouter, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, or a
+custom provider. The suite creates throwaway `/tmp` workspaces and proves real Codex session
+creation, dynamic tool calls, blocking user decisions, same-turn tool-result resume, Loop phase
+sessions, linear goal progression, Review retry context and real phase timelines. It never asks
+Codex to invent valuable questions, choose a plan, implement a feature, or judge code quality.
+Missing native Codex login skips this opt-in suite; a skipped run is not real-provider acceptance.
+
+Do not make either fixture suite depend on free-form provider text or an LLM's choice of questions,
+tools, plans, or verdicts.
+
 Do not run broad daemon/app/desktop/CLI suites by default. They are expected to remain partially broken until their dedicated migration milestones.
 
 ## Runtime Isolation Smoke

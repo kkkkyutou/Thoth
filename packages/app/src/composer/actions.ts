@@ -19,7 +19,6 @@ import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit
 import {
   appendOptimisticUserMessageToStream,
   buildOptimisticUserMessage,
-  clearOptimisticUserMessages,
   generateMessageId,
   type StreamItem,
   type UserMessageItem,
@@ -73,6 +72,9 @@ export interface ComposerSendClient {
 
 export interface WorkspaceSecretarySendClient {
   sendWorkspaceSecretaryMessage: (input: {
+    workspaceId?: string;
+    workspacePath?: string;
+    topicId?: string;
     text: string;
     composer: ThothComposerModel;
     uiAgentId?: string;
@@ -81,11 +83,16 @@ export interface WorkspaceSecretarySendClient {
     attachments?: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
   }) => Promise<WorkspaceSecretaryResponsePayload>;
   answerWorkspaceSecretaryClarify: (input: {
+    workspaceId?: string;
+    workspacePath?: string;
+    topicId?: string;
     cardId: string;
     answer: WorkspaceSecretaryTurnActionPayload;
     uiAgentId?: string;
   }) => Promise<WorkspaceSecretaryResponsePayload>;
   cancelWorkspaceSecretaryTurn: (input: {
+    workspaceId?: string;
+    workspacePath?: string;
     uiAgentId?: string;
     topicId?: string;
   }) => Promise<WorkspaceSecretaryResponsePayload>;
@@ -214,6 +221,9 @@ export async function dispatchComposerAgentMessage(
 export interface DispatchWorkspaceSecretaryMessageInput {
   client: WorkspaceSecretarySendClient;
   agentId: string;
+  workspaceId?: string;
+  workspacePath?: string;
+  topicId?: string;
   text: string;
   attachments: ComposerAttachment[];
   composer: ThothComposerModel;
@@ -238,6 +248,9 @@ export async function dispatchWorkspaceSecretaryMessage(
   appendUserMessageToStream(input.agentId, userMessage, input.stream);
   const imagesData = await input.encodeImages(wirePayload.images);
   const payload = await input.client.sendWorkspaceSecretaryMessage({
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+    ...(input.topicId ? { topicId: input.topicId } : {}),
     text: input.text,
     composer: input.composer,
     uiAgentId: input.agentId,
@@ -254,11 +267,17 @@ export async function dispatchWorkspaceSecretaryMessage(
 export async function dispatchWorkspaceSecretaryAnswer(input: {
   client: WorkspaceSecretarySendClient;
   agentId: string;
+  workspaceId?: string;
+  workspacePath?: string;
+  topicId?: string;
   cardId: string;
   answer: WorkspaceSecretaryTurnActionPayload;
   stream: AgentStreamWriter;
 }): Promise<WorkspaceSecretaryResponsePayload> {
   const payload = await input.client.answerWorkspaceSecretaryClarify({
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+    ...(input.topicId ? { topicId: input.topicId } : {}),
     cardId: input.cardId,
     answer: input.answer,
     uiAgentId: input.agentId,
@@ -272,30 +291,77 @@ export async function dispatchWorkspaceSecretaryAnswer(input: {
 export async function dispatchWorkspaceSecretaryCancel(input: {
   client: WorkspaceSecretarySendClient;
   agentId: string;
+  workspaceId?: string;
+  workspacePath?: string;
+  topicId?: string;
   stream: AgentStreamWriter;
 }): Promise<WorkspaceSecretaryResponsePayload> {
   const payload = await input.client.cancelWorkspaceSecretaryTurn({
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+    ...(input.topicId ? { topicId: input.topicId } : {}),
     uiAgentId: input.agentId,
   });
   if (payload.model) {
-    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
+    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream, {
+      settleRunningItems: true,
+    });
   }
   return payload;
+}
+
+function settleCanceledWorkspaceSecretaryStreamItem(item: StreamItem): StreamItem {
+  if (item.kind === "thought" && item.status === "loading") {
+    return { ...item, status: "ready" };
+  }
+  if (
+    item.kind === "tool_call" &&
+    item.payload.source === "agent" &&
+    item.payload.data.status === "running"
+  ) {
+    return {
+      ...item,
+      payload: {
+        source: "agent",
+        data: {
+          ...item.payload.data,
+          status: "canceled",
+          error: null,
+        },
+      },
+    };
+  }
+  return item;
 }
 
 export function applyWorkspaceSecretaryModelToStream(
   agentId: string,
   model: ThothCleanUiModel,
   stream: AgentStreamWriter,
+  options?: { settleRunningItems?: boolean },
 ): void {
   const items = model.secretary.turns.flatMap(secretaryTurnToStreamItem);
-  if (items.length === 0) {
-    return;
-  }
   stream.setTail((prev) => {
     const next = new Map(prev);
     const current = next.get(agentId) ?? [];
-    next.set(agentId, mergeStreamItemsById(current, items));
+    const currentLiveItems = current.filter(
+      (item) =>
+        item.kind !== "clarify_card" &&
+        item.kind !== "task_card" &&
+        item.kind !== "goal_card" &&
+        item.kind !== "registered_task" &&
+        !item.id.startsWith("secretary_message_"),
+    );
+    const liveItems = reconcileOptimisticSecretaryUserMessages(currentLiveItems, items);
+    const settledLiveItems = options?.settleRunningItems
+      ? liveItems.map(settleCanceledWorkspaceSecretaryStreamItem)
+      : liveItems;
+    const reconciled = mergeStreamItemsById(settledLiveItems, items);
+    if (reconciled.length === 0) {
+      next.delete(agentId);
+    } else {
+      next.set(agentId, reconciled);
+    }
     return next;
   });
   stream.setHead((prev) => {
@@ -303,7 +369,7 @@ export function applyWorkspaceSecretaryModelToStream(
     if (!current) {
       return prev;
     }
-    const headWithoutOptimisticUser = clearOptimisticUserMessages(current);
+    const headWithoutOptimisticUser = reconcileOptimisticSecretaryUserMessages(current, items);
     if (headWithoutOptimisticUser === current) {
       return prev;
     }
@@ -317,12 +383,82 @@ export function applyWorkspaceSecretaryModelToStream(
   });
 }
 
+function reconcileOptimisticSecretaryUserMessages(
+  liveItems: StreamItem[],
+  canonicalItems: StreamItem[],
+): StreamItem[] {
+  // A clean model is authoritative only once it includes the persisted user turn. Match by text so
+  // an error response cannot erase the user's still-optimistic message, and a canonical catch-up
+  // replaces only the matching optimistic message rather than flushing an unrelated queued turn.
+  const canonicalTextCounts = new Map<string, number>();
+  for (const item of canonicalItems) {
+    if (item.kind !== "user_message") {
+      continue;
+    }
+    canonicalTextCounts.set(item.text, (canonicalTextCounts.get(item.text) ?? 0) + 1);
+  }
+  if (canonicalTextCounts.size === 0) {
+    return liveItems;
+  }
+  let changed = false;
+  const next = liveItems.filter((item) => {
+    if (item.kind !== "user_message" || !item.optimistic) {
+      return true;
+    }
+    const remaining = canonicalTextCounts.get(item.text) ?? 0;
+    if (remaining === 0) {
+      return true;
+    }
+    canonicalTextCounts.set(item.text, remaining - 1);
+    changed = true;
+    return false;
+  });
+  return changed ? next : liveItems;
+}
+
+export function removeWorkspaceSecretaryModelItemsFromStream(
+  agentId: string,
+  model: ThothCleanUiModel,
+  stream: AgentStreamWriter,
+): void {
+  const projectedIds = new Set(
+    model.secretary.turns.flatMap(secretaryTurnToStreamItem).map((item) => item.id),
+  );
+  if (projectedIds.size === 0) {
+    return;
+  }
+  stream.setTail((prev) => {
+    const current = prev.get(agentId);
+    if (!current || !current.some((item) => projectedIds.has(item.id))) {
+      return prev;
+    }
+    const next = new Map(prev);
+    const filtered = current.filter((item) => !projectedIds.has(item.id));
+    if (filtered.length === 0) {
+      next.delete(agentId);
+    } else {
+      next.set(agentId, filtered);
+    }
+    return next;
+  });
+}
+
 function secretaryTurnToStreamItem(turn: SecretaryTurn): StreamItem[] {
   const timestamp = new Date();
   switch (turn.kind) {
     case "message":
       if (turn.speaker === "user") {
-        return [];
+        // Secretary snapshots are the durable source for user turns too. Without this canonical
+        // item, applying the first loading model clears the optimistic head and leaves a blank
+        // timeline until the provider emits its first visible delta.
+        return [
+          {
+            kind: "user_message",
+            id: `secretary_user_${turn.id}`,
+            text: turn.text,
+            timestamp,
+          },
+        ];
       }
       return [
         {

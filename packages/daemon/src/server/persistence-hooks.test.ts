@@ -95,6 +95,33 @@ describe("persistence hooks", () => {
     });
   });
 
+  test("restores persisted Loop phase agents as hidden internal sessions", () => {
+    const record = createRecord({
+      provider: "codex",
+      internal: true,
+      config: {
+        modeId: "auto",
+        extra: {
+          codex: {
+            thothLoopRuntimeTools: true,
+            thothLoopSessionHome: "/tmp/loop-session-home",
+          },
+        },
+      },
+    });
+
+    expect(buildConfigOverrides(record)).toMatchObject({
+      internal: true,
+      extra: {
+        codex: {
+          thothLoopRuntimeTools: true,
+          thothLoopSessionHome: "/tmp/loop-session-home",
+        },
+      },
+    });
+    expect(buildSessionConfig(record)).toMatchObject({ internal: true });
+  });
+
   test("buildConfigOverrides drops persisted internal thoth MCP server", () => {
     const record = createRecord({
       config: {

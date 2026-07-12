@@ -5,9 +5,9 @@
 1. Objective: `NTH-OBJ-001`
 2. Top next action: `NTH-TD-021`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
-4. Active blockers: None for the current top next action. `NTH-EV-030` now verifies the first real Codex Loop background path on local `8082` and public `8148`; `NTH-TD-021` has code hardening and `thoth.loop` golden judge coverage, but still needs Loop+Light, complete all-goals-to-`done`, restart recovery and repeated real-provider hardening evidence.
+4. Active blockers: None for the current top next action. `NTH-EV-031` now records the native-Codex five-journey transport run, including Loop+Light and all-goals-to-`done`; remaining promotion is real browser/device evidence for control actions, restart/reconnect and detailed phase recovery.
 5. Current branch: `agent/dev/mvp`
-6. Current implementation state: promoted upstream-derived implementation substrate in formal `packages/*` source trees with first-day foundation infrastructure; Thoth/Paseo parallel runtime isolation is verified with Thoth daemon on `127.0.0.1:6688`, local Paseo daemon preserved on `127.0.0.1:6767`, real web review on `8082 -> 8148`, independent test relay deployment at `relay.test.thoth.seeles.ai`, Linux AppImage, Android Debug APK and Codex provider smoke. Revised Loop Goal 1 `NTH-TD-015` is verified by `NTH-EV-025` for the pre-runtime-tool-bridge Clarify skill/golden contract. Loop Goal 2 `NTH-TD-016` / `NTH-MS-013` is partially revalidated under reopened `NTH-EV-029`: Codex dynamicTools now carry model-submitted `public_badge_summary`, `frontier_ledger` and convergence review; pending authority lifecycle guards suppress premature completed/idle UI; `balanced` reached 5 Clarify cards and `dive` reached 10-12 cards in real Codex tests; local and public web paths both ran. `NTH-CD-045` supersedes the old registered-pending-only Loop handoff: the code now has a durable Loop task service, `Goals Card` authority, PlanExec/Review semantic tools, worktree-lock scheduler, budgeted failed-Review loop semantics, Background Tasks detail with embedded AgentTimeline, full PlanExec evidence persistence, strict phase-result validation, honest unsupported behavior for missing real Loop runtime and promoted `thoth.loop` positive/negative golden judge coverage. `NTH-EV-030` verifies the first real Codex Loop+Single local/public path, including Task/Goals approvals, background task detail, linear goal advancement, independent Review, Single budget failure handling and phase AgentTimeline events. Loop+Light, restart recovery and complete all-goals-to-`done` real-provider hardening continue under `NTH-TD-021`.
+6. Current implementation state: promoted TypeScript product substrate with provider-backed Codex dynamicTools as the verified execution path. `NTH-CD-047` adds daemon-owned SQLite append-only Loop authority, Task Memory, sealed evidence, budget envelopes, durable leases and independent audit sessions on top of the Task/Goals/PlanExec/Review chain. The native-Codex fixture suite now passes all five scripted user journeys, including Loop+Single all-goals completion and Loop+Light failed-Review retry; this verifies real app-server transport without asking the provider to invent behavior. Browser/device recovery, control actions and restart restoration remain open evidence under `NTH-TD-021`.
 
 ## Objective Summary
 
@@ -24,11 +24,11 @@
 
 ## Top Next Action
 
-`NTH-TD-021` `[ready]`: Harden the verified Loop background path after first real-provider acceptance: code hardening and `thoth.loop` golden judge are now in place; remaining promotion requires repeatable real-provider coverage for Loop+Light, complete all-goals-to-`done`, restart recovery, pause/resume/stop and repeated phase AgentTimeline evidence.
+`NTH-TD-021` `[doing]`: Close the remaining Loop Engineering dogfood evidence: real browser/device `budget_wait`, pause/resume/stop, daemon restart/reconnect and Background Task phase timeline recovery, while retaining the passing native-Codex five-journey transport suite.
 
 ## Active Blockers
 
-None. `NTH-EV-030` closed the first real-provider acceptance gap; remaining work is hardening scope captured in `NTH-TD-021`.
+None. The remaining work is explicit acceptance hardening under `NTH-TD-021`, not an implementation blocker.
 
 ## Recent Important Changes
 

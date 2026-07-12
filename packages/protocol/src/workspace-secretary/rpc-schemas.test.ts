@@ -7,6 +7,7 @@ import {
   WorkspaceSecretaryCancelResponseSchema,
   WorkspaceSecretaryModelUpdateSchema,
   WorkspaceSecretarySendRequestSchema,
+  WorkspaceSecretarySnapshotRequestSchema,
   WorkspaceSecretarySnapshotResponseSchema,
 } from "./rpc-schemas.js";
 
@@ -139,6 +140,9 @@ describe("workspace secretary RPC schemas", () => {
     const parsed = WorkspaceSecretarySendRequestSchema.parse({
       type: "workspace_secretary.send.request",
       requestId: "req-send",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      topicId: "topic-main",
       text: "clarify this",
       messageId: "msg-1",
       images: [{ data: "base64", mimeType: "image/png" }],
@@ -160,6 +164,11 @@ describe("workspace secretary RPC schemas", () => {
     });
 
     expect(parsed.messageId).toBe("msg-1");
+    expect(parsed).toMatchObject({
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      topicId: "topic-main",
+    });
     expect(parsed.images).toEqual([{ data: "base64", mimeType: "image/png" }]);
     expect(parsed.attachments).toHaveLength(1);
   });
@@ -277,6 +286,12 @@ describe("workspace secretary RPC schemas", () => {
   });
 
   it("validates request and response wire shapes", () => {
+    const snapshotRequest = WorkspaceSecretarySnapshotRequestSchema.parse({
+      type: "workspace_secretary.snapshot.request",
+      requestId: "req-snapshot",
+      workspacePath: "/repo",
+      topicId: "topic-main",
+    });
     const response = WorkspaceSecretarySnapshotResponseSchema.parse({
       type: "workspace_secretary.snapshot.response",
       payload: {
@@ -288,6 +303,9 @@ describe("workspace secretary RPC schemas", () => {
     const request = WorkspaceSecretaryAnswerRequestSchema.parse({
       type: "workspace_secretary.answer.request",
       requestId: "req-2",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      topicId: "topic-main",
       cardId: "clarify-card-1",
       answer: {
         intent: "decide",
@@ -304,14 +322,18 @@ describe("workspace secretary RPC schemas", () => {
       },
     });
 
+    expect(snapshotRequest.topicId).toBe("topic-main");
     expect(response.payload.model?.activeView).toBe("workspace-secretary");
     expect(request.answer.intent).toBe("decide");
+    expect(request.topicId).toBe("topic-main");
   });
 
   it("accepts Workspace Secretary cancel request and response wire shapes", () => {
     const request = WorkspaceSecretaryCancelRequestSchema.parse({
       type: "workspace_secretary.cancel.request",
       requestId: "req-cancel",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
       uiAgentId: "draft-tab-1",
       topicId: "topic-main",
     });
@@ -325,6 +347,39 @@ describe("workspace secretary RPC schemas", () => {
     });
 
     expect(request.uiAgentId).toBe("draft-tab-1");
+    expect(request.workspaceId).toBe("workspace-1");
     expect(response.payload.model?.secretary.status.kind).toBe("ready");
+  });
+
+  it("keeps Loop budget and evidence wait states visible in background task summaries", () => {
+    const model = createModel();
+    model.backgroundTasks.tasks = [
+      {
+        id: "loop-budget-wait",
+        title: "Budgeted task",
+        status: "budget_wait",
+        summary: "Waiting for a budget decision.",
+      },
+      {
+        id: "loop-evidence-invalid",
+        title: "Evidence task",
+        status: "evidence_invalid",
+        summary: "Workspace evidence needs attention.",
+      },
+      {
+        id: "loop-workspace-changed",
+        title: "Concurrent workspace task",
+        status: "workspace_changed_concurrently",
+        summary: "The workspace changed outside the phase.",
+      },
+    ];
+
+    const parsed = ThothCleanUiModelSchema.parse(model);
+
+    expect(parsed.backgroundTasks.tasks.map((task) => task.status)).toEqual([
+      "budget_wait",
+      "evidence_invalid",
+      "workspace_changed_concurrently",
+    ]);
   });
 });

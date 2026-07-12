@@ -738,6 +738,42 @@ export class AgentManager {
       .map((agent) => Object.assign({}, agent));
   }
 
+  /**
+   * Returns internal agents for daemon-owned orchestration only. They intentionally remain hidden
+   * from the user-facing listAgents() API.
+   */
+  listInternalAgentsByLabels(labels: Readonly<Record<string, string>>): ManagedAgent[] {
+    const expected = Object.entries(labels);
+    return Array.from(this.agents.values())
+      .filter(
+        (agent) => agent.internal && expected.every(([key, value]) => agent.labels[key] === value),
+      )
+      .map((agent) => Object.assign({}, agent));
+  }
+
+  /**
+   * Repair a daemon-owned session that was persisted before its internal
+   * visibility bit existed. Callers must already own the authority mapping;
+   * this only changes user-surface visibility and never changes the provider
+   * session itself.
+   */
+  markAgentInternal(agentId: string): boolean {
+    return this.setAgentInternal(agentId, true);
+  }
+
+  /**
+   * Changes only the local UI visibility projection for a live agent. Durable
+   * callers must update their stored record separately before a future resume.
+   */
+  setAgentInternal(agentId: string, internal: boolean): boolean {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return false;
+    }
+    agent.internal = internal;
+    return true;
+  }
+
   async listImportableSessions(
     options?: ImportablePersistedAgentQueryOptions,
   ): Promise<ManagedImportableProviderSession[]> {
@@ -920,6 +956,7 @@ export class AgentManager {
       initialPrompt?: string;
       env?: Record<string, string>;
       persistSession?: boolean;
+      persistInternal?: boolean;
       initialTitle?: string | null;
       workspaceId?: string;
     },
@@ -939,11 +976,18 @@ export class AgentManager {
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
     const session = await client.createSession(providerLaunchConfig, launchContext, createOptions);
-    return this.registerSession(session, storedConfig, resolvedAgentId, {
+    const managed = await this.registerSession(session, storedConfig, resolvedAgentId, {
       labels: options?.labels,
       initialTitle: options?.initialTitle,
       workspaceId: options?.workspaceId,
     });
+    if (options?.persistInternal && managed.internal && this.registry) {
+      await this.registry.applySnapshot(managed, {
+        title: options.initialTitle ?? null,
+        internal: true,
+      });
+    }
+    return managed;
   }
 
   private buildCreateSessionOptions(options?: {
@@ -966,6 +1010,7 @@ export class AgentManager {
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       workspaceId?: string;
+      historyOnly?: boolean;
     },
   ): Promise<ManagedAgent> {
     const resolvedAgentId = validateAgentId(
@@ -992,7 +1037,9 @@ export class AgentManager {
     }
     const launchContext = await this.buildLaunchContext(resolvedAgentId, client, launchConfig);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
-    const session = await client.resumeSession(handle, providerLaunchConfig, launchContext);
+    const session = await client.resumeSession(handle, providerLaunchConfig, launchContext, {
+      historyOnly: options?.historyOnly === true,
+    });
     return this.registerSession(session, storedConfig, resolvedAgentId, options);
   }
 
@@ -3753,9 +3800,13 @@ export class AgentManager {
     launchConfig: AgentSessionConfig,
     env?: Record<string, string>,
   ): Promise<AgentLaunchContext> {
+    const persistedCodexHome = launchConfig.extra?.codex?.thothLoopSessionHome;
     const context: AgentLaunchContext = {
       agentId,
       env: {
+        ...(typeof persistedCodexHome === "string" && persistedCodexHome.trim()
+          ? { CODEX_HOME: persistedCodexHome }
+          : {}),
         ...env,
         THOTH_AGENT_ID: agentId,
       },
@@ -3777,6 +3828,8 @@ export class AgentManager {
   private shouldUseNativeThothTools(config: AgentSessionConfig): boolean {
     return (
       config.extra?.codex?.thothClarifyRuntimeTools === true ||
+      config.extra?.codex?.thothClarifyAuditRuntimeTools === true ||
+      config.extra?.codex?.thothContractAuditRuntimeTools === true ||
       config.extra?.codex?.thothLoopRuntimeTools === true
     );
   }

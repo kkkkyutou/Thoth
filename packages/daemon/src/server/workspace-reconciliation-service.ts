@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type pino from "pino";
 import type {
@@ -37,6 +37,13 @@ function chooseCanonicalProject(projects: PersistedProjectRecord[]): PersistedPr
 
 export type ReconciliationChange =
   | { kind: "workspace_archived"; workspaceId: string; directory: string; reason: string }
+  | {
+      kind: "workspace_merged";
+      workspaceId: string;
+      canonicalWorkspaceId: string;
+      directory: string;
+      reason: string;
+    }
   | { kind: "project_archived"; projectId: string; directory: string; reason: string }
   | {
       kind: "project_updated";
@@ -65,6 +72,10 @@ export interface WorkspaceReconciliationServiceOptions {
   intervalMs?: number;
   onChanges?: (changes: ReconciliationChange[]) => void;
   workspaceGitService?: Pick<WorkspaceGitService, "getWorkspaceGitMetadata">;
+  reassignWorkspaceDependents?: (input: {
+    fromWorkspaceId: string;
+    toWorkspaceId: string;
+  }) => Promise<void>;
 }
 
 export class WorkspaceReconciliationService {
@@ -74,6 +85,9 @@ export class WorkspaceReconciliationService {
   private readonly intervalMs: number;
   private readonly onChanges: ((changes: ReconciliationChange[]) => void) | null;
   private readonly workspaceGitService: Pick<WorkspaceGitService, "getWorkspaceGitMetadata"> | null;
+  private readonly reassignWorkspaceDependents:
+    | ((input: { fromWorkspaceId: string; toWorkspaceId: string }) => Promise<void>)
+    | null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -84,6 +98,7 @@ export class WorkspaceReconciliationService {
     this.intervalMs = options.intervalMs ?? DEFAULT_RECONCILE_INTERVAL_MS;
     this.onChanges = options.onChanges ?? null;
     this.workspaceGitService = options.workspaceGitService ?? null;
+    this.reassignWorkspaceDependents = options.reassignWorkspaceDependents ?? null;
   }
 
   start(): void {
@@ -156,10 +171,24 @@ export class WorkspaceReconciliationService {
       }),
     );
 
-    // 2. Merge duplicate active project records that point at the same repo root.
+    // 2. Merge duplicate workspace records that point at the same actual checkout/directory.
+    const mergedWorkspaceIds = await this.mergeDuplicateWorkspacesByCanonicalDirectory(
+      allWorkspaces,
+      changes,
+    );
+    if (mergedWorkspaceIds.size > 0) {
+      for (const [projectId, siblings] of workspacesByProject) {
+        workspacesByProject.set(
+          projectId,
+          siblings.filter((workspace) => !mergedWorkspaceIds.has(workspace.workspaceId)),
+        );
+      }
+    }
+
+    // 3. Merge duplicate active project records that point at the same repo root.
     await this.mergeDuplicateProjectsByRoot(activeProjects, workspacesByProject, changes);
 
-    // 3. Reconcile git metadata for active projects whose directories still exist.
+    // 4. Reconcile git metadata for active projects whose directories still exist.
     //    Projects persist until explicitly removed, even when they currently have
     //    zero active workspaces, so they still reconcile their own metadata.
     //    Skip projects archived earlier in this pass (e.g. merged duplicates) so we
@@ -263,6 +292,75 @@ export class WorkspaceReconciliationService {
         });
       }
     }
+  }
+
+  private async mergeDuplicateWorkspacesByCanonicalDirectory(
+    allWorkspaces: PersistedWorkspaceRecord[],
+    changes: ReconciliationChange[],
+  ): Promise<Set<string>> {
+    const mergedWorkspaceIds = new Set<string>();
+    const groups = new Map<string, PersistedWorkspaceRecord[]>();
+    for (const workspace of allWorkspaces) {
+      if (!existsSync(workspace.cwd)) {
+        continue;
+      }
+      const key = await this.resolveCanonicalWorkspaceDirectoryKey(workspace);
+      const list = groups.get(key) ?? [];
+      list.push(workspace);
+      groups.set(key, list);
+    }
+
+    for (const group of groups.values()) {
+      if (group.length < 2) {
+        continue;
+      }
+      const canonical = chooseCanonicalWorkspace(group);
+      const timestamp = new Date().toISOString();
+
+      if (canonical.archivedAt) {
+        await this.workspaceRegistry.upsert({
+          ...canonical,
+          archivedAt: null,
+          updatedAt: timestamp,
+        });
+        changes.push({
+          kind: "workspace_updated",
+          workspaceId: canonical.workspaceId,
+          directory: canonical.cwd,
+          fields: {},
+        });
+      }
+
+      for (const duplicate of group) {
+        if (duplicate.workspaceId === canonical.workspaceId) {
+          continue;
+        }
+        await this.reassignWorkspaceDependents?.({
+          fromWorkspaceId: duplicate.workspaceId,
+          toWorkspaceId: canonical.workspaceId,
+        });
+        await this.workspaceRegistry.archive(duplicate.workspaceId, timestamp);
+        changes.push({
+          kind: "workspace_merged",
+          workspaceId: duplicate.workspaceId,
+          canonicalWorkspaceId: canonical.workspaceId,
+          directory: duplicate.cwd,
+          reason: "merged_duplicate_workspace",
+        });
+        mergedWorkspaceIds.add(duplicate.workspaceId);
+      }
+    }
+    return mergedWorkspaceIds;
+  }
+
+  private async resolveCanonicalWorkspaceDirectoryKey(
+    workspace: PersistedWorkspaceRecord,
+  ): Promise<string> {
+    const directoryName = workspace.cwd.split(/[\\/]/).findLast(Boolean) ?? workspace.cwd;
+    const metadata = await this.readWorkspaceGitMetadata(workspace.cwd, directoryName);
+    const gitRoot =
+      metadata.projectKind === "git" && metadata.repoRoot ? metadata.repoRoot.trim() : null;
+    return normalizeExistingPath(gitRoot || workspace.cwd);
   }
 
   private async mergeDuplicateProjectCustomName(
@@ -389,4 +487,25 @@ export class WorkspaceReconciliationService {
     }
     return this.workspaceGitService.getWorkspaceGitMetadata(cwd, { directoryName });
   }
+}
+
+function normalizeExistingPath(value: string): string {
+  const resolved = resolve(value);
+  try {
+    return resolve(realpathSync.native(resolved));
+  } catch {
+    return resolved;
+  }
+}
+
+function chooseCanonicalWorkspace(
+  workspaces: PersistedWorkspaceRecord[],
+): PersistedWorkspaceRecord {
+  return [...workspaces].sort((left, right) => {
+    const createdAt = Date.parse(left.createdAt) - Date.parse(right.createdAt);
+    if (createdAt !== 0) {
+      return createdAt;
+    }
+    return left.workspaceId.localeCompare(right.workspaceId);
+  })[0]!;
 }

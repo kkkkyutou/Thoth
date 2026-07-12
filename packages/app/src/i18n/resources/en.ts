@@ -1090,7 +1090,7 @@ export const en = {
     openPath: "Open path",
   },
   branchSwitcher: {
-    currentBranch: "Current branch: {{branchName}}. Press to switch branch.",
+    currentBranch: "Current branch: {{branchName}}.",
     placeholder: "Switch branch...",
     searchPlaceholder: "Filter branches...",
     empty: "No branches found.",

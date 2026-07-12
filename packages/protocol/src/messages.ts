@@ -13,6 +13,7 @@ import {
 import { RegisteredTaskModelSchema } from "./workspace-secretary/rpc-schemas.js";
 import {
   SecretaryTopicModelSchema,
+  SecretaryRuntimeStatusModelSchema,
   SecretaryTurnSchema,
   ThothClarifyCardModelSchema,
   ThothApprovalGoalCardModelSchema,
@@ -171,6 +172,30 @@ const MutableWorkspaceSecretaryConfigSchema = z
             activeTopicId: z.string().min(1),
             topics: z.array(SecretaryTopicModelSchema).min(1),
             turns: z.array(SecretaryTurnSchema),
+            topicStates: z
+              .array(
+                z
+                  .object({
+                    topicId: z.string().min(1),
+                    turns: z.array(SecretaryTurnSchema),
+                    currentClarifyState: z.string().min(1),
+                    activeTurnPhase: z.string().min(1),
+                    activeTopicProviderBacked: z.boolean().optional(),
+                    status: SecretaryRuntimeStatusModelSchema.optional(),
+                  })
+                  .strict(),
+              )
+              .optional(),
+            topicAgents: z
+              .array(
+                z
+                  .object({
+                    agentKey: z.string().min(1),
+                    agentId: z.string().min(1),
+                  })
+                  .strict(),
+              )
+              .optional(),
             nextTopicIndex: z.number().int().min(1),
             currentClarifyState: z.string().min(1),
             activeTurnPhase: z.string().min(1),
@@ -783,6 +808,8 @@ export const AgentSnapshotPayloadSchema = z.object({
   attentionTimestamp: z.string().nullable().optional(),
   archivedAt: z.string().nullable().optional(),
   providerUnavailable: z.boolean().optional(),
+  /** Daemon-owned agents are only exposed through scoped detail surfaces. */
+  internal: z.boolean().optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -2779,6 +2806,12 @@ export const AgentStreamMessageSchema = z.object({
   type: z.literal("agent_stream"),
   payload: z.object({
     agentId: z.string(),
+    /**
+     * Daemon-owned phase agents may stream into a scoped surface such as
+     * Background Tasks. They must not be materialized as ordinary workspace
+     * agent tabs by the global session subscriber.
+     */
+    internal: z.boolean().optional(),
     event: AgentStreamEventPayloadSchema,
     timestamp: z.string(),
     // Present for timeline events. Maps 1:1 to canonical in-memory timeline rows.
@@ -2854,6 +2887,12 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   projectKind: z.enum(["git", "non_git", "directory"]),
 });
 
+export const WorkspaceRedirectPayloadSchema = z.object({
+  fromWorkspaceId: z.string(),
+  toWorkspaceId: z.string(),
+  reason: z.string(),
+});
+
 export const FetchWorkspacesResponseMessageSchema = z.object({
   type: z.literal("fetch_workspaces_response"),
   payload: z.object({
@@ -2864,6 +2903,10 @@ export const FetchWorkspacesResponseMessageSchema = z.object({
     // Project parents with no active workspaces. Old daemons omit it; old clients
     // ignore it. Only populated on the first page (no cursor).
     emptyProjects: z.array(WorkspaceProjectDescriptorPayloadSchema).optional().default([]),
+    // COMPAT(workspaceDedupe): added after workspace canonicalization; old
+    // clients ignore it, new clients may use it to rewrite stale deep links.
+    workspaceRedirects: z.array(WorkspaceRedirectPayloadSchema).optional().default([]),
+    dedupeNotice: z.string().nullable().optional().default(null),
     pageInfo: z.object({
       nextCursor: z.string().nullable(),
       prevCursor: z.string().nullable(),

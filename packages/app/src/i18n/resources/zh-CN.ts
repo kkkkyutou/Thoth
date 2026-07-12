@@ -1068,7 +1068,7 @@ export const zhCN: TranslationResources = {
     openPath: "打开路径",
   },
   branchSwitcher: {
-    currentBranch: "当前分支：{{branchName}}。按下以切换分支。",
+    currentBranch: "当前分支：{{branchName}}。",
     placeholder: "切换分支...",
     searchPlaceholder: "筛选分支...",
     empty: "没有找到分支。",

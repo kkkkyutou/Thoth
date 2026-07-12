@@ -206,6 +206,9 @@ export const ClarifyOutputMetaSchema = z
     decision_tree_depth: z.number().int().min(0),
     qa_round_count: z.number().int().min(0),
     remaining_material_assumptions: z.array(ClarifyMaterialAssumptionSchema),
+    // Legacy packet consumers can omit this, while newer golden/user-simulation
+    // evidence retains the full owner classification behind a visible card.
+    assumptions: z.array(ClarifyMaterialAssumptionSchema).optional(),
     question_value_reason: NonEmptyStringSchema,
   })
   .strict();
@@ -559,11 +562,13 @@ export const ClarifyRuntimePacketSchema = RuntimePacketBaseSchema.extend({
 
   if (packet.code === "C_GOAL_CARD") {
     const parsedGoalCard = ClarifyGoalCardContractSchema.safeParse(packet.content.goal_card);
-    if (!parsedGoalCard.success) {
+    const parsedGoalsCard = ClarifyGoalsCardContractSchema.safeParse(packet.content.goals_card);
+    if (!parsedGoalCard.success && !parsedGoalsCard.success) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "C_GOAL_CARD packets must include a valid content.goal_card",
-        path: ["content", "goal_card"],
+        message:
+          "C_GOAL_CARD packets must include a valid content.goals_card or legacy content.goal_card",
+        path: ["content"],
       });
     }
     const parsedProvenance = ClarifyGoalCardProvenanceSchema.safeParse(packet.content.provenance);
@@ -587,11 +592,13 @@ export const ClarifyRuntimePacketSchema = RuntimePacketBaseSchema.extend({
       });
     }
     const parsedGoalCard = ClarifyGoalCardContractSchema.safeParse(packet.content.goal_card);
-    if (!parsedGoalCard.success) {
+    const parsedGoalsCard = ClarifyGoalsCardContractSchema.safeParse(packet.content.goals_card);
+    if (!parsedGoalCard.success && !parsedGoalsCard.success) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "C_REGISTER packets must include a valid content.goal_card",
-        path: ["content", "goal_card"],
+        message:
+          "C_REGISTER packets must include a valid content.goals_card or legacy content.goal_card",
+        path: ["content"],
       });
     }
   }
@@ -765,6 +772,7 @@ export const THOTH_CLARIFY_RUNTIME_TOOL_NAMES = [
   "thoth_submit_clarify_card",
   "thoth_submit_task_card",
   "thoth_submit_goals_card",
+  "thoth_submit_clarify_convergence_audit",
   "thoth_report_blocked",
 ] as const;
 
@@ -775,6 +783,7 @@ export const THOTH_LEGACY_CLARIFY_RUNTIME_TOOL_NAMES = ["thoth_submit_pyramid_pl
 export const THOTH_LOOP_RUNTIME_TOOL_NAMES = [
   "thoth_loop_submit_planexec_result",
   "thoth_loop_submit_review_verdict",
+  "thoth_submit_contract_preservation_audit",
   "thoth_loop_report_blocked",
 ] as const;
 
@@ -834,6 +843,46 @@ export const ClarifyConvergenceReviewSchema = z
   })
   .strict();
 
+/**
+ * Internal decision-value record. It is persisted with a Clarify card so the
+ * daemon and offline harness can evaluate whether the question changed the
+ * eventual authority contract without exposing chain-of-thought in the UI.
+ */
+export const ClarifyDecisionDeltaSchema = z
+  .object({
+    affected_contract_fields: z.array(NonEmptyStringSchema).min(1),
+    safe_if_unanswered: NonEmptyStringSchema,
+    eliminated_routes: z.array(NonEmptyStringSchema).default([]),
+    irreversible_or_cost_impact: z.string().optional(),
+    downstream_refs: z.array(NonEmptyStringSchema).min(1),
+  })
+  .strict();
+
+export const ClarifyConvergenceAuditOutcomeSchema = z.enum([
+  "proceed",
+  "revise_frontier",
+  "blocked",
+]);
+
+export const ClarifyConvergenceAuditSchema = z
+  .object({
+    outcome: ClarifyConvergenceAuditOutcomeSchema,
+    summary: NonEmptyStringSchema,
+    missing_material_frontier: z.array(NonEmptyStringSchema).default([]),
+    rejected_question_patterns: z.array(NonEmptyStringSchema).default([]),
+    task_memory_refs: z.array(NonEmptyStringSchema).default([]),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (input.outcome === "revise_frontier" && input.missing_material_frontier.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "revise_frontier audits must identify a material frontier",
+        path: ["missing_material_frontier"],
+      });
+    }
+  });
+
 export const ThothSubmitClarifyCardInputSchema = z
   .object({
     title: NonEmptyStringSchema,
@@ -841,6 +890,7 @@ export const ThothSubmitClarifyCardInputSchema = z
     decision_it_changes: NonEmptyStringSchema.optional(),
     public_badge_summary: NonEmptyStringSchema,
     frontier_ledger: ClarifyFrontierLedgerSchema,
+    decision_delta: ClarifyDecisionDeltaSchema.optional(),
     questions: z.array(SemanticClarifyQuestionItemSchema).min(2).max(4),
     allow_choice_notes: z.literal(true).default(true),
     allow_note_only: z.literal(true).default(true),
@@ -867,6 +917,8 @@ export const ThothSubmitTaskCardInputSchema = z
       });
     }
   });
+
+export const ThothSubmitClarifyConvergenceAuditInputSchema = ClarifyConvergenceAuditSchema;
 
 export const ThothSubmitPyramidPlanInputSchema = z
   .object({
@@ -938,6 +990,16 @@ export const ThothLoopPlanExecResultInputSchema = z
 
 export const ThothLoopReviewOutcomeSchema = z.enum(["pass", "fail", "blocked"]);
 
+export const ContractPreservationAuditSchema = z
+  .object({
+    outcome: z.enum(["proceed", "reject", "blocked"]),
+    summary: NonEmptyStringSchema,
+    affected_goal_ids: z.array(NonEmptyStringSchema).default([]),
+  })
+  .strict();
+
+export const ThothSubmitContractPreservationAuditInputSchema = ContractPreservationAuditSchema;
+
 export const ThothLoopReviewVerdictInputSchema = z
   .object({
     goal_id: NonEmptyStringSchema,
@@ -961,6 +1023,29 @@ export const ThothLoopReviewVerdictInputSchema = z
     next_round_guidance: z.string().optional(),
     anti_repeat_strategy: z.array(NonEmptyStringSchema).default([]),
     evidence_summary: NonEmptyStringSchema,
+    deferred_goal_replan_proposal: z
+      .object({
+        base_goals_revision: z.number().int().nonnegative(),
+        rationale: NonEmptyStringSchema,
+        expected_benefit: NonEmptyStringSchema,
+        affected_goal_ids: z.array(NonEmptyStringSchema).min(1),
+        goals: z
+          .array(
+            z
+              .object({
+                id: NonEmptyStringSchema,
+                order: z.number().int().positive(),
+                title: NonEmptyStringSchema,
+                goal: NonEmptyStringSchema,
+                constraints: z.array(NonEmptyStringSchema).min(1),
+                acceptance: z.array(NonEmptyStringSchema).min(1),
+              })
+              .strict(),
+          )
+          .min(1),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((input, ctx) => {
@@ -1056,6 +1141,10 @@ export const ThothClarifyRuntimeToolInputSchema = z.discriminatedUnion("tool", [
     input: ThothSubmitTaskCardInputSchema,
   }),
   z.object({
+    tool: z.literal("thoth_submit_clarify_convergence_audit"),
+    input: ThothSubmitClarifyConvergenceAuditInputSchema,
+  }),
+  z.object({
     tool: z.literal("thoth_submit_goals_card"),
     input: ThothSubmitGoalsCardInputSchema,
   }),
@@ -1077,6 +1166,10 @@ export const ThothLoopRuntimeToolInputSchema = z.discriminatedUnion("tool", [
   z.object({
     tool: z.literal("thoth_loop_submit_review_verdict"),
     input: ThothLoopReviewVerdictInputSchema,
+  }),
+  z.object({
+    tool: z.literal("thoth_submit_contract_preservation_audit"),
+    input: ThothSubmitContractPreservationAuditInputSchema,
   }),
   z.object({
     tool: z.literal("thoth_loop_report_blocked"),
@@ -1200,9 +1293,18 @@ export type ThothClarifyRuntimeToolName = z.infer<typeof ThothClarifyRuntimeTool
 export type ThothLoopRuntimeToolName = z.infer<typeof ThothLoopRuntimeToolNameSchema>;
 export type ThothRuntimeToolName = z.infer<typeof ThothRuntimeToolNameSchema>;
 export type ClarifyFrontierLedger = z.infer<typeof ClarifyFrontierLedgerSchema>;
+export type ClarifyDecisionDelta = z.infer<typeof ClarifyDecisionDeltaSchema>;
+export type ClarifyConvergenceAudit = z.infer<typeof ClarifyConvergenceAuditSchema>;
+export type ContractPreservationAudit = z.infer<typeof ContractPreservationAuditSchema>;
 export type ClarifyConvergenceReview = z.infer<typeof ClarifyConvergenceReviewSchema>;
 export type ThothSubmitClarifyCardInput = z.infer<typeof ThothSubmitClarifyCardInputSchema>;
 export type ThothSubmitTaskCardInput = z.infer<typeof ThothSubmitTaskCardInputSchema>;
+export type ThothSubmitClarifyConvergenceAuditInput = z.infer<
+  typeof ThothSubmitClarifyConvergenceAuditInputSchema
+>;
+export type ThothSubmitContractPreservationAuditInput = z.infer<
+  typeof ThothSubmitContractPreservationAuditInputSchema
+>;
 export type ThothSubmitGoalsCardInput = z.infer<typeof ThothSubmitGoalsCardInputSchema>;
 export type ThothSubmitPyramidPlanInput = z.infer<typeof ThothSubmitPyramidPlanInputSchema>;
 export type ThothLoopPlanExecResultInput = z.infer<typeof ThothLoopPlanExecResultInputSchema>;

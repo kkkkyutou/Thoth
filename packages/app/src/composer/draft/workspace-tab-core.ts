@@ -19,11 +19,30 @@ export function shouldAllowEmptyDraftText(input: {
 }
 
 export function shouldHydrateWorkspaceSecretarySnapshotForDraft(input: {
-  localStreamItemCount: number;
+  secretaryTopicId?: string | null;
 }): boolean {
-  // Workspace Secretary snapshots are workspace-scoped active topics. A fresh draft tab has no
-  // tab-scoped topic binding yet, so hydrating it would show the previous topic as a new agent.
-  return input.localStreamItemCount > 0;
+  // Workspace Secretary snapshots are workspace-scoped. A draft must first own a durable topic
+  // binding; otherwise a late snapshot can project another tab's active topic into this tab.
+  return Boolean(input.secretaryTopicId?.trim());
+}
+
+export function shouldApplyWorkspaceSecretaryModelUpdateForDraft(input: {
+  secretaryTopicId?: string | null;
+  modelActiveTopicId?: string | null;
+}): boolean {
+  const secretaryTopicId = input.secretaryTopicId?.trim();
+  // A submitted flag is only local UI intent. It is not proof that this tab owns the workspace-wide
+  // model update: topic creation and a stale broadcast may race. Only a persisted topic binding is
+  // allowed to authorize model projection into a draft tab.
+  return Boolean(secretaryTopicId) && input.modelActiveTopicId === secretaryTopicId;
+}
+
+export function shouldApplyWorkspaceSecretarySnapshotForDraft(input: {
+  secretaryTopicId?: string | null;
+  modelActiveTopicId?: string | null;
+}): boolean {
+  const secretaryTopicId = input.secretaryTopicId?.trim();
+  return Boolean(secretaryTopicId) && input.modelActiveTopicId === secretaryTopicId;
 }
 
 export function deriveWorkspaceSecretaryDraftTitleFromText(text: string): string | null {
@@ -55,13 +74,43 @@ export function isWorkspaceSecretaryModelRunning(model: ThothCleanUiModel): bool
   return model.secretary.status.kind === "loading";
 }
 
-function isPausedSubmittedSummary(summary: string | undefined): boolean {
-  return Boolean(summary && /暂停|取消/.test(summary));
+export function resolveWorkspaceSecretaryTurnInFlight(input: {
+  current: boolean;
+  model: ThothCleanUiModel;
+  reason?:
+    | "provider_turn_started"
+    | "provider_progress"
+    | "provider_reply_delta"
+    | "provider_turn_completed"
+    | "provider_blocked"
+    | "provider_error";
+}): boolean {
+  if (isWorkspaceSecretaryModelRunning(input.model)) {
+    return true;
+  }
+  if (
+    input.reason === "provider_turn_completed" ||
+    input.reason === "provider_blocked" ||
+    input.reason === "provider_error" ||
+    input.model.secretary.status.kind === "recoverable_error" ||
+    input.model.secretary.status.kind === "provider_required" ||
+    input.model.secretary.status.kind === "provider_unsupported" ||
+    input.model.secretary.status.kind === "host_unavailable"
+  ) {
+    return false;
+  }
+
+  // An authority tool answer resumes the provider asynchronously. A stale ready snapshot must not
+  // render the prior assistant turn as complete before the provider emits its actual terminal event.
+  return input.current;
 }
 
 function latestWorkspaceSecretaryAuthorityItem(items: readonly StreamItem[]): StreamItem | null {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
+    if (item?.kind === "user_message") {
+      return null;
+    }
     if (
       item?.kind === "clarify_card" ||
       item?.kind === "task_card" ||
@@ -75,39 +124,41 @@ function latestWorkspaceSecretaryAuthorityItem(items: readonly StreamItem[]): St
 }
 
 export function shouldKeepWorkspaceSecretaryAuthorityTurnRunning(input: {
-  secretarySubmitted: boolean;
-  secretarySubmitting: boolean;
-  clarifyStrength: string | null | undefined;
+  secretaryTurnInFlight: boolean;
   streamItems: readonly StreamItem[];
 }): boolean {
-  if (input.secretarySubmitting) {
+  if (input.secretaryTurnInFlight) {
     return true;
   }
-  if (!input.secretarySubmitted || input.clarifyStrength === "none") {
-    return false;
+
+  for (let index = input.streamItems.length - 1; index >= 0; index -= 1) {
+    const item = input.streamItems[index];
+    if (item?.kind === "user_message") {
+      break;
+    }
+    if (item?.kind === "thought" && item.status === "loading") {
+      return true;
+    }
+    if (item?.kind === "tool_call" && item.payload.data.status === "running") {
+      return true;
+    }
   }
 
   const latestAuthorityItem = latestWorkspaceSecretaryAuthorityItem(input.streamItems);
   if (!latestAuthorityItem) {
-    return true;
+    return false;
   }
 
   if (latestAuthorityItem.kind === "clarify_card") {
-    if (!latestAuthorityItem.card.submitted) {
-      return true;
-    }
-    return !isPausedSubmittedSummary(latestAuthorityItem.card.submittedSummary);
+    return !latestAuthorityItem.card.submitted;
   }
 
   if (latestAuthorityItem.kind === "task_card") {
-    if (!latestAuthorityItem.card.submitted) {
-      return true;
-    }
-    return !isPausedSubmittedSummary(latestAuthorityItem.card.submittedSummary);
+    return !latestAuthorityItem.card.submitted;
   }
 
   if (latestAuthorityItem.kind === "goal_card") {
-    return latestAuthorityItem.card.submitted === false;
+    return !latestAuthorityItem.card.submitted;
   }
 
   return false;

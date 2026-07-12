@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ClarifyAnswerPacketSchema,
+  ClarifyConvergenceAuditSchema,
+  ClarifyDecisionDeltaSchema,
   ClarificationCardCandidateSchema,
   ClarifyRepairInputPacketSchema,
   ClarifyQuestionCardSchema,
@@ -15,6 +17,8 @@ import {
   THOTH_LOOP_CODES,
   THOTH_RUNTIME_PACKET_FIELDS,
   ThothSubmitClarifyCardInputSchema,
+  ThothSubmitClarifyConvergenceAuditInputSchema,
+  ThothSubmitContractPreservationAuditInputSchema,
   ThothSubmitGoalsCardInputSchema,
   ThothLoopPlanExecResultInputSchema,
   ThothLoopReviewVerdictInputSchema,
@@ -588,6 +592,57 @@ describe("thoth runtime contract", () => {
         },
       }),
     ).toThrow();
+  });
+
+  it("parses persisted Clarify decision deltas without exposing them in card copy", () => {
+    const delta = ClarifyDecisionDeltaSchema.parse({
+      affected_contract_fields: ["goal", "acceptance"],
+      safe_if_unanswered: "Stop at the card and do not choose a delivery route.",
+      eliminated_routes: ["A benchmark-only delivery"],
+      irreversible_or_cost_impact: "Changing the public interface later is costly.",
+      downstream_refs: ["task_card.goal", "task_card.acceptance"],
+    });
+    const card = ThothSubmitClarifyCardInputSchema.parse({
+      title: "确认交付边界",
+      why_now: "交付形式会改变后续合同。",
+      public_badge_summary: "正在拆解交付边界和验收口径。",
+      frontier_ledger: {
+        ...readyFrontierLedger,
+        convergence_state: "not_converged",
+        remaining_material_user_owned_assumptions: ["交付形态"],
+      },
+      decision_delta: delta,
+      questions: clarifyQuestionCard.questions,
+    });
+
+    expect(card.decision_delta?.downstream_refs).toEqual([
+      "task_card.goal",
+      "task_card.acceptance",
+    ]);
+    expect(JSON.stringify(card.questions)).not.toContain("safe_if_unanswered");
+  });
+
+  it("requires an independent audit to name the frontier before it can revise Clarify", () => {
+    expect(
+      ThothSubmitClarifyConvergenceAuditInputSchema.parse({
+        outcome: "revise_frontier",
+        summary: "Acceptance evidence still belongs to the user.",
+        missing_material_frontier: ["performance baseline"],
+      }),
+    ).toMatchObject({ outcome: "revise_frontier" });
+    expect(() =>
+      ClarifyConvergenceAuditSchema.parse({
+        outcome: "revise_frontier",
+        summary: "A frontier remains.",
+      }),
+    ).toThrow(/material frontier/);
+    expect(
+      ThothSubmitContractPreservationAuditInputSchema.parse({
+        outcome: "proceed",
+        summary: "The future-goal change preserves the approved contract.",
+        affected_goal_ids: ["goal-3"],
+      }),
+    ).toMatchObject({ outcome: "proceed" });
   });
 
   it("requires C_ASK packets to carry the question card in content and ui", () => {

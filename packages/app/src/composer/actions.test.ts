@@ -8,8 +8,10 @@ import type {
 } from "@/attachments/types";
 import type { StreamItem } from "@/types/stream";
 import {
+  applyWorkspaceSecretaryModelToStream,
   cancelComposerAgent,
   dispatchComposerAgentMessage,
+  dispatchWorkspaceSecretaryAnswer,
   dispatchWorkspaceSecretaryCancel,
   dispatchWorkspaceSecretaryMessage,
   editQueuedComposerMessage,
@@ -18,6 +20,7 @@ import {
   openComposerAttachment,
   pickAndPersistImages,
   queueComposerMessage,
+  removeWorkspaceSecretaryModelItemsFromStream,
   removeComposerAttachmentAtIndex,
   sendQueuedComposerMessageNow,
   toggleGithubAttachment,
@@ -32,6 +35,7 @@ import {
 import type {
   ThothCleanUiModel,
   WorkspaceSecretaryResponsePayload,
+  WorkspaceSecretaryTurnActionPayload,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 
 const imageMetadata: AttachmentMetadata = {
@@ -232,12 +236,28 @@ function createSecretaryModel(): ThothCleanUiModel {
 
 function createFakeSecretaryClient(model = createSecretaryModel()) {
   const calls: Array<{
+    workspaceId?: string;
+    workspacePath?: string;
+    topicId?: string;
     text: string;
     messageId?: string;
     images?: Array<{ data: string; mimeType: string }>;
     attachments?: unknown[];
   }> = [];
-  const cancelCalls: Array<{ uiAgentId?: string; topicId?: string }> = [];
+  const answerCalls: Array<{
+    workspaceId?: string;
+    workspacePath?: string;
+    topicId?: string;
+    cardId: string;
+    answer: WorkspaceSecretaryTurnActionPayload;
+    uiAgentId?: string;
+  }> = [];
+  const cancelCalls: Array<{
+    workspaceId?: string;
+    workspacePath?: string;
+    uiAgentId?: string;
+    topicId?: string;
+  }> = [];
   const payload: WorkspaceSecretaryResponsePayload = {
     requestId: "fake-secretary-response",
     model,
@@ -245,6 +265,7 @@ function createFakeSecretaryClient(model = createSecretaryModel()) {
   };
   return {
     calls,
+    answerCalls,
     cancelCalls,
     sendWorkspaceSecretaryMessage: async (input: {
       text: string;
@@ -253,10 +274,27 @@ function createFakeSecretaryClient(model = createSecretaryModel()) {
       attachments?: unknown[];
     }) => {
       calls.push(input);
+      const existingUserTurn = model.secretary.turns.find(
+        (turn): turn is Extract<SecretaryTurn, { kind: "message" }> =>
+          turn.kind === "message" && turn.speaker === "user",
+      );
+      if (existingUserTurn) {
+        existingUserTurn.text = input.text;
+      } else {
+        model.secretary.turns.unshift({
+          id: `user-${calls.length}`,
+          kind: "message",
+          speaker: "user",
+          text: input.text,
+        });
+      }
       return payload;
     },
-    answerWorkspaceSecretaryClarify: async () => payload,
-    cancelWorkspaceSecretaryTurn: async (input: { uiAgentId?: string; topicId?: string }) => {
+    answerWorkspaceSecretaryClarify: async (input: (typeof answerCalls)[number]) => {
+      answerCalls.push(input);
+      return payload;
+    },
+    cancelWorkspaceSecretaryTurn: async (input: (typeof cancelCalls)[number]) => {
       cancelCalls.push(input);
       return payload;
     },
@@ -526,6 +564,213 @@ describe("dispatchComposerAgentMessage", () => {
 });
 
 describe("dispatchWorkspaceSecretaryMessage", () => {
+  it("reconciles canonical authority cards without retaining cards from another topic", () => {
+    const model = createSecretaryModel();
+    model.secretary.turns = [
+      {
+        id: "turn-current-card",
+        kind: "clarify_card",
+        card: {
+          id: "current-card",
+          roundLabel: "Clarify 1",
+          title: "当前话题卡片",
+          whyNow: "当前话题需要确认。",
+          continuesClarify: true,
+          submitted: false,
+          card: {
+            question_id: "question-current",
+            title: "当前话题卡片",
+            behavior_tree_node: "current",
+            why_now: "当前话题需要确认。",
+            questions: [
+              {
+                id: "scope",
+                question: "当前范围？",
+                choices: [{ id: "one", label: "当前", description: "当前话题" }],
+              },
+            ],
+          },
+        },
+      },
+    ];
+    const staleCard: StreamItem = {
+      kind: "clarify_card",
+      id: "clarify_stale-card",
+      timestamp: new Date(1),
+      card: {
+        ...model.secretary.turns[0]!.card,
+        id: "stale-card",
+        title: "旧话题卡片",
+      },
+    };
+    const runningTool: StreamItem = {
+      kind: "tool_call",
+      id: "agent_tool_shell-1",
+      timestamp: new Date(2),
+      payload: {
+        source: "agent",
+        data: {
+          provider: "codex",
+          callId: "shell-1",
+          name: "Shell",
+          status: "running",
+          error: null,
+          detail: { type: "shell", command: "npm test", cwd: "/repo" },
+        },
+      },
+    };
+    const stream = createFakeStream();
+    stream.tail.set("agent", [staleCard, runningTool]);
+
+    applyWorkspaceSecretaryModelToStream("agent", model, stream);
+
+    const tail = stream.tail.get("agent") ?? [];
+    expect(tail.filter((item) => item.kind === "clarify_card").map((item) => item.id)).toEqual([
+      "clarify_current-card",
+    ]);
+    expect(tail).toContainEqual(runningTool);
+  });
+
+  it("settles retained running timeline items when the user cancels a secretary turn", () => {
+    const model = createSecretaryModel();
+    const runningTool: StreamItem = {
+      kind: "tool_call",
+      id: "agent_tool_shell-cancel",
+      timestamp: new Date(2),
+      payload: {
+        source: "agent",
+        data: {
+          provider: "codex",
+          callId: "shell-cancel",
+          name: "Shell",
+          status: "running",
+          error: null,
+          detail: { type: "shell", command: "npm test", cwd: "/repo" },
+        },
+      },
+    };
+    const runningThought: StreamItem = {
+      kind: "thought",
+      id: "thought-cancel",
+      text: "正在分析",
+      status: "loading",
+      timestamp: new Date(2),
+    };
+    const stream = createFakeStream();
+    stream.tail.set("agent", [runningTool, runningThought]);
+
+    applyWorkspaceSecretaryModelToStream("agent", model, stream, {
+      settleRunningItems: true,
+    });
+
+    const tail = stream.tail.get("agent") ?? [];
+    const settledTool = tail.find((item) => item.id === runningTool.id);
+    const settledThought = tail.find((item) => item.id === runningThought.id);
+    expect(settledTool).toMatchObject({
+      kind: "tool_call",
+      payload: { data: { status: "canceled" } },
+    });
+    expect(settledThought).toMatchObject({ kind: "thought", status: "ready" });
+  });
+
+  it("keeps an optimistic user message until the matching canonical secretary turn arrives", () => {
+    const model = createSecretaryModel();
+    model.secretary.turns = [];
+    const optimisticUser: StreamItem = {
+      kind: "user_message",
+      id: "optimistic-current",
+      text: "实现随机数生成器",
+      timestamp: new Date(1),
+      optimistic: true,
+    };
+    const stream = createFakeStream(new Map([["agent", [optimisticUser]]]));
+
+    applyWorkspaceSecretaryModelToStream("agent", model, stream);
+    expect(stream.head.get("agent")).toEqual([optimisticUser]);
+
+    model.secretary.turns = [
+      {
+        id: "user-canonical",
+        kind: "message",
+        speaker: "user",
+        text: "实现随机数生成器",
+      },
+    ];
+    applyWorkspaceSecretaryModelToStream("agent", model, stream);
+
+    expect(stream.head.get("agent")).toBeUndefined();
+    expect(stream.tail.get("agent")).toMatchObject([
+      {
+        kind: "user_message",
+        id: "secretary_user_user-canonical",
+        text: "实现随机数生成器",
+      },
+    ]);
+  });
+
+  it("removes only items projected by a mismatched topic snapshot", () => {
+    const staleModel = createSecretaryModel();
+    staleModel.secretary.turns = [
+      {
+        id: "stale-turn",
+        kind: "clarify_card",
+        card: {
+          id: "stale-card",
+          roundLabel: "Clarify 1",
+          title: "旧话题卡片",
+          whyNow: "旧话题。",
+          continuesClarify: true,
+          submitted: false,
+          card: {
+            question_id: "stale-question",
+            title: "旧话题卡片",
+            behavior_tree_node: "stale",
+            why_now: "旧话题。",
+            questions: [
+              {
+                id: "stale-scope",
+                question: "旧范围？",
+                choices: [{ id: "old", label: "旧", description: "旧话题" }],
+              },
+            ],
+          },
+        },
+      },
+    ];
+    const currentCard: StreamItem = {
+      kind: "clarify_card",
+      id: "clarify_current-card",
+      timestamp: new Date(2),
+      card: {
+        ...(
+          staleModel.secretary.turns[0] as Extract<
+            (typeof staleModel.secretary.turns)[number],
+            { kind: "clarify_card" }
+          >
+        ).card,
+        id: "current-card",
+        title: "当前话题卡片",
+      },
+    };
+    const staleCard: StreamItem = {
+      kind: "clarify_card",
+      id: "clarify_stale-card",
+      timestamp: new Date(1),
+      card: (
+        staleModel.secretary.turns[0] as Extract<
+          (typeof staleModel.secretary.turns)[number],
+          { kind: "clarify_card" }
+        >
+      ).card,
+    };
+    const stream = createFakeStream();
+    stream.tail.set("agent", [staleCard, currentCard]);
+
+    removeWorkspaceSecretaryModelItemsFromStream("agent", staleModel, stream);
+
+    expect(stream.tail.get("agent")?.map((item) => item.id)).toEqual(["clarify_current-card"]);
+  });
+
   it("sends text, images, and structured attachments through Workspace Secretary and merges clean turns", async () => {
     const client = createFakeSecretaryClient();
     const stream = createFakeStream();
@@ -534,6 +779,9 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
     await dispatchWorkspaceSecretaryMessage({
       client,
       agentId: "agent",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      topicId: "topic-main",
       text: "clarify this",
       attachments: [
         { kind: "image", metadata: image },
@@ -552,6 +800,9 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
 
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]).toMatchObject({
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      topicId: "topic-main",
       text: "clarify this",
       images: [{ data: image.id, mimeType: image.mimeType }],
       attachments: [
@@ -665,7 +916,10 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
     });
 
     expect(stream.head.get("agent")).toEqual([runningTool, liveAssistant]);
-    expect(stream.tail.get("agent")?.map((item) => item.kind)).toEqual(["assistant_message"]);
+    expect(stream.tail.get("agent")?.map((item) => item.kind)).toEqual([
+      "user_message",
+      "assistant_message",
+    ]);
   });
 
   it("cancels the Workspace Secretary provider turn with the draft ui agent id", async () => {
@@ -675,12 +929,57 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
     await dispatchWorkspaceSecretaryCancel({
       client,
       agentId: "draft-secretary",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      topicId: "topic-main",
       stream,
     });
 
-    expect(client.cancelCalls).toEqual([{ uiAgentId: "draft-secretary" }]);
+    expect(client.cancelCalls).toEqual([
+      {
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace/thoth",
+        topicId: "topic-main",
+        uiAgentId: "draft-secretary",
+      },
+    ]);
     expect(stream.tail.get("draft-secretary")?.map((item) => item.kind)).toEqual([
+      "user_message",
       "assistant_message",
+    ]);
+  });
+
+  it("binds authority card answers to the originating workspace topic", async () => {
+    const client = createFakeSecretaryClient();
+    const stream = createFakeStream();
+    const answer: WorkspaceSecretaryTurnActionPayload = {
+      intent: "stop",
+      question_card_id: "question-card-1",
+      title: "Clarify",
+      answers: [],
+      raw_answer: "暂停继续询问",
+    };
+
+    await dispatchWorkspaceSecretaryAnswer({
+      client,
+      agentId: "draft-secretary",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      topicId: "topic-main",
+      cardId: "clarify-card-1",
+      answer,
+      stream,
+    });
+
+    expect(client.answerCalls).toEqual([
+      {
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace/thoth",
+        topicId: "topic-main",
+        uiAgentId: "draft-secretary",
+        cardId: "clarify-card-1",
+        answer,
+      },
     ]);
   });
 });

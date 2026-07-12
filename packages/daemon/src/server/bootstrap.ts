@@ -773,6 +773,20 @@ export async function createThothDaemon(
     workspaceRegistry,
     logger,
     workspaceGitService,
+    reassignWorkspaceDependents: async ({ fromWorkspaceId, toWorkspaceId }) => {
+      const records = await agentStorage.list();
+      await Promise.all(
+        records
+          .filter((record) => record.workspaceId === fromWorkspaceId)
+          .map((record) =>
+            agentStorage.upsert({
+              ...record,
+              workspaceId: toWorkspaceId,
+              updatedAt: new Date().toISOString(),
+            }),
+          ),
+      );
+    },
   });
   void (async () => {
     try {
@@ -806,6 +820,7 @@ export async function createThothDaemon(
   const loopTaskService = new ThothLoopTaskService({
     thothHome: config.thothHome,
     agentManager,
+    agentStorage,
     logger: logger.child({ module: "thoth-loop-task-service" }),
     onTaskUpdated: (task) => {
       emitExternalSessionMessage({

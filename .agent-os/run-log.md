@@ -2210,3 +2210,572 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
 - Remaining limitation: This session did not run new real Codex Loop+Light, all-goals-to-`done`,
   pause/resume/stop or daemon restart recovery acceptance. `NTH-TD-021` remains open for those
   real-provider hardening runs.
+
+## 2026-07-10 [Public web connection timeout repair]
+
+- Worked on: Public web review host connection health after Settings showed both Relay and TCP
+  connection rows timing out.
+- Root cause: The live `8082 -> 8148` web app had been started as a pure static server without
+  `THOTH_DAEMON_PROXY_TARGET`, so `/ws` did not proxy to the local Thoth daemon on `127.0.0.1:6688`.
+  Direct `TCP (180.76.242.105:8148)` probes therefore timed out even though the HTML page returned 200. Relay health had a separate instability: Node `fetch` to `relay.test.thoth.seeles.ai` was
+  hitting `ETIMEDOUT` in this environment while `curl -4` succeeded consistently.
+- Implementation summary: Updated `scripts/serve-static.mjs` relay health proxy to use an IPv4-only
+  HTTPS request instead of default Node `fetch`. Updated `npm run dev:web:demo` to launch with
+  `THOTH_DAEMON_PROXY_TARGET=127.0.0.1:6688`, and updated `docs/development.md` /
+  `docs/packaging.md` so the documented web review command includes the daemon proxy target.
+- Runtime action: Restarted only the Thoth web test app on `0.0.0.0:8082`; kept Thoth daemon on
+  `127.0.0.1:6688` and left the reserved Paseo daemon on `127.0.0.1:6767` untouched.
+- Verification passed: `curl -I http://127.0.0.1:8082/` returned 200; local and public
+  `/__thoth/relay-health` each returned 5/5 successful relay health payloads; `ws://127.0.0.1:8082/ws`
+  and `ws://180.76.242.105:8148/ws` both opened; a fresh Playwright Chromium load of
+  `http://180.76.242.105:8148/` had no page errors or timeout console messages and created
+  `direct:180.76.242.105:8148` in the host registry. `node --check scripts/serve-static.mjs`,
+  `npm run format:check` and `git diff --check` passed.
+
+## 2026-07-10 [Paseo UI icon restoration]
+
+- Worked on: User request to restore Thoth frontend interface icons back to the Paseo icon system,
+  while keeping Thoth logo/app icon/favicon/brand assets intact.
+- Implementation summary: Removed the visible `ThothInventoryIcon` / arcade inventory UI icon path
+  from the app shell. `left-sidebar.tsx` now uses Paseo-style lucide icons for add project, home,
+  settings and the workspace section header. `settings-screen.tsx` now uses the Paseo lucide icon
+  set for settings, host sections and project headers instead of Thoth inventory PNGs.
+- Brand exception: `ThothLogo` now imports only the Thoth brand mark directly, so logo rendering
+  remains unchanged without pulling the deleted UI inventory registry into the visible interface.
+- Verification passed: `npm --workspace=@thoth/app run test -- left-sidebar settings-screen settings
+providers-section projects-screen` passed 5 files / 60 tests. `npm run build:web` passed and the
+  web export asset list only included the allowed `arcade-inventory/brand/brand-mark` asset from the
+  arcade inventory tree. `npm run format:check` and `git diff --check` passed. A code scan found no
+  remaining `ThothInventoryIcon`, `inventoryIconName`, or non-brand `arcade-inventory` UI icon paths
+  in `packages/app/src` / `packages/app/dist`.
+- Browser smoke: Captured local web screenshots for the left sidebar and settings page at
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/paseo-icons-20260710T020418Z/`; the visible UI icons
+  render as Paseo-style line icons while the Thoth brand mark remains intact.
+
+## 2026-07-10 [Background Tasks default right surface resizing]
+
+- Worked on: Background Tasks workspace-scoped right surface desktop default-open behavior and
+  horizontal resize support.
+- User-visible request: 所有 workspace 默认左侧保持 live session、右侧打开 Background Tasks 控制面；
+  右侧 Background Tasks UI 支持拖动分隔线调整横向间距。
+- Implementation summary: `WorkspaceScreen` now resolves the Background Tasks surface as open by
+  default on desktop workspaces, while keeping compact/mobile as explicit route/surface behavior.
+  The desktop layout renders the live workspace column on the left, a reusable `ResizeHandle`
+  divider, and the Background Tasks control plane on the right. Closing the surface records an
+  explicit user-close marker so the default-open rule does not fight a user's later choice.
+- Implementation summary: `background-tasks-surface-store` now persists `closedByUser` and
+  `sidebarWidth`, clamps right-panel width to stable desktop bounds, and preserves enough width for
+  the live session column while resizing.
+- Verification passed: `npm --workspace=@thoth/app run test -- background-tasks-surface-store
+background-tasks-panel` passed 2 files / 13 tests. `npm --workspace=@thoth/app run test` passed
+  321 files / 2681 tests. `npm run build:web` passed after final formatting. `npm run
+check:foundation` passed. `git diff --check` passed.
+
+## 2026-07-10 [Workspace canonical identity and Background control plane]
+
+- Worked on: Workspace 唯一性、Background Tasks 控制面重构和只读 branch display。
+- User-visible request: 一个真实路径 / git worktree 只允许一个 workspace；git 子目录归一到当前
+  worktree root；Background Tasks 不再作为 agent tab，而是 workspace-scoped 控制面；移动端有独立
+  Background Tasks 页面；branch 只显示当前 checkout，不提供切换入口。
+- Implementation summary: `WorkspaceProvisioningService`、`ThothWorktreeService` 和
+  `WorkspaceReconciliationService` 现在使用 native realpath + git checkout/worktree root 做 canonical
+  workspace identity。重复 workspace 会合并到最早 canonical 记录，duplicate workspace 归档，并迁移 agent
+  ownership；running agent 在 session 级 reconcile 时按用户中断语义 cancel 后迁移。创建 agent、local
+  workspace、worktree/open project 路径都走 find-or-create/reuse 主链路。
+- Implementation summary: App 侧删除 `background_tasks` 作为 `WorkspaceTabTarget` 和 panel registry
+  主路径；legacy persisted Background tab 会在 workspace tab store migration/partialize 中被丢弃，
+  旧 `open=background_tasks:*` 只打开 workspace surface。新增
+  `background-tasks-surface-store`，桌面 workspace 右侧渲染可关闭 Background 控制面，移动端提供
+  `/background-tasks` workspace-scoped 页面。
+- Implementation summary: `BackgroundTasksSurface` 从旧 panel wrapper 中抽出并直接接收
+  `serverId/workspaceId`；left sidebar 的 Background Tasks 入口在桌面打开右栏，在 compact/mobile
+  打开独立页面。`BranchSwitcher` 降级为只读 branch pill，不再打开 branch combobox 或调用 switch
+  operation；可见文案不再提示切换分支。
+- Protocol summary: `fetch_workspaces_response.payload` 新增 optional/defaultable
+  `workspaceRedirects` 和 `dedupeNotice`，用于后续 UI rewrite stale deep links / dedupe notice；旧
+  client 兼容解析。
+- Verification passed: daemon narrow tests for workspace provisioning/worktree/reconciliation/session
+  invariants passed 4 files / 56 tests. Protocol `messages.workspaces` passed 31 tests. App targeted
+  tests for Background Tasks, host routes, sidebar, branch/source-of-truth and workspace tab store
+  passed. `npm --workspace=@thoth/app run test` passed 320 files / 2665 tests. `npm run build:web`
+  passed. Existing `8082 -> 8148` static server served the latest `packages/app/dist`; local and
+  public `/h/local/workspace/demo/background-tasks` returned `200`, and `/__thoth/relay-health`
+  returned `status=ok`. `npm run check:foundation` passed. `git diff --check` passed.
+
+## 2026-07-10 [Workspace Secretary fresh draft isolation]
+
+- Worked on: Bugfix for a fresh New Agent draft inheriting another active Workspace Secretary topic
+  in the same workspace.
+- Root cause: Snapshot hydration already skipped fresh drafts, but
+  `workspace_secretary.model.update` is workspace-scoped and the draft subscription still applied it
+  unconditionally after matching only `workspacePath`. A newly opened draft could therefore receive
+  the active topic stream, mark itself submitted/running, and rename itself to the previous semantic
+  topic title.
+- Implementation summary: Added `shouldApplyWorkspaceSecretaryModelUpdateForDraft` and guarded the
+  Workspace Secretary model-update subscription so only a draft with local secretary stream items,
+  an in-progress submitted turn, or a created secretary topic consumes workspace-wide updates. The
+  submit/hydrate paths now keep a submitted ref in sync so the first legitimate update for the
+  current draft is still accepted immediately. `WorkspaceDraftAgentTab` is now keyed by
+  `serverId/tabId/draftId` so React cannot reuse one draft component instance, and its local
+  submitted/topic/running refs, for another newly opened draft.
+- Verification passed: `npm --workspace=@thoth/app run test -- composer/draft/workspace-tab-core`
+  passed 1 file / 16 tests. `npm --workspace=@thoth/app run test -- composer/draft agent-panel`
+  passed 7 files / 48 tests. `npm --workspace=@thoth/app run test` passed 320 files / 2669 tests.
+  `npm run build:web`, `npm run check:foundation` and `git diff --check` passed.
+
+## 2026-07-10 [Workspace Secretary topic-bound refresh restore]
+
+- Worked on: Bugfix for two Workspace Secretary draft tabs with the same prompt/title, where the
+  Clarify tab reopened after browser refresh as a blank draft instead of restoring its prior
+  context/card timeline.
+- Root cause: The previous fresh-draft isolation fix correctly stopped new drafts from consuming
+  workspace-wide active-topic snapshots, but draft tabs did not persist a Workspace Secretary
+  `topicId`. Refresh therefore left a semantically titled Clarify draft with no tab-scoped authority
+  binding. The daemon also persisted only the active topic's `turns`, so creating a second same-title
+  topic could overwrite the restorable context for the first.
+- Implementation summary: Draft workspace tab targets now persist `secretaryTopicId`; topic creation
+  writes the returned `activeTopicId` back into the tab, and restored drafts request
+  `workspace_secretary.snapshot` with that topic id. Workspace-wide model updates are accepted only
+  when the active topic matches the bound draft topic. Draft title/topic retargets merge against the
+  latest tab target to avoid same-submit overwrites.
+- Implementation summary: Workspace Secretary snapshots now store per-topic runtime state
+  (`topicStates`) with turns, clarify state, active phase and provider-backed flag. Creating a new
+  topic saves the previous active topic first; snapshot requests with `topicId` activate and return
+  that topic's own turns instead of the workspace active topic. Old single-active-topic snapshots
+  still parse as legacy data.
+- Verification passed: `npm --workspace=@thoth/protocol run test -- messages workspace-secretary`
+  passed 15 files / 141 tests. `npm --workspace=@thoth/client run test -- daemon-client` passed 2
+  files / 107 tests. `npm --workspace=@thoth/app run test -- composer/draft agent-panel
+workspace-tabs-store/state` passed 8 files / 66 tests.
+  `npm --workspace=@thoth/daemon run test:unit --
+src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed 1 file / 14
+  tests. `npm --workspace=@thoth/app run test` passed 320 files / 2674 tests. `npm run build:web`,
+  `npm run check:foundation` and `git diff --check` passed.
+
+## 2026-07-10 [Public connection timeout runtime recovery]
+
+- Worked on: Settings Connections 同时显示 Relay/TCP timeout 的现场排查与恢复。
+- Root cause: `8082` web static server 和 `THOTH_DAEMON_PROXY_TARGET=127.0.0.1:6688` 都仍然正确，
+  Relay 本地代理、公网代理和 Relay 直连 health 也都返回 `200`；实际缺失的是 Thoth daemon，
+  `127.0.0.1:6688` 没有监听进程。旧 daemon 日志没有 crash 或 graceful shutdown，旧 pid 已失效，
+  表明此前交互终端启动的 daemon 随终端生命周期被清理。
+- Runtime action: 保留 Paseo/legacy `127.0.0.1:6767` 和现有 `8082 -> 8148` web server，使用标准
+  `npm run dev:daemon` 入口通过独立 `setsid` session 启动 detached Thoth daemon，运行日志和 pid
+  保存在 ignored `.dev/thoth-runtime/`。
+- Verification passed: `6688` health 返回 `ok`；`6688/ws`、`8082/ws`、`8148/ws` 均完成 raw
+  ping/pong；本地和公网 Relay health 均为 `ok`；daemon 日志记录 `relay_control_connected` 和
+  `relay_data_connected`。真实 Chromium Connections 页在 daemon 恢复后约 14 秒从 `Timeout`
+  更新为实际 RTT `1ms`。`6767` 仍由原 Paseo daemon 独立监听。
+
+## 2026-07-10 [Archived Codex session history recovery]
+
+- Worked on: 修复归档 Codex Agent 从 History 或持久化 workspace tab 打开时，因
+  `thread/resume` 拒绝 archived thread 而进入整页 `agent-load-error`、无法恢复上下文的问题。
+- Root cause: `fetch_agent_timeline_request` 通过 `ensureAgentLoaded` 重建 provider session；Codex
+  adapter 的连接顺序原为 `thread/resume` 后 `thread/read`。Codex archived thread 允许
+  `thread/read(includeTurns=true)`，但拒绝 `thread/resume`，因此历史回放尚未开始就失败。生产 daemon
+  当前没有 durable timeline store 可以绕过 provider history。
+- Implementation summary: 新增内部 `AgentResumeSessionOptions.historyOnly`。`ensureAgentLoaded` 对仍有
+  `archivedAt` 的持久化 Agent 选择 history-only resume；Codex 在该模式下只做 `thread/read` 和
+  timeline hydration，不调用 `thread/loaded/list` / `thread/resume`，也不清除本地或 provider
+  archive 状态。用户显式取消归档或继续发送时仍走现有 provider-first unarchive，并在真正开始 turn
+  前恢复 thread。
+- Real-session evidence: 对 Agent `188e4b43-df5a-49a5-8a77-a1bb2a7b3ee4`、Codex thread
+  `019f468a-b515-7a62-b285-6725afbd2cd9` 实测 archived `thread/read` 返回 2 turns / 7 items；修复后
+  daemon timeline RPC 在保留 `archivedAt` 时返回完整 7 条 timeline。随后显式 refresh 成功，
+  `archivedAt=null`、session id 保持不变且 timeline 仍为 7 条。
+- Browser evidence: 真实 Chromium 从 History 打开“今天天气怎么样？”后恢复两轮用户/assistant 文本、
+  Thinking 和 Search tool timeline，无 `agent-load-error`、无 archived resume 错误、无 page/console
+  error。截图位于仓库外
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/archive-resume-history-ui-20260710.png`。
+- Verification passed: daemon Codex provider + AgentManager narrow tests passed 2 files / 193 tests；
+  Thoth daemon 已在 `6688` 以 dev runtime 重启并完成真实 RPC/浏览器复验，Paseo `6767` 未触碰。
+- Remaining gate issue: `npm run build:daemon` 在前序未提交的 `session.ts:4566` workspace response
+  类型错误处失败；该错误不在本次 archived-session 变更文件中，本轮未扩大范围修改。
+
+## 2026-07-10 [Background Tasks resize and Loop phase timeline recovery]
+
+- Worked on: 修复 workspace 右侧 Background Tasks 控制面宽度不足、内部任务列表与详情无法调整，
+  以及已完成 Loop phase 错误显示 `This phase has not created a provider session yet.` 的问题。
+- Root cause: 外层控制面最大宽度硬限制为 `760px` 且 live session 强制保留 `520px`；内部任务列表
+  固定 `300px` 且没有 resize handle。Timeline 问题则不是 provider session 缺失：Loop task authority 和
+  Codex rollout 都保留了 phase `agentId`/thread，但 phase agent 使用 `internal: true`，AgentManager 持久化
+  快照时跳过 internal agent；daemon 重启后 AgentStorage 没有 phase agent record，UI 无法按 `agentId`
+  恢复 timeline。Loop Codex thread 还使用独立 `CODEX_HOME`，恢复时必须同时保留 session home。
+- Implementation summary: 外层最大宽度提高到 `1400px`，live session 最小保留宽度调整为 `420px`；
+  Background Tasks 内部加入 task list/detail 横向 resize handle，并按 workspace 持久化 list width。Timeline
+  UI 分离 loading、真实 fetch error、缺 phase reference 和真正 queued/no-session 四种状态，completed phase
+  不再误报尚未创建 session。
+- Implementation summary: Loop PlanExec/Review internal agents 现在通过 `persistInternal` 写入 AgentStorage，
+  恢复时保持 `internal` 身份；持久化 Codex `thothLoopSessionHome` 并在 launch context 恢复为
+  `CODEX_HOME`。旧任务通过 Loop authority 的 phase identity 和 daemon 自有 session-home 命名读取结构化
+  Codex `session_meta`，按需 backfill 隐藏 AgentStorage record，再走标准 `ensureAgentLoaded` timeline 主路。
+- Real task evidence: 对 workspace `/tmp/thoth-loop-background-OBM6xj`、task
+  `loop-task-e0c2016c-1721-429e-8444-c8991eaed98d` 实测恢复 PlanExec agent
+  `0a6608a3-2326-4a9c-944d-1a9ed14c7fdc` 的 Codex thread
+  `019f44aa-b636-7261-b5c2-b43d423ed205`（18 entries）和 Review agent
+  `e6ef91fe-dfd2-4552-95ca-1b4c0e107c88` 的 thread
+  `019f44ac-ff1e-7aa3-abd7-1b7bfa91ef6e`（15 entries）。真实 Chromium 中 Goal 1 的 completed
+  PlanExec/Review 均显示原始 timeline，不再出现 no-session 空态，也没有 page/console error。
+- Browser resize evidence: 1600x1000 视口中，外层控制面从 `500px` 拖到 `855px`，内部 task list
+  从 `220px` 拖到 `495px`，detail 保留 `359px`；刷新后两组宽度均原值恢复。仓库外截图：
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/background-task-resize-timeline-recovery-20260710.png`
+  和
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/background-task-completed-review-timeline-20260710.png`。
+- Verification passed: app targeted tests 2 files / 16 tests；daemon targeted tests 4 files / 216 tests；
+  app full tests 321 files / 2684 tests；`npm run build:web`、`npm run format:check`、
+  `npm run check:foundation` 和 `git diff --check` passed。
+- Remaining gate issue: `npm run build:daemon` 仍在前序未提交的 `session.ts:4566` workspace response
+  类型错误处失败；本轮没有把该既有错误误归因于 Loop phase persistence，也没有声称 daemon build 通过。
+
+## 2026-07-10 [Clarify config change no longer fabricates a running turn]
+
+- Worked on: 修复一个已结束的 Workspace Secretary 对话仅切换 Clarify 强度时，前端立即显示
+  spinner、elapsed timer 和红色 cancel button，视觉上像自动发送了一条消息的问题。
+- Root cause: `shouldKeepWorkspaceSecretaryAuthorityTurnRunning` 把当前可变 composer
+  `clarifyStrength !== "none"` 当成历史 topic 仍有结构化 turn 的证据。`secretarySubmitted` 在 topic
+  有过任意消息后会一直为 true，因此 Direct 对话完成后把配置改成 Light/Balanced/Dive/Auto，会在没有
+  daemon send、没有新 turn 的情况下被本地重新推导为 running。该 helper 还会扫描最新用户消息之前的
+  旧 authority card，并且没有把“已中断/已停止”摘要识别为终止状态。
+- Implementation summary: running 现在只由 daemon 明确的 `secretaryTurnInFlight`，或最新一次用户消息
+  之后仍未结束的 Clarify/Task/Goals authority card 生命周期驱动。Clarify strength 完全退出 execution
+  state 推导；反向扫描遇到最新 `user_message` 就停止，旧卡不会污染新 turn；暂停、取消、中断、停止均
+  作为终止摘要处理。
+- Regression coverage: 新增 completed Direct config-change、旧 authority card 截断、daemon in-flight、
+  submitted Clarify/Task continuation、Goals completion、暂停和用户中断测试。
+- Real browser evidence: 在真实历史 topic `Greeting` 上先切到 Direct，再依次切换 Light、Balanced、
+  Dive、Auto。每个值用 50ms 采样观察整个切换过程，`turn-working-indicator`、
+  `turn-working-elapsed` 和 cancel button 的瞬时最大值均为 0；消息数始终为 2 user / 2 assistant，
+  没有 `workspace_secretary.send.request`，最后恢复原配置 Balanced。浏览器无 page/console error。
+  仓库外截图：
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/clarify-config-change-no-turn-20260710.png`。
+- Verification passed: app targeted tests 3 files / 64 tests；app full tests 321 files / 2686 tests；
+  `npm run build:web`、`npm run format:check`、`npm run check:foundation` passed。
+
+## 2026-07-10 [Workspace switch preserves running Secretary turn and current-topic card]
+
+- Worked on: 修复 Workspace Secretary/provider turn 仍在运行时切换到其他 workspace 再返回后，spinner、
+  elapsed timer 和 cancel 状态消失并提前显示完成，以及当前 Clarify card 附近突然投影多张旧 topic card
+  的同源恢复问题。
+- Root cause: `WorkspaceSecretarySession` 只有一个全局 `state`，切换 workspace 会丢弃前一个 workspace
+  的可寻址运行态，而旧 provider generator 仍继续写入已脱离 session 的对象；topic runtime snapshot 又没有
+  保存 `status`，激活 topic 时还无条件重置为 `ready`。更深一层是 production persisted config schema
+  缺少 protocol 已允许的 `topicStates`，导致 topic snapshot 实际从未成功写入 `config.json`。
+- Root cause: 前端请求已绑定的 topic 时没有校验响应的 `activeTopicId`，daemon 返回旧 active topic 后会覆盖
+  tab 绑定并投影错误上下文；`applyWorkspaceSecretaryModelToStream` 对 canonical card 只按 id 追加合并，
+  不会删除另一个 topic 的 stale Clarify/Task/Goals cards，所以一次错误 snapshot 会积累成多卡污染。
+- Implementation summary: daemon 改为 `statesByWorkspacePath`，同一 websocket session 为每个 workspace
+  保留独立 Secretary state；topic snapshot 新增 runtime `status` 并在 topic 激活时恢复。磁盘恢复到
+  `loading` 时转为明确 interrupted/recoverable 状态，避免 daemon 重启后伪造永不结束的 spinner。
+- Implementation summary: persisted config 与 protocol mutable config 补齐 `topicStates`、Clarify/phase/provider
+  runtime 字段和 status schema。前端绑定 topic 后只接收相同 `activeTopicId` 的 snapshot，也禁止错误响应覆盖
+  既有 topic binding；canonical Secretary projections 先删除旧模型卡片和 secretary message，再从当前 authority
+  model 重建，同时保留真实 provider AgentTimeline live items。
+- Implementation summary: tab remount 的本地 `secretaryTurnInFlight` 暂时归零时，会仅检查最新 user message
+  之后的 loading thought、running tool call 或 pending authority card 来保留 spinner/elapsed；旧 turn 的 tool/card
+  和当前 Clarify 配置不再被当作运行证据。
+- Real browser evidence: 真实 Codex topic 发送 `E2E切换恢复F20260710：实现一个最小 Three.js 光追渲染器`，
+  运行中切到另一个 workspace，再返回并重开同一 deterministic draft tab。切换前后
+  `turn-working-indicator=1`、`turn-working-elapsed=1`；provider 继续运行，最终仅出现一张当前 topic card
+  `确认首版呈现与光追边界`，无旧卡重复、无 page/console error。仓库外截图：
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-switch-running-card-dedupe-20260710.png`。
+- Recovery limitation: 用户原先的 `topic-dd05121e-50aa-4ee2-9da9-a5d9a335fd10` 已被旧 production schema
+  故障孤立，无法 same-turn 恢复；本轮真实验收使用修复后新建并成功持久化的 topic，不把新运行冒充为旧
+  turn 恢复。验收后已取消测试 card，解除 provider wait。
+- Verification passed: app targeted tests 2 files / 64 tests；daemon targeted tests 2 files / 56 tests；
+  protocol targeted tests 1 file / 2 tests；app full test command、`npm run format:check` 和
+  `npm run check:foundation` passed。
+- Remaining gate issue: `npm run build:daemon` 仍在前序未提交的 `session.ts:4566` workspace response
+  类型错误处失败；该错误不属于本轮 workspace/topic/card lifecycle 修复，本轮不声称 daemon build 通过。
+
+## 2026-07-10 [Secretary card actions remain authoritative after workspace switches]
+
+- Worked on: 修复 workspace/topic 切换后旧 Clarify card 的 `提交`、`取消` 看似可点击但没有任何结果，
+  以及 red cancel button 可能取消最近访问 topic 而不是当前 tab topic 的 authority routing 问题。
+- Root cause: snapshot 已按 workspace/topic 隔离，但 `workspace_secretary.send.request` 和
+  `workspace_secretary.answer.request` 仍不携带 workspace/topic identity，cancel 也只带可选 topicId；daemon
+  三条写路径继续调用无参数 `ensureState()`，依赖最近一次 snapshot 改写的全局 state pointer。另一个 workspace
+  的读取请求可以在用户点击前改变该指针，使 card action 在错误 state 中找不到 card/pending decision。daemon
+  返回 recoverable model 后，Workspace Draft 的 stream 布局又不显示 `secretaryErrorMessage`，形成 silent no-op。
+- Implementation summary: send/answer/cancel wire schema 和 client facade 新增 backward-compatible optional
+  `workspaceId/workspacePath/topicId`；Workspace Draft 每次写操作都发送当前 canonical workspace 和绑定 topic。
+  daemon 写路径使用请求 identity 精确 `ensureState`，answer 还会以 pending decision 的 topicId 在所有已加载
+  workspace states 中反查 authority state，并拒绝 decision topic 与 active topic 不一致的提交。
+- Stale-card behavior: card 已存在于 authority transcript 但 runtime decision 已 answered/expired/blocked 时，
+  daemon 不再静默返回；它把 card 折叠为 readonly，摘要明确为“这张询问已经失效”，status 说明未提交任何
+  答案。若 card 根本不属于请求 topic，返回当前 canonical model 会移除错误投影。Workspace Draft 在 stream
+  模式下也显示 recoverable/error banner，不再只有不可见的 form error。
+- Regression coverage: daemon 新增“另一个 workspace 成为 recent state 后仍回答原 workspace/topic”以及
+  “expired card 折叠而不是静默接受按钮”测试；App actions 断言 send/answer/cancel 全部透传三段 identity；
+  protocol/client tests 覆盖新字段和 strict wire parsing。
+- Real submit evidence: 真实 Codex topic `topic-b46620c8-3e3d-44f9-a52a-23b13353cf9f` 在 card 到达后切换
+  workspace 再返回，仍只有一张当前 card、spinner 保持；完成 3 个问题并提交后 card 折叠为
+  `已确认 3 个分支维度`，provider same-turn 继续生成 Task Card。截图：
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-switch-card-submit-continuation-20260710.png`。
+- Real cancel evidence: 真实 Codex topic 使用 prompt
+  `E2E卡片取消归属I20260710：实现一个最小WebGL渲染器`，切换 workspace 返回后仍只有一张
+  `确定最小渲染器的交付边界`；点击取消后摘要为 `已暂停继续询问`、interactive cards 从 1 变 0、
+  working spinner 从 1 变 0，浏览器无 page/console error。截图：
+  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-switch-card-cancel-20260710.png`。
+- Original screenshot card evidence: 对 `topic-27a07e09-f316-4667-a49d-90df1be77af3` 的 expired card
+  `定义场景 JSON 契约`（`clarify-card-c670cabc-9b19-4fdb-97e6-b0c853d09eb7`）执行真实 daemon RPC，
+  返回 `recoverable_error`，明确“这张询问已经失效，未提交任何答案”，并将原卡折叠为 readonly。
+- Verification passed: protocol targeted tests 2 files / 10 tests；client targeted tests 2 files / 107 tests；
+  daemon Workspace Secretary 18 tests；App targeted tests 2 files / 65 tests；App full test command、
+  `npm run build:web`、`npm run format:check` 和 `npm run check:foundation` passed。Thoth daemon 已重启加载
+  新 protocol dist，`6688` 正常监听；Paseo `6767` 保持原 PID 未触碰。
+
+## 2026-07-11 [Deterministic Clarify / Loop user-journey fixture contract]
+
+- Worked on: 将用户锁定的五条 Thoth 业务与交互流程落成 deterministic unit-test contract，明确把流程
+  验证与 provider agent 智能性、自由文本、真实文件实现和真实 Codex transport 分开。
+- Contract: 新增 `packages/daemon/src/test-fixtures/thoth-flow-contract.ts`。它声明稳定的 user prompt、
+  composer controls、fixture provider events、user actions 与最终状态，不包含“模型必须问什么/必须聪明地
+  判断什么”的 prompt 指令。fake provider 只回放 assistant marker、authority card、PlanExec result 和
+  Review verdict。
+- Coverage: `UT-01` Quick+Direct bare passthrough；`UT-02` Quick+Clarify -> Task/Goals -> same-topic
+  foreground exec；`UT-03` pending Clarify workspace switch/snapshot recovery -> pause -> resume -> foreground
+  exec；`UT-04` Clarify+Loop registration -> two linear all-pass goals -> done；`UT-05` Clarify+Loop
+  registration -> failed Review -> same-goal Round 2 retry -> pass -> next goal, plus Light 5 failed-Review
+  budget exhaustion to blocked.
+- Hard assertions: card pending/submitted lifecycle, workspace/topic authority routing, recovery without
+  stale card injection, Quick never creates LoopTask, Loop only advances on Review pass, failed Review increments
+  the global budget, PlanExec failure context carries Review root cause/guidance/anti-repeat strategy, and no
+  goal-six phase is created after the Light budget reaches `5/5`.
+- Production alignment: fixture uncovered that `buildPlanExecPrompt` only passed prior guidance. It now also
+  injects `Previous Review root cause` and `Previous anti-repeat strategy`, so retry PlanExec has the complete
+  Review direction required by the Loop contract.
+- Documentation: `docs/testing.md` now gives the narrow command and explicitly states this suite is not a
+  real-provider or agent-quality gate.
+- Verification passed: new fixture suite `5/5`; combined new fixture + Workspace Secretary + Loop service
+  narrow suite `3 files / 37 tests`; `npm run format:check`, `npm run check:foundation`, and
+  `git diff --check` passed.
+- Remaining gate issue: `npm run build:daemon` remains blocked by the pre-existing workspace response type
+  error in `src/server/session.ts:4566`; no new contract or Loop prompt type error was reported before it.
+
+## 2026-07-11 [Scripted real-Codex flow fixture companion]
+
+- Worked on: 将五条 Clarify / Loop user journey 从“仅 fake-provider 状态机回放”补齐为真实 Codex
+  app-server E2E 入口，同时保持测试目标是 transport/authority 流程而非 agent 智能性。
+- Contract: 新增 `packages/daemon/src/test-fixtures/thoth-real-provider-flow-script.ts`；每条用例预先
+  固定 Clarify/Task/Goals 动态工具参数、PlanExec result、Review verdict、marker 和用户回答。真实 Codex
+  只能执行这些字面调用，不允许读写临时 workspace、调用 shell/fetch 或作独立决策。
+- E2E: 新增 `thoth-flow-fixtures.real.e2e.test.ts`，通过真实 daemon WebSocket RPC 创建 `/tmp` workspace、
+  发送固定剧本、回答真实 authority card，并检查 Codex dynamic tool lifecycle、same-turn resume、Loop
+  phase session/timeline、线性 goals、Review fail -> 同 goal round 2 retry 以及 Review guidance 注入。
+- Commands: 新增 `npm run test:thoth-flow:real`，它只运行该单文件并串行执行，避免旧
+  `test:integration:real` 的 glob 把无关历史 real-provider 用例一起纳入。
+- Verification: deterministic fake-provider fixture suite 本轮仍为 `5/5 passed`；初版 real-provider command
+  错误复用了旧 OpenRouter gate，当前 shell 缺少该 API key 时五条 E2E 被 skipped。该 gate 不代表本机 Codex
+  登录态不可用，后续已改为 native Codex CLI auth path，必须重新运行该单文件后才可记录真实 acceptance。
+- Follow-up verification: literal payload contract test 与原五条 local flow tests 共 `10/10 passed`；
+  `npm run test:thoth-flow:real` 收集单一 E2E 文件并报告 `5 skipped`；`npm run check:foundation` 与
+  `git diff --check` passed。daemon typecheck 仍只报告前序 `src/server/session.ts:4566` workspace response
+  mismatch，test source 不在 daemon production typecheck include 范围内。
+
+## 2026-07-11 [Native Codex scripted flow acceptance and retry-race repair]
+
+- Correction: 初版 scripted E2E 错误复用 OpenRouter real-test harness。用户要求使用此前真实 Thoth
+  provider 的 native Codex CLI 登录态，因此新增 native helper：只检查 `codex` 和
+  `$CODEX_HOME/auth.json`（默认 `~/.codex/auth.json`），不设置 `OPENROUTER_API_KEY`、`OPENAI_API_KEY`、
+  `OPENAI_BASE_URL` 或 custom provider。session-scoped `CODEX_HOME` 继续由 Thoth 复制 native auth/config。
+- Real execution: `npm run test:thoth-flow:real` 在本机 native Codex app-server 路径完整运行五条固定
+  user journey，最终 `5/5 passed`，耗时 `275.91s`。它实际覆盖 Quick Direct、Quick Clarify same-turn
+  foreground completion、pending card snapshot/cancel/resume、Loop two-goal all-pass，以及 Loop Light
+  Review fail -> same-goal Round 2 -> pass -> next goal -> done。
+- Test hardening: assistant marker 改为按连续 timeline deltas 合并；timeline 的 `clarify` /
+  `task_approval` / `goals_approval` 是用户安全 label，不再错误断言 raw semantic tool name；临时
+  workspace 允许 Thoth/Codex 运行时 `.agents`、`.codex`、`.git` 元数据，但仍拒绝业务文件。
+- Production bug found and fixed: Review fail 后 PlanExec 必须复用同一 agent/session；旧 PlanExec 在
+  dynamic tool result 后仍可能有 active turn，直接 `streamAgent` 会报 `already has an active run` 并让
+  retry 永久卡住。Loop service 现在检测 in-flight reuse 并调用 `replaceAgentRun`，在同一 session 上安全
+  replace 旧 turn；phase event 同时绑定启动时 round，旧 Round 1 cancellation/failure 不会污染 Round 2。
+- Regression: Loop task-service test 增加 in-flight PlanExec retry simulation；local Loop/fixture/real-script
+  contract tests 共 `24/24 passed`。真实 native acceptance 不评估模型提问、计划或代码质量：所有 dynamic
+  tool 参数、Review verdict、marker 与用户回答都由测试合同固定。
+
+## 2026-07-11 [Workspace Secretary refresh cancel authority recovery]
+
+- Root cause: 浏览器刷新会建立新的 `WorkspaceSecretarySession`，但旧实现只在该 WebSocket session 的
+  内存 `topicAgents` Map 中保存 `topic -> internal provider agent`。daemon 中真实 Codex agent 仍在运行，
+  新 session 的取消请求却找不到它并错误返回 ready。前端还会把已提交/失效 authority card 和遗留
+  `tool_call: running` 重新推导成 running，造成红色中断键与 spinner 永久停留。
+- Repair: topic-agent mapping 现在随 workspace topic snapshot 持久化并在 hydration 恢复；新旧 snapshot
+  都能通过 daemon-only internal agent label (`surface=workspace-secretary`, `topicId`) 在同 workspace
+  内反查 live provider agent。取消会解除 pending authority decision、折叠所有未决 card，并把 UI
+  timeline 中遗留 running tool 标记为 `canceled`、loading thought 收敛为 `ready`，保留历史而不伪造活跃
+  执行。submitted card 不再独自决定 spinner；只有 daemon loading、真实 running tool/thought 或未提交
+  authority card 能表示 active turn。
+- Verification: `workspace-secretary-session` + `agent-manager` narrow tests `138/138 passed`；app composer
+  actions + workspace-tab core tests `67/67 passed`；`npm run build:web`、`npm run check:foundation`、
+  `npm run format:check`、`git diff --check` passed。完整 daemon typecheck 仍仅有先前
+  `src/server/session.ts:4566` workspace response mismatch，未出现本次变更新错误。现有 `8082` 静态服务
+  已确认读取重建 bundle `index-73c7aa8ef1ec2923f54d97572297686e.js`。
+
+## 2026-07-11 [Authority continuation spinner lifecycle repair]
+
+- Real-session evidence: `topic-8e0e7f29-d278-4403-94fc-61a4d5ddba66` 的 native Codex transcript
+  证明第一张 Clarify card 提交后 provider 仍持续工作，并继续提交 Task / Goals；截图中的
+  `Worked for 4m47` 是前端提前终态，不是 provider completion。
+- Root cause: Workspace Secretary app 对每个 model snapshot 无条件以 `status=ready` 清除
+  `secretaryTurnInFlight`。authority tool answer 后的 same-turn continuation 是异步的，延迟 ready
+  snapshot 会让 AgentTimeline footer 先渲染 completed，吞掉应有的 spinner + elapsed。Task 与 Goals
+  approval 使用同一 answer path，因而有相同问题。
+- Repair: card answer 在 RPC 开始前立即进入 in-flight；新的
+  `resolveWorkspaceSecretaryTurnInFlight` 只在 daemon `provider_turn_completed` / `provider_blocked` /
+  `provider_error` 或明确错误时清除。普通 ready snapshot 和 answer RPC response 不能抢先结束一轮；
+  daemon loading 始终优先。这样 Clarify、Task、Goals 后的 provider continuation 都保持 running footer，
+  而真正终态才显示 `Worked for ...`。
+- Deployment and verification: app core/actions narrow tests `71/71 passed`；Workspace Secretary daemon
+  narrow test `20/20 passed`（answer response 必须为 loading）；`npm run build:web`、
+  `npm run check:foundation`、`npm run format:check`、`git diff --check` passed。旧 Thoth daemon
+  `00:55 UTC` 非 watch instance 已在确认没有 running Loop phase 后平滑重启；新 `6688` health check
+  passed，保留的 Paseo `6767` 未触碰，`8082` 当前服务 bundle
+  `index-ef5e3e55f6ad45ced8eba25dcd8d5d24.js`。
+
+## 2026-07-11 [Loop phase isolation and control-lifecycle repair]
+
+- Root cause 1: Loop PlanExec/Review agents are intentionally internal, but their `agent_stream`, lazy
+  `agent_state` and `fetch_agent_timeline_response` snapshots shared the normal SessionContext transport.
+  The timeline response listener unconditionally wrote the internal snapshot into the foreground agent store,
+  which created `PlanExec: ...` / `Review: ...` workspace tabs even after the earlier stream filtering.
+- Repair: internal status is now carried in stream and agent snapshot protocol projections. The global app
+  store ignores internal / `surface=thoth-loop` timeline responses while the scoped Background Tasks panel
+  continues to consume the same response and render the phase AgentTimeline in place.
+- Root cause 2: a real C++20 task submitted `goal_id: "1"` although the approved goal authority id was `g1`.
+  Strict validation rejected it, so PlanExec could not advance to Review. Prompts and Codex tool descriptions
+  now show the immutable goal id and phase-run id. The daemon additionally normalizes only the exact display
+  ordinal of the currently pending goal; every wrong goal, wrong round and wrong phase remains rejected.
+- Phase lifecycle: PlanExec success now persists the full result and moves the durable cursor to Review before
+  scheduling the independent Review session. A provider turn that genuinely ends without its required semantic
+  result now resolves immediately to an explicit blocked state instead of showing completed or waiting for the
+  generic 30-minute timeout.
+- Controls: Pause records `pause_after_phase` and lets the active PlanExec or Review finish at its atomic
+  boundary; Stop immediately cancels the live provider run; Resume is enabled only for paused/interrupted/stopped
+  tasks and continues from the durable phase cursor, preferring the original provider session with a continuation
+  prompt. The UI order is `Resume | Pause | Stop`.
+- Workspace contract repair: the workspace list now always emits hydrated `workspaceRedirects` and
+  `dedupeNotice` defaults, and the workspace test now verifies the approved canonical-worktree behavior: an
+  agent may retain a child cwd while sharing the parent worktree workspace.
+- Verification passed: Loop service unit `18/18`; combined Loop / agent projection / Workspace Secretary
+  daemon narrow suite `55/55`; app Background Tasks / Workspace tab / SessionContext suite `41/41` and full
+  app suite `321 files / 2700 tests`; workspace session plus Loop suite `99 passed, 4 skipped`; protocol
+  workspace suite `31/31`; `npm run build:daemon`; `npm run build:web`; `npm run check:foundation`;
+  `npm run format:check`; `git diff --check`.
+- Real browser evidence: after supervised daemon restart with no running Loop task, `8082` displayed the
+  Background Tasks surface and embedded PlanExec timeline while the foreground tab row contained only `hi`;
+  no PlanExec/Review tab leaked, and the previously stopped C++20 task rendered `stopped`, not `blocked`.
+  Captures are under `/tmp/` and were not added to docs or git. Paseo on `127.0.0.1:6767` was not touched.
+
+## 2026-07-11 [Foreground history visibility repair]
+
+- Screenshot symptom: a normal workspace tab showed `加载 Agent 失败` followed by `History sync timed out
+after 65s`, even though the Background Tasks panel was unrelated and only displayed a stopped task.
+- Root cause: `Session.handleFetchAgentTimelineRequest` correctly asks the Loop service whether an id belongs
+  to a persisted phase. The initial `recoverPhaseAgent` implementation, however, marked _any existing_ stored
+  agent as `internal` before proving Loop ownership. Ordinary foreground records therefore became internal;
+  SessionContext correctly ignored their timeline response as an internal Background Tasks response, leaving
+  the app's initialization deferred unresolved until its 65-second watchdog fired.
+- Repair: Loop recovery now first resolves the exact task/goal/phase owner. Only an authority-owned phase may
+  be marked internal. Legacy records that have no daemon-owned labels, no Loop runtime configuration and are
+  not old raw Secretary provider packets are restored to `internal=false` in both storage and live projection.
+  Explicit `surface=thoth-loop` records remain hidden.
+- Real migration verification: the screenshot's `实现一个渲染器` and `帮我实现一个高效的快排` histories now
+  return as foreground agents in about `410ms` and `1ms`; their stored `internal` flags are false. The
+  `PlanExec: 确认工程边界` record remains `internal=true`. A fresh browser visit to `8082` has neither the
+  timeout nor `加载 Agent 失败`, and no Loop phase tab leaks into the foreground.
+- Verification passed: daemon Loop/agent-manager/workspace invariant tests `150/150`; app SessionContext,
+  AgentPanel and history-initialization tests `18/18`; `npm run build:daemon`; `npm run format:check`; and
+  `git diff --check`. Daemon restart used the supervised RPC after confirming there were no running Loop tasks;
+  Paseo `127.0.0.1:6767` was not touched. Capture: `/tmp/thoth-history-visibility-repair.png`.
+
+## 2026-07-11 [Workspace Secretary first-send / refresh / archive recovery repair]
+
+- Symptom and root cause: a first Workspace Secretary prompt briefly showed a spinner and then a blank
+  inactive timeline with no cancel control. The provider had not actually started: persisting the topic snapshot
+  added `topicAgents`, but the strict persisted daemon-config schema did not allow it. The resulting Zod error
+  aborted `workspace_secretary.send` before any provider turn and was misleadingly projected as a provider
+  completion failure. Separately, topic-to-internal-agent mapping existed only in a WebSocket-session Map, so a
+  refresh could not locate the real running Codex agent for snapshot recovery or cancel. Archive history records
+  could also be mistaken for lazy-restorable foreground tabs during layout hydration.
+- Repair: protocol and daemon persisted-config schemas now durably store `topicSnapshots[].topicAgents`; internal
+  Workspace Secretary provider agents are persisted and restored by the topic mapping or their daemon-owned
+  labels. Cancel resolves pending authority decisions and converges stale running tool/thought items rather than
+  leaving an orphaned spinner. A first draft now creates its topic and writes the first user turn in the single
+  `workspace_secretary.send` RPC: it prebinds a UUID locally but never issues the old `topic.create -> send` pair.
+  Provider-side `timeline.user_message` is the daemon-wrapped runtime prompt and is no longer mirrored into the
+  user-facing timeline. Archived agent details remain history-only and cannot enter `restorableAgentIds`.
+- Real browser evidence: on `http://127.0.0.1:8082/`, a native Codex turn showed the user message, running
+  spinner/elapsed footer and red Stop control before refresh; all three remained after refresh; Stop then cleared
+  the live indicator without a provider error. The browser contained no `Thoth structured Workspace Secretary
+turn.` internal prompt. Captures are `/tmp/thoth-secretary-atomic-before-reload.png`,
+  `/tmp/thoth-secretary-atomic-after-reload.png`, and `/tmp/thoth-secretary-atomic-after-cancel.png`; they are
+  intentionally outside docs and git. Daemon metrics recorded `workspace_secretary.send.request`, Codex
+  app-server thread/turn startup, `workspace_secretary.cancel.request`, and `turn_canceled`, with no
+  `workspace_secretary.topic.create.request`.
+- Verification: protocol `11/11`, daemon `62/62`, and app `91/91` targeted tests passed. `npm run build:daemon`,
+  `npm run build:web`, `npm run check:foundation`, and `git diff --check` passed. Thoth daemon is again listening
+  on `127.0.0.1:6688`; Paseo `127.0.0.1:6767` was not touched.
+- Follow-up reload hygiene: the expected `Daemon client closed` rejection from a superseded browser client is now
+  explicitly treated as lifecycle cleanup by Workspace hydration and the HostRuntime directory bootstrap instead
+  of being logged as an application error. App regression coverage is `93/93`; a rebuilt real browser reload had
+  zero console errors and no leaked internal prompt. `npm run format:check` and `git diff --check` passed after
+  this final adjustment.
+
+## 2026-07-11 [Workspace Secretary authority continuation and tab-menu repair]
+
+- Root cause: Codex app-server can emit `turn_completed` while an authority dynamic-tool callback is still
+  waiting for the user's card answer. The old same-topic continuation bridge handled that first race, but it
+  released its continuation guard again on the replacement turn's `turn_started`. A snapshot/reload during that
+  interval could launch a duplicate continuation. Provider stream events also derived ownership from the mutable
+  currently active topic, so a different draft tab's snapshot could project a card/status into the wrong topic.
+- Repair: a continuation claim is now keyed to `topicId + provider agentId` and a unique run id, and is released
+  only by that continuation's matching terminal provider event. Each provider turn captures its source topic;
+  stream state mutations temporarily activate that exact topic, persist it, then restore the topic currently
+  displayed by another draft. Pending Clarify, Task and Goals cards now retain `loading` state while remaining
+  actionable, so the timeline keeps the spinner/elapsed footer rather than prematurely rendering completion.
+  Authority answer lookup prefers the pending decision's durable topic binding over a stale workspace/tab request.
+- Tab menu: Workspace Secretary draft tabs now support Rename and retain the same close actions as real Agent
+  tabs. Copy Agent ID, copy resume command and Reload agent remain real-Agent-only because a draft has no
+  foreground agent identity to execute those actions honestly.
+- Verification: Workspace Secretary daemon narrow suite `22/22`, app tab-menu plus draft-core tests `36/36`,
+  `npm run build:daemon`, `npm run build:web`, `npm run check:foundation`, `npm run test:foundation`,
+  `npm run format:check`, and `git diff --check` passed. Native Codex dynamicTools real-provider fixture suite
+  passed `5/5` in `278.70s`; it uses literal scripted authority payloads to exercise provider transport and
+  lifecycle rather than model quality. Browser DOM verification at `http://127.0.0.1:8082/` confirmed the draft
+  context menu exposes Rename/close actions and the real Agent context menu keeps its real-Agent-only actions.
+
+## 2026-07-12 [Quick Clarify foreground Plan+Exec handoff repair]
+
+- Symptom: after Quick + Clarify approved the Goals Card, the old authority turn could already have emitted
+  `turn_completed`. The answer resolved the dynamic tool callback, but `quick_exec` was excluded from the
+  continuation launch condition. The topic then remained loading without a new provider turn, or the provider
+  opportunistically executed only the first visible goal in the authority turn.
+- Repair: Goals Card `accept_quick` now always starts a new plain foreground Plan+Exec user turn in the same
+  provider agent/session. The daemon reuses the existing Codex agent id rather than creating a separate bare
+  provider session, injects the frozen Task Card, every linear goal id/order/constraints/acceptance and durable
+  Clarify answers, asks for one concise whole-task plan, and explicitly requires execution of every goal in order.
+  The structured `thoth.clarify` authority turn ends after its tool result instead of racing the handoff.
+- Lifecycle hardening: provider runs now carry a topic/agent generation. Terminal events from an authority run
+  replaced by the Quick Plan+Exec run are ignored and cannot mark the new run ready or failed. `stop` and
+  approval `cancel` now settle directly to `ready`; they no longer leave a spinner when no provider continuation
+  should exist.
+- Test discipline: deterministic flow fixtures now assert the same-agent Quick handoff prompt rather than relying
+  on an agent-invented result. The full native Codex five-journey run initially produced `4/5`: UT-02 timed out
+  only because its old assertion required the model to echo `FOREGROUND_EXEC_DONE`, despite the provider having
+  already completed both goals with evidence. That marker assertion was removed as an intelligence-dependent
+  false failure. The corrected real native Codex UT-02 passed in `77.38s` (`1 passed, 4 skipped`).
+- Verification: Workspace Secretary + deterministic Thoth flow daemon tests `29/29`; protocol RPC schema test
+  `8/8`; `npm run build:daemon`; `npm run build:web`; `npm run check:foundation`; `npm run format`; and
+  `git diff --check` completed without reported failures. Real-provider receipt is intentionally outside git:
+  `/tmp/thoth-real-quick-handoff-ut02.log` and `/tmp/thoth-real-quick-handoff-ut02.exit`.
+
+## 2026-07-11 [Loop Engineering authority and native-Codex transport hardening]
+
+- Worked on: `NTH-TD-021`, `NTH-CD-047`, `NTH-EV-031`
+- Implemented/verified: SQLite event authority, Task Memory, sealed evidence, budget envelopes, Review mutation holds, contract-preserving replan audit and scoped semantic runtime tools were present in the Loop path. The final real transport defect was in Clarify convergence audit startup: dynamic-tool catalogs were built before their caller session was registered, so the handler captured no live caller and returned `Clarify convergence audit requires the active Codex dynamicTools session.`
+- Repair: tool handlers now resolve the caller from AgentManager at execution time; regression coverage creates the catalog before caller registration and executes after registration. Real fixture configuration now injects the literal fixture script into each Secretary/PlanExec/Review provider session, retaining real Codex app-server/dynamicTools transport while avoiding provider-intelligence assertions.
+- Verification: daemon typecheck passed; `thoth-tools`, Loop task service and deterministic fixture tests passed `43/43`; native Codex UT-04 all-pass passed in `103.586s`; UT-05 retry/budget passed in `122.501s`; full `npm run test:e2e:real:flow --workspace=@thoth/daemon -- --reporter=verbose` passed `5/5` in `345.73s`.
+- Evidence: trace-only files are outside git under `/tmp/thoth-ut04-continuation-trace.ndjson`, `/tmp/thoth-ut04-scripted-phase-trace.ndjson` and `/tmp/thoth-ut05-scripted-phase-trace.ndjson`. No provider API fallback or OpenRouter was used.
+- Final gates: `npm run check:foundation`, final `npm run build:web`, `git diff --check`, app Vitest `322/322` / `2703/2703`, daemon combination `146/146`, and all three independent judges passed. The Clarify user-simulation judge initially found that manual provenance omitted companion questions and regressed transcript refs; its fixture and validator were corrected, then `judge:clarify:user-simulation` passed with artifact `.agent-os/artifacts/clarify-user-simulation-2026-07-11T21-07-21-858Z.md`.
+- Remaining: browser/device evidence for budget wait, pause/resume/stop, restart/reconnect and restored Background Task phase timeline. `NTH-TD-021` remains `doing`; no unverified browser behavior is claimed complete.

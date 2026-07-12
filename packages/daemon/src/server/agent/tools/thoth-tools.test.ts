@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentManager, ManagedAgent } from "../agent-manager.js";
+import type { AgentStreamEvent, AgentTimelineItem } from "../agent-sdk-types.js";
 import type { AgentStorage } from "../agent-storage.js";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
+import {
+  rejectClarifyConvergenceAudit,
+  resolveClarifyConvergenceAudit,
+} from "../clarify-audit-broker.js";
+import type { ThothLoopTaskService } from "../../thoth-loop/task-service.js";
 import {
   answerRuntimeAuthorityDecision,
   listPendingRuntimeAuthorityDecisions,
@@ -15,35 +21,90 @@ async function flushToolStart(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-function createCatalog() {
-  const appendTimelineItem = vi.fn(async () => undefined);
+function createCatalog(
+  input: {
+    auditOutcome?: "proceed" | "revise_frontier";
+    auditFailure?: string;
+    enableLoopRuntimeTools?: boolean;
+    loopPhase?: "planexec" | "review";
+    loopTaskService?: ThothLoopTaskService;
+    callerAvailableAfterCatalogCreation?: boolean;
+  } = {},
+) {
+  const timeline: AgentTimelineItem[] = [];
+  const appendTimelineItem = vi.fn(async (agentId: string, item: AgentTimelineItem) => {
+    if (agentId === "agent-1") {
+      timeline.push(item);
+    }
+  });
+  const primaryAgent = {
+    id: "agent-1",
+    provider: "codex",
+    cwd: "/tmp/thoth-tool-test",
+    labels: { topicId: "topic-main", ...(input.loopPhase ? { loopPhase: input.loopPhase } : {}) },
+    config: {
+      provider: "codex",
+      cwd: "/tmp/thoth-tool-test",
+      extra: {
+        codex: {
+          thothClarifyRuntimeTools: true,
+          ...(input.enableLoopRuntimeTools ? { thothLoopRuntimeTools: true } : {}),
+          ...(input.loopPhase ? { thothLoopPhase: input.loopPhase } : {}),
+        },
+      },
+    },
+  } as ManagedAgent;
+  let callerRegistered = input.callerAvailableAfterCatalogCreation !== true;
   const agentManager = {
     appendTimelineItem,
-    getAgent: () =>
-      ({
-        id: "agent-1",
+    getAgent: (agentId: string) =>
+      agentId === "agent-1" && callerRegistered ? primaryAgent : null,
+    getTimeline: (agentId: string) => (agentId === "agent-1" ? [...timeline] : []),
+    createAgent: vi.fn(async (config: Parameters<AgentManager["createAgent"]>[0]) => {
+      const auditAgent = {
+        id: "clarify-audit-agent",
         provider: "codex",
-        cwd: "/tmp/thoth-tool-test",
-        labels: { topicId: "topic-main" },
-        config: {
-          provider: "codex",
-          cwd: "/tmp/thoth-tool-test",
-          extra: { codex: { thothClarifyRuntimeTools: true } },
-        },
-      }) as ManagedAgent,
+        cwd: config.cwd,
+        config,
+        labels: { surface: "thoth-clarify-audit" },
+      } as ManagedAgent;
+      setImmediate(() => {
+        if (input.auditFailure) {
+          rejectClarifyConvergenceAudit(auditAgent.id, input.auditFailure);
+          return;
+        }
+        resolveClarifyConvergenceAudit(auditAgent.id, {
+          outcome: input.auditOutcome ?? "proceed",
+          summary:
+            input.auditOutcome === "revise_frontier"
+              ? "Performance acceptance remains a material user-owned boundary."
+              : "The candidate Task Card is grounded by the submitted frontier ledger.",
+          missing_material_frontier:
+            input.auditOutcome === "revise_frontier" ? ["性能验收基线"] : [],
+          rejected_question_patterns: [],
+          task_memory_refs: [],
+        });
+      });
+      return auditAgent;
+    }),
+    streamAgent: () =>
+      (async function* pendingAuditStream(): AsyncGenerator<AgentStreamEvent> {
+        await new Promise((resolve) => setImmediate(resolve));
+      })(),
   } as unknown as AgentManager;
 
-  return {
-    appendTimelineItem,
-    catalog: createThothToolCatalog({
-      agentManager,
-      agentStorage: {} as AgentStorage,
-      terminalManager: null,
-      providerSnapshotManager: {} as ProviderSnapshotManager,
-      logger: createTestLogger(),
-      callerAgentId: "agent-1",
-    }),
-  };
+  const catalog = createThothToolCatalog({
+    agentManager,
+    agentStorage: {} as AgentStorage,
+    terminalManager: null,
+    providerSnapshotManager: {} as ProviderSnapshotManager,
+    logger: createTestLogger(),
+    callerAgentId: "agent-1",
+    callerAgentConfig: primaryAgent.config,
+    ...(input.loopTaskService ? { loopTaskService: input.loopTaskService } : {}),
+  });
+  callerRegistered = true;
+  return { appendTimelineItem, timeline, catalog };
 }
 
 function readyConvergenceReview() {
@@ -61,6 +122,46 @@ function readyConvergenceReview() {
   };
 }
 
+async function submitApprovedTaskCard(
+  catalog: ReturnType<typeof createCatalog>["catalog"],
+): Promise<void> {
+  const toolResult = catalog.executeTool(
+    "thoth_submit_task_card",
+    {
+      task_card: {
+        title: "已确认的测试任务",
+        goal: "为 Goals Card transition guard 提供已确认的 Task Card。",
+        constraints: ["仅验证 authority 顺序。"],
+        acceptance: ["Goals Card 只能出现在 Task Card 批准后。"],
+      },
+      provenance: { clarify_transcript_verbatim: "固定的 Clarify 原文。" },
+      convergence_review: readyConvergenceReview(),
+    },
+    {
+      providerToolCall: {
+        provider: "codex",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        callId: "call-approved-task",
+        toolName: "thoth_submit_task_card",
+      },
+    },
+  );
+  await flushToolStart();
+  const cardId = takeOnlyPendingCardId();
+  answerRuntimeAuthorityDecision({
+    cardId,
+    submittedSummary: "已确认测试任务",
+    answer: {
+      intent: "accept_quick",
+      card_id: cardId,
+      title: "已确认的测试任务",
+      raw_answer: "确认",
+    },
+  });
+  await toolResult;
+}
+
 function takeOnlyPendingCardId(): string {
   const pending = listPendingRuntimeAuthorityDecisions();
   expect(pending).toHaveLength(1);
@@ -70,7 +171,9 @@ function takeOnlyPendingCardId(): string {
 async function submitAnsweredClarifyCard(
   catalog: ReturnType<typeof createCatalog>["catalog"],
   strength: "light" | "balanced" | "dive",
-): Promise<void> {
+  input: { converged?: boolean } = {},
+) {
+  const converged = input.converged === true;
   const toolResult = catalog.executeTool(
     "thoth_submit_clarify_card",
     {
@@ -80,11 +183,15 @@ async function submitAnsweredClarifyCard(
       frontier_ledger: {
         clarify_strength: strength,
         grounded_user_decisions: [],
-        remaining_material_user_owned_assumptions: ["实现路线", "接口形态", "验收边界"],
+        remaining_material_user_owned_assumptions: converged
+          ? []
+          : ["实现路线", "接口形态", "验收边界"],
         agent_owned_assumptions: ["具体实现策略由 agent 决定。"],
         discoverable_assumptions: ["仓库测试命令可发现。"],
-        why_this_round: "这些答案决定任务合同边界。",
-        convergence_state: "not_converged",
+        why_this_round: converged
+          ? "所有材料分支已收敛，可以进入任务总览。"
+          : "这些答案决定任务合同边界。",
+        convergence_state: converged ? "ready_for_task" : "not_converged",
       },
       questions: [
         {
@@ -135,7 +242,7 @@ async function submitAnsweredClarifyCard(
       raw_answer: "选择第一项",
     },
   });
-  await toolResult;
+  return await toolResult;
 }
 
 afterEach(() => {
@@ -214,6 +321,57 @@ describe("Thoth runtime authority tools", () => {
     expect(text).not.toContain("Continue in the same turn with normal execution.");
   });
 
+  it("resolves the live caller after catalog creation before starting a convergence audit", async () => {
+    const { catalog } = createCatalog({ callerAvailableAfterCatalogCreation: true });
+    const toolResult = catalog.executeTool(
+      "thoth_submit_task_card",
+      {
+        task_card: {
+          title: "延迟注册的测试任务",
+          goal: "验证动态工具 catalog 创建后仍能启动独立 audit。",
+          constraints: ["仅验证注册时序。"],
+          acceptance: ["Task Card 正常进入用户确认。"],
+        },
+        provenance: { clarify_transcript_verbatim: "固定的 Clarify 原文。" },
+        convergence_review: readyConvergenceReview(),
+      },
+      {
+        providerToolCall: {
+          provider: "codex",
+          threadId: "thread-late-caller",
+          turnId: "turn-late-caller",
+          callId: "call-late-caller",
+          toolName: "thoth_submit_task_card",
+        },
+      },
+    );
+
+    await flushToolStart();
+    const cardId = takeOnlyPendingCardId();
+    answerRuntimeAuthorityDecision({
+      cardId,
+      submittedSummary: "已确认延迟注册测试任务",
+      answer: {
+        intent: "accept_quick",
+        card_id: cardId,
+        title: "延迟注册的测试任务",
+        raw_answer: "确认",
+      },
+    });
+    await expect(toolResult).resolves.toMatchObject({
+      structuredContent: { status: "answered" },
+    });
+  });
+
+  it("directs a converged Clarify card to the Task Card before Goals", async () => {
+    const { catalog } = createCatalog();
+    const result = await submitAnsweredClarifyCard(catalog, "light", { converged: true });
+    const text = result.content.map((item) => item.text ?? "").join("\n");
+
+    expect(text).toContain("Next required runtime tool: thoth_submit_task_card.");
+    expect(text).toContain("Do not submit a Goals Card");
+  });
+
   it("requires an explicit convergence review when Task is submitted below a strength soft target", async () => {
     const { catalog } = createCatalog();
     await expect(
@@ -253,6 +411,69 @@ describe("Thoth runtime authority tools", () => {
         },
       ),
     ).rejects.toThrow("Clarify soft target not reviewed");
+  });
+
+  it("returns the independent audit frontier to the same Clarify session without opening a Task card", async () => {
+    const { catalog } = createCatalog({ auditOutcome: "revise_frontier" });
+    const result = await catalog.executeTool(
+      "thoth_submit_task_card",
+      {
+        task_card: {
+          title: "实现排序库",
+          goal: "交付可复用排序能力。",
+          constraints: ["保持 API 简洁。"],
+          acceptance: ["正确性测试通过。"],
+        },
+        provenance: { clarify_transcript_verbatim: "用户确认了语言和交付形态。" },
+        convergence_review: readyConvergenceReview(),
+      },
+      {
+        providerToolCall: {
+          provider: "codex",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          callId: "call-task-revise",
+          toolName: "thoth_submit_task_card",
+        },
+      },
+    );
+
+    expect(listPendingRuntimeAuthorityDecisions()).toHaveLength(0);
+    expect(result.structuredContent).toMatchObject({ status: "revise_frontier" });
+    expect(result.content.map((item) => item.text).join("\n")).toContain("性能验收基线");
+  });
+
+  it("keeps the flow honestly blocked when the independent convergence audit cannot return", async () => {
+    const { catalog } = createCatalog({ auditFailure: "Audit provider session timed out." });
+    const result = await catalog.executeTool(
+      "thoth_submit_task_card",
+      {
+        task_card: {
+          title: "实现排序库",
+          goal: "交付可复用排序能力。",
+          constraints: ["保持 API 简洁。"],
+          acceptance: ["正确性测试通过。"],
+        },
+        provenance: { clarify_transcript_verbatim: "用户确认了语言和交付形态。" },
+        convergence_review: readyConvergenceReview(),
+      },
+      {
+        providerToolCall: {
+          provider: "codex",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          callId: "call-task-audit-failure",
+          toolName: "thoth_submit_task_card",
+        },
+      },
+    );
+
+    expect(result.structuredContent).toMatchObject({ status: "blocked" });
+    expect(result.isError).toBe(true);
+    expect(result.content.map((item) => item.text).join("\n")).toContain(
+      "Task Card was not created",
+    );
+    expect(listPendingRuntimeAuthorityDecisions()).toHaveLength(0);
   });
 
   it("rejects Task convergence reviews that downgrade the latest Clarify strength", async () => {
@@ -300,6 +521,7 @@ describe("Thoth runtime authority tools", () => {
 
   it("returns Goals Card approval as the Quick execution handoff", async () => {
     const { catalog } = createCatalog();
+    await submitApprovedTaskCard(catalog);
     const toolResult = catalog.executeTool(
       "thoth_submit_goals_card",
       {
@@ -352,6 +574,56 @@ describe("Thoth runtime authority tools", () => {
     expect(text).toContain("executing the approved task in the current workspace");
     expect(text).toContain("create or edit the necessary files and verify the result");
     expect(text).not.toContain("Next required runtime tool: thoth_submit_goals_card.");
+  });
+
+  it("rejects a Goals Card before the user has approved a Task Card", async () => {
+    const { catalog, appendTimelineItem } = createCatalog();
+    const result = await catalog.executeTool(
+      "thoth_submit_goals_card",
+      {
+        goals_card: {
+          title: "不应跳过 Task 的 Goals",
+          summary: "验证不合法 authority 跳转会被拒绝。",
+          goals_count_rationale: "这是 transition guard 单元测试。",
+          goals: [
+            {
+              id: "goal-1",
+              order: 1,
+              title: "唯一检查点",
+              goal: "验证 transition guard。",
+              constraints: ["没有 Task Card。"],
+              acceptance: ["Goals Card 被拒绝。"],
+            },
+          ],
+        },
+        provenance: {
+          clarify_transcript_verbatim: "固定的 Clarify 原文。",
+          approved_ceo_task_card_verbatim: "不存在的 Task Card。",
+        },
+      },
+      {
+        providerToolCall: {
+          provider: "codex",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          callId: "call-goals-without-task",
+          toolName: "thoth_submit_goals_card",
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { ok: false, status: "rejected" },
+    });
+    expect(result.content.map((item) => item.text).join("\n")).toContain(
+      "no user-approved Task Card",
+    );
+    expect(listPendingRuntimeAuthorityDecisions()).toHaveLength(0);
+    expect(appendTimelineItem).toHaveBeenCalledWith(
+      "agent-1",
+      expect.objectContaining({ type: "tool_call", status: "failed", name: "goals_approval" }),
+    );
   });
 
   it("uses public_badge_summary for Clarify timeline badges instead of legacy decision text", async () => {
@@ -438,5 +710,84 @@ describe("Thoth runtime authority tools", () => {
       },
     });
     await toolResult;
+  });
+
+  it("seals provider dynamic-tool call ids into Loop phase results instead of trusting model-supplied ids", async () => {
+    const resolvePlanExecResult = vi.fn(() => true);
+    const resolveReviewVerdict = vi.fn(() => true);
+    const { catalog } = createCatalog({
+      enableLoopRuntimeTools: true,
+      loopTaskService: {
+        resolvePlanExecResult,
+        resolveReviewVerdict,
+      } as unknown as ThothLoopTaskService,
+    });
+    const context = {
+      providerToolCall: {
+        provider: "codex",
+        threadId: "thread-loop",
+        turnId: "turn-loop",
+        callId: "provider-tool-call-1",
+        toolName: "thoth_loop_submit_planexec_result",
+      },
+    };
+
+    await catalog.executeTool(
+      "thoth_loop_submit_planexec_result",
+      {
+        goal_id: "goal-1",
+        round: 1,
+        plan_summary: "Execute the current goal only.",
+        execution_summary: "Completed the current goal.",
+        evidence: ["Focused check passed."],
+        next_review_focus: "Verify the focused check.",
+      },
+      context,
+    );
+    await catalog.executeTool(
+      "thoth_loop_submit_review_verdict",
+      {
+        goal_id: "goal-1",
+        round: 1,
+        outcome: "pass",
+        summary: "Current goal is accepted.",
+        acceptance_matrix: [{ acceptance: "Focused check", status: "met", evidence: "green run" }],
+        evidence_summary: "Focused check produced the expected proof.",
+      },
+      {
+        providerToolCall: {
+          ...context.providerToolCall,
+          callId: "provider-tool-call-2",
+          toolName: "thoth_loop_submit_review_verdict",
+        },
+      },
+    );
+
+    expect(resolvePlanExecResult).toHaveBeenCalledWith(
+      "agent-1",
+      expect.objectContaining({ result_tool_call_id: "provider-tool-call-1" }),
+    );
+    expect(resolveReviewVerdict).toHaveBeenCalledWith(
+      "agent-1",
+      expect.objectContaining({ result_tool_call_id: "provider-tool-call-2" }),
+    );
+  });
+
+  it("registers only the semantic result tool for the active Loop phase", () => {
+    const { catalog: planExecCatalog } = createCatalog({
+      enableLoopRuntimeTools: true,
+      loopPhase: "planexec",
+    });
+    const { catalog: reviewCatalog } = createCatalog({
+      enableLoopRuntimeTools: true,
+      loopPhase: "review",
+    });
+
+    expect(planExecCatalog.getTool("thoth_loop_submit_planexec_result")).toBeDefined();
+    expect(planExecCatalog.getTool("thoth_loop_submit_review_verdict")).toBeUndefined();
+    expect(planExecCatalog.getTool("thoth_loop_report_blocked")).toBeDefined();
+    expect(reviewCatalog.getTool("thoth_loop_submit_planexec_result")).toBeUndefined();
+    expect(reviewCatalog.getTool("thoth_loop_submit_review_verdict")).toBeDefined();
+    expect(reviewCatalog.getTool("thoth_loop_report_blocked")).toBeDefined();
   });
 });

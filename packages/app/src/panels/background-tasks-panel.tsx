@@ -9,10 +9,10 @@ import {
 } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { CheckCircle2, Clock3, ListTodo, Pause, Play, Square, XCircle } from "lucide-react-native";
-import invariant from "tiny-invariant";
 import type { AgentSnapshotPayload, AgentStreamEventPayload } from "@thoth/protocol/messages";
 import type {
   BackgroundTaskModel,
+  BackgroundTaskAction,
   LoopGoalRecord,
   LoopPhaseKind,
   LoopPhaseRecord,
@@ -21,13 +21,17 @@ import type {
 import type { AgentPermissionRequest, AgentProvider } from "@thoth/protocol/agent-types";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
+import { ResizeHandle } from "@/components/resize-handle";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
-import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
-import { usePaneContext } from "@/panels/pane-context";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import type { PendingPermission } from "@/types/shared";
 import { hydrateStreamState, reduceStreamUpdate, type StreamItem } from "@/types/stream";
 import { isWeb } from "@/constants/platform";
+import {
+  buildBackgroundTasksSurfaceKey,
+  clampBackgroundTasksListWidth,
+  useBackgroundTasksSurfaceStore,
+} from "@/stores/background-tasks-surface-store";
 
 const AGENT_CHAT_SCROLL_SELECTOR = '[data-testid="agent-chat-scroll"]';
 const BACKGROUND_TASK_DETAIL_SCROLL_TEST_ID = "background-task-detail-scroll";
@@ -48,19 +52,6 @@ const dangerColorMapping = (theme: { colors: { destructive: string } }) => ({
   color: theme.colors.destructive,
 });
 
-function useBackgroundTasksPanelDescriptor(
-  target: { kind: "background_tasks"; workspaceId: string },
-  _context: { serverId: string; workspaceId: string },
-): PanelDescriptor {
-  return {
-    label: "Background tasks",
-    subtitle: target.workspaceId,
-    titleState: "ready",
-    icon: Clock3,
-    statusBucket: null,
-  };
-}
-
 function isRealTask(task: BackgroundTaskModel): boolean {
   return task.id !== "empty";
 }
@@ -73,6 +64,12 @@ function taskStatusLabel(status: BackgroundTaskModel["status"]): string {
       return "Running";
     case "paused":
       return "Paused";
+    case "budget_wait":
+      return "Budget wait";
+    case "evidence_invalid":
+      return "Evidence needs attention";
+    case "workspace_changed_concurrently":
+      return "Workspace changed";
     case "blocked":
       return "Blocked";
     case "done":
@@ -86,6 +83,26 @@ function taskStatusLabel(status: BackgroundTaskModel["status"]): string {
     case "empty":
       return "Empty";
   }
+}
+
+function formatDuration(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+function formatLimit(value: number, suffix = ""): string {
+  return `${value.toLocaleString()}${suffix}`;
+}
+
+function evidenceLabel(ref: { id: string; kind: string; createdAt: string }): string {
+  const createdAt = new Date(ref.createdAt);
+  const timestamp = Number.isNaN(createdAt.valueOf()) ? ref.createdAt : createdAt.toLocaleString();
+  return `${ref.kind.replaceAll("_", " ")} · ${timestamp} · ${ref.id}`;
 }
 
 function phaseLabel(phase: LoopPhaseKind): string {
@@ -298,34 +315,126 @@ function hydrateProjectedEntries(
   );
 }
 
-function BackgroundTasksPanel() {
-  const { serverId, target } = usePaneContext();
-  invariant(
-    target.kind === "background_tasks",
-    "BackgroundTasksPanel requires background_tasks target",
-  );
+export function BackgroundTasksSurface({
+  serverId,
+  workspaceId,
+}: {
+  serverId: string;
+  workspaceId: string;
+}) {
   const client = useHostRuntimeClient(serverId);
+  const surfaceKey = buildBackgroundTasksSurfaceKey({ serverId, workspaceId });
+  const persistedSurface = useBackgroundTasksSurfaceStore(
+    (state) => state.byWorkspaceKey[surfaceKey],
+  );
+  const updateSurface = useBackgroundTasksSurfaceStore((state) => state.updateSurface);
+  const restoredSelectionRef = useRef(false);
   const [tasks, setTasks] = useState<BackgroundTaskModel[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
+    () => persistedSurface?.selectedTaskId ?? null,
+  );
   const [selectedTask, setSelectedTask] = useState<LoopTaskModel | null>(null);
-  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-  const [selectedPhase, setSelectedPhase] = useState<LoopPhaseKind>("planexec");
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(
+    () => persistedSurface?.selectedGoalId ?? null,
+  );
+  const [selectedPhase, setSelectedPhase] = useState<LoopPhaseKind>(
+    () => persistedSurface?.selectedPhaseId ?? "planexec",
+  );
   const [phaseAgent, setPhaseAgent] = useState<AgentScreenAgent | null>(null);
   const [phaseItems, setPhaseItems] = useState<StreamItem[]>([]);
+  const [phaseTimelineLoading, setPhaseTimelineLoading] = useState(false);
+  const [phaseTimelineError, setPhaseTimelineError] = useState<string | null>(null);
   const phaseStreamRef = useRef<AgentStreamViewHandle | null>(null);
   const timelineShellRef = useRef<View | null>(null);
   const [pendingPermissions, setPendingPermissions] = useState<Map<string, PendingPermission>>(
     () => new Map(),
   );
   const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"pause" | "resume" | "stop" | null>(null);
+  const [pendingAction, setPendingAction] = useState<BackgroundTaskAction | null>(null);
+  const [surfaceWidth, setSurfaceWidth] = useState(0);
   const nowTick = useNowTick(Boolean(selectedTask?.status === "running"));
+  const resumeEnabled =
+    selectedTask?.status === "paused" ||
+    selectedTask?.status === "stopped" ||
+    selectedTask?.status === "interrupted" ||
+    selectedTask?.status === "evidence_invalid" ||
+    selectedTask?.status === "workspace_changed_concurrently";
+  const pauseEnabled =
+    selectedTask?.status === "running" && selectedTask.controlIntent !== "pause_after_phase";
+  const stopEnabled =
+    selectedTask?.status === "queued" ||
+    selectedTask?.status === "running" ||
+    selectedTask?.status === "paused" ||
+    selectedTask?.status === "interrupted" ||
+    selectedTask?.status === "budget_wait" ||
+    selectedTask?.status === "evidence_invalid" ||
+    selectedTask?.status === "workspace_changed_concurrently";
+
+  const taskListWidth = useMemo(
+    () => clampBackgroundTasksListWidth(persistedSurface?.taskListWidth, surfaceWidth),
+    [persistedSurface?.taskListWidth, surfaceWidth],
+  );
+  const taskListResizeSizes = useMemo(() => {
+    if (surfaceWidth <= 0) {
+      return [0.36, 0.64];
+    }
+    const left = Math.min(0.8, Math.max(0.1, taskListWidth / surfaceWidth));
+    return [left, 1 - left];
+  }, [surfaceWidth, taskListWidth]);
+  const handleSurfaceLayout = useCallback(
+    (event: { nativeEvent: { layout: { width: number } } }) => {
+      setSurfaceWidth(event.nativeEvent.layout.width);
+    },
+    [],
+  );
+  const handleResizeTaskList = useCallback(
+    (_groupId: string, sizes: number[]) => {
+      if (surfaceWidth <= 0) {
+        return;
+      }
+      updateSurface({
+        serverId,
+        workspaceId,
+        taskListWidth: clampBackgroundTasksListWidth(
+          surfaceWidth * (sizes[0] ?? taskListResizeSizes[0] ?? 0),
+          surfaceWidth,
+        ),
+      });
+    },
+    [serverId, surfaceWidth, taskListResizeSizes, updateSurface, workspaceId],
+  );
+
+  useEffect(() => {
+    if (restoredSelectionRef.current || !persistedSurface) {
+      return;
+    }
+    restoredSelectionRef.current = true;
+    if (persistedSurface.selectedTaskId) {
+      setSelectedTaskId(persistedSurface.selectedTaskId);
+    }
+    if (persistedSurface.selectedGoalId) {
+      setSelectedGoalId(persistedSurface.selectedGoalId);
+    }
+    if (persistedSurface.selectedPhaseId) {
+      setSelectedPhase(persistedSurface.selectedPhaseId);
+    }
+  }, [persistedSurface]);
+
+  useEffect(() => {
+    updateSurface({
+      serverId,
+      workspaceId,
+      selectedTaskId,
+      selectedGoalId,
+      selectedPhaseId: selectedPhase,
+    });
+  }, [selectedGoalId, selectedPhase, selectedTaskId, serverId, updateSurface, workspaceId]);
 
   const refreshList = useCallback(async () => {
     if (!client) {
       return;
     }
-    const response = await client.listBackgroundTasks({ workspaceId: target.workspaceId });
+    const response = await client.listBackgroundTasks({ workspaceId });
     if (response.error) {
       setError(response.error);
     } else {
@@ -338,7 +447,7 @@ function BackgroundTasksPanel() {
       }
       return response.tasks.find(isRealTask)?.id ?? null;
     });
-  }, [client, target.workspaceId]);
+  }, [client, workspaceId]);
 
   useEffect(() => {
     if (!client) {
@@ -355,7 +464,7 @@ function BackgroundTasksPanel() {
         return;
       }
       const summary = message.payload.summary;
-      if (summary.workspaceName && target.workspaceId && message.payload.task.workspacePath) {
+      if (summary.workspaceName && workspaceId && message.payload.task.workspacePath) {
         // The daemon already filters list requests by workspace; live updates are global.
         // Refreshing keeps the panel scoped without duplicating workspace-id inference here.
         void refreshList();
@@ -377,7 +486,7 @@ function BackgroundTasksPanel() {
       active = false;
       unsubscribe();
     };
-  }, [client, refreshList, target.workspaceId]);
+  }, [client, refreshList, workspaceId]);
 
   useEffect(() => {
     if (!client || !selectedTaskId || selectedTaskId === "empty") {
@@ -457,9 +566,13 @@ function BackgroundTasksPanel() {
       setPhaseAgent(null);
       setPhaseItems([]);
       setPendingPermissions(new Map());
+      setPhaseTimelineLoading(false);
+      setPhaseTimelineError(null);
       return;
     }
     let active = true;
+    setPhaseTimelineLoading(true);
+    setPhaseTimelineError(null);
     void client
       .fetchAgentTimeline(selectedPhaseAgentId, {
         direction: "tail",
@@ -477,10 +590,17 @@ function BackgroundTasksPanel() {
           );
         }
         setPhaseItems(hydrateProjectedEntries(payload.entries));
+        setPhaseTimelineLoading(false);
+        if (!payload.agent) {
+          setPhaseTimelineError("The provider session metadata could not be restored.");
+        }
       })
       .catch((nextError) => {
         if (active) {
-          setError(nextError instanceof Error ? nextError.message : String(nextError));
+          setPhaseAgent(null);
+          setPhaseItems([]);
+          setPhaseTimelineLoading(false);
+          setPhaseTimelineError(nextError instanceof Error ? nextError.message : String(nextError));
         }
       });
 
@@ -544,7 +664,7 @@ function BackgroundTasksPanel() {
   }, [phaseItems.length, selectedPhaseAgentId]);
 
   const handleTaskAction = useCallback(
-    async (action: "pause" | "resume" | "stop") => {
+    async (action: BackgroundTaskAction) => {
       if (!client || !selectedTask) {
         return;
       }
@@ -575,10 +695,11 @@ function BackgroundTasksPanel() {
   }
 
   const visibleTasks = tasks.filter(isRealTask);
+  const selectedTaskReplanHistory = selectedTask?.replanHistory ?? [];
 
   return (
-    <View style={styles.root} testID="background-tasks-panel">
-      <View style={styles.sidebar}>
+    <View style={styles.root} onLayout={handleSurfaceLayout} testID="background-tasks-panel">
+      <View style={[styles.sidebar, { width: taskListWidth }]} testID="background-task-list-pane">
         <Text style={styles.sidebarTitle}>Background tasks</Text>
         {visibleTasks.length === 0 ? (
           <View style={styles.emptyList}>
@@ -609,7 +730,16 @@ function BackgroundTasksPanel() {
           </ScrollView>
         )}
       </View>
-      <View style={styles.detail}>
+      {isWeb ? (
+        <ResizeHandle
+          direction="horizontal"
+          groupId={`background-task-list-${surfaceKey}`}
+          index={0}
+          sizes={taskListResizeSizes}
+          onResizeSplit={handleResizeTaskList}
+        />
+      ) : null}
+      <View style={styles.detail} testID="background-task-detail-pane">
         {selectedTask ? (
           <ScrollView
             contentContainerStyle={styles.detailContent}
@@ -624,34 +754,39 @@ function BackgroundTasksPanel() {
                 </Text>
               </View>
               <View style={styles.headerActions}>
-                {selectedTask.status === "paused" || selectedTask.status === "interrupted" ? (
-                  <ActionButton
-                    label="Resume"
-                    icon={
-                      pendingAction === "resume" ? (
-                        <ActivityIndicator size="small" />
-                      ) : (
-                        <Play size={14} />
-                      )
-                    }
-                    disabled={pendingAction !== null}
-                    onPress={() => void handleTaskAction("resume")}
-                  />
-                ) : (
-                  <ActionButton
-                    label="Pause"
-                    icon={
-                      pendingAction === "pause" ? (
-                        <ActivityIndicator size="small" />
-                      ) : (
-                        <Pause size={14} />
-                      )
-                    }
-                    disabled={pendingAction !== null}
-                    onPress={() => void handleTaskAction("pause")}
-                  />
-                )}
                 <ActionButton
+                  testID="background-task-resume"
+                  label={
+                    selectedTask.status === "evidence_invalid" ||
+                    selectedTask.status === "workspace_changed_concurrently"
+                      ? "Re-baseline & resume"
+                      : "Resume"
+                  }
+                  icon={
+                    pendingAction === "resume" ? (
+                      <ActivityIndicator size="small" />
+                    ) : (
+                      <Play size={14} />
+                    )
+                  }
+                  disabled={pendingAction !== null || !resumeEnabled}
+                  onPress={() => void handleTaskAction("resume")}
+                />
+                <ActionButton
+                  testID="background-task-pause"
+                  label={selectedTask.controlIntent === "pause_after_phase" ? "Pausing" : "Pause"}
+                  icon={
+                    pendingAction === "pause" ? (
+                      <ActivityIndicator size="small" />
+                    ) : (
+                      <Pause size={14} />
+                    )
+                  }
+                  disabled={pendingAction !== null || !pauseEnabled}
+                  onPress={() => void handleTaskAction("pause")}
+                />
+                <ActionButton
+                  testID="background-task-stop"
                   label="Stop"
                   icon={
                     pendingAction === "stop" ? (
@@ -660,12 +795,92 @@ function BackgroundTasksPanel() {
                       <Square size={14} />
                     )
                   }
-                  disabled={pendingAction !== null}
+                  disabled={pendingAction !== null || !stopEnabled}
                   onPress={() => void handleTaskAction("stop")}
                 />
               </View>
             </View>
             <Text style={styles.detailSummary}>{selectedTask.summary}</Text>
+
+            {selectedTask.budgetEnvelope && selectedTask.budgetUsage ? (
+              <View style={styles.budgetPanel} testID="loop-budget-envelope">
+                <View style={styles.budgetHeader}>
+                  <Clock3 size={15} />
+                  <Text style={styles.sectionTitle}>Loop budget</Text>
+                </View>
+                <Text style={styles.sectionMuted}>
+                  Active {formatDuration(selectedTask.budgetUsage.activeDurationMs)} /{" "}
+                  {formatDuration(selectedTask.budgetEnvelope.maxActiveDurationMs)} · tokens{" "}
+                  {selectedTask.budgetUsage.tokenMetered
+                    ? `${formatLimit(selectedTask.budgetUsage.tokens)} / ${formatLimit(selectedTask.budgetEnvelope.maxTokens)}`
+                    : "unmetered"}
+                </Text>
+                <Text style={styles.sectionMuted}>
+                  Tools {formatLimit(selectedTask.budgetUsage.toolCalls)} /{" "}
+                  {formatLimit(selectedTask.budgetEnvelope.maxToolCalls)} · files{" "}
+                  {formatLimit(selectedTask.budgetUsage.changedFiles)} /{" "}
+                  {formatLimit(selectedTask.budgetEnvelope.maxChangedFiles)} · lines{" "}
+                  {formatLimit(selectedTask.budgetUsage.changedLines)} /{" "}
+                  {formatLimit(selectedTask.budgetEnvelope.maxChangedLines)}
+                </Text>
+                <Text style={styles.sectionMuted}>
+                  Replans {formatLimit(selectedTask.budgetUsage.replans)} /{" "}
+                  {formatLimit(selectedTask.budgetEnvelope.maxReplans)} · same root cause{" "}
+                  {formatLimit(selectedTask.budgetUsage.consecutiveSameRootCause)} /{" "}
+                  {formatLimit(selectedTask.budgetEnvelope.maxConsecutiveSameRootCause)}
+                </Text>
+              </View>
+            ) : null}
+
+            {selectedTask.status === "budget_wait" && selectedTask.budgetWait ? (
+              <View style={styles.budgetWaitPanel} testID="loop-budget-wait">
+                <Text style={styles.sectionTitle}>Budget decision needed</Text>
+                <Text style={styles.sectionBody}>{selectedTask.budgetWait.reason}</Text>
+                <Text style={styles.sectionMuted}>
+                  Reached: {selectedTask.budgetWait.exhaustedDimensions.join(" · ")}
+                </Text>
+                <View style={styles.budgetActions}>
+                  <ActionButton
+                    testID="background-task-budget-continue"
+                    label="Raise strength"
+                    icon={
+                      pendingAction === "budget_continue" ? (
+                        <ActivityIndicator size="small" />
+                      ) : (
+                        <Play size={14} />
+                      )
+                    }
+                    disabled={pendingAction !== null}
+                    onPress={() => void handleTaskAction("budget_continue")}
+                  />
+                  <ActionButton
+                    testID="background-task-review-only"
+                    label="Review evidence"
+                    icon={
+                      pendingAction === "review_only" ? (
+                        <ActivityIndicator size="small" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )
+                    }
+                    disabled={pendingAction !== null || !selectedGoal?.latestPlanExecResult}
+                    onPress={() => void handleTaskAction("review_only")}
+                  />
+                </View>
+              </View>
+            ) : null}
+
+            {selectedTask.status === "evidence_invalid" ||
+            selectedTask.status === "workspace_changed_concurrently" ? (
+              <View style={styles.evidenceWarningPanel} testID="loop-evidence-warning">
+                <Text style={styles.sectionTitle}>Evidence held</Text>
+                <Text style={styles.sectionBody}>{selectedTask.summary}</Text>
+                <Text style={styles.sectionMuted}>
+                  The task preserved its receipts and did not revert workspace changes. Re-establish
+                  the workspace baseline before resuming this task.
+                </Text>
+              </View>
+            ) : null}
 
             <View style={styles.goalRail}>
               {selectedTask.goals.map((goal) => {
@@ -752,6 +967,53 @@ function BackgroundTasksPanel() {
                     <Text style={styles.sectionMuted}>
                       Review focus: {selectedGoal.latestPlanExecResult.nextReviewFocus}
                     </Text>
+                    {selectedGoal.latestPlanExecResult.evidenceRef ? (
+                      <Text style={styles.sectionMuted} testID="loop-planexec-evidence-ref">
+                        Evidence receipt:{" "}
+                        {evidenceLabel(selectedGoal.latestPlanExecResult.evidenceRef)}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {selectedGoal.latestReview ? (
+                  <View style={styles.phaseResultBox} testID="loop-review-verdict-summary">
+                    <Text style={styles.sectionTitle}>Latest Review verdict</Text>
+                    <Text style={styles.sectionBody}>{selectedGoal.latestReview.summary}</Text>
+                    <Text style={styles.sectionMuted}>
+                      {selectedGoal.latestReview.acceptanceMatrix
+                        .map((entry) => `${entry.status}: ${entry.acceptance}`)
+                        .join("；")}
+                    </Text>
+                    {selectedGoal.latestReview.evidenceRef ? (
+                      <Text style={styles.sectionMuted} testID="loop-review-evidence-ref">
+                        Evidence receipt: {evidenceLabel(selectedGoal.latestReview.evidenceRef)}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {selectedTask.baselineEvidence || selectedTaskReplanHistory.length > 0 ? (
+                  <View style={styles.phaseResultBox} testID="loop-authority-history">
+                    {selectedTask.baselineEvidence ? (
+                      <>
+                        <Text style={styles.sectionTitle}>Task baseline evidence</Text>
+                        <Text style={styles.sectionMuted}>
+                          {evidenceLabel(selectedTask.baselineEvidence)}
+                        </Text>
+                      </>
+                    ) : null}
+                    {selectedTaskReplanHistory.length > 0 ? (
+                      <>
+                        <Text style={styles.sectionTitle}>Deferred goal replans</Text>
+                        {selectedTaskReplanHistory.map((replan) => (
+                          <Text key={replan.id} style={styles.sectionMuted}>
+                            {replan.status}: {replan.rationale}
+                            {replan.auditSummary ? ` · ${replan.auditSummary}` : ""}
+                          </Text>
+                        ))}
+                      </>
+                    ) : null}
                   </View>
                 ) : null}
 
@@ -771,6 +1033,28 @@ function BackgroundTasksPanel() {
                       pendingPermissions={pendingPermissions}
                       isAuthoritativeHistoryReady
                     />
+                  ) : phaseTimelineLoading && selectedPhaseAgentId ? (
+                    <View style={styles.emptyTimeline}>
+                      <ActivityIndicator size="small" />
+                      <Text style={styles.emptyText}>Loading phase timeline...</Text>
+                    </View>
+                  ) : phaseTimelineError && selectedPhaseAgentId ? (
+                    <View style={styles.emptyTimeline}>
+                      <ThemedXCircle size={18} uniProps={dangerColorMapping} />
+                      <Text style={styles.errorText}>{phaseTimelineError}</Text>
+                    </View>
+                  ) : selectedPhaseRecord?.summary ? (
+                    <View style={styles.emptyTimeline}>
+                      <ThemedXCircle size={18} uniProps={dangerColorMapping} />
+                      <Text style={styles.errorText}>{selectedPhaseRecord.summary}</Text>
+                    </View>
+                  ) : selectedPhaseRecord && selectedPhaseRecord.status !== "queued" ? (
+                    <View style={styles.emptyTimeline}>
+                      <ThemedXCircle size={18} uniProps={dangerColorMapping} />
+                      <Text style={styles.errorText}>
+                        This phase is missing its provider session reference.
+                      </Text>
+                    </View>
                   ) : (
                     <View style={styles.emptyTimeline}>
                       <Text style={styles.emptyText}>
@@ -798,11 +1082,13 @@ function BackgroundTasksPanel() {
 }
 
 function ActionButton({
+  testID,
   label,
   icon,
   disabled,
   onPress,
 }: {
+  testID: string;
   label: string;
   icon: ReactNode;
   disabled?: boolean;
@@ -810,6 +1096,7 @@ function ActionButton({
 }) {
   return (
     <Pressable
+      testID={testID}
       disabled={disabled}
       onPress={onPress}
       style={[styles.actionButton, disabled && styles.actionButtonDisabled]}
@@ -820,12 +1107,6 @@ function ActionButton({
   );
 }
 
-export const backgroundTasksPanelRegistration: PanelRegistration<"background_tasks"> = {
-  kind: "background_tasks",
-  component: BackgroundTasksPanel,
-  useDescriptor: useBackgroundTasksPanelDescriptor,
-};
-
 const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
@@ -833,7 +1114,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   sidebar: {
-    width: 300,
+    flexShrink: 0,
     borderRightWidth: theme.borderWidth[1],
     borderRightColor: theme.colors.border,
     padding: theme.spacing[4],
@@ -874,6 +1155,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   detail: {
     flex: 1,
+    minWidth: 0,
     padding: theme.spacing[4],
   },
   detailContent: {
@@ -983,6 +1265,40 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
     padding: theme.spacing[3],
+    gap: theme.spacing[2],
+  },
+  budgetPanel: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+    padding: theme.spacing[3],
+    gap: theme.spacing[1],
+  },
+  budgetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  budgetWaitPanel: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface2,
+    padding: theme.spacing[3],
+    gap: theme.spacing[2],
+  },
+  evidenceWarningPanel: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.destructive,
+    backgroundColor: theme.colors.surface1,
+    padding: theme.spacing[3],
+    gap: theme.spacing[2],
+  },
+  budgetActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing[2],
   },
   phaseTabs: {

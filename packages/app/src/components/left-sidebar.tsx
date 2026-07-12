@@ -1,5 +1,15 @@
 import { router, usePathname } from "expo-router";
-import { FolderPlus, History, ListTodo, Plus, Search, Server, X } from "lucide-react-native";
+import {
+  FolderPlus,
+  History,
+  Home,
+  ListTodo,
+  Plus,
+  Search,
+  Server,
+  Settings,
+  X,
+} from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -54,23 +64,23 @@ import {
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { canCloseLeftSidebarGesture } from "@/utils/sidebar-animation-state";
 import {
-  buildHostWorkspaceOpenRoute,
+  buildHostWorkspaceBackgroundTasksRoute,
+  buildHostWorkspaceRoute,
   buildOpenProjectRoute,
   buildNewWorkspaceRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsHostSectionRoute,
   buildSettingsRoute,
-  encodeWorkspaceIdForPathSegment,
 } from "@/utils/host-routes";
+import {
+  buildBackgroundTasksSurfaceKey,
+  useBackgroundTasksSurfaceStore,
+} from "@/stores/background-tasks-surface-store";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
-import {
-  ThothInventoryIcon,
-  type ThothInventoryIconName,
-} from "@/components/icons/thoth-inventory-icon";
 
 const MIN_CHAT_WIDTH = 400;
 
@@ -304,15 +314,13 @@ function FooterIconButton({
   testID,
   accessibilityLabel,
   icon: Icon,
-  inventoryIconName,
   iconSize,
   theme,
 }: {
   onPress: () => void;
   testID: string;
   accessibilityLabel: string;
-  icon?: typeof FolderPlus;
-  inventoryIconName?: ThothInventoryIconName;
+  icon: typeof FolderPlus;
   iconSize?: number;
   theme: SidebarTheme;
   buttonRef?: RefObject<View | null>;
@@ -330,16 +338,10 @@ function FooterIconButton({
       onPress={onPress}
     >
       {({ hovered }) => (
-        <>
-          {inventoryIconName ? (
-            <ThothInventoryIcon name={inventoryIconName} size={iconSize ?? 22} />
-          ) : Icon ? (
-            <Icon
-              size={iconSize ?? theme.iconSize.md}
-              color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
-            />
-          ) : null}
-        </>
+        <Icon
+          size={iconSize ?? theme.iconSize.md}
+          color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+        />
       )}
     </Pressable>
   );
@@ -443,6 +445,7 @@ const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow(
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
   const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
+  const isCompactLayout = useIsCompactFormFactor();
   const activeWorkspace = useWorkspace(activeWorkspaceServerId, activeWorkspaceId);
   const supportsWorkspaceMultiplicity = useHostFeature(
     activeWorkspaceServerId,
@@ -496,8 +499,17 @@ const SidebarBackgroundTasksHeaderRow = memo(function SidebarBackgroundTasksHead
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
   const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
-  const pathname = usePathname();
-  const isActive = pathname.includes("background_tasks");
+  const activeSurfaceKey =
+    activeWorkspaceServerId && activeWorkspaceId
+      ? buildBackgroundTasksSurfaceKey({
+          serverId: activeWorkspaceServerId,
+          workspaceId: activeWorkspaceId,
+        })
+      : null;
+  const isActive = useBackgroundTasksSurfaceStore((state) =>
+    activeSurfaceKey ? (state.byWorkspaceKey[activeSurfaceKey]?.open ?? false) : false,
+  );
+  const openSurface = useBackgroundTasksSurfaceStore((state) => state.openSurface);
 
   const handlePress = useCallback(() => {
     onBeforeNavigate?.();
@@ -505,14 +517,13 @@ const SidebarBackgroundTasksHeaderRow = memo(function SidebarBackgroundTasksHead
       router.push(buildSessionsRoute());
       return;
     }
+    openSurface({ serverId: activeWorkspaceServerId, workspaceId: activeWorkspaceId });
     router.push(
-      buildHostWorkspaceOpenRoute(
-        activeWorkspaceServerId,
-        activeWorkspaceId,
-        `background_tasks:${encodeWorkspaceIdForPathSegment(activeWorkspaceId)}`,
-      ),
+      isCompactLayout
+        ? buildHostWorkspaceBackgroundTasksRoute(activeWorkspaceServerId, activeWorkspaceId)
+        : buildHostWorkspaceRoute(activeWorkspaceServerId, activeWorkspaceId),
     );
-  }, [activeWorkspaceId, activeWorkspaceServerId, onBeforeNavigate]);
+  }, [activeWorkspaceId, activeWorkspaceServerId, isCompactLayout, onBeforeNavigate, openSurface]);
 
   return (
     <SidebarHeaderRow
@@ -565,7 +576,7 @@ function SidebarFooter({
               onPress={handleOpenProject}
               testID="sidebar-add-project"
               accessibilityLabel={labels.addProject}
-              inventoryIconName="add-workspace"
+              icon={FolderPlus}
               theme={theme}
             />
           </TooltipTrigger>
@@ -577,14 +588,14 @@ function SidebarFooter({
           onPress={handleHome}
           testID="sidebar-home"
           accessibilityLabel={labels.home}
-          inventoryIconName="brand-mark"
+          icon={Home}
           theme={theme}
         />
         <FooterIconButton
           onPress={handleSettings}
           testID="sidebar-settings"
           accessibilityLabel={labels.settings}
-          inventoryIconName="general-settings"
+          icon={Settings}
           theme={theme}
         />
       </View>
@@ -1037,10 +1048,7 @@ function WorkspacesSectionHeader() {
 
   return (
     <View style={styles.workspacesSectionHeader}>
-      <View style={styles.workspacesSectionTitleGroup}>
-        <ThothInventoryIcon name="open-workspace" size={18} />
-        <Text style={styles.workspacesSectionTitle}>Workspace</Text>
-      </View>
+      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
       <View style={styles.workspacesSectionActions}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
@@ -1132,11 +1140,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.normal,
-  },
-  workspacesSectionTitleGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
   },
   workspacesSectionActions: {
     flexDirection: "row",

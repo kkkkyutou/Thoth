@@ -1,6 +1,6 @@
+import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-  checkoutLiteFromGitSnapshot,
   classifyDirectoryForProjectMembership,
   generateWorkspaceId,
 } from "../../workspace-registry-model.js";
@@ -35,7 +35,10 @@ export interface ResolveOrCreateWorkspaceIdInput {
 }
 
 export interface WorkspaceProvisioningService {
-  findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord>;
+  findOrCreateWorkspaceForDirectory(
+    cwd: string,
+    title?: string | null,
+  ): Promise<PersistedWorkspaceRecord>;
   resolveOrCreateWorkspaceIdForCreateAgent(input: ResolveOrCreateWorkspaceIdInput): Promise<string>;
   createWorkspaceForDirectory(
     cwd: string,
@@ -54,18 +57,27 @@ export function createWorkspaceProvisioningService(deps: {
 }): WorkspaceProvisioningService {
   const { workspaceRegistry, projectRegistry, workspaceGitService } = deps;
 
+  async function normalizeIdentityPath(cwd: string): Promise<string> {
+    const resolved = resolve(cwd);
+    try {
+      return resolve(await realpath(resolved));
+    } catch {
+      return resolved;
+    }
+  }
+
   async function resolveWorkspaceDirectory(
     cwd: string,
     options?: { refreshGit?: boolean },
   ): Promise<string> {
-    const normalizedCwd = resolve(cwd);
+    const normalizedCwd = await normalizeIdentityPath(cwd);
     if (options?.refreshGit === false) {
       const snapshot = workspaceGitService.peekSnapshot(normalizedCwd);
-      return resolve(snapshot?.git.repoRoot ?? normalizedCwd);
+      return normalizeIdentityPath(snapshot?.git.repoRoot ?? normalizedCwd);
     }
 
     const checkout = await workspaceGitService.getCheckout(normalizedCwd);
-    return resolve(checkout.worktreeRoot ?? normalizedCwd);
+    return normalizeIdentityPath(checkout.worktreeRoot ?? normalizedCwd);
   }
 
   async function findExactWorkspaceByDirectory(
@@ -74,7 +86,24 @@ export function createWorkspaceProvisioningService(deps: {
   ): Promise<PersistedWorkspaceRecord | null> {
     const normalizedCwd = await resolveWorkspaceDirectory(cwd, options);
     const workspaces = await workspaceRegistry.list();
-    return workspaces.find((workspace) => workspace.cwd === normalizedCwd) ?? null;
+    const matches = await Promise.all(
+      workspaces.map(async (workspace) => ({
+        workspace,
+        normalizedWorkspaceCwd: await normalizeIdentityPath(workspace.cwd),
+      })),
+    );
+    return (
+      matches
+        .filter((entry) => entry.normalizedWorkspaceCwd === normalizedCwd)
+        .sort((left, right) => {
+          const created =
+            Date.parse(left.workspace.createdAt) - Date.parse(right.workspace.createdAt);
+          if (created !== 0) {
+            return created;
+          }
+          return left.workspace.workspaceId.localeCompare(right.workspace.workspaceId);
+        })[0]?.workspace ?? null
+    );
   }
 
   async function resolveProjectRecordForPlacement(input: {
@@ -151,41 +180,15 @@ export function createWorkspaceProvisioningService(deps: {
     return nextWorkspace;
   }
 
-  async function findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord> {
-    const inputCwd = resolve(cwd);
+  async function findOrCreateWorkspaceForDirectory(
+    cwd: string,
+    title?: string | null,
+  ): Promise<PersistedWorkspaceRecord> {
     const normalizedCwd = await resolveWorkspaceDirectory(cwd);
     const existingWorkspace = await findExactWorkspaceByDirectory(normalizedCwd, {
       refreshGit: false,
     });
     if (existingWorkspace) {
-      if (existingWorkspace.archivedAt && inputCwd !== normalizedCwd) {
-        const timestamp = new Date().toISOString();
-        const checkout = checkoutLiteFromGitSnapshot(inputCwd, {
-          isGit: false,
-          currentBranch: null,
-          remoteUrl: null,
-          repoRoot: null,
-          isThothOwnedWorktree: false,
-          mainRepoRoot: null,
-        });
-        const membership = classifyDirectoryForProjectMembership({ cwd: inputCwd, checkout });
-        const projectRecord = await resolveProjectRecordForPlacement({
-          membership,
-          timestamp,
-        });
-        await projectRegistry.upsert(projectRecord);
-        const workspaceRecord = createPersistedWorkspaceRecord({
-          workspaceId: generateWorkspaceId(),
-          projectId: projectRecord.projectId,
-          cwd: inputCwd,
-          kind: membership.workspaceKind,
-          displayName: membership.workspaceDisplayName,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        });
-        await workspaceRegistry.upsert(workspaceRecord);
-        return workspaceRecord;
-      }
       return reclassifyOrUnarchiveWorkspaceForDirectory({
         workspace: existingWorkspace,
         project: await projectRegistry.get(existingWorkspace.projectId),
@@ -193,7 +196,7 @@ export function createWorkspaceProvisioningService(deps: {
       });
     }
 
-    return createWorkspaceForDirectory(normalizedCwd);
+    return createNewWorkspaceForDirectory(normalizedCwd, title);
   }
 
   async function resolveOrCreateWorkspaceIdForCreateAgent(
@@ -207,10 +210,17 @@ export function createWorkspaceProvisioningService(deps: {
       return input.requestedWorkspaceId;
     }
 
-    return (await createWorkspaceForDirectory(input.cwd, input.initialTitle)).workspaceId;
+    return (await findOrCreateWorkspaceForDirectory(input.cwd, input.initialTitle)).workspaceId;
   }
 
   async function createWorkspaceForDirectory(
+    cwd: string,
+    title?: string | null,
+  ): Promise<PersistedWorkspaceRecord> {
+    return findOrCreateWorkspaceForDirectory(cwd, title);
+  }
+
+  async function createNewWorkspaceForDirectory(
     cwd: string,
     title?: string | null,
   ): Promise<PersistedWorkspaceRecord> {
@@ -230,6 +240,7 @@ export function createWorkspaceProvisioningService(deps: {
       cwd,
       kind: membership.workspaceKind,
       displayName: membership.workspaceDisplayName,
+      branch: resolvePersistedBranch(checkout.currentBranch),
       title: title ?? null,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -281,4 +292,9 @@ export function createWorkspaceProvisioningService(deps: {
     findOrCreateProjectForDirectory,
     ensureWorkspaceRecordUnarchived,
   };
+}
+
+function resolvePersistedBranch(currentBranch: string | null | undefined): string | null {
+  const branch = currentBranch?.trim() ?? null;
+  return branch && branch.toUpperCase() !== "HEAD" ? branch : null;
 }

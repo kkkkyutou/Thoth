@@ -1,4 +1,5 @@
 import type { WorkspaceGitService } from "./workspace-git-service.js";
+import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   type PersistedWorkspaceRecord,
@@ -224,20 +225,20 @@ async function upsertWorkspaceForWorktree(options: {
     "projectRegistry" | "workspaceRegistry" | "workspaceGitService"
   >;
 }): Promise<PersistedWorkspaceRecord> {
-  const normalizedCwd = resolve(options.worktree.worktreePath);
+  const normalizedCwd = await normalizeWorkspacePath(options.worktree.worktreePath);
   const normalizedInputCwd = resolve(options.inputCwd);
   const normalizedRepoRoot = resolve(options.repoRoot);
-  // Creation never deduplicates by directory: a worktree directory may back
-  // more than one workspace. We still resolve the source project from the
-  // originating checkout, but always mint a fresh workspace record.
+  const existingWorkspace = await findEarliestWorkspaceByCwd({
+    cwd: normalizedCwd,
+    workspaceRegistry: options.deps.workspaceRegistry,
+  });
   const sourceProject = await resolveSourceProjectForWorktree({
     inputCwd: normalizedInputCwd,
     projectId: options.projectId,
     repoRoot: normalizedRepoRoot,
-    existingWorkspace: null,
+    existingWorkspace,
     deps: options.deps,
   });
-  const workspaceId = generateWorkspaceId();
   const now = new Date().toISOString();
 
   await options.deps.projectRegistry.upsert(
@@ -253,22 +254,69 @@ async function upsertWorkspaceForWorktree(options: {
     }),
   );
 
-  const workspace = createPersistedWorkspaceRecord({
-    workspaceId,
-    projectId: sourceProject.projectId,
-    cwd: normalizedCwd,
-    kind: "worktree",
-    displayName: options.worktree.branchName || normalizedCwd,
-    branch: options.worktree.branchName || null,
-    baseBranch: options.baseBranch ?? null,
-    title: options.title ?? null,
-    createdAt: now,
-    updatedAt: now,
-    archivedAt: null,
-  });
+  const workspace = existingWorkspace
+    ? createPersistedWorkspaceRecord({
+        ...existingWorkspace,
+        projectId: sourceProject.projectId,
+        cwd: normalizedCwd,
+        kind: "worktree",
+        displayName: options.worktree.branchName || normalizedCwd,
+        branch: options.worktree.branchName || null,
+        baseBranch: options.baseBranch ?? existingWorkspace.baseBranch ?? null,
+        title: existingWorkspace.title ?? options.title ?? null,
+        updatedAt: now,
+        archivedAt: null,
+      })
+    : createPersistedWorkspaceRecord({
+        workspaceId: generateWorkspaceId(),
+        projectId: sourceProject.projectId,
+        cwd: normalizedCwd,
+        kind: "worktree",
+        displayName: options.worktree.branchName || normalizedCwd,
+        branch: options.worktree.branchName || null,
+        baseBranch: options.baseBranch ?? null,
+        title: options.title ?? null,
+        createdAt: now,
+        updatedAt: now,
+        archivedAt: null,
+      });
 
   await options.deps.workspaceRegistry.upsert(workspace);
   return (await options.deps.workspaceRegistry.get(workspace.workspaceId)) ?? workspace;
+}
+
+async function normalizeWorkspacePath(cwd: string): Promise<string> {
+  const resolved = resolve(cwd);
+  try {
+    return resolve(await realpath(resolved));
+  } catch {
+    return resolved;
+  }
+}
+
+async function findEarliestWorkspaceByCwd(options: {
+  cwd: string;
+  workspaceRegistry: Pick<WorkspaceRegistry, "list">;
+}): Promise<PersistedWorkspaceRecord | null> {
+  const workspaces = await options.workspaceRegistry.list();
+  const matches = await Promise.all(
+    workspaces.map(async (workspace) => ({
+      workspace,
+      normalizedCwd: await normalizeWorkspacePath(workspace.cwd),
+    })),
+  );
+  return (
+    matches
+      .filter((entry) => entry.normalizedCwd === options.cwd)
+      .sort((left, right) => {
+        const created =
+          Date.parse(left.workspace.createdAt) - Date.parse(right.workspace.createdAt);
+        if (created !== 0) {
+          return created;
+        }
+        return left.workspace.workspaceId.localeCompare(right.workspace.workspaceId);
+      })[0]?.workspace ?? null
+  );
 }
 
 export interface CreateLocalCheckoutWorkspaceDeps {
@@ -277,15 +325,17 @@ export interface CreateLocalCheckoutWorkspaceDeps {
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout">;
 }
 
-// Always create a NEW workspace record backed by the existing directory `cwd`.
-// Never reuses a same-cwd record: a directory may back any number of
-// workspaces. Used by explicit user creation.
 export async function createLocalCheckoutWorkspace(
   options: { cwd: string; title?: string | null },
   deps: CreateLocalCheckoutWorkspaceDeps,
 ): Promise<PersistedWorkspaceRecord> {
-  const normalizedCwd = resolve(options.cwd);
-  const checkout = await deps.workspaceGitService.getCheckout(normalizedCwd);
+  const inputCwd = await normalizeWorkspacePath(options.cwd);
+  const checkout = await deps.workspaceGitService.getCheckout(inputCwd);
+  const normalizedCwd = await normalizeWorkspacePath(checkout.worktreeRoot ?? inputCwd);
+  const existingWorkspace = await findEarliestWorkspaceByCwd({
+    cwd: normalizedCwd,
+    workspaceRegistry: deps.workspaceRegistry,
+  });
   const membership = classifyDirectoryForProjectMembership({ cwd: normalizedCwd, checkout });
   const now = new Date().toISOString();
   const projectRecord = await resolveProjectRecordForMembership({
@@ -302,17 +352,29 @@ export async function createLocalCheckoutWorkspace(
   // reads. HEAD/detached resolves to null — there is no branch to report.
   const currentBranch = checkout.currentBranch?.trim() ?? null;
   const branch = currentBranch && currentBranch.toUpperCase() !== "HEAD" ? currentBranch : null;
-  const workspace = createPersistedWorkspaceRecord({
-    workspaceId: generateWorkspaceId(),
-    projectId: projectRecord.projectId,
-    cwd: normalizedCwd,
-    kind: membership.workspaceKind,
-    displayName: membership.workspaceDisplayName,
-    branch,
-    title: trimmedTitle ? trimmedTitle : null,
-    createdAt: now,
-    updatedAt: now,
-  });
+  const workspace = existingWorkspace
+    ? createPersistedWorkspaceRecord({
+        ...existingWorkspace,
+        projectId: projectRecord.projectId,
+        cwd: normalizedCwd,
+        kind: membership.workspaceKind,
+        displayName: membership.workspaceDisplayName,
+        branch,
+        title: existingWorkspace.title ?? (trimmedTitle ? trimmedTitle : null),
+        updatedAt: now,
+        archivedAt: null,
+      })
+    : createPersistedWorkspaceRecord({
+        workspaceId: generateWorkspaceId(),
+        projectId: projectRecord.projectId,
+        cwd: normalizedCwd,
+        kind: membership.workspaceKind,
+        displayName: membership.workspaceDisplayName,
+        branch,
+        title: trimmedTitle ? trimmedTitle : null,
+        createdAt: now,
+        updatedAt: now,
+      });
   await deps.workspaceRegistry.upsert(workspace);
   return workspace;
 }

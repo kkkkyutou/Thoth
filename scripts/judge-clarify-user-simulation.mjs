@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const judgeModel = process.env.THOTH_CODEX_JUDGE_MODEL ?? "gpt-5.5";
 const artifactsDir = resolve(repoRoot, ".agent-os/artifacts");
 mkdirSync(artifactsDir, { recursive: true });
 
@@ -92,6 +93,7 @@ try {
       sourcePath: artifact.path,
       digest: artifact.digest,
       frontmatter: artifact.frontmatter,
+      source: artifact.source,
       validationFailures: artifactFailures,
     },
     sessionScopedMount: {
@@ -168,6 +170,8 @@ try {
     "codex",
     [
       "exec",
+      "--model",
+      judgeModel,
       "--cd",
       repoRoot,
       "--sandbox",

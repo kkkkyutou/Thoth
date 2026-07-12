@@ -18,12 +18,20 @@ import type { TFunction } from "i18next";
 import { Buffer } from "buffer";
 import {
   ArrowLeft,
+  Settings,
+  Palette,
   Server,
+  Network,
+  Bot,
+  Boxes,
   Gauge,
   Keyboard,
+  Stethoscope,
+  Info,
   Shield,
   Puzzle,
   Plus,
+  FolderGit2,
   SquareTerminal,
 } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
@@ -35,10 +43,6 @@ import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
-import {
-  ThothInventoryIcon,
-  type ThothInventoryIconName,
-} from "@/components/icons/thoth-inventory-icon";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
 import {
@@ -121,15 +125,14 @@ export type SettingsView =
 interface SidebarSectionItem {
   id: SettingsSectionSlug;
   labelKey: string;
-  icon?: ComponentType<{ size: number; color: string }>;
-  inventoryIconName?: ThothInventoryIconName;
+  icon: ComponentType<{ size: number; color: string }>;
   desktopOnly?: boolean;
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
-  { id: "general", labelKey: "settings.sections.general", inventoryIconName: "general-settings" },
+  { id: "general", labelKey: "settings.sections.general", icon: Settings },
   { id: "daemon", labelKey: "settings.sections.daemon", icon: Server, desktopOnly: true },
-  { id: "appearance", labelKey: "settings.sections.appearance", inventoryIconName: "appearance" },
+  { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
   { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
   {
     id: "integrations",
@@ -143,41 +146,24 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     icon: Shield,
     desktopOnly: true,
   },
-  {
-    id: "diagnostics",
-    labelKey: "settings.sections.diagnostics",
-    inventoryIconName: "diagnostics",
-  },
-  { id: "about", labelKey: "settings.sections.about", inventoryIconName: "about-thoth" },
+  { id: "diagnostics", labelKey: "settings.sections.diagnostics", icon: Stethoscope },
+  { id: "about", labelKey: "settings.sections.about", icon: Info },
 ];
 
 interface HostSectionItem {
   id: HostSectionSlug;
   labelKey: string;
-  icon?: ComponentType<{ size: number; color: string }>;
-  inventoryIconName?: ThothInventoryIconName;
+  icon: ComponentType<{ size: number; color: string }>;
 }
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
-  {
-    id: "connections",
-    labelKey: "settings.hostSections.connections",
-    inventoryIconName: "connections-nav",
-  },
-  { id: "agents", labelKey: "settings.hostSections.agents", inventoryIconName: "tasks-nav" },
-  {
-    id: "workspaces",
-    labelKey: "settings.hostSections.workspaces",
-    inventoryIconName: "open-workspace",
-  },
-  {
-    id: "providers",
-    labelKey: "settings.hostSections.providers",
-    inventoryIconName: "providers-nav",
-  },
+  { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
+  { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
+  { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
+  { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
   { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
-  { id: "host", labelKey: "settings.hostSections.host", inventoryIconName: "local-thoth" },
+  { id: "host", labelKey: "settings.hostSections.host", icon: Server },
 ];
 
 function renderHostSettingsContent(
@@ -785,8 +771,7 @@ function useSortedHosts(hosts: HostProfile[], localServerId: string | null): Hos
 interface SidebarSectionButtonProps {
   itemId: SettingsSectionSlug;
   label: string;
-  icon?: ComponentType<{ size: number; color: string }>;
-  inventoryIconName?: ThothInventoryIconName;
+  icon: ComponentType<{ size: number; color: string }>;
   isSelected: boolean;
   onSelect: (section: SettingsSectionSlug) => void;
 }
@@ -795,7 +780,6 @@ function SidebarSectionButton({
   itemId,
   label,
   icon: IconComponent,
-  inventoryIconName,
   isSelected,
   onSelect,
 }: SidebarSectionButtonProps) {
@@ -815,14 +799,10 @@ function SidebarSectionButton({
       onPress={handlePress}
       style={isSelected ? selectedSidebarItemStyle : sidebarItemStyle}
     >
-      {inventoryIconName ? (
-        <ThothInventoryIcon name={inventoryIconName} size={20} />
-      ) : IconComponent ? (
-        <IconComponent
-          size={theme.iconSize.md}
-          color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
-        />
-      ) : null}
+      <IconComponent
+        size={theme.iconSize.md}
+        color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
+      />
       <Text style={labelStyle} numberOfLines={1}>
         {label}
       </Text>
@@ -833,8 +813,7 @@ function SidebarSectionButton({
 interface SidebarHostSectionButtonProps {
   itemId: HostSectionSlug;
   label: string;
-  icon?: ComponentType<{ size: number; color: string }>;
-  inventoryIconName?: ThothInventoryIconName;
+  icon: ComponentType<{ size: number; color: string }>;
   isSelected: boolean;
   onSelect: (section: HostSectionSlug) => void;
 }
@@ -843,7 +822,6 @@ function SidebarHostSectionButton({
   itemId,
   label,
   icon: IconComponent,
-  inventoryIconName,
   isSelected,
   onSelect,
 }: SidebarHostSectionButtonProps) {
@@ -864,14 +842,10 @@ function SidebarHostSectionButton({
       testID={`settings-host-section-${itemId}`}
       style={isSelected ? selectedSidebarItemStyle : sidebarItemStyle}
     >
-      {inventoryIconName ? (
-        <ThothInventoryIcon name={inventoryIconName} size={20} />
-      ) : IconComponent ? (
-        <IconComponent
-          size={theme.iconSize.md}
-          color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
-        />
-      ) : null}
+      <IconComponent
+        size={theme.iconSize.md}
+        color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
+      />
       <Text style={labelStyle} numberOfLines={1}>
         {label}
       </Text>
@@ -900,7 +874,10 @@ function SidebarProjectsButton({ isSelected, onSelect }: SidebarProjectsButtonPr
       testID="settings-projects"
       style={isSelected ? selectedSidebarItemStyle : sidebarItemStyle}
     >
-      <ThothInventoryIcon name="open-workspace" size={20} />
+      <FolderGit2
+        size={theme.iconSize.md}
+        color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
+      />
       <Text style={labelStyle} numberOfLines={1}>
         {t("settings.projects")}
       </Text>
@@ -1038,7 +1015,6 @@ function SettingsSidebar({
               itemId={item.id}
               label={t(item.labelKey)}
               icon={item.icon}
-              inventoryIconName={item.inventoryIconName}
               isSelected={selectedSectionId === item.id}
               onSelect={onSelectSection}
             />
@@ -1064,7 +1040,6 @@ function SettingsSidebar({
               itemId={item.id}
               label={t(item.labelKey)}
               icon={item.icon}
-              inventoryIconName={item.inventoryIconName}
               isSelected={selectedHostSection === item.id}
               onSelect={onSelectHostSection}
             />
@@ -1367,30 +1342,21 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
 
   const detailHeader = ((): {
     title: string;
-    Icon?: ComponentType<{ size: number; color: string }>;
-    inventoryIconName?: ThothInventoryIconName;
+    Icon: ComponentType<{ size: number; color: string }>;
     titleAccessory?: ReactNode;
   } | null => {
     if (view.kind === "host") {
       const item = HOST_SECTION_ITEMS.find((s) => s.id === view.section);
       if (!item) return null;
-      return {
-        title: t(item.labelKey),
-        Icon: item.icon,
-        inventoryIconName: item.inventoryIconName,
-      };
+      return { title: t(item.labelKey), Icon: item.icon };
     }
     if (view.kind === "section") {
       const item = SIDEBAR_SECTION_ITEMS.find((s) => s.id === view.section);
       if (!item) return null;
-      return {
-        title: t(item.labelKey),
-        Icon: item.icon,
-        inventoryIconName: item.inventoryIconName,
-      };
+      return { title: t(item.labelKey), Icon: item.icon };
     }
     if (view.kind === "project" || view.kind === "projects") {
-      return { title: t("settings.projects"), inventoryIconName: "open-workspace" };
+      return { title: t("settings.projects"), Icon: FolderGit2 };
     }
     return null;
   })();
@@ -1553,14 +1519,10 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               detailHeader ? (
                 <>
                   <HeaderIconBadge>
-                    {detailHeader.inventoryIconName ? (
-                      <ThothInventoryIcon name={detailHeader.inventoryIconName} size={20} />
-                    ) : detailHeader.Icon ? (
-                      <detailHeader.Icon
-                        size={theme.iconSize.md}
-                        color={theme.colors.foregroundMuted}
-                      />
-                    ) : null}
+                    <detailHeader.Icon
+                      size={theme.iconSize.md}
+                      color={theme.colors.foregroundMuted}
+                    />
                   </HeaderIconBadge>
                   <ScreenTitle testID="settings-detail-header-title">
                     {detailHeader.title}

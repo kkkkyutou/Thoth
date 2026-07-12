@@ -391,9 +391,7 @@ describe("translation resources", () => {
     expect(en.projectPicker.opening).toBe("Opening project...");
     expect(en.projectPicker.searching).toBe("Searching...");
     expect(en.projectPicker.empty).toBe("Start typing a path");
-    expect(en.branchSwitcher.currentBranch).toBe(
-      "Current branch: {{branchName}}. Press to switch branch.",
-    );
+    expect(en.branchSwitcher.currentBranch).toBe("Current branch: {{branchName}}.");
     expect(en.branchSwitcher.placeholder).toBe("Switch branch...");
     expect(en.branchSwitcher.searchPlaceholder).toBe("Filter branches...");
     expect(en.branchSwitcher.empty).toBe("No branches found.");

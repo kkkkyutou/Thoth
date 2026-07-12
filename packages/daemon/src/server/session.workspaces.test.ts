@@ -697,7 +697,7 @@ test("client heartbeat clears attention for the focused terminal", async () => {
   });
 });
 
-test("create_agent_request keeps requested child cwd when grouped under an existing parent workspace", async () => {
+test("create_agent_request keeps child agent cwd while reusing its canonical parent workspace", async () => {
   const workdir = mkdtempSync(path.join(tmpdir(), "thoth-create-agent-cwd-"));
   try {
     const parent = path.join(workdir, "parent");
@@ -818,8 +818,8 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
     await expect(
       session.buildProjectPlacementForWorkspaceId(createdAgent!.workspaceId!),
     ).resolves.toMatchObject({
-      projectKey: parent,
-      checkout: { cwd: child },
+      projectKey: "proj-parent",
+      checkout: { cwd: parent },
     });
     expect(findByType(emitted, "status")?.payload).toMatchObject({
       status: "agent_created",

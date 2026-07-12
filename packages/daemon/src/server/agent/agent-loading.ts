@@ -53,9 +53,21 @@ export async function ensureAgentLoaded(
         handle,
         buildConfigOverrides(record),
         agentId,
-        extractTimestamps(record),
+        {
+          ...extractTimestamps(record),
+          historyOnly: Boolean(record.archivedAt),
+        },
       );
-      deps.logger.info({ agentId, provider: record.provider }, "Agent resumed from persistence");
+      deps.logger.info(
+        {
+          agentId,
+          provider: record.provider,
+          historyOnly: Boolean(record.archivedAt),
+        },
+        record.archivedAt
+          ? "Archived agent history loaded from persistence"
+          : "Agent resumed from persistence",
+      );
     } else {
       const config = buildSessionConfig(record, {
         validProviders,

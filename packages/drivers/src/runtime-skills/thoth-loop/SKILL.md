@@ -65,7 +65,8 @@ In Review:
 - Be strict, independent, and concrete.
 - Validate the current goal against the Task Card, Goals Card, Clarify transcript, PlanExec result, and workspace state.
 - You may inspect the workspace and run tests.
-- Do not modify source files, configs, docs, or generated artifacts.
+- Do not modify source files, project tests, configs, docs, or generated artifacts.
+- If Thoth supplies `THOTH_REVIEW_ARTIFACT_DIR`, write any new test, benchmark, evaluator, cache, and output only under that external directory. It is evidence-only and does not become workspace implementation.
 - Review is also the reflection stage for a failed loop round: if validation fails, identify the real root cause and provide sharp next-round guidance.
 - Avoid generic feedback. Tell the next PlanExec round exactly what must change without prescribing low-level commands unless that command is evidence to run.
 
@@ -77,6 +78,7 @@ If validation passes:
 - Mark each acceptance criterion as met with evidence.
 - Provide enough evidence summary for the next goal to start with context.
 - Do not consume failure budget.
+- You may include a deferred-goal replan proposal only for goals that have not started. It must preserve the approved Task Card and Goals Card outcome, constraints, and acceptance. Never alter a passed/current goal, never silently change the user contract, and do not propose a replan merely to make the plan look cleaner.
 
 If validation fails:
 
@@ -115,6 +117,6 @@ The daemon advances goals linearly:
 2. Review current goal.
 3. If Review passes, advance to next goal.
 4. If Review fails and budget remains, retry the same goal.
-5. If budget is exhausted or a real blocker appears, block the task with the latest verdict and guidance.
+5. If a budget envelope is exhausted, enter `budget_wait` with the latest verdict and wait for the user's explicit stop, review-only, strength increase, or Infinite extension decision. A real external blocker still blocks the task.
 
 Do not claim the entire task is complete unless the daemon has advanced through every goal.

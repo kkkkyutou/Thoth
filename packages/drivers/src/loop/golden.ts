@@ -18,7 +18,7 @@ export interface LoopGoldenBudgetTransition {
     | "timeout"
     | "blocked"
     | "permission_denied";
-  expectedTaskStatus?: "running" | "blocked" | "done";
+  expectedTaskStatus?: "running" | "blocked" | "budget_wait" | "done";
 }
 
 export interface LoopGoldenRetryContext {
@@ -191,8 +191,8 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     forbiddenBehavior: ["mechanically rerun the same plan", "ignore previous Review"],
   },
   {
-    id: "budget-exhausted-blocked",
-    title: "Single budget blocks after the first failed Review",
+    id: "budget-exhausted-waits-for-explicit-decision",
+    title: "Single budget enters budget wait after the first failed Review",
     loopStrength: "one_plan_one_do",
     goalCount: 3,
     currentGoalOrder: 1,
@@ -214,10 +214,14 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
       afterUsedFailedReviews: 1,
       maxFailedReviews: 1,
       reviewOutcome: "fail",
-      expectedTaskStatus: "blocked",
+      expectedTaskStatus: "budget_wait",
     },
-    expectedBehavior: ["block task", "preserve latest verdict"],
-    forbiddenBehavior: ["silently default to retry", "consume pass budget"],
+    expectedBehavior: ["enter budget wait", "preserve latest verdict"],
+    forbiddenBehavior: [
+      "silently default to retry",
+      "pretend the task is blocked",
+      "consume pass budget",
+    ],
   },
   {
     id: "review-blocked",

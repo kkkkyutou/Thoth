@@ -90,10 +90,11 @@ Current web review entry:
 
 ```bash
 npm run build:web
-HOST=0.0.0.0 PORT=8082 npm run serve:web
+THOTH_DAEMON_PROXY_TARGET=127.0.0.1:6688 HOST=0.0.0.0 PORT=8082 npm run serve:web
 ```
 
-`npm run dev:web:demo` is the shorthand for serving the same real web export on `0.0.0.0:8082`.
+`npm run dev:web:demo` is the shorthand for serving the same real web export on `0.0.0.0:8082`
+with the local Thoth daemon WebSocket proxy enabled.
 The public mapped URL for this machine is `http://180.76.242.105:8148/`.
 
 ## Standard Commands
