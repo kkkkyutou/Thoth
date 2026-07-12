@@ -10,7 +10,7 @@ import { getServerId } from "./helpers/server-id";
 
 const captureDirectory =
   process.env.THOTH_UI_REVIEW_CAPTURE_DIR ??
-  "/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-paseo-surface";
+  "/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-paseo-surface";
 
 const forbiddenVisiblePatterns = [
   /Paseo/i,

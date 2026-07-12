@@ -912,12 +912,12 @@ Evidence:
    Workspace composer/task/evidence preview slots, Settings About, host Providers and host
    Connections, then churns Settings/Workspace/composer/viewport paths.
 3. The spec captures six screenshot artifacts:
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-desktop.png`,
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-mobile.png`,
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-workspace-composer.png`,
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-about.png`,
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-providers.png` and
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-settings-connections.png`.
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/web-scorecard/web-home-desktop.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/web-scorecard/web-home-mobile.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/web-scorecard/web-workspace-composer.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/web-scorecard/web-settings-about.png`,
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/web-scorecard/web-settings-providers.png` and
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/web-scorecard/web-settings-connections.png`.
 4. Screenshot sizes from the local artifact check were `68775`, `39004`, `92514`, `42747`,
    `118783` and `37881` bytes respectively.
 5. `packages/app/e2e/fixtures.ts` now lets `E2E_BASE_URL` override the Metro base URL so the same app
@@ -1338,7 +1338,7 @@ Evidence:
     `workspace_secretary.topic.create.request: 1`. The final e2e also asserts that stopping
     Clarify returns the visible composer action to `Send` rather than leaving the Loop action active.
 18. Latest screenshot evidence was refreshed under
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/` on 2026-07-04 after the stop-to-Quick
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/` on 2026-07-04 after the stop-to-Quick
     refinement:
     `desktop-workspace-secretary.png`, `desktop-hi-no-card.png`, `desktop-clarify-card.png`,
     `desktop-clarify-readonly-next-round.png`, `desktop-background-tasks.png`,
@@ -1351,10 +1351,10 @@ Evidence:
     `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
     `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
     `desktop-app-settings-real-relay.png` under
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`.
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/`.
 20. Manual `view_image` review passed for the Electron desktop app Workspace Secretary root, `hi`
     with no Clarify card, Clarify decision card, Background Tasks and Settings real relay state.
-    The older `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/desktop-scorecard/` screenshots still show the pre-Loop-2
+    The older `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/desktop-scorecard/` screenshots still show the pre-Loop-2
     One Thoth / New Agent scorecard and are historical, not the current Loop-2 desktop evidence.
 21. Latest Playwright evidence is
     `packages/app/test-results/thoth-ui-scorecard-Loop-2--d4592--card-and-real-relay-status-Desktop-Chrome/trace.zip`
@@ -1374,7 +1374,7 @@ Evidence:
     main navigation, new topic, composer inputs/actions, mode/strength controls, choices, notes and
     Clarify action buttons.
 25. Independent read-only `codex exec` mental-model review wrote
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
     verdict `PASS`. It found no blocking evidence that the UI still reads as Paseo agent manager,
     questionnaire or permission prompt.
 26. `git diff --check` passed after the final Loop-2 edits.
@@ -1391,7 +1391,7 @@ Evidence:
     and selecting Loop / Clarify / Loop-strength options updates the visible composer state.
 30. The Loop-2 scorecard now captures dropdown-open states in addition to the existing journey:
     `desktop-composer-clarify-menu.png` and `mobile-composer-loop-menu.png` under
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`. Manual `view_image` review passed for
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/`. Manual `view_image` review passed for
     both. The mobile screenshot verifies the menu overlays upward and keeps the bottom Mode /
     Clarify / Loop controls visible rather than pushing them off-screen.
 31. The latest composer-refinement `npm run build:web` passed and exported
@@ -1431,7 +1431,7 @@ http://180.76.242.105:8148/` showed the injected `__THOTH_INITIAL_DAEMON_CONNECT
     `srv_0Ryud1K1J1zRYj7eylwnsg`.
 38. Public review screenshots were captured and manually reviewed with `view_image`:
     `public-web-fresh-desktop.png`, `public-web-stale-desktop.png` and
-    `public-web-stale-mobile.png` under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`.
+    `public-web-stale-mobile.png` under `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/`.
     Electron desktop smoke was also rerun and passed, refreshing
     `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
     `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
@@ -1537,7 +1537,7 @@ Evidence so far:
    reply, no Clarify card, no repair loop, no provider failure, no stale "waiting" flood, no
    raw/schema leakage, and visible clean events `真实 provider 回合已开始` /
    `真实 provider 回合完成`. Screenshot:
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
 10. Additional gates for the public test bugfix passed on 2026-07-05:
     `npm --workspace=@thoth/daemon exec vitest run src/server/session/workspace-secretary/workspace-secretary-session.test.ts`
     with `1` file and `9` tests, `git diff --check`, and `npm run check:foundation` through repo
@@ -1613,7 +1613,7 @@ Evidence:
     evidence showed `__THOTH_INITIAL_DAEMON_CONNECTION__` and
     `index-dc3970d4d5f1b889316602a4e34382e9.js`.
 13. Public real-provider Playwright journey passed against `http://180.76.242.105:8148/`. Summary:
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
     records all steps as `ok`: ready Workspace Secretary shell, `hi` completed with no card,
     Clarify card appeared atomically, submitted card became readonly, Settings relay captured and
     mobile composer captured.
@@ -1622,13 +1622,13 @@ Evidence:
     `workspace-secretary-hi-no-card-final.png`, `workspace-secretary-loop-live-before-card.png`,
     `workspace-secretary-clarify-card-atomic.png`, `workspace-secretary-clarify-card-readonly.png`,
     `settings-real-relay-status.png` and `mobile-workspace-secretary-composer.png` under
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`.
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`.
 15. Playwright trace/video evidence was saved:
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-trace.zip`,
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-trace.zip`,
     `videos/page@0e81e70a7ef3f02ebfc7a717d13ae278.webm` and
     `videos/page@8b34a58568759844da9b3c8ab63b7f39.webm`.
 16. Independent read-only `codex exec` UI mental-model review passed with verdict `PASS` in
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
     It found no blocking evidence of Paseo agent manager, questionnaire, permission prompt, fake
     provider, fake relay, local fallback, non-streaming Quick or non-atomic QA card behavior.
 17. `git diff --check` and `npm run format:check` passed after the implementation/formatting pass.
@@ -1737,13 +1737,13 @@ Evidence:
    detail show honest `registered_pending` state only.
 8. Quick+none real-provider evidence passed on `2026-07-07` in throwaway workspace
    `/tmp/thoth-loop2-quick-none-K8g4vp`: report
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783414416734-quick-none-report.json` records
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783414416734-quick-none-report.json` records
    prompt `hi`, `hasClarifyCard: 0` and screenshots
    `1783414371390-quick-none-start.png` / `1783414416665-quick-none-result.png`. `view_image` review
    confirmed ordinary provider reply with no Clarify card or raw packet/schema text.
 9. Quick+Dive runtime-tool evidence passed on public `http://180.76.242.105:8148/` in
    `/tmp/thoth-loop2-runtime-tools-6eO72B`: report
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` records prompt
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` records prompt
    `实现一个高性能快速排序`, Provider=Codex, Mode=Quick, Clarify=Dive, three Clarify rounds, Task
    approval `accept_quick`, Pyramid approval `accept_quick`, same-session quick_exec and generated
    files `bench/bench_fast_quicksort.cpp`, `include/fast_quicksort.hpp` and
@@ -1755,17 +1755,17 @@ Evidence:
     spinner-only output.
 11. Loop+Dive registration evidence passed on public `http://180.76.242.105:8148/` in
     `/tmp/thoth-loop2-runtime-tools-wDRNa4`: report
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` records three Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` records three Clarify
     rounds, Task approval `accept_loop`, Pyramid approval `accept_loop` and
     `registeredTaskVisible: true`. Screenshot `1783415185038-registered-pending.png` shows honest
     registration without fake running, fake review or fake evidence.
 12. Background Tasks list/detail recovery passed:
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783415406577-background-tasks-success-report.json`
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783415406577-background-tasks-success-report.json`
     records `passed_visual_and_text_recovery`, observed `Background tasks`, `registered_pending`, task
     title and source topic. Screenshot `1783415406577-background-tasks-panel-success.png` shows list and
     detail in the independent panel.
 13. Mobile deep-link recovery passed:
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783416247271-mobile-loop-recovery-success-report.json`
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783416247271-mobile-loop-recovery-success-report.json`
     records `passed_mobile_deep_link_recovery` for
     `http://180.76.242.105:8148/h/srv_Qd3ONVF7rQEHNW2PJTTBxA/workspace/wks_9429345588e40559`.
     Screenshot `1783416247271-mobile-loop-registered-recovery.png` shows the registered task card and
@@ -1791,7 +1791,7 @@ src/navigation/host-runtime-bootstrap.test.ts` passed 77 tests;
     protocol 320 and client 112.
 18. Independent read-only `codex exec` UI/runtime mental-model review passed with verdict `PASS` and no
     blocking findings in
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md`.
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md`.
 19. Frontier-ledger repair revalidation on `2026-07-07` passed the required code gates:
     `npm --workspace=@thoth/protocol run test --
 src/thoth-runtime-contract.test.ts src/workspace-secretary/rpc-schemas.test.ts` passed 36 tests;
@@ -1807,40 +1807,40 @@ src/composer/draft/workspace-tab-core.test.ts` passed 5 files / 131 tests;
     `git diff --check` passed.
 20. Local `8082` Quick + Balanced prompt `实现一个高性能快速排序` passed the strengthened soft-range
     behavior: report
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447093160-report.json` records 5 Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783447093160-report.json` records 5 Clarify
     rounds, Task approval, Pyramid approval, same-session quick_exec and generated files
     `quicksort.py` / `test_quicksort.py`. Screenshot
     `1783446788953-clarify-round-5.png` shows `Clarify 5` with intelligent `需求拆解` badge text and
     no raw packet/schema text; screenshot `1783447093090-quick-exec.png` shows Shell/Edit timeline
     rows during foreground execution.
 21. Public `8148` Quick + Balanced prompt `实现一个高性能快速排序` passed the same path: report
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447426182-report.json` records 5 Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783447426182-report.json` records 5 Clarify
     rounds and generated C++ files `CMakeLists.txt`,
     `include/sorting/high_performance_quicksort.hpp`, `src/high_performance_quicksort.cpp` and
     `tests/high_performance_quicksort_tests.cpp`.
 22. Local `8082` Quick + Dive prompt `实现一个高性能快速排序` passed the Dive soft range: report
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447971613-report.json` records 12 Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783447971613-report.json` records 12 Clarify
     rounds, Task/Pyramid approvals, quick_exec and generated files `Makefile`,
     `benchmarks/benchmark_fast_quicksort.cpp`, `include/fast_quicksort.hpp` and
     `tests/test_fast_quicksort.cpp`. Screenshot `1783447727999-clarify-round-12.png` shows
     `Clarify 12`; screenshot `1783447971544-quick-exec.png` shows Shell/Edit execution timeline.
 23. Local `8082` Quick + Balanced prompt `帮我实现一个实时 PathTracing 系统` passed after extending the
     guarded e2e wait for slower file generation: report
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783449102697-report.json` records 5 Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783449102697-report.json` records 5 Clarify
     rounds and generated files `index.html`, `src/main.js` and `src/styles.css`.
 24. Local `8082` Quick + Dive prompt `帮我实现一个实时 PathTracing 系统` passed the Dive soft-range
     clarification behavior but not full quick_exec quality: report
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783449724169-report.json` records 10 Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783449724169-report.json` records 10 Clarify
     rounds and quick_exec, but generated only `index.html` and `src/styles.css` while `index.html`
     references missing `src/main.js`. This is recorded as a residual execution-quality regression, not
     as acceptance pass evidence.
 25. Local `8082` Loop + Balanced prompt `实现一个高性能快速排序` passed honest Loop registration: report
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783449979213-report.json` records 5 Clarify
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783449979213-report.json` records 5 Clarify
     rounds, Task approval `accept_loop`, Pyramid approval `accept_loop` and
     `registeredTaskVisible: true`; screenshot `1783449979146-registered-pending.png` captures the
     `registered_pending` terminal state without fake running/review.
 26. Mobile viewport was rechecked after the repair. Screenshot
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783450162819-mobile-registered-pending.png`
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783450162819-mobile-registered-pending.png`
     opens the registered-pending workspace in a 390x844 viewport but shows an empty `New Agent` tab
     rather than the registered task/timeline. Treat this as a remaining mobile history/recovery
     regression; do not count mobile as revalidated for the strengthened contract.
@@ -1964,27 +1964,27 @@ Real Codex evidence captured on `2026-07-09`:
 
 1. Local `http://127.0.0.1:8082/` Loop+Single / Clarify Balanced run used throwaway workspace
    `/tmp/thoth-loop-background-dIy278`. Report:
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
    It produced 5 Clarify cards, Task Card approval, Goals Card approval, durable task
    `loop-task-13fa5321-1d5d-4a52-b655-ae2634f74d9a`, 8 linear goals and a visible Background Tasks
    detail with Goal 1 PlanExec running.
 2. Public `http://180.76.242.105:8148/` Loop+Single / Clarify Balanced run used throwaway workspace
    `/tmp/thoth-loop-background-l16BGt`. Report:
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
    It produced 5 Clarify cards, Task Card approval, Goals Card approval, durable task
    `loop-task-2f4cd8fb-a6a8-457d-8eea-a85df8b9932b`, 10 linear goals and a visible Background Tasks
    detail with Goal 1 PlanExec running.
 3. Post-run summary:
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
    Local evidence shows Goal 1 PlanExec and Review completed with reasoning / assistant / tool_call
    AgentTimeline entries, Review pass advanced to Goal 2, Goal 2 Review failed, Single budget
    consumed `1/1`, and the task was stopped after the blocked/stop path was observed. Public
    evidence shows Goal 1, Goal 2 and Goal 3 all passed Review without consuming failed-review budget
    and the task linearly advanced to Goal 4 PlanExec before being stopped.
 4. Key external screenshots include:
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564538646-background-task-list-detail.png`
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564538646-background-task-list-detail.png`
    for task/goal detail and current-goal spinner, and
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545842-background-task-planexec-timeline.png`
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545842-background-task-planexec-timeline.png`
    for embedded phase timeline. Additional direct AgentTimeline evidence is in the post-run summary
    because the visual timeline starts at the long PlanExec input prompt before auto-scroll repair.
 5. Daemon log evidence shows the secretary Codex session registered

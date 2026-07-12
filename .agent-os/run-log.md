@@ -446,7 +446,7 @@
 - State changes: Updated app e2e helpers so static export tests can reuse the existing daemon/workspace fixtures: `fixtures.ts` honors `E2E_BASE_URL`; `global-setup.ts` uses ESM-safe paths, resolves `wrangler` from app/root install locations, starts `packages/daemon`, validates relay v3 offer shape and includes the static export origin in CORS; `helpers/app.ts` opens Settings through the real responsive sidebar/drawer path; `daemon-client-loader.ts` uses ESM-safe paths.
 - Failed exploration recorded: early scorecard attempts treated mobile Settings navigation like desktop Settings navigation. Narrow viewports use a drawer and can remain on the Settings host root route, so the test timed out waiting for desktop-only visible controls. This is now captured as `NTH-EXP-007`.
 - Evidence produced: `npm run smoke:web:ui-scorecard` passed. It ran `npm run build:web`, exported the module-marked web bundle from `packages/app/dist`, served it on an ephemeral localhost port and completed Playwright with `1 passed (18.6s)`.
-- Evidence produced: Current Web scorecard screenshots exist at `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/web-scorecard/web-home-desktop.png` (`68775` bytes), `web-home-mobile.png` (`39004` bytes), `web-workspace-composer.png` (`92514` bytes), `web-settings-about.png` (`42747` bytes), `web-settings-providers.png` (`118783` bytes) and `web-settings-connections.png` (`37881` bytes).
+- Evidence produced: Current Web scorecard screenshots exist at `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/web-scorecard/web-home-desktop.png` (`68775` bytes), `web-home-mobile.png` (`39004` bytes), `web-workspace-composer.png` (`92514` bytes), `web-settings-about.png` (`42747` bytes), `web-settings-providers.png` (`118783` bytes) and `web-settings-connections.png` (`37881` bytes).
 - Evidence produced: `npm run format:check` passed after root `npm run format`; `git diff --check` passed.
 - Evidence produced: `npm run check:foundation` passed. Foundation tests passed with highlight `66`, relay `29`, protocol `286` and client `110` tests.
 - Evidence produced: `npm run smoke:isolation` passed with Paseo/legacy on `127.0.0.1:6767`, Thoth on `127.0.0.1:6688` and different PIDs.
@@ -478,7 +478,7 @@
 - State changes: Renamed the local branch to `agent/dev/mvp`. Updated current-branch facts in `AGENTS.md` and `.agent-os/project-index.md`.
 - State changes: Recorded `NTH-CD-028`, superseding the branch portion of `NTH-CD-025`. The active goal is now Thoth MVP implementation rather than UI-only scorecard/productization.
 - State changes: Renamed `.agent-os/designs/thoth-ui-goal-prompt.md` to `.agent-os/designs/thoth-mvp-goal-prompt.md` and rewrote the prompt around Workspace Secretary, Background Tasks, Settings, hidden `thoth.clarify` / `thoth.loop` skills, compact packets, daemon authority and provider session integration.
-- State changes: Added `packages/app/test-results/` to `.gitignore` so Playwright transient attachments are not committed; durable review captures remain under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`.
+- State changes: Added `packages/app/test-results/` to `.gitignore` so Playwright transient attachments are not committed; durable review captures remain under `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/`.
 - Evidence produced: `npm run format` completed.
 - Evidence produced: `npm run format:check` passed.
 - Evidence produced: `git diff --check` passed.
@@ -771,7 +771,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   passed with `1` Playwright test against the static export.
 - Evidence produced: `npm run smoke:web:ui-scorecard` passed end-to-end through build, static serve
   and the Loop-2 scorecard e2e.
-- Evidence produced: screenshots captured under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`
+- Evidence produced: screenshots captured under `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/`
   for desktop Workspace Secretary, `hi`, Clarify card, readonly/next-round Clarify, Background
   Tasks, Settings real relay state and mobile composer.
 - Evidence produced: `npm --workspace=@thoth/app run typecheck` still fails on existing promoted
@@ -828,12 +828,12 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   `workspace_secretary.topic.create.request: 1`; the final rerun also asserts `stop` returns the
   composer action to `Send` / Quick.
 - Evidence produced: Latest screenshots were refreshed under
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`: `desktop-workspace-secretary.png`,
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/`: `desktop-workspace-secretary.png`,
   `desktop-hi-no-card.png`, `desktop-clarify-card.png`,
   `desktop-clarify-readonly-next-round.png`, `desktop-background-tasks.png`,
   `desktop-settings-real-relay.png` and `mobile-workspace-secretary-composer.png`.
 - Evidence produced: After re-checking the requested web app, Electron desktop app and mobile
-  screenshots, the previous `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/desktop-scorecard/` images were identified as
+  screenshots, the previous `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/desktop-scorecard/` images were identified as
   historical pre-Loop-2 One Thoth / New Agent evidence rather than current desktop app evidence. The
   desktop smoke was updated to load the Loop-2 static export in the Electron shell through
   `THOTH_DESKTOP_LOAD_STATIC_EXPORT=1`.
@@ -842,7 +842,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   desktop main process, launched an isolated daemon on `127.0.0.1:46409`, verified the Electron
   bridge, and captured `desktop-app-workspace-secretary.png`, `desktop-app-hi-no-card.png`,
   `desktop-app-clarify-card.png`, `desktop-app-background-tasks.png` and
-  `desktop-app-settings-real-relay.png` under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`.
+  `desktop-app-settings-real-relay.png` under `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/`.
 - Evidence produced: Manual `view_image` review passed for the refreshed Electron desktop app root
   Workspace Secretary view, `hi` no-card state, Clarify decision card, Background Tasks empty state
   and Settings real relay state. Manual `view_image` review also reconfirmed the existing Loop-2 web
@@ -859,7 +859,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   terms; icon/accessibility inventory found the active shell uses `ThothInventoryIcon` and
   `accessibilityLabel` on the main action surfaces.
 - Evidence produced: Independent read-only `codex exec` mental-model review wrote
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/independent-mental-model-review.md` with
   verdict `PASS` and no blocking evidence.
 - Evidence produced: `git diff --check` passed.
 - Evidence produced: `npm run format:check` passed.
@@ -968,7 +968,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   and stale local storage was rewritten from `srv_stale_public_review` to the current real daemon
   `srv_0Ryud1K1J1zRYj7eylwnsg`.
 - Evidence produced: Public screenshots were saved under
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/` as `public-web-fresh-desktop.png`,
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/` as `public-web-fresh-desktop.png`,
   `public-web-stale-desktop.png` and `public-web-stale-mobile.png`; manual `view_image` review
   passed for all three.
 - Evidence produced: `npm run smoke:desktop:ui-scorecard` passed. It reran desktop
@@ -1017,7 +1017,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   selected the public same-origin daemon, showed `前台 Quick 可用`, answered `hi` in Quick and kept
   Clarify card count at `0`.
 - Evidence produced: Screenshot saved as
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/public-web-multihost-dark-ready.png` and
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/public-web-multihost-dark-ready.png` and
   manually reviewed with `view_image`.
 - Evidence produced: `git diff --check`, `npm run format:check` and `npm run check:foundation`
   passed. Foundation tests passed with highlight `66`, relay `29`, protocol `312` and client `110`
@@ -1135,7 +1135,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   daemon restart. It showed `真实 provider 已连接`, `真实 provider 回合已开始`,
   `真实 provider 回合完成`, no provider failure, no repair, no Clarify card for `hi`, no raw/schema
   leakage, and a provider-generated secretary reply. Screenshot:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/public-test-hi-final-fixed.png`.
 - Evidence produced: `git diff --check` passed. `npm run check:foundation` passed through repo
   validation, format, foundation lint, foundation build, foundation typecheck and foundation tests
   with highlight `66`, relay `29`, protocol `315` and client `111` tests green.
@@ -1207,11 +1207,11 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   current bundle.
 - Evidence produced: Public Playwright real-provider journey against `http://180.76.242.105:8148/`
   passed. Summary file
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/workspace-secretary-streaming-atomic-summary.json`
   records all steps as `ok`: ready shell, `hi` no card, Clarify card atomic, submitted readonly,
   Settings relay and mobile composer.
 - Evidence produced: Screenshots saved under
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`: desktop ready,
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/`: desktop ready,
   streaming Quick live, `hi` no card final, Loop live before card, Clarify card atomic, Clarify
   readonly, Settings real relay status and mobile composer. Manual `view_image` review passed for
   the key states.
@@ -1221,7 +1221,7 @@ outside a module`. Static export passed because `scripts/post-export-web.mjs` ma
   `videos/page@8b34a58568759844da9b3c8ab63b7f39.webm`.
 - Evidence produced: Independent read-only `codex exec` UI mental-model review passed with verdict
   `PASS` in
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/streaming-atomic-20260705/independent-ui-mental-model-review.md`.
 - Evidence produced: `git diff --check`, `npm run format:check` and `npm run check:foundation`
   passed after the implementation/verification pass. Foundation test totals were highlight `66`,
   relay `29`, protocol `316` and client `112`.
@@ -1288,7 +1288,7 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
 npm --workspace=@thoth/app run test:e2e -- thoth-ui-scorecard.spec.ts` passed 2 tests; `npm run
 check:foundation` passed validation / format / lint / build / typecheck / tests with foundation
   test totals highlight 66, relay 29, protocol 317 and client 112.
-- Visual evidence: Captures are under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-paseo-surface/`: desktop and
+- Visual evidence: Captures are under `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-paseo-surface/`: desktop and
   mobile open-project screenshots, desktop workspace/composer screenshot, Provider / Clarify / Mode
   composer screenshot, settings screenshot, mobile workspace/composer screenshot, open-project and
   workspace/settings trace/video, and two independent UI mental-model reviews. The screenshots were
@@ -1657,7 +1657,7 @@ src/composer/actions.test.ts` passed 39 tests. `npm run build:web` passed and th
   `docs/runtime-tool-bridge-clarify-research.md` so Loop-2 is verified, Loop-3 is ready and the second
   approval artifact is Pyramid Plan Card rather than old Goal Card wording.
 - Evidence summary: `NTH-EV-029` is now the current Loop-2 acceptance authority. Evidence lives under
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/`: Quick+none report
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/`: Quick+none report
   `1783414416734-quick-none-report.json`, Quick+Dive report `1783416763028-report.json`,
   Loop+Dive registration report `1783415185110-report.json`, Background Tasks recovery report
   `1783415406577-background-tasks-success-report.json`, mobile recovery report
@@ -1799,7 +1799,7 @@ src/composer/draft/workspace-tab-core.test.ts` passed 5 files / 131 tests.
   `npm --workspace=@thoth/app run test` passed 317 files / 2628 tests. `npm run build:web` passed.
   `npm run check:foundation` passed. `git diff --check` passed.
 - Real-provider evidence passed: Local `8082` Quick+Balanced sorting report
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783447093160-report.json` reached 5 Clarify
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783447093160-report.json` reached 5 Clarify
   cards and generated `quicksort.py` / `test_quicksort.py`. Public `8148` Quick+Balanced sorting
   report `1783447426182-report.json` reached 5 cards and generated C++ source/test files. Local
   Quick+Dive sorting report `1783447971613-report.json` reached 12 cards and generated C++ header,
@@ -1825,14 +1825,14 @@ src/composer/draft/workspace-tab-core.test.ts` passed 5 files / 131 tests.
 - User-visible request: Move the repo-local UI review captures directory out of `docs/` and ensure
   UI review captures do not live inside the git repository.
 - State changes: Copied the full capture tree to the external evidence root
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`, preserving 358 files / 49M. Removed the repo-local
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/`, preserving 358 files / 49M. Removed the repo-local
   capture directory and staged deletion of the 190 previously tracked capture files.
 - State changes: Added a repo-local capture-directory guard to `.gitignore`, changed
   `.dev/loop2-full-chain.mjs`, `scripts/smoke-desktop-ui-scorecard.mjs` and
   `packages/app/e2e/thoth-ui-scorecard.spec.ts` so their default capture roots point outside the repo
   while still allowing explicit environment overrides.
 - State changes: Updated `.agent-os/` and `docs/` evidence references from the old repo path to
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`. Also rewrote old path references inside the moved
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/`. Also rewrote old path references inside the moved
   external report/markdown evidence files.
 - Verification passed: the repo-local capture directory is absent, git no longer tracks capture
   files there, the external evidence root still contains 358 files / 49M, no old operational capture
@@ -1864,7 +1864,7 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
   accepted `workspaceSecretary.loopStrength`; the reserved Paseo daemon on `127.0.0.1:6767` was not
   touched. Direct RPC patch verified `run_until_stopped` and restore to `one_plan_one_do`.
 - Visual evidence: Playwright screenshots were saved outside the repository under
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-controls-20260708-final/`. Local desktop,
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-controls-20260708-final/`. Local desktop,
   local mobile, and public `http://180.76.242.105:8148/` desktop all show Provider `gpt-5.5`,
   `Loop Single`, and separate `Clarify Direct`. Local desktop also verified selecting
   `Loop Infinite` changes the chip to the laser-styled `Loop Infinite`, then restored it to
@@ -1940,7 +1940,7 @@ session-stream-reducers types/stream agent-stream` passed 18 files / 279 tests.
   daemon on `127.0.0.1:6688`, verified local `http://127.0.0.1:8082/` and public
   `http://180.76.242.105:8148/`, then removed the daemon project and `/tmp` repo. Captures and JSON
   reports are outside the repo under
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/clarify-card-pending-20260708/`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/clarify-card-pending-20260708/`.
 - Real UI evidence: Local full interaction report `full-interaction-v2-report.json` shows
   `waitHadWorked=false`, `waitHadTimer=true`, `submitBefore`/`submitAfterQ1`/`submitAfterRecommend`
   disabled, `afterQ1Question2=true`, `afterRecommendQuestion3=true`, `afterQ3CanSubmit=true`,
@@ -2007,7 +2007,7 @@ types/stream` passed 4 files / 52 tests. `npm --workspace=@thoth/app run test` p
   Shell/Thinking/tool events exist below.
 - Local real-provider evidence: Ran Loop+Single / Clarify Balanced against
   `http://127.0.0.1:8082/` with throwaway workspace `/tmp/thoth-loop-background-dIy278`. Report:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
   The run produced 5 Clarify cards, Task Card, Goals Card, durable task
   `loop-task-13fa5321-1d5d-4a52-b655-ae2634f74d9a`, 8 linear goals and Background Tasks detail.
   Follow-up task inspection showed Goal 1 PlanExec and Review completed with reasoning,
@@ -2015,13 +2015,13 @@ types/stream` passed 4 files / 52 tests. `npm --workspace=@thoth/app run test` p
   Review failed and consumed the Single failed-review budget.
 - Public real-provider evidence: Ran the same path against `http://180.76.242.105:8148/` with
   throwaway workspace `/tmp/thoth-loop-background-l16BGt`. Report:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
   The run produced 5 Clarify cards, Task Card, Goals Card, durable task
   `loop-task-2f4cd8fb-a6a8-457d-8eea-a85df8b9932b`, 10 linear goals and Background Tasks detail.
   It advanced linearly through Goal 1, Goal 2 and Goal 3 Review pass without consuming failed-review
   budget, then was intentionally stopped during Goal 4 PlanExec.
 - Evidence summary: Post-run RPC/timeline summary saved at
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
   It records local/public phase entry counts and confirms PlanExec/Review timelines include
   reasoning, assistant_message and tool_call entries. Key screenshots inspected with `view_image`:
   public task/detail current-goal spinner
@@ -2130,7 +2130,7 @@ input/state.test.ts input/labels.test.ts` passed 4 files / 55 tests. `npm run bu
   this change.
 - Browser acceptance passed: Started the Thoth daemon on `127.0.0.1:6688` and the real web export on
   `127.0.0.1:8082`, then ran a Playwright/Chromium smoke against a throwaway `/tmp` git workspace.
-  Capture directory: `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-secretary-cancel-20260709T132555Z/`.
+  Capture directory: `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/workspace-secretary-cancel-20260709T132555Z/`.
   Screenshots confirm running + empty input shows the red `Stop agent` square, running + typed input
   shows the green `Send and interrupt` arrow, and after clicking `Stop agent` the composer returns to
   editable ready state with no red stop button. Daemon metrics for the same run recorded
@@ -2164,9 +2164,9 @@ workspace-tab-core` passed 10 files / 135 tests. `npm run build:web` passed.
 - Browser acceptance passed: Real web export on `127.0.0.1:8082` restored two original sessions from
   current daemon state. `Greeting` opened `workspace-tab-agent_e5d25a98-a773-4978-a5f5-8e996a6e2c8a`
   with tab text `hi`, historical user message `hi`, and the Chinese assistant reply; capture:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/session-restore-20260709T151455Z/`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/session-restore-20260709T151455Z/`.
   `yzy` opened `workspace-tab-agent_5fb3a0ea-5d71-4de6-b712-f1ea56143815` with no draft tab; capture:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/session-restore-yzy-20260709T151530Z/`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/session-restore-yzy-20260709T151530Z/`.
 
 ## 2026-07-09 [Loop Background hardening and golden judge promotion]
 
@@ -2249,7 +2249,7 @@ providers-section projects-screen` passed 5 files / 60 tests. `npm run build:web
   remaining `ThothInventoryIcon`, `inventoryIconName`, or non-brand `arcade-inventory` UI icon paths
   in `packages/app/src` / `packages/app/dist`.
 - Browser smoke: Captured local web screenshots for the left sidebar and settings page at
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/paseo-icons-20260710T020418Z/`; the visible UI icons
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/paseo-icons-20260710T020418Z/`; the visible UI icons
   render as Paseo-style line icons while the Thoth brand mark remains intact.
 
 ## 2026-07-10 [Background Tasks default right surface resizing]
@@ -2387,7 +2387,7 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
 - Browser evidence: 真实 Chromium 从 History 打开“今天天气怎么样？”后恢复两轮用户/assistant 文本、
   Thinking 和 Search tool timeline，无 `agent-load-error`、无 archived resume 错误、无 page/console
   error。截图位于仓库外
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/archive-resume-history-ui-20260710.png`。
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/archive-resume-history-ui-20260710.png`。
 - Verification passed: daemon Codex provider + AgentManager narrow tests passed 2 files / 193 tests；
   Thoth daemon 已在 `6688` 以 dev runtime 重启并完成真实 RPC/浏览器复验，Paseo `6767` 未触碰。
 - Remaining gate issue: `npm run build:daemon` 在前序未提交的 `session.ts:4566` workspace response
@@ -2419,9 +2419,9 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
   PlanExec/Review 均显示原始 timeline，不再出现 no-session 空态，也没有 page/console error。
 - Browser resize evidence: 1600x1000 视口中，外层控制面从 `500px` 拖到 `855px`，内部 task list
   从 `220px` 拖到 `495px`，detail 保留 `359px`；刷新后两组宽度均原值恢复。仓库外截图：
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/background-task-resize-timeline-recovery-20260710.png`
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/background-task-resize-timeline-recovery-20260710.png`
   和
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/background-task-completed-review-timeline-20260710.png`。
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/background-task-completed-review-timeline-20260710.png`。
 - Verification passed: app targeted tests 2 files / 16 tests；daemon targeted tests 4 files / 216 tests；
   app full tests 321 files / 2684 tests；`npm run build:web`、`npm run format:check`、
   `npm run check:foundation` 和 `git diff --check` passed。
@@ -2448,7 +2448,7 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
   `turn-working-elapsed` 和 cancel button 的瞬时最大值均为 0；消息数始终为 2 user / 2 assistant，
   没有 `workspace_secretary.send.request`，最后恢复原配置 Balanced。浏览器无 page/console error。
   仓库外截图：
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/clarify-config-change-no-turn-20260710.png`。
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/clarify-config-change-no-turn-20260710.png`。
 - Verification passed: app targeted tests 3 files / 64 tests；app full tests 321 files / 2686 tests；
   `npm run build:web`、`npm run format:check`、`npm run check:foundation` passed。
 
@@ -2478,7 +2478,7 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
   运行中切到另一个 workspace，再返回并重开同一 deterministic draft tab。切换前后
   `turn-working-indicator=1`、`turn-working-elapsed=1`；provider 继续运行，最终仅出现一张当前 topic card
   `确认首版呈现与光追边界`，无旧卡重复、无 page/console error。仓库外截图：
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-switch-running-card-dedupe-20260710.png`。
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/workspace-switch-running-card-dedupe-20260710.png`。
 - Recovery limitation: 用户原先的 `topic-dd05121e-50aa-4ee2-9da9-a5d9a335fd10` 已被旧 production schema
   故障孤立，无法 same-turn 恢复；本轮真实验收使用修复后新建并成功持久化的 topic，不把新运行冒充为旧
   turn 恢复。验收后已取消测试 card，解除 provider wait。
@@ -2511,12 +2511,12 @@ src/server/session/workspace-secretary/workspace-secretary-session.test.ts` pass
 - Real submit evidence: 真实 Codex topic `topic-b46620c8-3e3d-44f9-a52a-23b13353cf9f` 在 card 到达后切换
   workspace 再返回，仍只有一张当前 card、spinner 保持；完成 3 个问题并提交后 card 折叠为
   `已确认 3 个分支维度`，provider same-turn 继续生成 Task Card。截图：
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-switch-card-submit-continuation-20260710.png`。
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/workspace-switch-card-submit-continuation-20260710.png`。
 - Real cancel evidence: 真实 Codex topic 使用 prompt
   `E2E卡片取消归属I20260710：实现一个最小WebGL渲染器`，切换 workspace 返回后仍只有一张
   `确定最小渲染器的交付边界`；点击取消后摘要为 `已暂停继续询问`、interactive cards 从 1 变 0、
   working spinner 从 1 变 0，浏览器无 page/console error。截图：
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/workspace-switch-card-cancel-20260710.png`。
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/workspace-switch-card-cancel-20260710.png`。
 - Original screenshot card evidence: 对 `topic-27a07e09-f316-4667-a49d-90df1be77af3` 的 expired card
   `定义场景 JSON 契约`（`clarify-card-c670cabc-9b19-4fdb-97e6-b0c853d09eb7`）执行真实 daemon RPC，
   返回 `recoverable_error`，明确“这张询问已经失效，未提交任何答案”，并将原卡折叠为 readonly。
@@ -2779,3 +2779,8 @@ turn.` internal prompt. Captures are `/tmp/thoth-secretary-atomic-before-reload.
 - Evidence: trace-only files are outside git under `/tmp/thoth-ut04-continuation-trace.ndjson`, `/tmp/thoth-ut04-scripted-phase-trace.ndjson` and `/tmp/thoth-ut05-scripted-phase-trace.ndjson`. No provider API fallback or OpenRouter was used.
 - Final gates: `npm run check:foundation`, final `npm run build:web`, `git diff --check`, app Vitest `322/322` / `2703/2703`, daemon combination `146/146`, and all three independent judges passed. The Clarify user-simulation judge initially found that manual provenance omitted companion questions and regressed transcript refs; its fixture and validator were corrected, then `judge:clarify:user-simulation` passed with artifact `.agent-os/artifacts/clarify-user-simulation-2026-07-11T21-07-21-858Z.md`.
 - Remaining: browser/device evidence for budget wait, pause/resume/stop, restart/reconnect and restored Background Task phase timeline. `NTH-TD-021` remains `doing`; no unverified browser behavior is claimed complete.
+
+## 2026-07-12 [UI review capture repository purge]
+
+- Removed `docs/ui-review-captures/**` and `assets/thoth-teaser-figure.png` from every local Git ref with a local-only history rewrite. No network operation or push occurred; `origin` was restored afterward. The current tree and all reachable Git objects no longer contain either path.
+- Moved the existing `69 MB` UI review evidence directory from `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/` to ignored `.dev/ui-review-captures/`. Updated review scripts and evidence references to the new repository-local ignored path, and removed the obsolete `docs/ui-review-captures` ignore rule.

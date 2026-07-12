@@ -44,7 +44,7 @@ reopened after live Quick+Clarify testing exposed lifecycle and strength behavio
 6. Historical Loop-2 stopped honestly at durable `registered_pending`. After `NTH-CD-045`, the current
    main Loop background path continues into durable Loop tasks with PlanExec / Review phases; see
    `NTH-EV-030` for code-level evidence and `docs/testing.md` for real-provider acceptance steps.
-7. Evidence path: `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/`.
+7. Evidence path: `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/`.
 
 The old `submit_clarify_packet` bridge is now legacy/internal compatibility for Loop-2 purposes. It
 is not the accepted product path and must not be user-visible.
@@ -444,9 +444,9 @@ Local evidence:
 1. `codex-cli 0.134.0`
 2. `codex app-server generate-json-schema --out <tmp>` on `2026-07-07T04:57:50Z`, with generated schema containing `DynamicToolSpec`, `DynamicToolCallParams`, `DynamicToolCallResponse`, `item/tool/call`, `item/tool/requestUserInput`, `mcpServer/tool/call`, `mcpToolCall` and `item/mcpToolCall/progress`.
 3. `docs/harness-question-clarify-research.md` for prior provider-native question analysis.
-4. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` for real public
+4. `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783416763028-report.json` for real public
    Quick+Dive Codex dynamic-tool journey.
-5. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` for real public
+5. `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/1783415185110-report.json` for real public
    Loop+Dive registered_pending journey.
-6. `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md` for
+6. `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/independent-ui-mental-model-review.md` for
    independent read-only review verdict.

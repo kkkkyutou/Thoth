@@ -160,7 +160,7 @@ the public web test app. It is not part of `check:foundation`.
    snippets, generated files if Quick exec ran, and a JSON report. Open key screenshots with
    `view_image` before marking acceptance.
 8. Current Loop-2 acceptance evidence lives under
-   `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-runtime-tool-bridge/`:
+   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/`:
    - Quick+none: `1783414416734-quick-none-report.json`.
    - Quick+Dive: `1783416763028-report.json`.
    - Loop+Dive registered_pending: `1783415185110-report.json`.
@@ -218,7 +218,7 @@ Evidence is written under ignored `.agent-os/artifacts/`, not under `docs/`.
 Use this opt-in runbook when validating `NTH-CD-045` / `NTH-EV-030`. It is not part of
 `check:foundation`, and it must use throwaway `/tmp` workspaces. Do not put screenshots, traces,
 videos or JSON reports under `docs/` or any tracked repo directory; use
-`/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`.
+`/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/`.
 
 1. Build and serve the current web export:
    - `npm run build:web`
@@ -265,7 +265,7 @@ videos or JSON reports under `docs/` or any tracked repo directory; use
       and Resume must restart the current phase
 12. Capture desktop/mobile screenshots, Playwright trace/video, WebSocket/tool-call summary, daemon log
     excerpts and generated workspace evidence under
-    `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-YYYYMMDD/`.
+    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-YYYYMMDD/`.
 13. Open key screenshots with `view_image` before marking acceptance:
     - Loop controls and selected strength
     - Goals Card
@@ -280,11 +280,11 @@ videos or JSON reports under `docs/` or any tracked repo directory; use
 Current `NTH-EV-030` acceptance evidence:
 
 - Local `8082` Loop+Single / Clarify Balanced report:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
 - Public `8148` Loop+Single / Clarify Balanced report:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
 - Post-run task/timeline summary:
-  `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
+  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
 - Key screenshots inspected with `view_image`:
   `1783564538646-background-task-list-detail.png`,
   `1783564545842-background-task-planexec-timeline.png`,

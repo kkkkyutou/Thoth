@@ -354,7 +354,7 @@ Paseo semantics, request-user-input framing or fake relay evidence should block 
 Motivation:
 
 After Loop-2 web and mobile screenshots passed, a manual `view_image` re-check found that
-`/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/desktop-scorecard/` still contained historical pre-Loop-2 One Thoth /
+`/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/desktop-scorecard/` still contained historical pre-Loop-2 One Thoth /
 New Agent screenshots. The desktop scorecard script was still navigating old `/open-project`,
 workspace and settings routes instead of the current three-view Workspace Secretary root.
 
@@ -372,7 +372,7 @@ For Loop-2 desktop app visual evidence, do not reuse the old `desktop-scorecard`
 not depend on dev Electron reaching `EXPO_DEV_URL` over localhost HTTP. Use
 `npm run smoke:desktop:ui-scorecard`, which builds the web export, builds desktop main, loads the
 static export inside Electron and captures the current `desktop-app-*` screenshots under
-`/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/loop2-workspace-secretary/`.
+`/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-workspace-secretary/`.
 
 Retry condition:
 

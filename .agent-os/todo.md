@@ -16,7 +16,7 @@
 
 1. `NTH-TD-021` `[doing]`: Harden Loop background into Loop Engineering authority.
    - Goal: Promote the verified Codex Loop path into a replayable SQLite authority/event ledger with Task Memory, sealed evidence, independent audits and budget envelopes, then close the remaining restart/control/browser recovery evidence.
-   - Constraints: Do not reintroduce fake running/review/evidence; captures stay outside the git repo under `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/`; local Paseo/legacy `127.0.0.1:6767` remains untouched.
+   - Constraints: Do not reintroduce fake running/review/evidence; captures stay outside the git repo under `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/`; local Paseo/legacy `127.0.0.1:6767` remains untouched.
    - Progress: SQLite event/projection/CAS/lease persistence, Task Memory, baseline and phase evidence manifests, Review mutation holds, replan audit, budget wait, phase isolation and scoped Codex dynamicTools are implemented. The scripted native-Codex flow suite passed all five journeys on `2026-07-11`: Quick direct, Quick Clarify foreground, cancel/recover/resume, Loop+Single all-goals pass and Loop+Light fail/retry/pass. The fixture gives literal tool payloads to each independent phase session so it does not evaluate provider creativity.
    - Acceptance: Remaining verification must still add real browser/device evidence for `budget_wait`, pause/resume/stop and daemon restart/reconnect, including Background Task detail and phase AgentTimeline restoration. Deterministic unit coverage exists for those state transitions; they are not yet claimed as full browser/provider acceptance.
    - Depends on: `NTH-TD-019`
