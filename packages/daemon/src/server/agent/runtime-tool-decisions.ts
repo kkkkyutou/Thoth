@@ -25,6 +25,7 @@ export type RuntimeAuthorityDecisionStatus =
   | "pending"
   | "answered"
   | "rejected"
+  // Legacy persisted value. New runtime decisions never expire by time.
   | "expired"
   | "blocked";
 
@@ -62,7 +63,6 @@ interface PendingRuntimeAuthorityDecision {
   record: RuntimeAuthorityDecisionRecord;
   resolve: (result: RuntimeAuthorityDecisionAnswerResult) => void;
   reject: (error: Error) => void;
-  timeout: NodeJS.Timeout;
 }
 
 export interface RuntimeAuthorityDecisionAnswerResult {
@@ -70,8 +70,6 @@ export interface RuntimeAuthorityDecisionAnswerResult {
   submittedSummary: string;
   registeredTask?: RegisteredTaskModel;
 }
-
-const DEFAULT_PENDING_DECISION_TIMEOUT_MS = 30 * 60 * 1000;
 
 const pendingByDecisionId = new Map<string, PendingRuntimeAuthorityDecision>();
 const pendingByCardId = new Map<string, PendingRuntimeAuthorityDecision>();
@@ -117,20 +115,57 @@ function loadPersistedDecisionRecords(filePath: string): void {
     const parsed = JSON.parse(readFileSync(filePath, "utf8")) as {
       records?: RuntimeAuthorityDecisionRecord[];
     };
-    for (const record of parsed.records ?? []) {
+    for (const persistedRecord of parsed.records ?? []) {
+      const record = persistedRecord as RuntimeAuthorityDecisionRecord;
       if (!record?.id || recordsByDecisionId.has(record.id)) {
         continue;
       }
-      recordsByDecisionId.set(record.id, {
-        ...record,
-        status: record.status === "pending" ? "blocked" : record.status,
-        updatedAt: record.status === "pending" ? new Date().toISOString() : record.updatedAt,
-      });
+      // An authority card is a durable user decision, not a lease on a provider tool call. The
+      // old in-memory callback is gone after a daemon restart, but the latest unsubmitted card
+      // must remain actionable. Answering it starts a continuation/replacement provider turn.
+      const shouldRestorePending =
+        record.cardKind !== "blocked_card" && record.status !== "answered";
+      const restored = shouldRestorePending
+        ? { ...record, status: "pending" as const, updatedAt: new Date().toISOString() }
+        : record;
+      recordsByDecisionId.set(restored.id, restored);
+      if (restored.status === "pending") {
+        restorePendingDecision(restored);
+      } else {
+        rememberLatestAuthorityCard(restored);
+      }
     }
     persistDecisionRecords();
   } catch {
     // Corrupt persistence must not create fake decisions or default answers.
   }
+}
+
+function rememberLatestAuthorityCard(record: RuntimeAuthorityDecisionRecord): void {
+  if (record.authorityCard.kind === "task_card") {
+    latestTaskCardByAgent.set(record.agentId, record.authorityCard.card);
+  }
+  if (
+    record.authorityCard.kind === "goals_card" ||
+    record.authorityCard.kind === "pyramid_plan_card"
+  ) {
+    latestGoalCardByAgent.set(record.agentId, record.authorityCard.card);
+  }
+}
+
+function restorePendingDecision(record: RuntimeAuthorityDecisionRecord): void {
+  if (pendingByDecisionId.has(record.id) || pendingByCardId.has(record.cardId)) {
+    return;
+  }
+  pendingByDecisionId.set(record.id, {
+    record,
+    // The provider process that originally invoked the tool is no longer alive after restart.
+    // The Secretary resumes from durable topic/card state after this no-op resolution instead.
+    resolve: () => undefined,
+    reject: () => undefined,
+  });
+  pendingByCardId.set(record.cardId, pendingByDecisionId.get(record.id)!);
+  rememberLatestAuthorityCard(record);
 }
 
 export function configureRuntimeAuthorityDecisionPersistence(input: {
@@ -171,7 +206,6 @@ export function createRuntimeAuthorityDecision(input: {
   frontierLedger?: ClarifyFrontierLedger;
   decisionDelta?: ClarifyDecisionDelta;
   convergenceReview?: ClarifyConvergenceReview;
-  timeoutMs?: number;
 }): {
   record: RuntimeAuthorityDecisionRecord;
   waitForAnswer: Promise<RuntimeAuthorityDecisionAnswerResult>;
@@ -211,28 +245,12 @@ export function createRuntimeAuthorityDecision(input: {
   persistDecisionRecords();
 
   const waitForAnswer = new Promise<RuntimeAuthorityDecisionAnswerResult>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      const pending = pendingByDecisionId.get(record.id);
-      if (!pending) {
-        return;
-      }
-      pendingByDecisionId.delete(record.id);
-      pendingByCardId.delete(record.cardId);
-      pending.reject(new Error("Thoth runtime authority decision expired before user answer"));
-      touchRecord(record, "expired");
-    }, input.timeoutMs ?? DEFAULT_PENDING_DECISION_TIMEOUT_MS);
-    timeout.unref?.();
-    const pending = { record, resolve, reject, timeout };
+    const pending = { record, resolve, reject };
     pendingByDecisionId.set(record.id, pending);
     pendingByCardId.set(record.cardId, pending);
   });
 
-  if (input.card.kind === "task_card") {
-    latestTaskCardByAgent.set(input.agentId, input.card.card);
-  }
-  if (input.card.kind === "goals_card" || input.card.kind === "pyramid_plan_card") {
-    latestGoalCardByAgent.set(input.agentId, input.card.card);
-  }
+  rememberLatestAuthorityCard(record);
 
   return { record, waitForAnswer };
 }
@@ -267,7 +285,6 @@ export function answerRuntimeAuthorityDecision(input: {
   if (!pending) {
     return null;
   }
-  clearTimeout(pending.timeout);
   pendingByDecisionId.delete(pending.record.id);
   pendingByCardId.delete(input.cardId);
   const answered = touchRecord(pending.record, "answered");
@@ -288,7 +305,6 @@ export function rejectRuntimeAuthorityDecision(input: {
   if (!pending) {
     return null;
   }
-  clearTimeout(pending.timeout);
   pendingByDecisionId.delete(pending.record.id);
   pendingByCardId.delete(input.cardId);
   const rejected = touchRecord(pending.record, input.status ?? "rejected");
@@ -307,9 +323,6 @@ export function getLatestRuntimePyramidPlanForAgent(
 }
 
 export function resetRuntimeAuthorityDecisionsForTest(): void {
-  for (const pending of pendingByDecisionId.values()) {
-    clearTimeout(pending.timeout);
-  }
   pendingByDecisionId.clear();
   pendingByCardId.clear();
   recordsByDecisionId.clear();

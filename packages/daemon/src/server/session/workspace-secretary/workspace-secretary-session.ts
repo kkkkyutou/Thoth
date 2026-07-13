@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, symlinkSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { SessionOutboundMessage } from "../../messages.js";
 import type { PersistedWorkspaceRecord } from "../../workspace-registry.js";
 import type { AgentManager } from "../../agent/agent-manager.js";
@@ -13,12 +11,15 @@ import type {
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import {
   answerRuntimeAuthorityDecision,
+  configureRuntimeAuthorityDecisionPersistence,
   getPendingRuntimeAuthorityDecisionByCardId,
   listPendingRuntimeAuthorityDecisions,
   rejectRuntimeAuthorityDecision,
   type RuntimeAuthorityDecisionRecord,
 } from "../../agent/runtime-tool-decisions.js";
 import { resolveCreateAgentTitles } from "../../agent/create-agent-title.js";
+import { prepareProviderRuntimeSession } from "../../agent/provider-runtime-session.js";
+import { withThothRuntimeTools } from "../../agent/thoth-runtime-tools-config.js";
 import {
   BackgroundTaskModelSchema,
   RegisteredTaskModelSchema,
@@ -91,13 +92,13 @@ interface WorkspaceSecretaryState {
   topicRuntimeInjectionKeys: Map<string, string>;
   topicSkillMounts: Map<string, RuntimeSkillMount>;
   userCanceledAgentIds: Set<string>;
-  // Codex can emit turn_completed while the app-server still has a pending dynamic-tool
-  // callback. Keep enough local state to resume the same provider thread once the user
-  // answers instead of leaving the Secretary in a permanent loading state.
+  // A provider can emit turn_completed while a runtime authority callback is still pending.
+  // Keep enough local state to resume the same provider session once the user answers instead
+  // of leaving the Secretary in a permanent loading state.
   completedAuthorityDecisionAgentIds: Set<string>;
-  // Keep the claim through the continuation's own terminal event. Codex can emit
-  // `turn_started` before a concurrent snapshot arrives; clearing on start lets that
-  // snapshot start a second continuation for the same submitted authority card.
+  // Keep the claim through the continuation's own terminal event. A provider can emit
+  // `turn_started` before a concurrent snapshot arrives; clearing on start lets that snapshot
+  // start a second continuation for the same submitted authority card.
   authorityContinuationLaunches: Map<string, string>;
   // A provider can end immediately after a dynamic authority tool reply. Recover the
   // one legal Clarify -> Task transition once, but never turn a broken provider into an
@@ -145,6 +146,7 @@ interface WorkspaceSecretaryTopicRuntimeSnapshot {
   currentClarifyState: ClarifyRuntimeCode;
   activeTurnPhase: ClarifyTurnPhase;
   activeTopicProviderBacked?: boolean;
+  timelineAgentId?: string | null;
   status?: SecretaryRuntimeStatusModel;
 }
 
@@ -160,8 +162,6 @@ type ProviderRuntime =
   | { ok: false; runtime: WorkspaceSecretaryProviderRuntimeModel };
 
 const DEV_PROVIDER_IDS = new Set(["mock", "mock-slow"]);
-const CODEX_AUTH_MIRROR_FILES = ["auth.json", "config.toml"] as const;
-
 function nowLabel(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
@@ -248,6 +248,18 @@ function providerAgentIdsForTopic(
       : [];
 
   return Array.from(new Set([...restoredIds, ...pendingDecisionIds, ...liveLabeledIds]));
+}
+
+function hasRunnableProviderSession(agentManager: AgentManager, agentId: string): boolean {
+  const manager = agentManager as AgentManager & {
+    hasRunnableSession?: (candidateId: string) => boolean;
+  };
+  // Older test/client doubles only expose getAgent. Production AgentManager distinguishes
+  // read-only history projections from live provider sessions so expired provider caches create
+  // a replacement session rather than making the durable card unusable.
+  return typeof manager.hasRunnableSession === "function"
+    ? manager.hasRunnableSession(agentId)
+    : manager.getAgent(agentId) !== null;
 }
 
 function resolveCancelTopicId(
@@ -503,13 +515,20 @@ function readTopicRuntimeSnapshots(value: unknown): WorkspaceSecretaryTopicRunti
       return [];
     }
     const parsedStatus = SecretaryRuntimeStatusModelSchema.safeParse(record.status);
+    const hasUnsubmittedAuthorityCard = (record.turns as SecretaryTurn[]).some(
+      (turn) =>
+        (turn.kind === "clarify_card" || turn.kind === "task_card" || turn.kind === "goal_card") &&
+        turn.card.submitted !== true,
+    );
     const status = parsedStatus.success
-      ? parsedStatus.data.kind === "loading"
+      ? parsedStatus.data.kind === "loading" && !hasUnsubmittedAuthorityCard
         ? createStatusModel(
             "recoverable_error",
             "之前的 provider turn 在 daemon 重启时中断；可以继续输入重试。",
           )
-        : parsedStatus.data
+        : parsedStatus.data.kind === "loading"
+          ? createStatusModel("loading", "正在等待你的确认；提交后会恢复当前 provider 会话。")
+          : parsedStatus.data
       : undefined;
     return [
       {
@@ -518,6 +537,10 @@ function readTopicRuntimeSnapshots(value: unknown): WorkspaceSecretaryTopicRunti
         currentClarifyState: record.currentClarifyState,
         activeTurnPhase: record.activeTurnPhase,
         activeTopicProviderBacked: record.activeTopicProviderBacked === true,
+        timelineAgentId:
+          typeof record.timelineAgentId === "string" && record.timelineAgentId.trim()
+            ? record.timelineAgentId.trim()
+            : null,
         ...(status ? { status } : {}),
       },
     ];
@@ -601,6 +624,7 @@ function captureActiveTopicRuntime(
     currentClarifyState: state.currentClarifyState,
     activeTurnPhase: state.activeTurnPhase,
     activeTopicProviderBacked: state.activeTopicProviderBacked,
+    timelineAgentId: state.model.secretary.timelineAgentId ?? null,
     status: state.model.secretary.status,
   };
 }
@@ -627,6 +651,12 @@ function activateSecretaryTopic(state: WorkspaceSecretaryState, topicId: string)
   state.currentClarifyState = topicState?.currentClarifyState ?? "C_DIRECT";
   state.activeTurnPhase = topicState?.activeTurnPhase ?? "clarify";
   state.activeTopicProviderBacked = topicState?.activeTopicProviderBacked === true;
+  state.model.secretary.timelineAgentId =
+    topicState?.timelineAgentId ??
+    Array.from(state.topicAgents.entries())
+      .filter(([agentKey]) => agentKey.startsWith(`${topicId}:`))
+      .at(-1)?.[1] ??
+    null;
   state.model.secretary.status = topicState?.status ?? createStatusModel("ready");
   return true;
 }
@@ -666,6 +696,7 @@ function createSecretaryTopic(input: {
   state.activeTurnPhase = "clarify";
   state.model.secretary.activeTopicId = topicId;
   state.model.secretary.status = createStatusModel("ready");
+  state.model.secretary.timelineAgentId = null;
   state.model.secretary.topics = [
     {
       id: topicId,
@@ -685,6 +716,7 @@ function createSecretaryTopic(input: {
     currentClarifyState: state.currentClarifyState,
     activeTurnPhase: state.activeTurnPhase,
     activeTopicProviderBacked: state.activeTopicProviderBacked,
+    timelineAgentId: null,
     status: state.model.secretary.status,
   });
   applyComposerConfig(state, composerConfig);
@@ -782,8 +814,8 @@ function createProviderRuntime(input: {
   };
 }
 
-function resolveProviderBridge(config: ProviderSessionConfig) {
-  if (config.provider === "codex") {
+function resolveProviderBridge(supportsNativeThothTools: boolean) {
+  if (supportsNativeThothTools) {
     return "runtime_tool" as const;
   }
   return "unsupported" as const;
@@ -997,38 +1029,6 @@ function buildStructuredProviderPrompt(input: {
   return buildProviderPrompt(text, input.images, input.attachments);
 }
 
-function defaultCodexHome(): string {
-  return process.env.CODEX_HOME ?? join(homedir(), ".codex");
-}
-
-function mirrorCodexAuthFile(input: {
-  sourceHome: string;
-  targetHome: string;
-  fileName: string;
-}): void {
-  const source = join(input.sourceHome, input.fileName);
-  const target = join(input.targetHome, input.fileName);
-  if (!existsSync(source) || existsSync(target)) {
-    return;
-  }
-  mkdirSync(dirname(target), { recursive: true });
-  try {
-    symlinkSync(source, target);
-  } catch {
-    copyFileSync(source, target);
-  }
-}
-
-function prepareCodexSessionHome(input: { thothHome: string; topicId: string }): string {
-  const providerSessionHome = resolve(input.thothHome, "provider-sessions", input.topicId);
-  mkdirSync(providerSessionHome, { recursive: true });
-  const sourceHome = defaultCodexHome();
-  for (const fileName of CODEX_AUTH_MIRROR_FILES) {
-    mirrorCodexAuthFile({ sourceHome, targetHome: providerSessionHome, fileName });
-  }
-  return providerSessionHome;
-}
-
 function mountClarifySkillForTopic(input: {
   state: WorkspaceSecretaryState;
   thothHome: string;
@@ -1174,7 +1174,10 @@ function renderGoalCardForProvider(card: ThothApprovalGoalCardModel): string {
   ].join("\n");
 }
 
-function buildQuickForegroundPlanExecPrompt(state: WorkspaceSecretaryState): string {
+function buildQuickForegroundPlanExecPrompt(
+  state: WorkspaceSecretaryState,
+  options?: { resume?: boolean },
+): string {
   const taskTurn = latestTaskCardTurn(state);
   const goalsTurn = latestGoalCardTurn(state);
   if (!taskTurn || !goalsTurn) {
@@ -1183,6 +1186,11 @@ function buildQuickForegroundPlanExecPrompt(state: WorkspaceSecretaryState): str
   return [
     "You are the Thoth Quick foreground Plan+Exec agent for the full approved task.",
     "This is a new user turn in the same provider session after the user approved the Task Card and Goals Card. Treat all supplied context as final.",
+    ...(options?.resume
+      ? [
+          "A prior foreground Plan+Exec turn was interrupted before terminal evidence was recorded. Inspect the current workspace first, preserve completed work, and continue from the earliest unfinished approved goal instead of blindly repeating work.",
+        ]
+      : []),
     "Do not ask further clarification questions. Do not call Thoth authority tools and do not create a background task.",
     "First state one concise execution plan for the entire approved task.",
     "Then execute every approved linear goal in the listed order in the current workspace. Do not stop after Goal 1.",
@@ -1266,6 +1274,26 @@ function canResumeDormantAuthorityContinuation(state: WorkspaceSecretaryState): 
   return !/已暂停继续询问|已取消这轮审批/.test(submittedCard.submittedSummary ?? "");
 }
 
+function canResumeDormantQuickForegroundPlanExec(state: WorkspaceSecretaryState): boolean {
+  if (state.activeTurnPhase !== "quick_exec" || state.currentClarifyState !== "C_DIRECT") {
+    return false;
+  }
+  const goalsTurn = latestGoalCardTurn(state);
+  if (
+    goalsTurn?.card.submitted !== true ||
+    goalsTurn.card.submittedSummary !== "已确认并按 Quick 前台执行"
+  ) {
+    return false;
+  }
+  if (state.model.secretary.status.kind === "loading") {
+    return true;
+  }
+  return (
+    state.model.secretary.status.kind === "recoverable_error" &&
+    state.model.secretary.status.detail.includes("之前的 provider turn 在 daemon 重启时中断")
+  );
+}
+
 function shouldRecoverConvergedClarifyTaskTransition(state: WorkspaceSecretaryState): boolean {
   const latestCard = latestClarifyCard(state);
   return (
@@ -1277,6 +1305,19 @@ function shouldRecoverConvergedClarifyTaskTransition(state: WorkspaceSecretarySt
 
 function shouldLaunchAuthorityContinuation(answer: WorkspaceSecretaryTurnActionPayload): boolean {
   return answer.intent !== "stop" && answer.intent !== "cancel";
+}
+
+function approvalIntentConflictForMode(input: {
+  mode: ThothRuntimeMode;
+  answer: WorkspaceSecretaryTurnActionPayload;
+}): string | null {
+  if (input.answer.intent === "accept_quick" && input.mode !== "quick") {
+    return "当前任务是 Loop 后台模式，只能继续后台审批或确认注册，不能转为前台执行。";
+  }
+  if (input.answer.intent === "accept_loop" && input.mode !== "loop") {
+    return "当前任务是 Quick 前台模式，只能继续前台审批或前台执行，不能注册后台任务。";
+  }
+  return null;
 }
 
 function clarifySoftRange(strength: Exclude<ThothRuntimeClarifyStrength, "deep">): {
@@ -1483,6 +1524,7 @@ function createInitialModel(input: {
         },
       ],
       turns: [],
+      timelineAgentId: null,
       composer: {
         mode: input.composer.mode,
         clarifyStrength: input.composer.clarifyStrength,
@@ -1538,7 +1580,11 @@ export class WorkspaceSecretarySession {
   private state: WorkspaceSecretaryState | null = null;
   private readonly statesByWorkspacePath = new Map<string, WorkspaceSecretaryState>();
 
-  constructor(private readonly options: WorkspaceSecretarySessionOptions) {}
+  constructor(private readonly options: WorkspaceSecretarySessionOptions) {
+    configureRuntimeAuthorityDecisionPersistence({
+      filePath: join(options.daemonConfigStore.getThothHome(), "runtime-authority-decisions.json"),
+    });
+  }
 
   async handleSnapshotRequest(request: WorkspaceSecretarySnapshotRequest): Promise<void> {
     await this.emitResponse(
@@ -1547,6 +1593,7 @@ export class WorkspaceSecretarySession {
       async () => {
         const state = await this.ensureState(request);
         await this.recoverDormantAuthorityContinuation(state);
+        await this.recoverDormantQuickForegroundPlanExec(state);
         return state;
       },
     );
@@ -1561,7 +1608,9 @@ export class WorkspaceSecretarySession {
       const requestedTopicExists = requestedTopicId
         ? activateSecretaryTopic(state, requestedTopicId)
         : true;
-      const provider = await this.resolveProviderRuntime();
+      const provider = await this.resolveProviderRuntime({
+        requireRuntimeTools: !isQuickNoneForeground(request.composer),
+      });
       if (!provider.ok) {
         state.model.secretary.status = createStatusModel(
           runtimeStatusKind(provider.runtime),
@@ -1586,6 +1635,7 @@ export class WorkspaceSecretarySession {
         kind: "message",
         speaker: "user",
         text: request.text,
+        ...(request.messageId ? { messageId: request.messageId } : {}),
       };
       state.model.secretary.turns.push(userTurn);
       updateActiveTopicTitleFromUserInput(state, request.text);
@@ -1649,14 +1699,9 @@ export class WorkspaceSecretarySession {
       this.applyResolvedRuntime(state, provider.runtime);
 
       if (!pendingDecision) {
-        foldSubmittedAuthorityCard(
-          state,
-          request.cardId,
-          "这张询问已经失效；请使用当前 topic 最新显示的卡片。",
-        );
         state.model.secretary.status = createStatusModel(
-          "recoverable_error",
-          "这张询问已经失效，未提交任何答案。请使用当前 topic 最新显示的卡片。",
+          "ready",
+          "该卡片此前已经提交或取消；没有重复提交答案。",
         );
         persistTopicSnapshot(this.options.daemonConfigStore, state);
         return state;
@@ -1670,6 +1715,18 @@ export class WorkspaceSecretarySession {
           "这张询问属于另一个 topic，未提交任何答案。",
         );
         return state;
+      }
+
+      if (targetTurn.kind === "task_card" || targetTurn.kind === "goal_card") {
+        const conflict = approvalIntentConflictForMode({
+          mode: state.model.secretary.composer.mode,
+          answer: request.answer,
+        });
+        if (conflict) {
+          state.model.secretary.status = createStatusModel("recoverable_error", conflict);
+          persistTopicSnapshot(this.options.daemonConfigStore, state);
+          return state;
+        }
       }
 
       if (targetTurn.kind === "clarify_card") {
@@ -1994,6 +2051,7 @@ export class WorkspaceSecretarySession {
           currentClarifyState: persistedTopic.currentClarifyState,
           activeTurnPhase: persistedTopic.activeTurnPhase,
           activeTopicProviderBacked: persistedTopic.activeTopicProviderBacked === true,
+          timelineAgentId: null,
         });
       }
       const requestedTopicId =
@@ -2010,6 +2068,12 @@ export class WorkspaceSecretarySession {
       }));
       model.secretary.turns = requestedTopicState?.turns ?? [];
       model.secretary.status = requestedTopicState?.status ?? createStatusModel("ready");
+      model.secretary.timelineAgentId =
+        requestedTopicState?.timelineAgentId ??
+        readTopicAgentSnapshots(persistedTopic.topicAgents)
+          .filter(({ agentKey }) => agentKey.startsWith(`${requestedTopicId}:`))
+          .at(-1)?.agentId ??
+        null;
     }
     const nextState: WorkspaceSecretaryState = {
       model: withSchemaVerifiedModel(model),
@@ -2047,6 +2111,7 @@ export class WorkspaceSecretarySession {
           currentClarifyState: persistedTopic.currentClarifyState,
           activeTurnPhase: persistedTopic.activeTurnPhase,
           activeTopicProviderBacked: persistedTopic.activeTopicProviderBacked === true,
+          timelineAgentId: this.state.model.secretary.timelineAgentId,
         });
       }
       const activeTopicState = this.state.topicStates.get(this.state.model.secretary.activeTopicId);
@@ -2115,7 +2180,9 @@ export class WorkspaceSecretarySession {
     ];
   }
 
-  private async resolveProviderRuntime(): Promise<ProviderRuntime> {
+  private async resolveProviderRuntime(options?: {
+    requireRuntimeTools?: boolean;
+  }): Promise<ProviderRuntime> {
     const config = readProviderSessionConfig(this.options.daemonConfigStore);
     if (!config) {
       return {
@@ -2160,8 +2227,25 @@ export class WorkspaceSecretarySession {
       };
     }
 
-    const bridge = resolveProviderBridge(config);
+    const bridge = resolveProviderBridge(
+      this.options.agentManager.getProviderCapabilities(config.provider)
+        ?.supportsNativeThothTools === true,
+    );
     if (bridge === "unsupported") {
+      if (options?.requireRuntimeTools === false) {
+        return {
+          ok: true,
+          config,
+          runtime: createProviderRuntime({
+            configured: true,
+            ready: true,
+            state: "ready",
+            safeLabel: providerSafeLabel(config),
+            detail: "使用前台 provider session；Thoth runtime tool bridge 未启用。",
+            config,
+          }),
+        };
+      }
       return {
         ok: false,
         runtime: createProviderRuntime({
@@ -2371,6 +2455,11 @@ export class WorkspaceSecretarySession {
     const agentId =
       input.reuseAgentId ??
       (await this.resolveTopicAgent(input.state, topicId, input.provider, input.runtime));
+    withActiveSecretaryTopic(input.state, topicId, () => {
+      input.state.model.secretary.timelineAgentId = agentId;
+      saveActiveTopicRuntime(input.state);
+    });
+    persistTopicSnapshot(this.options.daemonConfigStore, input.state);
     const runtime = input.runtime;
     const prompt = withActiveSecretaryTopic(input.state, topicId, () =>
       runtime === null
@@ -2385,6 +2474,17 @@ export class WorkspaceSecretarySession {
           }),
     );
     const options = input.messageId ? { messageId: input.messageId } : undefined;
+    if (input.messageId) {
+      // Provider histories are execution evidence, not UI authority: Claude Code, OpenCode and
+      // arbitrary ACP adapters may assign a different id, omit the prompt, or serialize it in a
+      // provider-specific shape. Record the stable user turn before starting any provider run so
+      // every reload has one durable, provider-neutral chronological anchor.
+      await this.options.agentManager.appendTimelineItem(agentId, {
+        type: "user_message",
+        text: input.userInput,
+        messageId: input.messageId,
+      });
+    }
     const providerRunKey = `${topicId}:${agentId}`;
     const providerRunId = randomUUID();
     input.state.providerRunIds.set(providerRunKey, providerRunId);
@@ -2496,11 +2596,17 @@ export class WorkspaceSecretarySession {
     agentId: string;
     provider: ProviderSessionConfig;
     uiAgentId?: string;
+    resume?: boolean;
   }): Promise<void> {
     const topicId = input.state.model.secretary.activeTopicId;
     const continuationKey = `quick_foreground:${topicId}:${input.agentId}`;
     if (input.state.authorityContinuationLaunches.has(continuationKey)) {
-      return;
+      if (this.options.agentManager.hasInFlightRun(input.agentId)) {
+        return;
+      }
+      // A failed provider start can leave a local claim without an active run. Do not
+      // let that stale guard turn an approved foreground execution into a spinner-only state.
+      input.state.authorityContinuationLaunches.delete(continuationKey);
     }
     const continuationRunId = randomUUID();
     input.state.authorityContinuationLaunches.set(continuationKey, continuationRunId);
@@ -2511,7 +2617,7 @@ export class WorkspaceSecretarySession {
         // This must be a plain user turn. Reusing the original structured agent keeps
         // the provider thread, while runtime=null avoids another Clarify envelope.
         runtime: null,
-        userInput: buildQuickForegroundPlanExecPrompt(input.state),
+        userInput: buildQuickForegroundPlanExecPrompt(input.state, { resume: input.resume }),
         answer: null,
         uiAgentId: input.uiAgentId,
         topicId,
@@ -2577,6 +2683,46 @@ export class WorkspaceSecretarySession {
         .filter(Boolean)
         .join(" "),
       answer: null,
+    });
+  }
+
+  private async recoverDormantQuickForegroundPlanExec(
+    state: WorkspaceSecretaryState,
+  ): Promise<void> {
+    if (
+      listPendingRuntimeAuthorityDecisions().some(
+        (decision) => decision.topicId === state.model.secretary.activeTopicId,
+      ) ||
+      !canResumeDormantQuickForegroundPlanExec(state)
+    ) {
+      return;
+    }
+    const provider = await this.resolveProviderRuntime();
+    if (!provider.ok) {
+      return;
+    }
+    this.applyResolvedRuntime(state, provider.runtime);
+    const topicId = state.model.secretary.activeTopicId;
+    const existingAgentId = providerAgentIdsForTopic(state, topicId, this.options.agentManager).at(
+      0,
+    );
+    if (existingAgentId && this.options.agentManager.hasInFlightRun(existingAgentId)) {
+      return;
+    }
+    const agentId = await this.resolveTopicAgent(state, topicId, provider.config, provider.runtime);
+    if (this.options.agentManager.hasInFlightRun(agentId)) {
+      return;
+    }
+    state.model.secretary.status = createStatusModel(
+      "loading",
+      "正在恢复已批准的 Quick 前台 Plan+Exec。",
+    );
+    persistTopicSnapshot(this.options.daemonConfigStore, state);
+    await this.launchQuickForegroundPlanExec({
+      state,
+      agentId,
+      provider: provider.config,
+      resume: true,
     });
   }
 
@@ -2859,7 +3005,7 @@ export class WorkspaceSecretarySession {
     ].join(":");
     const agentKey = `${topicId}:${providerKey}`;
     const existing = state.topicAgents.get(agentKey);
-    if (existing && this.options.agentManager.getAgent(existing)) {
+    if (existing && hasRunnableProviderSession(this.options.agentManager, existing)) {
       return existing;
     }
     if (existing) {
@@ -2874,7 +3020,13 @@ export class WorkspaceSecretarySession {
             agentStorage: this.options.agentStorage,
             logger: this.options.logger,
           });
-          return restored.id;
+          if (hasRunnableProviderSession(this.options.agentManager, restored.id)) {
+            return restored.id;
+          }
+          this.options.logger?.info(
+            { agentId: restored.id, topicId },
+            "Workspace Secretary provider history restored without a runnable session; creating replacement",
+          );
         } catch (error) {
           this.options.logger?.warn(
             { err: error, agentId: existing, topicId },
@@ -2884,7 +3036,14 @@ export class WorkspaceSecretarySession {
       }
       state.topicAgents.delete(agentKey);
     }
-    const config: AgentSessionConfig = {
+    const runtimeSession = runtime
+      ? prepareProviderRuntimeSession({
+          provider: provider.provider,
+          thothHome: this.options.daemonConfigStore.getThothHome(),
+          sessionId: topicId,
+        })
+      : null;
+    const baseConfig: AgentSessionConfig = {
       provider: provider.provider,
       cwd: state.model.secretary.workspacePath,
       internal: true,
@@ -2892,32 +3051,23 @@ export class WorkspaceSecretarySession {
       ...(provider.modeId ? { modeId: provider.modeId } : {}),
       ...(provider.thinkingOptionId ? { thinkingOptionId: provider.thinkingOptionId } : {}),
       ...(provider.featureValues ? { featureValues: provider.featureValues } : {}),
-      ...(runtime && provider.provider === "codex"
-        ? {
-            extra: {
-              codex: {
-                thothClarifyRuntimeTools: true,
-              },
-            },
-          }
-        : {}),
     };
-    const env =
-      runtime && provider.provider === "codex"
-        ? {
-            CODEX_HOME: prepareCodexSessionHome({
-              thothHome: this.options.daemonConfigStore.getThothHome(),
-              topicId,
-            }),
-          }
-        : undefined;
+    const config = runtime
+      ? withThothRuntimeTools(baseConfig, {
+          enabled: true,
+          scope: "clarify",
+          ...(runtimeSession?.home ? { sessionHome: runtimeSession.home } : {}),
+        })
+      : baseConfig;
     const agent = await this.options.agentManager.createAgent(config, undefined, {
       labels: {
         surface: "workspace-secretary",
         topicId,
         runtimeKind,
       },
-      env,
+      ...(runtimeSession && Object.keys(runtimeSession.env).length > 0
+        ? { env: runtimeSession.env }
+        : {}),
       persistSession: true,
       persistInternal: true,
       initialTitle: "Workspace Secretary",

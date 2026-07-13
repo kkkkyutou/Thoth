@@ -590,13 +590,8 @@ describe("Codex app-server provider", () => {
       createConfig({
         thinkingOptionId: "medium",
         extra: {
+          thothRuntimeTools: { enabled: true, scope: "clarify" },
           codex: {
-            thothClarifyRuntimeTools: true,
-            thothClarifyAuditRuntimeTools: true,
-            thothContractAuditRuntimeTools: true,
-            thothLoopRuntimeTools: true,
-            thothLoopSessionHome: "/tmp/loop-session-home",
-            thothLoopPhase: "planexec",
             providerVisibleOption: "keep-me",
           },
         },
@@ -620,12 +615,7 @@ describe("Codex app-server provider", () => {
     const startCall = requests.find((req) => req.method === "thread/start");
     const params = startCall?.params as Record<string, unknown> | undefined;
     expect(params?.config).toEqual({ providerVisibleOption: "keep-me" });
-    expect(JSON.stringify(params?.config)).not.toContain("thothClarifyRuntimeTools");
-    expect(JSON.stringify(params?.config)).not.toContain("thothClarifyAuditRuntimeTools");
-    expect(JSON.stringify(params?.config)).not.toContain("thothContractAuditRuntimeTools");
-    expect(JSON.stringify(params?.config)).not.toContain("thothLoopRuntimeTools");
-    expect(JSON.stringify(params?.config)).not.toContain("thothLoopSessionHome");
-    expect(JSON.stringify(params?.config)).not.toContain("thothLoopPhase");
+    expect(JSON.stringify(params?.config)).not.toContain("thothRuntimeTools");
     expect(params?.dynamicTools).toEqual([
       expect.objectContaining({ name: "thoth_submit_clarify_card" }),
     ]);
@@ -645,7 +635,7 @@ describe("Codex app-server provider", () => {
     const session = new CodexAppServerAgentSession(
       createConfig({
         thinkingOptionId: "medium",
-        extra: { codex: { thothClarifyAuditRuntimeTools: true } },
+        extra: { thothRuntimeTools: { enabled: true, scope: "clarify_audit" } },
       }),
       null,
       createTestLogger(),
@@ -685,7 +675,7 @@ describe("Codex app-server provider", () => {
     const session = new CodexAppServerAgentSession(
       createConfig({
         thinkingOptionId: "medium",
-        extra: { codex: { thothContractAuditRuntimeTools: true } },
+        extra: { thothRuntimeTools: { enabled: true, scope: "contract_audit" } },
       }),
       null,
       createTestLogger(),

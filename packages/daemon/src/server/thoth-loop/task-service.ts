@@ -1,14 +1,4 @@
 import { randomUUID } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  symlinkSync,
-} from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
 import { resolve } from "node:path";
 import type { Logger } from "pino";
 import type {
@@ -39,7 +29,6 @@ import {
 import type {
   AgentPermissionResponse,
   AgentPromptInput,
-  AgentSessionConfig,
   AgentStreamEvent,
   AgentUsage,
 } from "../agent/agent-sdk-types.js";
@@ -47,6 +36,12 @@ import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "../agent/agent-storage.js";
 import { ensureAgentLoaded } from "../agent/agent-loading.js";
 import { respondToAgentPermission } from "../agent/permission-response.js";
+import { recoverProviderPhaseRecord } from "../agent/provider-phase-recovery.js";
+import { prepareProviderRuntimeSession } from "../agent/provider-runtime-session.js";
+import {
+  readThothRuntimeToolsConfig,
+  withThothRuntimeTools,
+} from "../agent/thoth-runtime-tools-config.js";
 import { loadRuntimeSkillArtifact, mountRuntimeSkillForSession } from "@thoth/drivers/clarify";
 import { LoopAuthorityStore, type LoopWorktreeLease } from "./authority-store.js";
 import { LoopEvidenceStore, type CommandReceipt } from "./evidence-store.js";
@@ -111,8 +106,6 @@ interface ActivePhaseTelemetry {
 
 const PHASE_RESULT_TIMEOUT_MS = 30 * 60 * 1000;
 const WORKTREE_LEASE_MS = 2 * 60 * 1000;
-const CODEX_AUTH_MIRROR_FILES = ["auth.json", "config.toml"] as const;
-
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -254,97 +247,18 @@ function asPromptText(input: AgentPromptInput): string {
     .join("\n\n");
 }
 
-function defaultCodexHome(): string {
-  const explicit = process.env.CODEX_HOME?.trim();
-  return explicit && explicit.length > 0 ? explicit : path.join(homedir(), ".codex");
-}
-
-function mirrorCodexAuthFile(input: {
-  sourceHome: string;
-  targetHome: string;
-  fileName: string;
-}): void {
-  const source = path.join(input.sourceHome, input.fileName);
-  const target = path.join(input.targetHome, input.fileName);
-  if (!existsSync(source) || existsSync(target)) {
-    return;
-  }
-  mkdirSync(path.dirname(target), { recursive: true });
-  try {
-    symlinkSync(source, target);
-  } catch {
-    copyFileSync(source, target);
-  }
-}
-
-function prepareCodexLoopSessionHome(input: { thothHome: string; sessionId: string }): string {
-  const providerSessionHome = resolve(input.thothHome, "provider-sessions", input.sessionId);
-  mkdirSync(providerSessionHome, { recursive: true });
-  const sourceHome = defaultCodexHome();
-  for (const fileName of CODEX_AUTH_MIRROR_FILES) {
-    mirrorCodexAuthFile({ sourceHome, targetHome: providerSessionHome, fileName });
-  }
+function prepareLoopRuntimeSession(input: {
+  provider: string;
+  thothHome: string;
+  sessionId: string;
+}): ReturnType<typeof prepareProviderRuntimeSession> {
+  const runtimeSession = prepareProviderRuntimeSession(input);
   mountRuntimeSkillForSession({
     artifact: loadRuntimeSkillArtifact("thoth.loop"),
     thothSessionHome: input.thothHome,
     sessionId: input.sessionId,
   });
-  return providerSessionHome;
-}
-
-function listJsonlFiles(root: string): string[] {
-  if (!existsSync(root)) {
-    return [];
-  }
-  const files: string[] = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const entryPath = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...listJsonlFiles(entryPath));
-    } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-      files.push(entryPath);
-    }
-  }
-  return files;
-}
-
-function readLatestCodexSessionMeta(sessionHome: string): {
-  threadId: string;
-  timestamp: string;
-} | null {
-  const candidates: Array<{ threadId: string; timestamp: string }> = [];
-  for (const filePath of listJsonlFiles(path.join(sessionHome, "sessions"))) {
-    const lines = readFileSync(filePath, "utf8").split(/\r?\n/u);
-    for (const line of lines) {
-      if (!line.trim()) {
-        continue;
-      }
-      try {
-        const entry = JSON.parse(line) as {
-          timestamp?: unknown;
-          type?: unknown;
-          payload?: { id?: unknown; timestamp?: unknown };
-        };
-        if (entry.type !== "session_meta" || typeof entry.payload?.id !== "string") {
-          continue;
-        }
-        const timestamp =
-          typeof entry.payload.timestamp === "string"
-            ? entry.payload.timestamp
-            : typeof entry.timestamp === "string"
-              ? entry.timestamp
-              : new Date(0).toISOString();
-        candidates.push({ threadId: entry.payload.id, timestamp });
-        break;
-      } catch {
-        continue;
-      }
-    }
-  }
-  return (
-    candidates.sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0] ??
-    null
-  );
+  return runtimeSession;
 }
 
 export class ThothLoopTaskService {
@@ -356,6 +270,7 @@ export class ThothLoopTaskService {
   private readonly evidenceStore: LoopEvidenceStore;
   private readonly activePhaseTelemetry = new Map<string, ActivePhaseTelemetry>();
   private schedulerRunning = false;
+  private schedulerQueued = false;
 
   constructor(private readonly options: ThothLoopTaskServiceOptions) {
     this.authorityStore = new LoopAuthorityStore({
@@ -428,86 +343,21 @@ export class ThothLoopTaskService {
     }
 
     const { task, goal, phase } = phaseOwner;
-    if (task.providerSession.provider !== "codex") {
+    const recovered = recoverProviderPhaseRecord({
+      provider: task.providerSession.provider,
+      thothHome: this.options.thothHome,
+      agentId,
+      task,
+      goal,
+      phase,
+    });
+    if (!recovered) {
       return false;
     }
-    const loopSessionId =
-      phase.phase === "planexec"
-        ? `loop-${task.id}-${goal.id}-planexec`
-        : `loop-${task.id}-${goal.id}-review-${phase.round}`;
-    const sessionHome = path.join(this.options.thothHome, "provider-sessions", loopSessionId);
-    const sessionMeta = readLatestCodexSessionMeta(sessionHome);
-    if (!sessionMeta) {
-      return false;
-    }
-    const title = `${phaseTitle(phase.phase)}: ${goal.title}`;
-    const modeId = phase.phase === "review" ? "auto" : (task.providerSession.modeId ?? "auto");
-    const createdAt = phase.startedAt ?? sessionMeta.timestamp;
-    const updatedAt = phase.completedAt ?? task.updatedAt;
-    const labels = {
-      surface: "thoth-loop",
-      loopTaskId: task.id,
-      loopGoalId: goal.id,
-      loopPhase: phase.phase,
-      ...(phase.phase === "review" ? { loopRound: String(phase.round) } : {}),
-    };
-    const metadata = {
-      provider: "codex",
-      cwd: task.workspacePath,
-      title,
-      threadId: sessionMeta.threadId,
-      modeId,
-      model: task.providerSession.model,
-      thinkingOptionId: task.providerSession.thinkingOptionId ?? null,
-    };
-    const record: StoredAgentRecord = {
-      id: agentId,
-      provider: "codex",
-      cwd: task.workspacePath,
-      createdAt,
-      updatedAt,
-      lastActivityAt: updatedAt,
-      lastUserMessageAt: null,
-      title,
-      labels,
-      lastStatus: "closed",
-      lastModeId: modeId,
-      config: {
-        modeId,
-        model: task.providerSession.model,
-        thinkingOptionId: task.providerSession.thinkingOptionId,
-        featureValues: {
-          ...(task.providerSession.featureValues ?? {}),
-          ...(phase.phase === "planexec" ? { plan_mode: true } : {}),
-        },
-        extra: {
-          codex: {
-            thothLoopRuntimeTools: true,
-            thothLoopSessionHome: sessionHome,
-            thothLoopPhase: phase.phase,
-          },
-        },
-      },
-      runtimeInfo: {
-        provider: "codex",
-        sessionId: sessionMeta.threadId,
-        model: task.providerSession.model ?? null,
-        thinkingOptionId: task.providerSession.thinkingOptionId ?? null,
-        modeId,
-      },
-      persistence: {
-        provider: "codex",
-        sessionId: sessionMeta.threadId,
-        nativeHandle: sessionMeta.threadId,
-        metadata,
-      },
-      internal: true,
-      archivedAt: null,
-    };
-    await storage.upsert(record);
+    await storage.upsert(recovered);
     this.options.logger.info(
       { taskId: task.id, goalId: goal.id, phase: phase.phase, agentId },
-      "Recovered persisted Loop phase agent from Codex session metadata",
+      "Recovered persisted Loop phase agent through provider recovery adapter",
     );
     return true;
   }
@@ -572,23 +422,15 @@ export class ThothLoopTaskService {
       createdAt: now,
       updatedAt: now,
     });
-    task.baselineEvidence = this.evidenceStore.capture({
-      kind: "task_baseline",
-      taskId: task.id,
-      workspacePath: task.workspacePath,
-      timelineRefs: [],
-    });
     this.tasks.set(task.id, task);
     this.providerByTask.set(task.id, input.provider);
     this.touch(task, "task_registered", {
       sourceTopicId: input.sourceTopicId,
       loopStrength: input.loopStrength,
-      baselineEvidenceId: task.baselineEvidence.id,
     });
     this.appendTaskMemory(task, "clarify_transcript", input.clarifyTranscript);
     this.appendTaskMemory(task, "task_card", input.taskCard);
     this.appendTaskMemory(task, "goals_card", input.goalsCard);
-    this.appendTaskMemory(task, "baseline_evidence", task.baselineEvidence);
     this.schedule();
     return task;
   }
@@ -649,7 +491,7 @@ export class ThothLoopTaskService {
           goal.phases.push({ phase: "review", status: "queued", round: goal.round });
           task.goalRound = goal.round;
           task.currentPhase = null;
-          rebaselineEvidence = this.evidenceStore.capture({
+          rebaselineEvidence = await this.evidenceStore.captureAsync({
             kind: "task_baseline",
             taskId: task.id,
             workspacePath: task.workspacePath,
@@ -976,7 +818,9 @@ export class ThothLoopTaskService {
   private isLegacyMisclassifiedForegroundAgent(record: StoredAgentRecord): boolean {
     const labels = record.labels ?? {};
     const hasOwnerLabel = Object.keys(labels).length > 0;
-    const isLoopRuntime = record.config?.extra?.codex?.thothLoopRuntimeTools === true;
+    const runtimeTools = readThothRuntimeToolsConfig(record.config ?? {});
+    const isLoopRuntime =
+      runtimeTools?.scope === "loop_planexec" || runtimeTools?.scope === "loop_review";
     const isLegacySecretaryPacket = record.title?.startsWith('{"type":"provider_input"') === true;
     return record.internal === true && !hasOwnerLabel && !isLoopRuntime && !isLegacySecretaryPacket;
   }
@@ -1130,15 +974,22 @@ export class ThothLoopTaskService {
   }
 
   private schedule(): void {
-    if (this.schedulerRunning) {
+    if (this.schedulerRunning || this.schedulerQueued) {
       return;
     }
-    this.schedulerRunning = true;
-    void this.runScheduler().finally(() => {
-      this.schedulerRunning = false;
-      if (Array.from(this.tasks.values()).some((task) => task.status === "queued")) {
-        this.schedule();
+    this.schedulerQueued = true;
+    setImmediate(() => {
+      this.schedulerQueued = false;
+      if (this.schedulerRunning) {
+        return;
       }
+      this.schedulerRunning = true;
+      void this.runScheduler().finally(() => {
+        this.schedulerRunning = false;
+        if (Array.from(this.tasks.values()).some((task) => task.status === "queued")) {
+          this.schedule();
+        }
+      });
     });
   }
 
@@ -1170,9 +1021,12 @@ export class ThothLoopTaskService {
       this.touch(task);
       return;
     }
-    if (provider.provider !== "codex") {
+    if (
+      this.options.agentManager.getProviderCapabilities(provider.provider)
+        ?.supportsNativeThothTools !== true
+    ) {
       task.status = "blocked";
-      task.summary = `后台 Loop 当前只支持 Codex dynamicTools；provider ${provider.provider} 尚未接入。`;
+      task.summary = `后台 Loop 需要 provider ${provider.provider} 支持 Thoth runtime tools；该 adapter 尚未声明此能力。`;
       this.touch(task);
       return;
     }
@@ -1189,6 +1043,9 @@ export class ThothLoopTaskService {
     task.status = "running";
     task.currentGoalId = goal.id;
     task.goalRound = goal.round;
+    if (!(await this.ensureTaskBaseline(task))) {
+      return;
+    }
     const phase = task.currentPhase ?? (this.hasCompletedPlanExec(goal) ? "review" : "planexec");
     if (phase === "review") {
       await this.runReview(task, goal, provider);
@@ -1229,12 +1086,40 @@ export class ThothLoopTaskService {
     }
   }
 
-  private beginPhaseTelemetry(
+  private async ensureTaskBaseline(task: LoopTaskModel): Promise<boolean> {
+    if (task.baselineEvidence) {
+      return true;
+    }
+    task.summary = "后台任务已注册，正在封存 workspace evidence baseline。";
+    this.touch(task, "task_baseline_capture_started");
+    try {
+      const baselineEvidence = await this.evidenceStore.captureAsync({
+        kind: "task_baseline",
+        taskId: task.id,
+        workspacePath: task.workspacePath,
+        timelineRefs: [],
+      });
+      task.baselineEvidence = baselineEvidence;
+      this.appendTaskMemory(task, "baseline_evidence", baselineEvidence);
+      this.touch(task, "task_baseline_captured", { baselineEvidenceId: baselineEvidence.id });
+      return true;
+    } catch (error) {
+      task.status = "blocked";
+      task.currentPhase = null;
+      task.summary = "无法封存后台任务的 workspace evidence baseline。";
+      this.touch(task, "task_baseline_capture_failed", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  private async beginPhaseTelemetry(
     task: LoopTaskModel,
     goal: LoopGoalRecord,
     phase: LoopPhaseKind,
     record: LoopPhaseRecord,
-  ): ActivePhaseTelemetry {
+  ): Promise<ActivePhaseTelemetry> {
     const telemetry: ActivePhaseTelemetry = {
       startedAtMs: Date.now(),
       commandReceipts: new Map(),
@@ -1250,7 +1135,7 @@ export class ThothLoopTaskService {
             })
           : undefined;
       telemetry.artifactRoot = artifactRoot;
-      const startEvidence = this.evidenceStore.capture({
+      const startEvidence = await this.evidenceStore.captureAsync({
         kind: startKind,
         taskId: task.id,
         goalId: goal.id,
@@ -1270,14 +1155,14 @@ export class ThothLoopTaskService {
     return telemetry;
   }
 
-  private completePhaseEvidence(input: {
+  private async completePhaseEvidence(input: {
     task: LoopTaskModel;
     goal: LoopGoalRecord;
     phase: LoopPhaseKind;
     record: LoopPhaseRecord;
     declaredEvidence?: string[];
     validationPerformed?: string[];
-  }): LoopEvidenceRef | undefined {
+  }): Promise<LoopEvidenceRef | undefined> {
     const phaseRunId = input.record.phaseRunId;
     if (!phaseRunId) {
       return undefined;
@@ -1285,7 +1170,7 @@ export class ThothLoopTaskService {
     const telemetry = this.activePhaseTelemetry.get(phaseRunId);
     const durationMs = Math.max(0, Date.now() - (telemetry?.startedAtMs ?? Date.now()));
     const usage = telemetry?.usage;
-    const ref = this.evidenceStore.capture({
+    const ref = await this.evidenceStore.captureAsync({
       kind: input.phase === "planexec" ? "planexec_result" : "review_result",
       taskId: input.task.id,
       goalId: input.goal.id,
@@ -1438,7 +1323,7 @@ export class ThothLoopTaskService {
     phase.providerExitStatus = undefined;
     phase.canceledReason = undefined;
     phase.resultToolCallId = undefined;
-    this.beginPhaseTelemetry(task, goal, "planexec", phase);
+    await this.beginPhaseTelemetry(task, goal, "planexec", phase);
     task.summary = `正在执行 Goal ${goal.order}: ${goal.title}`;
     this.touch(task);
     this.updateWorktreeLock(task);
@@ -1479,7 +1364,7 @@ export class ThothLoopTaskService {
       return;
     }
     const planExecResult = this.toPlanExecResult(result.result, phase.phaseRunId);
-    const evidenceRef = this.completePhaseEvidence({
+    const evidenceRef = await this.completePhaseEvidence({
       task,
       goal,
       phase: "planexec",
@@ -1521,7 +1406,7 @@ export class ThothLoopTaskService {
     phase.providerExitStatus = undefined;
     phase.canceledReason = undefined;
     phase.resultToolCallId = undefined;
-    this.beginPhaseTelemetry(task, goal, "review", phase);
+    await this.beginPhaseTelemetry(task, goal, "review", phase);
     task.summary = `正在 Review Goal ${goal.order}: ${goal.title}`;
     this.touch(task);
     this.updateWorktreeLock(task);
@@ -1591,7 +1476,7 @@ export class ThothLoopTaskService {
     const telemetry = phase.phaseRunId
       ? this.activePhaseTelemetry.get(phase.phaseRunId)
       : undefined;
-    const evidenceRef = this.completePhaseEvidence({
+    const evidenceRef = await this.completePhaseEvidence({
       task,
       goal,
       phase: "review",
@@ -1842,29 +1727,30 @@ export class ThothLoopTaskService {
     provider: ProviderSessionConfig,
   ): Promise<string> {
     const sessionId = `loop-${task.id}-${goal.id}-planexec`;
-    const sessionHome = prepareCodexLoopSessionHome({
+    const runtimeSession = prepareLoopRuntimeSession({
+      provider: provider.provider,
       thothHome: this.options.thothHome,
       sessionId,
     });
-    const config: AgentSessionConfig = {
-      provider: provider.provider,
-      cwd: task.workspacePath,
-      internal: true,
-      ...(provider.model ? { model: provider.model } : {}),
-      ...(provider.modeId ? { modeId: provider.modeId } : {}),
-      ...(provider.thinkingOptionId ? { thinkingOptionId: provider.thinkingOptionId } : {}),
-      featureValues: {
-        ...(provider.featureValues ?? {}),
-        plan_mode: true,
-      },
-      extra: {
-        codex: {
-          thothLoopRuntimeTools: true,
-          thothLoopSessionHome: sessionHome,
-          thothLoopPhase: "planexec",
+    const config = withThothRuntimeTools(
+      {
+        provider: provider.provider,
+        cwd: task.workspacePath,
+        internal: true,
+        ...(provider.model ? { model: provider.model } : {}),
+        ...(provider.modeId ? { modeId: provider.modeId } : {}),
+        ...(provider.thinkingOptionId ? { thinkingOptionId: provider.thinkingOptionId } : {}),
+        featureValues: {
+          ...(provider.featureValues ?? {}),
+          plan_mode: true,
         },
       },
-    };
+      {
+        enabled: true,
+        scope: "loop_planexec",
+        ...(runtimeSession.home ? { sessionHome: runtimeSession.home } : {}),
+      },
+    );
     const agent = await this.options.agentManager.createAgent(config, undefined, {
       labels: {
         surface: "thoth-loop",
@@ -1872,9 +1758,7 @@ export class ThothLoopTaskService {
         loopGoalId: goal.id,
         loopPhase: "planexec",
       },
-      env: {
-        CODEX_HOME: sessionHome,
-      },
+      ...(Object.keys(runtimeSession.env).length > 0 ? { env: runtimeSession.env } : {}),
       persistSession: true,
       persistInternal: true,
       initialTitle: `PlanExec: ${goal.title}`,
@@ -1890,26 +1774,27 @@ export class ThothLoopTaskService {
     artifactRoot?: string,
   ): Promise<string> {
     const sessionId = `loop-${task.id}-${goal.id}-review-${goal.round}`;
-    const sessionHome = prepareCodexLoopSessionHome({
+    const runtimeSession = prepareLoopRuntimeSession({
+      provider: provider.provider,
       thothHome: this.options.thothHome,
       sessionId,
     });
-    const config: AgentSessionConfig = {
-      provider: provider.provider,
-      cwd: task.workspacePath,
-      internal: true,
-      ...(provider.model ? { model: provider.model } : {}),
-      modeId: "auto",
-      ...(provider.thinkingOptionId ? { thinkingOptionId: provider.thinkingOptionId } : {}),
-      ...(provider.featureValues ? { featureValues: provider.featureValues } : {}),
-      extra: {
-        codex: {
-          thothLoopRuntimeTools: true,
-          thothLoopSessionHome: sessionHome,
-          thothLoopPhase: "review",
-        },
+    const config = withThothRuntimeTools(
+      {
+        provider: provider.provider,
+        cwd: task.workspacePath,
+        internal: true,
+        ...(provider.model ? { model: provider.model } : {}),
+        modeId: "auto",
+        ...(provider.thinkingOptionId ? { thinkingOptionId: provider.thinkingOptionId } : {}),
+        ...(provider.featureValues ? { featureValues: provider.featureValues } : {}),
       },
-    };
+      {
+        enabled: true,
+        scope: "loop_review",
+        ...(runtimeSession.home ? { sessionHome: runtimeSession.home } : {}),
+      },
+    );
     const agent = await this.options.agentManager.createAgent(config, undefined, {
       labels: {
         surface: "thoth-loop",
@@ -1919,7 +1804,7 @@ export class ThothLoopTaskService {
         loopRound: String(goal.round),
       },
       env: {
-        CODEX_HOME: sessionHome,
+        ...runtimeSession.env,
         ...(artifactRoot ? { THOTH_REVIEW_ARTIFACT_DIR: artifactRoot } : {}),
         ...(artifactRoot
           ? {
@@ -2069,21 +1954,35 @@ export class ThothLoopTaskService {
     proposal: LoopDeferredGoalReplanProposal;
   }): Promise<ContractPreservationAudit> {
     const provider = input.task.providerSession;
-    if (provider.provider !== "codex") {
-      throw new Error("Automatic replan audit requires Codex dynamicTools.");
+    if (
+      this.options.agentManager.getProviderCapabilities(provider.provider)
+        ?.supportsNativeThothTools !== true
+    ) {
+      throw new Error("Automatic replan audit requires provider runtime-tool support.");
     }
+    const auditRuntimeSession = prepareProviderRuntimeSession({
+      provider: provider.provider,
+      thothHome: this.options.thothHome,
+      sessionId: `loop-${input.task.id}-${input.goal.id}-contract-audit-${randomUUID()}`,
+    });
     const auditAgent = await this.options.agentManager.createAgent(
-      {
-        provider: provider.provider,
-        cwd: input.task.workspacePath,
-        internal: true,
-        ...(provider.model ? { model: provider.model } : {}),
-        modeId: "auto",
-        ...(provider.thinkingOptionId ? { thinkingOptionId: provider.thinkingOptionId } : {}),
-        extra: { codex: { thothContractAuditRuntimeTools: true } },
-        systemPrompt:
-          "You are an independent Thoth contract-preservation auditor. Do not edit files or ask the user questions. Decide only whether a proposed change to unstarted goals preserves the already approved Task Card and Goals Card contract. Call thoth_submit_contract_preservation_audit exactly once.",
-      },
+      withThothRuntimeTools(
+        {
+          provider: provider.provider,
+          cwd: input.task.workspacePath,
+          internal: true,
+          ...(provider.model ? { model: provider.model } : {}),
+          modeId: "auto",
+          ...(provider.thinkingOptionId ? { thinkingOptionId: provider.thinkingOptionId } : {}),
+          systemPrompt:
+            "You are an independent Thoth contract-preservation auditor. Do not edit files or ask the user questions. Decide only whether a proposed change to unstarted goals preserves the already approved Task Card and Goals Card contract. Call thoth_submit_contract_preservation_audit exactly once.",
+        },
+        {
+          enabled: true,
+          scope: "contract_audit",
+          ...(auditRuntimeSession.home ? { sessionHome: auditRuntimeSession.home } : {}),
+        },
+      ),
       undefined,
       {
         labels: {
@@ -2094,6 +1993,9 @@ export class ThothLoopTaskService {
         persistSession: true,
         persistInternal: true,
         initialTitle: "Loop contract preservation audit",
+        ...(Object.keys(auditRuntimeSession.env).length > 0
+          ? { env: auditRuntimeSession.env }
+          : {}),
       },
     );
     const wait = waitForContractPreservationAudit(auditAgent.id);

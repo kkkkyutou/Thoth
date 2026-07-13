@@ -238,6 +238,7 @@ export interface AgentStreamViewProps {
   routeBottomAnchorRequest?: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady?: boolean;
   toast?: ToastApi | null;
+  approvalMode?: "quick" | "loop";
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
   onSubmitClarifyAnswer?: (
     cardId: string,
@@ -320,6 +321,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       routeBottomAnchorRequest = null,
       isAuthoritativeHistoryReady = true,
       toast,
+      approvalMode,
       onOpenWorkspaceFile,
       onSubmitClarifyAnswer,
     },
@@ -752,6 +754,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               <SecretaryApprovalCard
                 card={item.card}
                 kind="task"
+                approvalMode={approvalMode}
                 onSubmit={(answer) => handleSubmitClarifyAnswer(item.card.id, answer)}
               />
             );
@@ -760,6 +763,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               <SecretaryApprovalCard
                 card={item.card}
                 kind="goal"
+                approvalMode={approvalMode}
                 onSubmit={(answer) => handleSubmitClarifyAnswer(item.card.id, answer)}
               />
             );
@@ -1086,6 +1090,7 @@ function agentStreamViewPropsEqual(
     reasons.push("isAuthoritativeHistoryReady");
   }
   if (left.toast !== right.toast) reasons.push("toast");
+  if (left.approvalMode !== right.approvalMode) reasons.push("approvalMode");
   if (left.onOpenWorkspaceFile !== right.onOpenWorkspaceFile) reasons.push("onOpenWorkspaceFile");
   if (left.onSubmitClarifyAnswer !== right.onSubmitClarifyAnswer) {
     reasons.push("onSubmitClarifyAnswer");

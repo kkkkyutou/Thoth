@@ -180,6 +180,20 @@ describe("workspace secretary RPC schemas", () => {
     expect(JSON.stringify(model)).not.toMatch(/C_ASK|raw JSON|provider role|repair/);
   });
 
+  it("accepts an optional provider timeline reference for virtual secretary-tab recovery", () => {
+    const input = createModel();
+    input.secretary.timelineAgentId = "provider-agent-topic-main";
+    input.secretary.turns[0] = {
+      ...input.secretary.turns[0],
+      messageId: "user-message-1",
+    };
+
+    const model = ThothCleanUiModelSchema.parse(input);
+
+    expect(model.secretary.timelineAgentId).toBe("provider-agent-topic-main");
+    expect(model.secretary.turns[0]).toMatchObject({ messageId: "user-message-1" });
+  });
+
   it("accepts deprecated clean-event compatibility updates without raw provider payloads", () => {
     const model = createModel();
     model.secretary.turns = [

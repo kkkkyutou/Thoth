@@ -62,8 +62,10 @@ import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-
 import { getAgentProviderDefinition } from "@thoth/protocol/provider-manifest";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
+import { providerRuntimeSessionEnvironment } from "./provider-runtime-session.js";
 import { stripInternalThothMcpServer, withRuntimeThothMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
+import { readThothRuntimeToolsConfig } from "./thoth-runtime-tools-config.js";
 import type { ThothToolCatalogFactory } from "./tools/types.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
@@ -371,6 +373,32 @@ interface AgentMetadataPatch {
 
 const SYSTEM_ERROR_PREFIX = "[System Error]";
 
+function isWorkspaceSecretaryTimelineAgent(agent: ManagedAgentBase): boolean {
+  return agent.internal === true && agent.labels.surface === "workspace-secretary";
+}
+
+function shouldSuppressProviderUserTimelineItem(
+  agent: ManagedAgentBase,
+  item: AgentTimelineItem,
+): boolean {
+  return (
+    item.type === "user_message" &&
+    (isSystemInjectedEnvelope(item.text) || isWorkspaceSecretaryTimelineAgent(agent))
+  );
+}
+
+function isStableWorkspaceSecretaryUserRow(
+  agent: ManagedAgentBase,
+  row: AgentTimelineRow,
+): boolean {
+  return (
+    isWorkspaceSecretaryTimelineAgent(agent) &&
+    row.item.type === "user_message" &&
+    typeof row.item.messageId === "string" &&
+    row.item.messageId.trim().length > 0
+  );
+}
+
 function attachPersistenceCwd(
   handle: AgentPersistenceHandle | null,
   cwd: string,
@@ -515,6 +543,12 @@ export class AgentManager {
   private readonly clients = new Map<AgentProvider, AgentClient>();
   private readonly providerEnabled = new Map<AgentProvider, boolean>();
   private readonly agents = new Map<string, LiveManagedAgent>();
+  /**
+   * Provider sessions can be pruned or archived independently of Thoth. Keep a
+   * read-only projection for their locally journaled timeline instead of making
+   * history retrieval depend on provider resume succeeding.
+   */
+  private readonly historyOnlyAgents = new Map<string, ManagedAgentClosed>();
   private readonly timelineStore = new InMemoryAgentTimelineStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
   private readonly sessionEventTails = new Map<string, Promise<void>>();
@@ -733,7 +767,7 @@ export class AgentManager {
   }
 
   listAgents(): ManagedAgent[] {
-    return Array.from(this.agents.values())
+    return [...this.agents.values(), ...this.historyOnlyAgents.values()]
       .filter((agent) => !agent.internal)
       .map((agent) => Object.assign({}, agent));
   }
@@ -826,6 +860,10 @@ export class AgentManager {
     return Promise.all(
       Array.from(this.clients.keys()).map((provider) => this.getProviderAvailability(provider)),
     );
+  }
+
+  getProviderCapabilities(provider: AgentProvider): AgentCapabilityFlags | null {
+    return this.clients.get(provider)?.capabilities ?? null;
   }
 
   async getProviderAvailability(provider: AgentProvider): Promise<ProviderAvailability> {
@@ -926,17 +964,22 @@ export class AgentManager {
   }
 
   getAgent(id: string): ManagedAgent | null {
-    const agent = this.agents.get(id);
+    const agent = this.agents.get(id) ?? this.historyOnlyAgents.get(id);
     return agent ? { ...agent } : null;
   }
 
+  /** True only when the agent has a live provider session that can accept a new turn. */
+  hasRunnableSession(agentId: string): boolean {
+    return this.agents.get(agentId)?.session !== null;
+  }
+
   getTimeline(id: string): AgentTimelineItem[] {
-    this.requireAgent(id);
+    this.requireTimelineAgent(id);
     return this.timelineStore.getItems(id);
   }
 
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
-    this.requireAgent(id);
+    this.requireTimelineAgent(id);
     if (this.durableTimelineStore) {
       return await this.durableTimelineStore.getCommittedRows(id);
     }
@@ -944,8 +987,84 @@ export class AgentManager {
   }
 
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
-    this.requireAgent(id);
+    this.requireTimelineAgent(id);
     return this.timelineStore.fetch(id, options);
+  }
+
+  /**
+   * Restores a timeline-only snapshot after provider resume fails. This is
+   * intentionally not a runnable agent: sending, interrupting and permission
+   * APIs continue to require a live provider session.
+   */
+  async restoreHistoryOnlyAgent(record: StoredAgentRecord): Promise<ManagedAgent | null> {
+    const existing = this.getAgent(record.id);
+    if (existing) {
+      return existing;
+    }
+    if (!this.durableTimelineStore) {
+      return null;
+    }
+
+    const durableTimeline = await this.durableTimelineStore.fetchCommitted(record.id, {
+      direction: "tail",
+      limit: 0,
+    });
+    if (durableTimeline.rows.length === 0) {
+      return null;
+    }
+
+    this.timelineStore.initialize(record.id, {
+      epoch: durableTimeline.epoch,
+      nextSeq: durableTimeline.window.nextSeq,
+      rows: durableTimeline.rows,
+    });
+    const historyOnly: ManagedAgentClosed = {
+      id: record.id,
+      provider: record.provider,
+      cwd: record.cwd,
+      workspaceId: record.workspaceId,
+      session: null,
+      capabilities: STORED_AGENT_CAPABILITIES,
+      config: buildStoredAgentConfig(record),
+      runtimeInfo: record.runtimeInfo
+        ? {
+            provider: record.runtimeInfo.provider,
+            sessionId: record.runtimeInfo.sessionId,
+            ...(record.runtimeInfo.model !== undefined ? { model: record.runtimeInfo.model } : {}),
+            ...(record.runtimeInfo.thinkingOptionId !== undefined
+              ? { thinkingOptionId: record.runtimeInfo.thinkingOptionId }
+              : {}),
+            ...(record.runtimeInfo.modeId !== undefined
+              ? { modeId: record.runtimeInfo.modeId }
+              : {}),
+            ...(record.runtimeInfo.extra ? { extra: record.runtimeInfo.extra } : {}),
+          }
+        : undefined,
+      lifecycle: "closed",
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.lastActivityAt ?? record.updatedAt),
+      availableModes: [],
+      currentModeId: record.lastModeId ?? null,
+      pendingPermissions: new Map(),
+      bufferedPermissionResolutions: new Map(),
+      inFlightPermissionResponses: new Set(),
+      pendingReplacement: false,
+      activeForegroundTurnId: null,
+      foregroundTurnWaiters: new Set(),
+      finalizedForegroundTurnIds: new Set(),
+      unsubscribeSession: null,
+      persistence: record.persistence ?? null,
+      historyPrimed: true,
+      lastUserMessageAt: record.lastUserMessageAt ? new Date(record.lastUserMessageAt) : null,
+      lastUsage: undefined,
+      lastError: record.lastError ?? undefined,
+      attention: { requiresAttention: false },
+      internal: record.internal,
+      labels: record.labels,
+    };
+    this.historyOnlyAgents.set(record.id, historyOnly);
+    this.previousStatuses.set(record.id, historyOnly.lifecycle);
+    return { ...historyOnly };
   }
 
   async createAgent(
@@ -2526,6 +2645,7 @@ export class AgentManager {
     if (this.agents.has(resolvedAgentId)) {
       throw new Error(`Agent with id ${resolvedAgentId} already exists`);
     }
+    this.historyOnlyAgents.delete(resolvedAgentId);
     const initialPersistedTitle = await this.resolveInitialPersistedTitle(
       resolvedAgentId,
       config,
@@ -2668,8 +2788,14 @@ export class AgentManager {
       return { timestamp: now.toISOString() };
     }
 
+    const durableTimeline = await this.durableTimelineStore.fetchCommitted(agentId, {
+      direction: "tail",
+      limit: 0,
+    });
     return {
-      nextSeq: (await this.durableTimelineStore.getLatestCommittedSeq(agentId)) + 1,
+      epoch: durableTimeline.epoch,
+      nextSeq: durableTimeline.window.nextSeq,
+      rows: durableTimeline.rows,
       timestamp: now.toISOString(),
     };
   }
@@ -2908,9 +3034,27 @@ export class AgentManager {
 
     if (options?.force) {
       const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
+      // A forced provider history replay must not delete the daemon-owned user anchors that
+      // make Workspace Secretary chronology independent from a provider's native prompt shape.
+      const retainedUserRows = this.timelineStore
+        .getRows(agent.id)
+        .filter((row) => isStableWorkspaceSecretaryUserRow(agent, row));
+      let consumedUserAnchors = 0;
       for await (const event of agent.session.streamHistory()) {
         if (event.type === "timeline") {
-          if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
+          if (event.item.type === "user_message" && isWorkspaceSecretaryTimelineAgent(agent)) {
+            const anchor = retainedUserRows[consumedUserAnchors];
+            consumedUserAnchors += 1;
+            if (anchor) {
+              historyEvents.push({
+                ...event,
+                item: anchor.item,
+                ...(event.timestamp ? {} : { timestamp: anchor.timestamp }),
+              });
+            }
+            continue;
+          }
+          if (shouldSuppressProviderUserTimelineItem(agent, event.item)) {
             continue;
           }
           historyEvents.push(event);
@@ -2923,12 +3067,19 @@ export class AgentManager {
       this.timelineStore.initialize(agent.id, { timestamp: new Date().toISOString() });
       agent.historyPrimed = true;
 
-      for (const event of historyEvents) {
-        const row = this.recordTimeline(
-          agent.id,
-          event.item,
-          event.timestamp ? { timestamp: event.timestamp } : undefined,
-        );
+      const replay = [
+        ...retainedUserRows.slice(consumedUserAnchors).map((row) => ({
+          event: { type: "timeline" as const, provider: agent.provider, item: row.item },
+          timestamp: row.timestamp,
+        })),
+        ...historyEvents.map((event) => ({
+          event,
+          timestamp: event.timestamp ?? new Date().toISOString(),
+        })),
+      ];
+
+      for (const { event, timestamp } of replay) {
+        const row = this.recordTimeline(agent.id, event.item, { timestamp });
         if (options?.broadcast) {
           this.dispatchStream(agent.id, event, {
             seq: row.seq,
@@ -2948,7 +3099,7 @@ export class AgentManager {
         if (event.type !== "timeline") {
           continue;
         }
-        if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
+        if (shouldSuppressProviderUserTimelineItem(agent, event.item)) {
           continue;
         }
         this.recordTimeline(
@@ -3198,7 +3349,7 @@ export class AgentManager {
   }): Promise<void> {
     const { agent, event, options, flags } = params;
 
-    if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
+    if (shouldSuppressProviderUserTimelineItem(agent, event.item)) {
       flags.shouldDispatchEvent = false;
       flags.shouldNotifyWaiters = false;
       return;
@@ -3800,13 +3951,13 @@ export class AgentManager {
     launchConfig: AgentSessionConfig,
     env?: Record<string, string>,
   ): Promise<AgentLaunchContext> {
-    const persistedCodexHome = launchConfig.extra?.codex?.thothLoopSessionHome;
     const context: AgentLaunchContext = {
       agentId,
       env: {
-        ...(typeof persistedCodexHome === "string" && persistedCodexHome.trim()
-          ? { CODEX_HOME: persistedCodexHome }
-          : {}),
+        ...providerRuntimeSessionEnvironment(
+          launchConfig.provider,
+          readThothRuntimeToolsConfig(launchConfig)?.sessionHome,
+        ),
         ...env,
         THOTH_AGENT_ID: agentId,
       },
@@ -3826,12 +3977,7 @@ export class AgentManager {
   }
 
   private shouldUseNativeThothTools(config: AgentSessionConfig): boolean {
-    return (
-      config.extra?.codex?.thothClarifyRuntimeTools === true ||
-      config.extra?.codex?.thothClarifyAuditRuntimeTools === true ||
-      config.extra?.codex?.thothContractAuditRuntimeTools === true ||
-      config.extra?.codex?.thothLoopRuntimeTools === true
-    );
+    return readThothRuntimeToolsConfig(config)?.enabled === true;
   }
 
   private resolveProviderLaunchConfig(
@@ -3920,6 +4066,15 @@ export class AgentManager {
   private requireAgent(id: string): LiveManagedAgent {
     const normalizedId = validateAgentId(id, "requireAgent");
     const agent = this.agents.get(normalizedId);
+    if (!agent) {
+      throw new Error(`Unknown agent '${normalizedId}'`);
+    }
+    return agent;
+  }
+
+  private requireTimelineAgent(id: string): LiveManagedAgent | ManagedAgentClosed {
+    const normalizedId = validateAgentId(id, "requireTimelineAgent");
+    const agent = this.agents.get(normalizedId) ?? this.historyOnlyAgents.get(normalizedId);
     if (!agent) {
       throw new Error(`Unknown agent '${normalizedId}'`);
     }

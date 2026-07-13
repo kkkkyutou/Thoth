@@ -14,6 +14,7 @@ import {
   dispatchWorkspaceSecretaryAnswer,
   dispatchWorkspaceSecretaryCancel,
   dispatchWorkspaceSecretaryMessage,
+  hydrateWorkspaceSecretaryProviderTimeline,
   editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
@@ -671,6 +672,314 @@ describe("dispatchWorkspaceSecretaryMessage", () => {
       payload: { data: { status: "canceled" } },
     });
     expect(settledThought).toMatchObject({ kind: "thought", status: "ready" });
+  });
+
+  it("flushes Plan+Exec head items into history before a cancel model can replace the timeline", () => {
+    const model = createSecretaryModel();
+    const planText: StreamItem = {
+      kind: "assistant_message",
+      id: "plan-exec-message",
+      messageId: "plan-exec-message",
+      text: "我会先检查现有渲染管线。",
+      timestamp: new Date(101),
+    };
+    const planThought: StreamItem = {
+      kind: "thought",
+      id: "plan-exec-thought",
+      text: "正在比较可复用的实现入口。",
+      status: "loading",
+      timestamp: new Date(102),
+    };
+    const runningTool: StreamItem = {
+      kind: "tool_call",
+      id: "agent_tool_plan-exec-shell",
+      timestamp: new Date(103),
+      payload: {
+        source: "agent",
+        data: {
+          provider: "codex",
+          callId: "plan-exec-shell",
+          name: "Shell",
+          status: "running",
+          error: null,
+          detail: { type: "shell", command: "rg --files", cwd: "/repo" },
+        },
+      },
+    };
+    const durableUser: StreamItem = {
+      kind: "user_message",
+      id: "secretary_user_user-1",
+      text: "实现一个渲染器",
+      timestamp: new Date(100),
+    };
+    const stream = createFakeStream(new Map([["agent", [planText, planThought, runningTool]]]));
+    stream.tail.set("agent", [durableUser]);
+
+    applyWorkspaceSecretaryModelToStream("agent", model, stream, {
+      settleRunningItems: true,
+    });
+
+    const tail = stream.tail.get("agent") ?? [];
+    expect(stream.head.get("agent")).toBeUndefined();
+    expect(tail.map((item) => item.id)).toEqual(
+      expect.arrayContaining([planText.id, planThought.id, runningTool.id]),
+    );
+    expect(tail.find((item) => item.id === planText.id)).toMatchObject({
+      kind: "assistant_message",
+      text: planText.text,
+    });
+    expect(tail.find((item) => item.id === planThought.id)).toMatchObject({
+      kind: "thought",
+      status: "ready",
+    });
+    expect(tail.find((item) => item.id === runningTool.id)).toMatchObject({
+      kind: "tool_call",
+      payload: { data: { status: "canceled" } },
+    });
+    expect(tail.find((item) => item.id === durableUser.id)?.timestamp.getTime()).toBe(100);
+  });
+
+  it("restores a legacy wrapped user prompt at its original position with a different provider id", () => {
+    const model = createSecretaryModel();
+    model.secretary.turns = [
+      {
+        id: "user-persisted",
+        kind: "message",
+        speaker: "user",
+        text: "实现一个渲染器",
+        messageId: "user-message-1",
+      },
+      {
+        id: "goal-card-persisted",
+        kind: "goal_card",
+        card: {
+          id: "goals-1",
+          roundLabel: "Goals",
+          title: "线性目标",
+          goals: [
+            {
+              id: "g1",
+              order: 1,
+              title: "实现渲染核心",
+              goal: "完成核心渲染路径。",
+              constraints: ["保持当前接口。"],
+              acceptance: ["核心测试通过。"],
+            },
+          ],
+          provenanceSummary: "基于确认的任务。",
+          submitted: true,
+          submittedSummary: "已确认前台执行。",
+        },
+      },
+    ];
+    const stream = createFakeStream();
+
+    hydrateWorkspaceSecretaryProviderTimeline({
+      agentId: "secretary-draft",
+      model,
+      entries: [
+        {
+          provider: "opencode",
+          timestamp: "2026-07-12T16:00:00.000Z",
+          item: {
+            type: "user_message",
+            messageId: "provider-native-wrapper-id",
+            text: [
+              "Thoth structured Workspace Secretary turn.",
+              "",
+              "Runtime context follows.",
+              "",
+              JSON.stringify({
+                type: "workspace_secretary_runtime_context",
+                user_input: "实现一个渲染器",
+              }),
+            ].join("\n"),
+          },
+        },
+        {
+          provider: "opencode",
+          timestamp: "2026-07-12T16:00:01.000Z",
+          item: {
+            type: "assistant_message",
+            messageId: "plan-exec-message",
+            text: "先检查现有渲染路径。",
+          },
+        },
+        {
+          provider: "opencode",
+          timestamp: "2026-07-12T16:00:02.000Z",
+          item: {
+            type: "goal_card",
+            card: { ...model.secretary.turns[1]!.card, submitted: false },
+          },
+        },
+        {
+          provider: "opencode",
+          timestamp: "2026-07-12T16:00:03.000Z",
+          item: {
+            type: "user_message",
+            text: "You are the Thoth Quick foreground Plan+Exec agent.",
+          },
+        },
+        {
+          provider: "codex",
+          timestamp: "2026-07-12T16:00:04.000Z",
+          item: {
+            type: "tool_call",
+            callId: "shell-1",
+            name: "Shell",
+            status: "completed",
+            error: null,
+            detail: { type: "shell", command: "rg --files", cwd: "/repo" },
+          },
+        },
+      ],
+      stream,
+    });
+
+    const tail = stream.tail.get("secretary-draft") ?? [];
+    expect(tail.map((item) => item.kind)).toEqual([
+      "user_message",
+      "assistant_message",
+      "goal_card",
+      "tool_call",
+    ]);
+    expect(tail[0]).toMatchObject({
+      id: "user-message-1",
+      text: "实现一个渲染器",
+    });
+    expect(tail.find((item) => item.kind === "goal_card")).toMatchObject({
+      card: { submitted: true, submittedSummary: "已确认前台执行。" },
+    });
+    expect(JSON.stringify(tail)).not.toContain("Thoth structured Workspace Secretary turn");
+    expect(JSON.stringify(tail)).not.toContain("Quick foreground Plan+Exec agent");
+    expect(tail[0]?.timestamp.toISOString()).toBe("2026-07-12T16:00:00.000Z");
+    expect(tail.at(-1)?.kind).toBe("tool_call");
+  });
+
+  it.each(["claude", "opencode", "acp.local"])(
+    "uses the daemon-owned stable user message for %s instead of trusting provider replay shape",
+    (provider) => {
+      const model = createSecretaryModel();
+      model.secretary.turns = [
+        {
+          id: "user-persisted",
+          kind: "message",
+          speaker: "user",
+          text: "实现一个渲染器",
+          messageId: "stable-ui-message-1",
+        },
+      ];
+      const stream = createFakeStream();
+
+      hydrateWorkspaceSecretaryProviderTimeline({
+        agentId: "secretary-draft",
+        model,
+        entries: [
+          {
+            provider,
+            timestamp: "2026-07-12T16:00:00.000Z",
+            item: {
+              type: "user_message",
+              messageId: "stable-ui-message-1",
+              text: "实现一个渲染器",
+            },
+          },
+          {
+            provider,
+            timestamp: "2026-07-12T16:00:00.001Z",
+            item: {
+              type: "user_message",
+              messageId: `${provider}-native-prompt-id`,
+              text: `provider-specific serialized prompt for ${provider}`,
+            },
+          },
+          {
+            provider,
+            timestamp: "2026-07-12T16:00:01.000Z",
+            item: { type: "assistant_message", messageId: "assistant-1", text: "已收到。" },
+          },
+        ],
+        stream,
+      });
+
+      const tail = stream.tail.get("secretary-draft") ?? [];
+      expect(tail.map((item) => item.id)).toEqual(["stable-ui-message-1", "assistant-1"]);
+      expect(JSON.stringify(tail)).not.toContain("provider-specific serialized prompt");
+    },
+  );
+
+  it("keeps repeated identical user prompts in their provider chronology after hydration", () => {
+    const model = createSecretaryModel();
+    model.secretary.turns = [
+      {
+        id: "user-first",
+        kind: "message",
+        speaker: "user",
+        text: "实现一个渲染器",
+        messageId: "client-first",
+      },
+      {
+        id: "user-second",
+        kind: "message",
+        speaker: "user",
+        text: "实现一个渲染器",
+        messageId: "client-second",
+      },
+    ];
+    const wrapper = (nativeMessageId: string) => ({
+      type: "user_message" as const,
+      messageId: nativeMessageId,
+      text: [
+        "Thoth structured Workspace Secretary turn.",
+        "",
+        "Runtime context follows.",
+        "",
+        JSON.stringify({
+          type: "workspace_secretary_runtime_context",
+          user_input: "实现一个渲染器",
+        }),
+      ].join("\n"),
+    });
+    const stream = createFakeStream();
+
+    hydrateWorkspaceSecretaryProviderTimeline({
+      agentId: "secretary-draft",
+      model,
+      entries: [
+        {
+          provider: "claude",
+          timestamp: "2026-07-12T16:00:00.000Z",
+          item: wrapper("provider-first"),
+        },
+        {
+          provider: "claude",
+          timestamp: "2026-07-12T16:00:01.000Z",
+          item: { type: "assistant_message", messageId: "assistant-first", text: "第一轮。" },
+        },
+        {
+          provider: "acp.local",
+          timestamp: "2026-07-12T16:01:00.000Z",
+          item: wrapper("provider-second"),
+        },
+        {
+          provider: "acp.local",
+          timestamp: "2026-07-12T16:01:01.000Z",
+          item: { type: "assistant_message", messageId: "assistant-second", text: "第二轮。" },
+        },
+      ],
+      stream,
+    });
+
+    const tail = stream.tail.get("secretary-draft") ?? [];
+    expect(tail.map((item) => item.id)).toEqual([
+      "client-first",
+      "assistant-first",
+      "client-second",
+      "assistant-second",
+    ]);
+    expect(tail.filter((item) => item.kind === "user_message")).toHaveLength(2);
+    expect(tail.at(-1)).toMatchObject({ kind: "assistant_message", text: "第二轮。" });
   });
 
   it("keeps an optimistic user message until the matching canonical secretary turn arrives", () => {

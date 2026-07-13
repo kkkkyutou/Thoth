@@ -103,6 +103,7 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
+import { SqliteAgentTimelineStore } from "./agent/sqlite-agent-timeline-store.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -708,6 +709,7 @@ export async function createThothDaemon(
   }
 
   const agentStorage = new AgentStorage(config.agentStoragePath, logger);
+  const durableTimelineStore = new SqliteAgentTimelineStore(config.thothHome);
   const projectRegistry = new FileBackedProjectRegistry(
     path.join(config.thothHome, "projects", "projects.json"),
     logger,
@@ -744,6 +746,7 @@ export async function createThothDaemon(
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
+    durableTimelineStore,
     appendSystemPrompt: config.appendSystemPrompt,
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
@@ -809,6 +812,9 @@ export async function createThothDaemon(
     thothHome: config.thothHome,
     workspaceGitService,
   });
+  const emitExternalSessionMessage = (message: SessionOutboundMessage) => {
+    wsServer?.broadcast(wrapSessionMessage(message));
+  };
   const loopService = new LoopService({
     thothHome: config.thothHome,
     logger,
@@ -916,10 +922,6 @@ export async function createThothDaemon(
       ),
     );
   };
-  const emitExternalSessionMessage = (message: SessionOutboundMessage) => {
-    wsServer?.broadcast(wrapSessionMessage(message));
-  };
-
   setupAutoArchiveOnMerge({
     thothHome: config.thothHome,
     thothWorktreesBaseRoot: config.worktreesRoot,
@@ -1338,6 +1340,7 @@ export async function createThothDaemon(
     await agentManager.flush().catch(() => undefined);
     detachAgentStoragePersistence();
     await agentStorage.flush().catch(() => undefined);
+    durableTimelineStore.close();
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     speechService.stop();

@@ -258,6 +258,9 @@ export const SecretaryMessageTurnSchema = z
     kind: z.literal("message"),
     speaker: z.enum(["user", "secretary"]),
     text: NonEmptyStringSchema,
+    // The client-generated id is the only safe bridge between the durable user turn and the
+    // provider timeline. It is optional so existing persisted topics remain readable.
+    messageId: NonEmptyStringSchema.optional(),
   })
   .strict();
 
@@ -309,6 +312,9 @@ export const WorkspaceSecretaryModelSchema = z
     activeTopicId: NonEmptyStringSchema,
     status: SecretaryRuntimeStatusModelSchema,
     turns: z.array(SecretaryTurnSchema),
+    // Internal projection reference only. The UI uses this to hydrate the real provider
+    // timeline into the virtual Workspace Secretary tab after reconnect/cancel.
+    timelineAgentId: NonEmptyStringSchema.nullable().optional(),
     composer: ThothComposerModelSchema,
     provider: WorkspaceSecretaryProviderRuntimeModelSchema.optional(),
     deprecatedLiveEvents: z.array(WorkspaceSecretaryDeprecatedCleanEventSchema).optional(),

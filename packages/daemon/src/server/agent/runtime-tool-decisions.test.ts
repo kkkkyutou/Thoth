@@ -1,11 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThothClarifyCardModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import {
   configureRuntimeAuthorityDecisionPersistence,
   createRuntimeAuthorityDecision,
+  getPendingRuntimeAuthorityDecisionByCardId,
   listPendingRuntimeAuthorityDecisions,
   listRuntimeAuthorityDecisionRecords,
   resetRuntimeAuthorityDecisionsForTest,
@@ -55,7 +56,7 @@ afterEach(() => {
 });
 
 describe("runtime authority decision persistence", () => {
-  it("persists pending records and reloads them as blocked after process loss", () => {
+  it("keeps pending cards actionable across process loss", () => {
     const dir = mkdtempSync(join(tmpdir(), "thoth-runtime-decisions-"));
     const filePath = join(dir, "runtime-authority-decisions.json");
     try {
@@ -82,7 +83,6 @@ describe("runtime authority decision persistence", () => {
         },
         redactedRawInputHash:
           "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        timeoutMs: 60_000,
       });
 
       const persisted = JSON.parse(readFileSync(filePath, "utf8")) as {
@@ -95,17 +95,55 @@ describe("runtime authority decision persistence", () => {
       resetRuntimeAuthorityDecisionsForTest();
       configureRuntimeAuthorityDecisionPersistence({ filePath });
 
-      expect(listPendingRuntimeAuthorityDecisions()).toEqual([]);
+      expect(listPendingRuntimeAuthorityDecisions()).toContainEqual(
+        expect.objectContaining({
+          id: record.id,
+          cardId: "clarify-card-persist",
+          status: "pending",
+        }),
+      );
+      expect(getPendingRuntimeAuthorityDecisionByCardId("clarify-card-persist")).toMatchObject({
+        id: record.id,
+        status: "pending",
+      });
       expect(listRuntimeAuthorityDecisionRecords()).toContainEqual(
         expect.objectContaining({
           id: record.id,
-          status: "blocked",
+          status: "pending",
           publicBadgeSummary: "正在拆解目标边界。",
           frontierLedger: expect.objectContaining({ clarify_strength: "dive" }),
         }),
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not expire an unanswered authority card over elapsed time", async () => {
+    vi.useFakeTimers();
+    try {
+      const { record } = createRuntimeAuthorityDecision({
+        provider: "acp.local",
+        agentId: "agent-1",
+        topicId: "topic-main",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        callId: "call-1",
+        toolName: "thoth_submit_clarify_card",
+        phase: "clarify",
+        card: { kind: "clarify_card", card: clarifyCard() },
+        redactedRawInputHash:
+          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      });
+
+      await vi.advanceTimersByTimeAsync(365 * 24 * 60 * 60 * 1_000);
+
+      expect(getPendingRuntimeAuthorityDecisionByCardId(record.cardId)).toMatchObject({
+        id: record.id,
+        status: "pending",
+      });
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

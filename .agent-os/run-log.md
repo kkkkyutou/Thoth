@@ -1,5 +1,39 @@
 # Run Log
 
+## 2026-07-13 [Quick/Loop authority split and non-blocking Loop registration]
+
+- Worked on: `NTH-TD-018`, `NTH-TD-019`, `NTH-TD-020`, `NTH-TD-021`
+- User-visible request: Loop approval cards must not offer foreground execution; Quick approval cards must not offer background registration. Selecting Loop Goals Card registration must return promptly rather than failing with `Connection timed out`.
+- Root cause: approval cards always rendered both `accept_quick` and `accept_loop`, and Workspace Secretary accepted either intent without checking the frozen composer mode. Separately, Loop `register()` synchronously captured the complete workspace evidence baseline and started scheduling inside the WebSocket answer handler. A live daemon receipt recorded `eventLoopDelay.maxMs: 631897.1` while an `workspace_secretary.answer.request` was handled; synchronous Git status/diff capture on a large worktree starved the event loop long enough for the client request to time out.
+- State changes: approval cards now expose exactly one execution action from the daemon-backed composer mode: Quick offers foreground continuation/execution only; Loop offers background continuation/registration only. The daemon rejects inverse `accept_quick`/`accept_loop` intents while preserving the unresolved card. Loop registration now persists the task and replies before worktree evidence capture. Baseline and phase evidence use asynchronous filesystem/Git operations, and the scheduler enters through `setImmediate`, so it cannot block the reply path; PlanExec begins only after the baseline is captured.
+- Regression coverage: app approval-card tests verify the mutually exclusive Quick and Loop actions and emitted intents. Workspace Secretary tests verify direct cross-mode RPC is rejected without folding the card. Loop task-service tests gate baseline capture and verify registration has already returned while capture is pending, then PlanExec begins only after it resolves.
+- Evidence produced: app narrow tests passed (`2 files`, `29 tests`); daemon narrow tests passed (`2 files`, `65 tests`); `npm run build:web`, full `npm --workspace=@thoth/app run test`, `npm run check:foundation` and `git diff --check` completed successfully. The daemon acknowledged `restart_server_request` in `1ms`; its supervisor replaced worker `4081400` with `920916` and recovered `127.0.0.1:6688`. A real Chromium smoke of `http://127.0.0.1:8082/` after restart reached `/open-project` with no page or console error; the capture is ignored local evidence at `.dev/thoth-runtime/loop-registration-smoke.png`. No existing approval card was submitted during smoke, so a real provider registration is not claimed here.
+
+## 2026-07-13 [Durable authority-card recovery]
+
+- Worked on: `NTH-TD-016`, `NTH-TD-021`
+- User-visible request: An unanswered authority card must have no maximum lifetime. After daemon restart or provider KV-cache/session loss, reopening the topic must show the current card and let the user submit it; only explicit user cancel may end it.
+- Root cause: pending runtime authority decisions were treated as in-memory provider tool-call leases. The old elapsed timeout could mark them `expired`, and the persisted reload path converted a previously `pending` decision into `blocked`. In addition, authority persistence was initialized only when the dynamic tool catalog happened to load, so a post-restart snapshot could miss the pending decision before a new provider session was created.
+- State changes: removed elapsed-time expiry and timer cleanup from runtime authority decisions. Startup now restores every non-answered, non-blocked-card authority record as pending, including historical expired/rejected records, with the original card id and metadata. Workspace Secretary configures the decision persistence store during construction, so snapshot recovery has the pending index before any dynamic tool call is mounted.
+- State changes: persisted topic loading keeps a topic with an unsubmitted authority card in `loading` with an explicit waiting-for-user state. If the old provider session cannot be resumed, the daemon retains its durable timeline as history-only and creates a replacement structured session in the same topic after the user's answer. The replacement uses the durable topic/card/transcript/answer context rather than treating provider cache loss as an invalid card.
+- State changes: duplicate submits no longer produce an expired/stale-card error or mutate the card. They leave the topic ready with an idempotent "already submitted or cancelled" result. Explicit Cancel remains the only path that folds unresolved authority cards and resolves their pending tool calls.
+- Regression coverage: runtime-decision tests prove a pending card survives simulated process loss and remains pending after a full year of fake elapsed time. Workspace Secretary coverage simulates daemon restart plus an unrunnable OpenCode provider session, verifies the original card remains unsubmitted and visible, then verifies that submission creates a same-topic replacement structured session and continues with the durable runtime context.
+- Evidence produced: `npm run format`, `npm run format:check`, the affected daemon unit suite (`170/170`), app Workspace Secretary core tests (`27/27`), `npm run build:daemon`, `npm run build:web`, `npm run check:foundation` and `git diff --check` passed. A production-source scan found no remaining elapsed-time authority timeout constant or obsolete "card expired" product message.
+- Remaining unrelated baseline: the full daemon unit command still has five failures in four untouched legacy areas: a `packages/server` path reference in the Claude hook guard, old `packages/server/dist` assertions in web-UI config tests, a home-relative directory mock and a config-file same-mtime stale-write race. They do not exercise authority decisions, topic recovery or provider-session replacement, and are not claimed as fixed by this change.
+
+## 2026-07-12 [Quick foreground Plan+Exec handoff recovery]
+
+- Worked on: `NTH-TD-016`, `NTH-TD-021`
+- User-visible request: Debug the Quick + Clarify foreground flow that remained on a spinner for minutes after the Task Card and Goals Card had both been approved.
+- Root cause: An older development daemon accepted the Goals Card and persisted `quick_exec`, but did not launch the required ordinary foreground Plan+Exec provider turn. Its UI therefore showed a running state with no in-flight provider run or timeline events. A stale local `quick_foreground:*` launch claim could also suppress a later legitimate launch after a failed start.
+- State changes: Quick foreground execution now clears a stale launch claim when the provider has no in-flight run. On snapshot hydration, an approved Quick task that is still `loading`, or was interrupted by daemon restart before terminal evidence, restores the original topic provider agent/session and submits an explicit continuation Plan+Exec prompt. The continuation instructs the provider to inspect the workspace, preserve prior work, continue at the earliest unfinished approved goal, avoid Clarify/card repetition, and execute all approved goals.
+- State changes: Explicit user cancellation remains terminal for automatic recovery. A topic whose persisted state is `ready` with the user-cancel summary is not silently restarted; this preserves the stop contract rather than converting it into a hidden retry.
+- State changes: Moved `emitExternalSessionMessage` before `ThothLoopTaskService` construction so a task-load callback cannot access it in the temporal dead zone during daemon bootstrap.
+- Evidence produced: `npm run test:unit --workspace=@thoth/daemon -- src/server/session/workspace-secretary/workspace-secretary-session.test.ts` passed, 26 tests. The new regression test covers daemon restart after approved Quick Goals Card but before provider turn start, and asserts same-session recovery uses the Plan+Exec prompt.
+- Evidence produced: `npm run test:unit --workspace=@thoth/daemon -- src/server/thoth-loop/task-service.test.ts` passed, 25 tests. `npm run build:daemon` and `git diff --check` passed.
+- Evidence produced: real Codex dynamicTools `UT-02-quick-clarify-foreground-success` passed in 65.787 seconds on 2026-07-12. It validates the real Task Card -> Goals Card -> same-session Quick foreground Plan+Exec handoff without OpenRouter.
+- Operational note: The originally inspected topic was later explicitly cancelled by the browser, so it is correctly persisted as ready/cancelled and is not automatically resumed by this recovery path.
+
 ## 2026-07-02 [Workspace composer task surface wired]
 
 - Worked on: `NTH-OBJ-001`, `NTH-WS-001`, `NTH-WS-002`, `NTH-TD-002`
@@ -2784,3 +2818,115 @@ turn.` internal prompt. Captures are `/tmp/thoth-secretary-atomic-before-reload.
 
 - Removed `docs/ui-review-captures/**` and `assets/thoth-teaser-figure.png` from every local Git ref with a local-only history rewrite. No network operation or push occurred; `origin` was restored afterward. The current tree and all reachable Git objects no longer contain either path.
 - Moved the existing `69 MB` UI review evidence directory from `/mnt/cfs/5vr0p6/yzy/thoth-ui-review-captures/` to ignored `.dev/ui-review-captures/`. Updated review scripts and evidence references to the new repository-local ignored path, and removed the obsolete `docs/ui-review-captures` ignore rule.
+
+## 2026-07-12 [Quick Clarify cancel timeline durability repair]
+
+- Symptom: after Quick + Clarify completed Task/Goals approval and entered the same-session foreground
+  Plan+Exec turn, clicking the red Stop control could replace all ordinary execution text, reasoning and tool
+  lifecycle rows with the clean authority-card projection. The remaining reconstructed cards all received a new
+  client timestamp, so the footer incorrectly rendered `Worked for 0s`.
+- Root cause: `workspace_secretary.cancel` correctly stopped the real provider agent, but the app only merged its
+  clean `SecretaryTurn` snapshot. That model intentionally persists user/card authority, not ordinary Plan+Exec
+  AgentTimeline rows. Live head items were not first committed to tail, and refresh/reconnect had no durable
+  provider-timeline reference for the virtual Workspace Secretary tab.
+- Repair: the protocol now carries an optional topic-scoped `timelineAgentId`, and durable topic runtime snapshots
+  persist that real provider agent reference plus the user message id. The daemon binds it before every provider
+  run and preserves it through cancel/restart. The app flushes and settles head/tail rows before applying a cancel
+  model; it then hydrates the virtual tab from the canonical provider timeline on snapshot/reconnect and forces
+  that hydration after cancel. Provider wrapper prompts remain filtered; clean cards overwrite provider card state
+  in place while retaining source timestamps and chronology.
+- Verification: app actions + draft-core `72/72`; Workspace Secretary daemon `27/27`; protocol RPC/config
+  `13/13`; persisted-config `41/41`; full app Vitest exited successfully; `npm run build:daemon`, `npm run
+build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --check` passed. Runtime health
+  returned success for Thoth `127.0.0.1:6688` and the web review endpoint `127.0.0.1:8082` returned HTTP 200.
+  No daemon restart was performed, so no active user turn was interrupted for this repair.
+
+## 2026-07-12 [Quick Clarify stop durable timeline journal completion]
+
+- Deeper recovery root cause: the first cancel repair preserved live Workspace Secretary head/tail items and
+  persisted the provider agent reference, but a later `fetch_agent_timeline` still called
+  `ensureAgentLoaded()` provider-first. If Codex had archived or pruned the thread, the resume error prevented
+  the daemon from returning history even when local timeline rows existed. The old daemon also accepted an
+  injectable durable timeline interface without constructing one in production, so no local journal existed for
+  that fallback path.
+- Repair: added daemon-owned SQLite WAL journal at `<thothHome>/agent-timeline/timeline.sqlite`, wired it into
+  `AgentManager`, and fixed initial timeline seeding to restore committed rows plus their stable epoch rather
+  than only restoring the next sequence number. Timeline append now lands in this journal during every provider
+  turn; normal shutdown closes the database after AgentManager flushes pending writes.
+- Recovery boundary: `ensureAgentLoaded()` now tries the provider only for a runnable session. A failed or
+  unavailable provider resume falls back to a read-only history projection when journal rows exist. Timeline
+  fetch therefore continues to return assistant text, reasoning and tool lifecycle rows without materializing an
+  internal Workspace Secretary provider agent as a foreground tab. Running, send, interrupt and permission APIs
+  still require a live provider session and are not falsely advertised as available.
+- Regression evidence: SQLite reopen/cursor test and the exact Codex `no rollout found` fallback test passed;
+  daemon narrow suite passed `188/188`; app cancel/timeline suite passed `72/72`; full app Vitest completed
+  before the daemon narrow suite; `npm run build:daemon`, `npm run build:web`, `npm run check:foundation`,
+  `npm run format:check` and `git diff --check` passed.
+- Runtime evidence: after confirming no active foreground turn, sent the supervised Thoth restart RPC with
+  reason `quick_clarify_stop_timeline_durability`. Thoth returned healthy on `127.0.0.1:6688`, web remained
+  HTTP `200` on `8082`, and the live journal contained `1` agent with `7` persisted timeline rows after browser
+  reconnection. Paseo `127.0.0.1:6767` was not touched.
+
+## 2026-07-12 [Workspace Secretary reload chronology repair]
+
+- Symptom: after a browser reload, the first visible user request in a Workspace Secretary / Quick + Clarify
+  session could appear after the entire provider timeline rather than at its original position.
+- Root cause: clean authority turns use a client-stable `messageId`, while Codex records the daemon-wrapped
+  `Workspace Secretary turn` prompt with a different native message id. The reload projection filtered the
+  wrapper prompt, failed to identify it as the same user turn, then appended the clean-model user turn after
+  provider text and tools.
+- Repair: reload hydration now parses the known wrapper runtime context, matches its `user_input` to an
+  unconsumed durable user turn in chronological order, replaces the Codex native id with the clean stable id,
+  and merges cards/user turns in place while retaining provider timestamps. Internal card-continuation and
+  Quick Plan+Exec prompts still have no matching durable user turn and remain hidden. Repeated identical user
+  messages are consumed one-by-one, so later same-text turns cannot overwrite or append the first.
+- Verification: focused app action suite passed `45/45`; full app suite passed `322/322` files and
+  `2705/2705` tests before the final additional same-text regression, which also passed. `npm run build:web`
+  and `npm run check:foundation` passed. A clean Chromium profile loaded the built `8082` workspace surface
+  without console errors; it cannot access the human browser's selected session, so no false per-session
+  screenshot claim is recorded.
+
+## 2026-07-12 [Provider-neutral Workspace Secretary chronology]
+
+- Follow-up decision: lifecycle fixes must not depend on Codex-native message ids, prompt serialization or
+  thread behavior. Codex remains the only currently verified runtime-tool provider for Clarify/Loop authority,
+  but Quick foreground execution, cancellation, durable history and reload chronology are provider-neutral.
+- Repair: immediately before every real user provider turn, the daemon appends the literal user text and
+  client-stable message id to the daemon-owned timeline journal. Workspace Secretary internal agents suppress
+  provider-replayed user prompts and retain stable user rows during a forced provider-history rebuild. Provider
+  history is therefore execution evidence only; it cannot append a duplicate or displace the authority user
+  turn. Legacy histories retain an app-side generic envelope fallback until they acquire an anchor naturally.
+- Capability correction: a configured/available provider without the runtime-tool bridge may now run
+  `Quick + Clarify=None`; only structured Clarify/Loop authority turns remain honestly unsupported. This covers
+  Claude Code, OpenCode and arbitrary ACP adapters without pretending they implement Codex dynamicTools.
+- Verification: provider-parameterized daemon tests covered `claude`, `opencode` and `acp.local` durable
+  anchors; an AgentManager OpenCode replay test covered forced history rebuild and raw-prompt suppression.
+  App chronology tests cover the same three provider ids plus legacy wrapper recovery. Daemon narrow tests
+  passed `149/149`, focused app actions passed `48/48`, full app suite passed `322/322` files and `2709/2709`
+  tests, and `npm run build:daemon` / `npm run build:web` passed.
+
+## 2026-07-12 [Provider-neutral runtime tool and Loop adapter boundary]
+
+- Scope: audited the whole Workspace Secretary/Clarify/Quick/Loop recovery chain after the accumulated
+  timeline, cancel, reload, foreground handoff and Background Task defects. Product state machines must use
+  durable task/topic state and declared provider capabilities, never a `provider === "codex"` business branch.
+- Repair: new sessions write the generic `extra.thothRuntimeTools` contract with one explicit scope:
+  `clarify`, `clarify_audit`, `contract_audit`, `loop_planexec` or `loop_review`. `AgentManager` injects native
+  tools solely from this contract plus `supportsNativeThothTools`. Clarify convergence audit, contract audit,
+  PlanExec and Review now all carry the same scoped contract; PlanExec and Review never share a semantic-tool
+  catalog.
+- Compatibility and layering: old nested `extra.codex.thoth*` records are parse-only compatible, including
+  legacy Loop phase/session-home metadata. New code never writes those fields. Provider session credential
+  preparation and legacy persisted-phase recovery now go through adapter registries. Codex JSONL, `CODEX_HOME`
+  and credential mirroring live only in Codex adapter files; a future Claude/OpenCode/ACP adapter adds its own
+  registry entry without changing Secretary or Loop authority transitions.
+- Behavior coverage: `Quick + Clarify=None` runs for `claude`, `opencode` and `acp.local` even without runtime
+  tools. Structured Clarify accepts any adapter that declares native Thoth tools (covered with OpenCode) and
+  returns a truthful `provider_unsupported` state when it does not. Loop PlanExec, Review and contract audit use
+  the same capability gate; an OpenCode fixture covers Loop registration and contract-audit configuration.
+- Verification: daemon focused tests passed `156/156` after the final refactor, including runtime config,
+  dynamic-tool catalog, Workspace Secretary, Loop and Codex adapter boundaries. `npm run build:daemon`, app
+  Vitest, `npm run build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --check`
+  completed without reported failures. A production static audit found no provider-name equality check in the
+  Workspace Secretary, Loop, AgentManager, tool authority or virtual-tab lifecycle code; legacy config parsing
+  and provider adapter files are the intentional exceptions.

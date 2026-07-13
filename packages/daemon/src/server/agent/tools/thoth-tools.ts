@@ -97,6 +97,11 @@ import type {
 import type { ThothLoopTaskService } from "../../thoth-loop/task-service.js";
 import { sendPromptToAgent, setupFinishNotification } from "../agent-prompt.js";
 import { respondToAgentPermission } from "../permission-response.js";
+import { prepareProviderRuntimeSession } from "../provider-runtime-session.js";
+import {
+  readThothRuntimeToolsConfig,
+  withThothRuntimeTools,
+} from "../thoth-runtime-tools-config.js";
 import {
   configureRuntimeAuthorityDecisionPersistence,
   createRuntimeAuthorityDecision,
@@ -661,20 +666,22 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
   // independent audit capability.
   const initialToolCallerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
   const toolCallerConfig = initialToolCallerAgent?.config ?? options.callerAgentConfig;
-  const enableClarifyRuntimeTools =
-    toolCallerConfig?.extra?.codex?.thothClarifyRuntimeTools === true;
-  const enableClarifyAuditTools =
-    toolCallerConfig?.extra?.codex?.thothClarifyAuditRuntimeTools === true;
-  const enableContractAuditTools =
-    toolCallerConfig?.extra?.codex?.thothContractAuditRuntimeTools === true;
-  const enableLoopRuntimeTools = toolCallerConfig?.extra?.codex?.thothLoopRuntimeTools === true;
+  const runtimeTools = toolCallerConfig
+    ? readThothRuntimeToolsConfig(toolCallerConfig, {
+        legacyLoopScope:
+          initialToolCallerAgent?.labels.loopPhase === "review" ? "loop_review" : "loop_planexec",
+      })
+    : null;
+  const enableClarifyRuntimeTools = runtimeTools?.scope === "clarify";
+  const enableClarifyAuditTools = runtimeTools?.scope === "clarify_audit";
+  const enableContractAuditTools = runtimeTools?.scope === "contract_audit";
+  const enableLoopRuntimeTools =
+    runtimeTools?.scope === "loop_planexec" || runtimeTools?.scope === "loop_review";
   const loopRuntimePhase =
-    toolCallerConfig?.extra?.codex?.thothLoopPhase === "planexec" ||
-    toolCallerConfig?.extra?.codex?.thothLoopPhase === "review"
-      ? toolCallerConfig.extra.codex.thothLoopPhase
-      : initialToolCallerAgent?.labels.loopPhase === "planexec" ||
-          initialToolCallerAgent?.labels.loopPhase === "review"
-        ? initialToolCallerAgent.labels.loopPhase
+    runtimeTools?.scope === "loop_planexec"
+      ? "planexec"
+      : runtimeTools?.scope === "loop_review"
+        ? "review"
         : null;
   if (options.thothHome) {
     configureRuntimeAuthorityDecisionPersistence({
@@ -737,23 +744,42 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     clarifyTranscript: string;
   }): Promise<ClarifyConvergenceAudit> => {
     const toolCallerAgent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
-    if (!toolCallerAgent || toolCallerAgent.provider !== "codex") {
-      throw new Error("Clarify convergence audit requires the active Codex dynamicTools session.");
+    if (
+      !toolCallerAgent ||
+      agentManager.getProviderCapabilities(toolCallerAgent.provider)?.supportsNativeThothTools !==
+        true
+    ) {
+      throw new Error(
+        "Clarify convergence audit requires an active provider runtime-tools session.",
+      );
     }
+    const auditRuntimeSession = options.thothHome
+      ? prepareProviderRuntimeSession({
+          provider: toolCallerAgent.provider,
+          thothHome: options.thothHome,
+          sessionId: `clarify-audit-${toolCallerAgent.id}-${randomUUID()}`,
+        })
+      : null;
     const auditAgent = await agentManager.createAgent(
-      {
-        provider: toolCallerAgent.provider,
-        cwd: toolCallerAgent.cwd,
-        internal: true,
-        ...(toolCallerAgent.config.model ? { model: toolCallerAgent.config.model } : {}),
-        modeId: "auto",
-        ...(toolCallerAgent.config.thinkingOptionId
-          ? { thinkingOptionId: toolCallerAgent.config.thinkingOptionId }
-          : {}),
-        extra: { codex: { thothClarifyAuditRuntimeTools: true } },
-        systemPrompt:
-          "You are an independent Thoth Clarify convergence auditor. Do not ask the user questions and do not write files. Judge whether a candidate Task Card is grounded by the supplied frontier ledger and transcript. Call thoth_submit_clarify_convergence_audit exactly once with proceed, revise_frontier, or blocked.",
-      },
+      withThothRuntimeTools(
+        {
+          provider: toolCallerAgent.provider,
+          cwd: toolCallerAgent.cwd,
+          internal: true,
+          ...(toolCallerAgent.config.model ? { model: toolCallerAgent.config.model } : {}),
+          modeId: "auto",
+          ...(toolCallerAgent.config.thinkingOptionId
+            ? { thinkingOptionId: toolCallerAgent.config.thinkingOptionId }
+            : {}),
+          systemPrompt:
+            "You are an independent Thoth Clarify convergence auditor. Do not ask the user questions and do not write files. Judge whether a candidate Task Card is grounded by the supplied frontier ledger and transcript. Call thoth_submit_clarify_convergence_audit exactly once with proceed, revise_frontier, or blocked.",
+        },
+        {
+          enabled: true,
+          scope: "clarify_audit",
+          ...(auditRuntimeSession?.home ? { sessionHome: auditRuntimeSession.home } : {}),
+        },
+      ),
       undefined,
       {
         labels: { surface: "thoth-clarify-audit", sourceAgentId: toolCallerAgent.id },
@@ -1638,7 +1664,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
 
   const ProviderModelInputSchema = AgentProviderEnum.trim()
     .refine((value) => value.includes("/"), {
-      message: "provider must be provider/model, for example codex/gpt-5.4",
+      message: "provider must use provider-id/model-id form",
     })
     .refine(
       (value) => {
@@ -1649,7 +1675,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           return false;
         }
       },
-      { message: "provider must be provider/model, for example codex/gpt-5.4" },
+      { message: "provider must use provider-id/model-id form" },
     );
   const ProviderOrProviderModelInputSchema = AgentProviderEnum.trim()
     .min(1, "provider is required")
@@ -1665,7 +1691,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           return false;
         }
       },
-      { message: "provider must be provider or provider/model, for example codex/gpt-5.4" },
+      { message: "provider must be a provider ID or provider-id/model-id" },
     );
   const CreateAgentSettingsInputSchema = z
     .object({
@@ -1674,7 +1700,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       features: z
         .record(z.string(), z.unknown())
         .optional()
-        .describe("Provider-specific feature values, for example { fast_mode: true } for Codex."),
+        .describe("Provider-specific feature values defined by the selected provider."),
     })
     .strict();
   const UpdateAgentSettingsInputSchema = z
@@ -1689,7 +1715,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       features: z
         .record(z.string(), z.unknown())
         .optional()
-        .describe("Provider-specific feature values, for example { fast_mode: true } for Codex."),
+        .describe("Provider-specific feature values defined by the selected provider."),
     })
     .strict();
   const InspectProviderSettingsInputSchema = z
@@ -1811,7 +1837,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       .max(60, "Title must be 60 characters or fewer")
       .describe("Short descriptive title (<= 60 chars) summarizing the agent's focus."),
     provider: ProviderModelInputSchema.describe(
-      "Required provider/model pair, for example codex/gpt-5.4.",
+      "Required provider/model pair in provider-id/model-id form.",
     ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
     settings: CreateAgentSettingsInputSchema.optional().describe(
@@ -1946,7 +1972,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     : topLevelSendAgentPromptInputSchema;
   const inspectProviderInputSchema = {
     provider: ProviderOrProviderModelInputSchema.describe(
-      "Provider ID, optionally with a model ID (for example codex or codex/gpt-5.4).",
+      "Provider ID, optionally followed by a model ID in provider-id/model-id form.",
     ),
     cwd: z
       .string()
@@ -2008,7 +2034,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     {
       title: "Create agent",
       description:
-        "Create an agent. Requires relationship, workspace, provider/model (for example codex/gpt-5.4), and an initial prompt. Do not guess; call list_providers and list_models first if uncertain.",
+        "Create an agent. Requires relationship, workspace, provider/model, and an initial prompt. Do not guess; call list_providers and list_models first if uncertain.",
       inputSchema: createAgentInputSchema,
       outputSchema: {
         agentId: z.string(),
@@ -2984,7 +3010,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           .describe("IANA time zone for the cron cadence. For example: America/New_York."),
         name: z.string().optional(),
         provider: AgentProviderEnum.optional().describe(
-          "Provider, or provider/model (for example: codex or codex/gpt-5.4).",
+          "Provider, or provider/model in provider-id/model-id form.",
         ),
         cwd: z.string().optional(),
         maxRuns: z.number().int().positive().optional(),

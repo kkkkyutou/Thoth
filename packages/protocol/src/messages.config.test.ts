@@ -87,6 +87,15 @@ describe("mutable daemon config patch", () => {
                   agentId: "secretary-agent-1",
                 },
               ],
+              topicStates: [
+                {
+                  topicId: "topic-running",
+                  turns: [],
+                  currentClarifyState: "C_DIRECT",
+                  activeTurnPhase: "clarify",
+                  timelineAgentId: "secretary-agent-1",
+                },
+              ],
               nextTopicIndex: 2,
               currentClarifyState: "C_DIRECT",
               activeTurnPhase: "clarify",

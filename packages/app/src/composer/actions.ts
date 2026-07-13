@@ -1,4 +1,5 @@
-import type { GitHubSearchItem } from "@thoth/protocol/messages";
+import type { AgentStreamEventPayload, GitHubSearchItem } from "@thoth/protocol/messages";
+import type { AgentProvider } from "@thoth/protocol/agent-types";
 import type {
   SecretaryTurn,
   ThothCleanUiModel,
@@ -20,6 +21,7 @@ import {
   appendOptimisticUserMessageToStream,
   buildOptimisticUserMessage,
   generateMessageId,
+  hydrateStreamState,
   type StreamItem,
   type UserMessageItem,
 } from "@/types/stream";
@@ -107,6 +109,12 @@ export interface AgentStreamWriter {
   getHead: (agentId: string) => StreamItem[] | undefined;
   setHead: (updater: (prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>) => void;
   setTail: (updater: (prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>) => void;
+}
+
+export interface WorkspaceSecretaryProviderTimelineEntry {
+  provider: AgentProvider;
+  item: Extract<AgentStreamEventPayload, { type: "timeline" }>["item"];
+  timestamp: string;
 }
 
 export interface QueueWriter {
@@ -341,20 +349,24 @@ export function applyWorkspaceSecretaryModelToStream(
   options?: { settleRunningItems?: boolean },
 ): void {
   const items = model.secretary.turns.flatMap(secretaryTurnToStreamItem);
+  const projectedIds = new Set(items.map((item) => item.id));
+  const headToSettle = options?.settleRunningItems ? (stream.getHead(agentId) ?? []) : [];
   stream.setTail((prev) => {
     const next = new Map(prev);
     const current = next.get(agentId) ?? [];
+    // The clean model owns authority cards and its own durable user/message turns. It must not,
+    // however, erase normal provider text, thoughts or tool receipts that only exist in the
+    // provider timeline. Keep matching projected items in place so their original timestamps and
+    // chronology survive every status/model update.
     const currentLiveItems = current.filter(
-      (item) =>
-        item.kind !== "clarify_card" &&
-        item.kind !== "task_card" &&
-        item.kind !== "goal_card" &&
-        item.kind !== "registered_task" &&
-        !item.id.startsWith("secretary_message_"),
+      (item) => !isWorkspaceSecretaryProjectedItem(item) || projectedIds.has(item.id),
     );
     const liveItems = reconcileOptimisticSecretaryUserMessages(currentLiveItems, items);
     const settledLiveItems = options?.settleRunningItems
-      ? liveItems.map(settleCanceledWorkspaceSecretaryStreamItem)
+      ? mergeStreamItemsById(
+          liveItems.map(settleCanceledWorkspaceSecretaryStreamItem),
+          headToSettle.map(settleCanceledWorkspaceSecretaryStreamItem),
+        )
       : liveItems;
     const reconciled = mergeStreamItemsById(settledLiveItems, items);
     if (reconciled.length === 0) {
@@ -369,6 +381,11 @@ export function applyWorkspaceSecretaryModelToStream(
     if (!current) {
       return prev;
     }
+    if (options?.settleRunningItems) {
+      const next = new Map(prev);
+      next.delete(agentId);
+      return next;
+    }
     const headWithoutOptimisticUser = reconcileOptimisticSecretaryUserMessages(current, items);
     if (headWithoutOptimisticUser === current) {
       return prev;
@@ -381,6 +398,140 @@ export function applyWorkspaceSecretaryModelToStream(
     }
     return next;
   });
+}
+
+/**
+ * Rebuild the virtual Workspace Secretary timeline from its durable provider agent. The provider
+ * records the full Plan+Exec stream; the clean model remains authoritative for cards and literal
+ * user text. This is used after reload/reconnect and as a cancellation race barrier.
+ */
+export function hydrateWorkspaceSecretaryProviderTimeline(input: {
+  agentId: string;
+  model: ThothCleanUiModel;
+  entries: WorkspaceSecretaryProviderTimelineEntry[];
+  stream: AgentStreamWriter;
+  settleRunningItems?: boolean;
+}): void {
+  const userTurnsByMessageId = new Map<string, Extract<SecretaryTurn, { kind: "message" }>>();
+  const userTurns = input.model.secretary.turns.filter(
+    (turn): turn is Extract<SecretaryTurn, { kind: "message" }> =>
+      turn.kind === "message" && turn.speaker === "user",
+  );
+  for (const turn of input.model.secretary.turns) {
+    if (turn.kind === "message" && turn.speaker === "user" && turn.messageId) {
+      userTurnsByMessageId.set(turn.messageId, turn);
+    }
+  }
+  const consumedUserTurnIds = new Set<string>();
+  const providerEvents: Array<{
+    event: Extract<AgentStreamEventPayload, { type: "timeline" }>;
+    timestamp: Date;
+  }> = [];
+  for (const entry of input.entries) {
+    if (entry.item.type !== "user_message") {
+      providerEvents.push({
+        event: {
+          type: "timeline",
+          provider: entry.provider,
+          item: entry.item,
+        },
+        timestamp: new Date(entry.timestamp),
+      });
+      continue;
+    }
+    const messageId = entry.item.messageId;
+    const matchingInput = extractLegacyWorkspaceSecretaryEnvelopeUserInput(entry.item.text);
+    const resolvedUserTurn =
+      (messageId ? userTurnsByMessageId.get(messageId) : undefined) ??
+      userTurns.find(
+        (turn) =>
+          !consumedUserTurnIds.has(turn.id) &&
+          matchingInput !== null &&
+          matchingInput === turn.text,
+      ) ??
+      userTurns.find(
+        (turn) => !consumedUserTurnIds.has(turn.id) && !messageId && entry.item.text === turn.text,
+      );
+    if (!resolvedUserTurn) {
+      // This is a daemon-authored provider prompt for a card continuation or Quick Plan+Exec.
+      // It is not a user-visible message and must never leak into the virtual secretary tab.
+      continue;
+    }
+    consumedUserTurnIds.add(resolvedUserTurn.id);
+    // Provider-native ids are execution metadata. Replace them with the stable Thoth UI id so
+    // this row reconciles in its original chronology rather than appending the clean user turn
+    // at the tail. New daemon versions write this canonical row directly; this fallback only
+    // supports pre-anchor persisted histories.
+    const resolvedMessageId = resolvedUserTurn.messageId ?? `secretary_user_${resolvedUserTurn.id}`;
+    providerEvents.push({
+      event: {
+        type: "timeline",
+        provider: entry.provider,
+        item: {
+          type: "user_message",
+          text: resolvedUserTurn.text,
+          messageId: resolvedMessageId,
+        },
+      },
+      timestamp: new Date(entry.timestamp),
+    });
+  }
+  const providerItems = hydrateStreamState(providerEvents, { source: "canonical" });
+  const modelItems = input.model.secretary.turns.flatMap(secretaryTurnToStreamItem);
+  const restored = mergeStreamItemsById(providerItems, modelItems);
+  const settled = input.settleRunningItems
+    ? restored.map(settleCanceledWorkspaceSecretaryStreamItem)
+    : restored;
+
+  input.stream.setTail((prev) => {
+    const next = new Map(prev);
+    if (settled.length === 0) {
+      next.delete(input.agentId);
+    } else {
+      next.set(input.agentId, settled);
+    }
+    return next;
+  });
+  input.stream.setHead((prev) => {
+    if (!prev.has(input.agentId)) {
+      return prev;
+    }
+    const next = new Map(prev);
+    next.delete(input.agentId);
+    return next;
+  });
+}
+
+function extractLegacyWorkspaceSecretaryEnvelopeUserInput(text: string): string | null {
+  const candidates = [text];
+  const runtimeContextMarker = "Runtime context follows.\n\n";
+  const markerIndex = text.lastIndexOf(runtimeContextMarker);
+  if (markerIndex >= 0) {
+    candidates.unshift(text.slice(markerIndex + runtimeContextMarker.length));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as { user_input?: unknown };
+      if (typeof parsed.user_input === "string") {
+        return parsed.user_input;
+      }
+    } catch {
+      // Legacy provider history can contain ordinary user text and non-JSON prompts.
+    }
+  }
+  return null;
+}
+
+function isWorkspaceSecretaryProjectedItem(item: StreamItem): boolean {
+  return (
+    item.kind === "clarify_card" ||
+    item.kind === "task_card" ||
+    item.kind === "goal_card" ||
+    item.kind === "registered_task" ||
+    item.id.startsWith("secretary_message_") ||
+    item.id.startsWith("secretary_user_")
+  );
 }
 
 function reconcileOptimisticSecretaryUserMessages(
@@ -454,7 +605,7 @@ function secretaryTurnToStreamItem(turn: SecretaryTurn): StreamItem[] {
         return [
           {
             kind: "user_message",
-            id: `secretary_user_${turn.id}`,
+            id: turn.messageId ?? `secretary_user_${turn.id}`,
             text: turn.text,
             timestamp,
           },
@@ -495,7 +646,10 @@ function mergeStreamItemsById(current: StreamItem[], incoming: StreamItem[]): St
     const existingIndex = next.findIndex((entry) => entry.id === item.id);
     if (existingIndex >= 0) {
       const updated = [...next];
-      updated[existingIndex] = item;
+      // A clean model does not carry source timestamps. Updating a submitted card or user turn
+      // must retain the provider/live timestamp, otherwise a cancel response makes the whole turn
+      // look like it started "now" and incorrectly renders Worked for 0s.
+      updated[existingIndex] = { ...item, timestamp: next[existingIndex]!.timestamp };
       next = updated;
       continue;
     }

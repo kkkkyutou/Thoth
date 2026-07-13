@@ -13,6 +13,7 @@ type ApprovalSubmitter = (payload: SecretaryApprovalActionPayload) => void | Pro
 interface SecretaryApprovalCardProps {
   card: ApprovalCardModel;
   kind: "task" | "goal";
+  approvalMode?: "quick" | "loop";
   onSubmit?: ApprovalSubmitter;
 }
 
@@ -23,15 +24,32 @@ function cardPressableStyle({
   return [styles.actionButton, (hovered || pressed) && styles.actionButtonHovered];
 }
 
-export function SecretaryApprovalCard({ card, kind, onSubmit }: SecretaryApprovalCardProps) {
+export function SecretaryApprovalCard({
+  card,
+  kind,
+  approvalMode,
+  onSubmit,
+}: SecretaryApprovalCardProps) {
   const { theme } = useUnistyles();
   const readonly = card.submitted || !onSubmit;
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const title = kind === "task" ? "任务总览确认" : "Goals Card 确认";
-  const acceptLoopLabel = kind === "task" ? "注册后台" : "确认注册";
-  const acceptQuickLabel = kind === "task" ? "保持 Quick" : "前台执行";
+  const executionAction =
+    approvalMode === "quick"
+      ? {
+          intent: "accept_quick" as const,
+          label: kind === "task" ? "确认继续" : "前台执行",
+          testId: `secretary-${kind}-accept-quick`,
+        }
+      : approvalMode === "loop"
+        ? {
+            intent: "accept_loop" as const,
+            label: kind === "task" ? "确认继续" : "确认注册",
+            testId: `secretary-${kind}-accept-loop`,
+          }
+        : null;
   const noteTrimmed = note.trim();
 
   const actionsDisabled = readonly || isSubmitting;
@@ -141,22 +159,16 @@ export function SecretaryApprovalCard({ card, kind, onSubmit }: SecretaryApprova
             onChangeText={setNote}
           />
           <View style={styles.actions}>
-            <Pressable
-              disabled={actionsDisabled}
-              onPress={() => void submit("accept_quick")}
-              style={cardPressableStyle}
-              testID={`secretary-${kind}-accept-quick`}
-            >
-              <Text style={styles.actionText}>{acceptQuickLabel}</Text>
-            </Pressable>
-            <Pressable
-              disabled={actionsDisabled}
-              onPress={() => void submit("accept_loop")}
-              style={cardPressableStyle}
-              testID={`secretary-${kind}-accept-loop`}
-            >
-              <Text style={styles.actionText}>{acceptLoopLabel}</Text>
-            </Pressable>
+            {executionAction ? (
+              <Pressable
+                disabled={actionsDisabled}
+                onPress={() => void submit(executionAction.intent)}
+                style={cardPressableStyle}
+                testID={executionAction.testId}
+              >
+                <Text style={styles.actionText}>{executionAction.label}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               disabled={actionsDisabled || noteTrimmed.length === 0}
               onPress={() => void submit("annotate")}

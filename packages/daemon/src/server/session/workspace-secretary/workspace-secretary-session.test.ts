@@ -15,7 +15,9 @@ import type { AgentSessionConfig, AgentStreamEvent } from "../../agent/agent-sdk
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
 import {
   createRuntimeAuthorityDecision,
+  getPendingRuntimeAuthorityDecisionByCardId,
   rejectRuntimeAuthorityDecision,
+  resetRuntimeAuthorityDecisionsForTest,
 } from "../../agent/runtime-tool-decisions.js";
 import { WorkspaceSecretarySession } from "./workspace-secretary-session.js";
 
@@ -42,10 +44,12 @@ const secondWorkspace: PersistedWorkspaceRecord = {
   title: "Other workspace",
 };
 
-function providerSession(): MutableDaemonConfig["workspaceSecretary"]["providerSession"] {
+function providerSession(
+  provider = "codex",
+): MutableDaemonConfig["workspaceSecretary"]["providerSession"] {
   return {
-    provider: "codex",
-    model: "gpt-5.5",
+    provider,
+    model: `${provider}-model`,
     modeId: "auto",
   };
 }
@@ -189,9 +193,13 @@ function nativeStream(...items: AgentStreamEvent[]): AgentStreamEvent[] {
 function createSession(input?: {
   providerSession?: MutableDaemonConfig["workspaceSecretary"]["providerSession"];
   workspaceSecretary?: Partial<NonNullable<MutableDaemonConfig["workspaceSecretary"]>>;
+  daemonConfig?: MutableDaemonConfig;
+  thothHome?: string;
   streamRuns?: AgentStreamEvent[][];
   workspaces?: PersistedWorkspaceRecord[];
   hasInFlightRun?: (agentId: string) => boolean;
+  hasRunnableSession?: (agentId: string) => boolean;
+  nativeThothToolProviders?: readonly string[];
 }) {
   const emitted: SessionOutboundMessage[] = [];
   const runPrompts: unknown[] = [];
@@ -199,27 +207,33 @@ function createSession(input?: {
   const replacedPrompts: unknown[] = [];
   const replacedOptions: unknown[] = [];
   const createdAgentConfigs: AgentSessionConfig[] = [];
+  const appendedTimelineItems: Array<{ agentId: string; item: unknown }> = [];
   const permissionResponses: Array<{ agentId: string; requestId: string; response: unknown }> = [];
   const canceledAgentIds: string[] = [];
-  const thothHome = mkdtempSync(join(tmpdir(), "thoth-workspace-secretary-"));
+  const ownsThothHome = !input?.thothHome;
+  const thothHome = input?.thothHome ?? mkdtempSync(join(tmpdir(), "thoth-workspace-secretary-"));
   const streamRuns = [...(input?.streamRuns ?? [])];
-  let config = createConfig({
-    providerSession: input?.providerSession ?? providerSession(),
-    workspaceSecretary: input?.workspaceSecretary,
-  });
+  const configuredProvider = input?.providerSession?.provider ?? "codex";
+  const nativeThothToolProviders = new Set(input?.nativeThothToolProviders ?? ["codex"]);
+  let config =
+    input?.daemonConfig ??
+    createConfig({
+      providerSession: input?.providerSession ?? providerSession(),
+      workspaceSecretary: input?.workspaceSecretary,
+    });
   let streamIndex = 0;
   const nextConfiguredStream = () => {
     const configuredRun =
       streamRuns[streamIndex] ??
       nativeStream(
-        { type: "turn_started", provider: "codex", turnId: "turn-1" },
+        { type: "turn_started", provider: configuredProvider, turnId: "turn-1" },
         {
           type: "timeline",
-          provider: "codex",
+          provider: configuredProvider,
           turnId: "turn-1",
           item: { type: "assistant_message", text: "bare quick response" },
         },
-        { type: "turn_completed", provider: "codex", turnId: "turn-1" },
+        { type: "turn_completed", provider: configuredProvider, turnId: "turn-1" },
       );
     streamIndex += 1;
     return (async function* () {
@@ -233,6 +247,9 @@ function createSession(input?: {
       provider,
       available: true,
       error: null,
+    }),
+    getProviderCapabilities: (provider: string) => ({
+      supportsNativeThothTools: nativeThothToolProviders.has(provider),
     }),
     createAgent: async (config: AgentSessionConfig) => {
       createdAgentConfigs.push(config);
@@ -256,12 +273,14 @@ function createSession(input?: {
       return true;
     },
     hasInFlightRun: (agentId: string) => input?.hasInFlightRun?.(agentId) ?? true,
-    appendTimelineItem: async (_agentId: string, item: unknown) => {
+    hasRunnableSession: (agentId: string) => input?.hasRunnableSession?.(agentId) ?? true,
+    appendTimelineItem: async (agentId: string, item: unknown) => {
+      appendedTimelineItems.push({ agentId, item });
       emitted.push({
         type: "agent_stream",
         payload: {
           agentId: "agent-workspace-secretary",
-          event: { type: "timeline", provider: "codex", item } as AgentStreamEvent,
+          event: { type: "timeline", provider: configuredProvider, item } as AgentStreamEvent,
           timestamp: new Date().toISOString(),
         },
       });
@@ -269,7 +288,7 @@ function createSession(input?: {
     getAgent: () =>
       ({
         id: "agent-workspace-secretary",
-        persistence: { provider: "codex", sessionId: "provider-session-1" },
+        persistence: { provider: configuredProvider, sessionId: "provider-session-1" },
         labels: { topicId: "topic-main" },
       }) as ManagedAgent,
     listInternalAgentsByLabels: (labels: Record<string, string>) =>
@@ -313,10 +332,16 @@ function createSession(input?: {
     replacedPrompts,
     replacedOptions,
     createdAgentConfigs,
+    appendedTimelineItems,
     permissionResponses,
     canceledAgentIds,
+    thothHome,
     getConfig: () => config,
-    cleanup: () => rmSync(thothHome, { recursive: true, force: true }),
+    cleanup: () => {
+      if (ownsThothHome) {
+        rmSync(thothHome, { recursive: true, force: true });
+      }
+    },
   };
 }
 
@@ -612,6 +637,92 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
+  it.each(["claude", "opencode", "acp.local"])(
+    "keeps Quick + none available for %s without a runtime-tools capability",
+    async (provider) => {
+      const { session, createdAgentConfigs, runPrompts, cleanup } = createSession({
+        providerSession: providerSession(provider),
+        nativeThothToolProviders: [],
+        streamRuns: [
+          nativeStream(
+            { type: "turn_started", provider, turnId: "turn-1" },
+            { type: "turn_completed", provider, turnId: "turn-1" },
+          ),
+        ],
+      });
+
+      try {
+        await session.handleSendRequest({
+          type: "workspace_secretary.send.request",
+          requestId: `send-${provider}-quick-none`,
+          text: "这是 Quick passthrough 的 provider-neutral 测试",
+          uiAgentId: `draft-${provider}`,
+          composer: {
+            mode: "quick",
+            clarifyStrength: "none",
+            loop: null,
+            authorityLabel: provider,
+            authorityReady: true,
+          },
+        });
+        await flushBackgroundTurns();
+
+        expect(runPrompts).toEqual(["这是 Quick passthrough 的 provider-neutral 测试"]);
+        expect(createdAgentConfigs[0]).toMatchObject({ provider });
+        expect(createdAgentConfigs[0]?.extra?.thothRuntimeTools).toBeUndefined();
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
+  it.each(["claude", "opencode", "acp.local"])(
+    "writes a provider-neutral durable user-turn anchor for %s",
+    async (provider) => {
+      const { session, appendedTimelineItems, runOptions, cleanup } = createSession({
+        providerSession: providerSession(provider),
+        streamRuns: [
+          nativeStream(
+            { type: "turn_started", provider, turnId: "turn-1" },
+            { type: "turn_completed", provider, turnId: "turn-1" },
+          ),
+        ],
+      });
+
+      try {
+        await session.handleSendRequest({
+          type: "workspace_secretary.send.request",
+          requestId: `send-${provider}`,
+          text: "保持这条用户输入的时间线位置",
+          uiAgentId: "draft-secretary",
+          messageId: `ui-${provider}-message-1`,
+          composer: {
+            mode: "quick",
+            clarifyStrength: "none",
+            loop: null,
+            authorityLabel: provider,
+            authorityReady: true,
+          },
+        });
+        await flushBackgroundTurns();
+
+        expect(appendedTimelineItems).toEqual([
+          {
+            agentId: "agent-workspace-secretary",
+            item: {
+              type: "user_message",
+              text: "保持这条用户输入的时间线位置",
+              messageId: `ui-${provider}-message-1`,
+            },
+          },
+        ]);
+        expect(runOptions).toEqual([{ messageId: `ui-${provider}-message-1` }]);
+      } finally {
+        cleanup();
+      }
+    },
+  );
+
   it("atomically creates a client-bound topic with its first user turn", async () => {
     const { session, emitted, getConfig, runPrompts, cleanup } = createSession({
       streamRuns: [nativeStream({ type: "turn_started", provider: "codex", turnId: "turn-1" })],
@@ -854,6 +965,79 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
+  it("keeps the active topic bound to its real provider timeline across cancel and refresh", async () => {
+    const first = createSession({
+      streamRuns: [nativeStream({ type: "turn_started", provider: "codex", turnId: "turn-1" })],
+    });
+
+    try {
+      await first.session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-timeline-binding",
+        workspaceId: workspace.workspaceId,
+        text: "实现一个渲染器",
+        messageId: "user-message-timeline-binding",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "light",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+
+      const initialModel = lastWorkspaceModel(first.emitted);
+      expect(initialModel.secretary.timelineAgentId).toBe("agent-workspace-secretary");
+      expect(initialModel.secretary.turns[0]).toMatchObject({
+        kind: "message",
+        speaker: "user",
+        messageId: "user-message-timeline-binding",
+      });
+
+      await first.session.handleCancelRequest({
+        type: "workspace_secretary.cancel.request",
+        requestId: "cancel-timeline-binding",
+        workspaceId: workspace.workspaceId,
+        topicId: "topic-main",
+        uiAgentId: "draft-secretary",
+      });
+      expect(lastWorkspaceModel(first.emitted).secretary.timelineAgentId).toBe(
+        "agent-workspace-secretary",
+      );
+
+      const persisted = first.getConfig().workspaceSecretary?.topicSnapshots?.[0];
+      expect(persisted?.topicStates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            topicId: "topic-main",
+            timelineAgentId: "agent-workspace-secretary",
+          }),
+        ]),
+      );
+
+      const restored = createSession({ workspaceSecretary: first.getConfig().workspaceSecretary });
+      try {
+        await restored.session.handleSnapshotRequest({
+          type: "workspace_secretary.snapshot.request",
+          requestId: "snapshot-timeline-binding",
+          workspaceId: workspace.workspaceId,
+          topicId: "topic-main",
+        });
+        const snapshot = restored.emitted.findLast(
+          (message) => message.type === "workspace_secretary.snapshot.response",
+        );
+        expect(snapshot?.payload.model?.secretary.timelineAgentId).toBe(
+          "agent-workspace-secretary",
+        );
+      } finally {
+        restored.cleanup();
+      }
+    } finally {
+      first.cleanup();
+    }
+  });
+
   it("restores the topic provider agent after a browser refresh so cancel reaches the live run", async () => {
     const first = createSession({
       streamRuns: [nativeStream({ type: "turn_started", provider: "codex", turnId: "turn-1" })],
@@ -1070,7 +1254,10 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       expect(String(runPrompts[0])).toContain("performance_quality_scale_or_benchmark_baseline");
       expect(String(runPrompts[0])).not.toContain("submit_clarify_packet");
       expect(runOptions).toEqual([{ messageId: "message-1" }]);
-      expect(createdAgentConfigs[0]?.extra?.codex?.thothClarifyRuntimeTools).toBe(true);
+      expect(createdAgentConfigs[0]?.extra?.thothRuntimeTools).toMatchObject({
+        enabled: true,
+        scope: "clarify",
+      });
       expect(
         emitted.some(
           (message) =>
@@ -1084,6 +1271,84 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       expect(model.secretary.turns).toContainEqual(
         expect.objectContaining({ kind: "clarify_card", card }),
       );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs structured Clarify for any provider that declares native Thoth tools", async () => {
+    const card = clarifyCard("opencode-clarify-card");
+    const { session, createdAgentConfigs, emitted, runPrompts, cleanup } = createSession({
+      providerSession: providerSession("opencode"),
+      nativeThothToolProviders: ["opencode"],
+      streamRuns: [
+        nativeStream(
+          { type: "turn_started", provider: "opencode", turnId: "turn-1" },
+          {
+            type: "timeline",
+            provider: "opencode",
+            turnId: "turn-1",
+            item: { type: "clarify_card", card },
+          },
+        ),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-opencode-clarify",
+        text: "这是一个结构化 Clarify 生命周期测试",
+        uiAgentId: "draft-opencode",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "balanced",
+          loop: null,
+          authorityLabel: "OpenCode",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      expect(String(runPrompts[0])).toContain("runtime_tools: thoth_submit_clarify_card");
+      expect(createdAgentConfigs[0]).toMatchObject({
+        provider: "opencode",
+        extra: { thothRuntimeTools: { enabled: true, scope: "clarify" } },
+      });
+      expect(lastWorkspaceModel(emitted).secretary.turns).toContainEqual(
+        expect.objectContaining({ kind: "clarify_card", card }),
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reports unsupported structured Clarify without creating a stuck provider turn", async () => {
+    const { session, createdAgentConfigs, emitted, cleanup } = createSession({
+      providerSession: providerSession("acp.local"),
+      nativeThothToolProviders: [],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-acp-unsupported",
+        text: "这是一个不支持 runtime tools 的 Clarify 测试",
+        uiAgentId: "draft-acp",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "light",
+          loop: null,
+          authorityLabel: "ACP",
+          authorityReady: true,
+        },
+      });
+
+      expect(createdAgentConfigs).toHaveLength(0);
+      expect(lastWorkspaceModel(emitted).secretary.status).toMatchObject({
+        kind: "provider_unsupported",
+        detail: expect.stringContaining("runtime tool bridge"),
+      });
     } finally {
       cleanup();
     }
@@ -1275,14 +1540,14 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
-  it("folds an expired authority card instead of silently accepting its buttons", async () => {
-    const card = clarifyCard("clarify-card-expired-action");
+  it("keeps an unrecoverable duplicate submission idempotent without folding the card", async () => {
+    const card = clarifyCard("clarify-card-idempotent-action");
     const { session, emitted, cleanup } = createSession({
       streamRuns: [
         nativeStream({
           type: "timeline",
           provider: "codex",
-          turnId: "turn-expired-action",
+          turnId: "turn-idempotent-action",
           item: { type: "clarify_card", card },
         }),
       ],
@@ -1291,7 +1556,7 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     try {
       await session.handleSendRequest({
         type: "workspace_secretary.send.request",
-        requestId: "send-expired-action",
+        requestId: "send-idempotent-action",
         workspaceId: workspace.workspaceId,
         workspacePath: workspace.cwd,
         topicId: "topic-main",
@@ -1308,7 +1573,7 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       await flushBackgroundTurns();
       await session.handleAnswerRequest({
         type: "workspace_secretary.answer.request",
-        requestId: "answer-expired-action",
+        requestId: "answer-idempotent-action",
         workspaceId: workspace.workspaceId,
         workspacePath: workspace.cwd,
         topicId: "topic-main",
@@ -1326,26 +1591,165 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       const response = emitted.find(
         (message) =>
           message.type === "workspace_secretary.answer.response" &&
-          message.payload.requestId === "answer-expired-action",
+          message.payload.requestId === "answer-idempotent-action",
       );
       expect(response?.payload.model?.secretary.status).toMatchObject({
-        kind: "recoverable_error",
-        detail: expect.stringContaining("已经失效"),
+        kind: "ready",
+        detail: expect.stringContaining("此前已经提交或取消"),
       });
+      expect(response?.payload.model?.secretary.status.detail).not.toMatch(/失效|最新/);
       expect(response?.payload.model?.secretary.turns).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             kind: "clarify_card",
             card: expect.objectContaining({
               id: card.id,
-              submitted: true,
-              submittedSummary: expect.stringContaining("已经失效"),
+              submitted: false,
             }),
           }),
         ]),
       );
     } finally {
       cleanup();
+    }
+  });
+
+  it("restores the latest pending card after a daemon restart and continues with a replacement provider session", async () => {
+    const thothHome = mkdtempSync(join(tmpdir(), "thoth-secretary-authority-restart-"));
+    const card = clarifyCard("clarify-card-restart-pending");
+    const first = createSession({
+      thothHome,
+      providerSession: providerSession("opencode"),
+      nativeThothToolProviders: ["opencode"],
+      streamRuns: [
+        nativeStream({
+          type: "timeline",
+          provider: "opencode",
+          turnId: "turn-before-restart",
+          item: { type: "clarify_card", card },
+        }),
+      ],
+    });
+
+    try {
+      await first.session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-before-restart",
+        workspaceId: workspace.workspaceId,
+        workspacePath: workspace.cwd,
+        text: "这是 daemon restart 的 authority card 恢复测试",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "light",
+          loop: null,
+          authorityLabel: "OpenCode",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+      createRuntimeAuthorityDecision({
+        provider: "opencode",
+        agentId: "agent-workspace-secretary",
+        topicId: "topic-main",
+        threadId: "thread-before-restart",
+        turnId: "turn-before-restart",
+        callId: "call-before-restart",
+        toolName: "thoth_submit_clarify_card",
+        phase: "clarify",
+        card: { kind: "clarify_card", card },
+        redactedRawInputHash:
+          "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      });
+
+      const persistedConfig = first.getConfig();
+      resetRuntimeAuthorityDecisionsForTest();
+      const restored = createSession({
+        thothHome,
+        daemonConfig: persistedConfig,
+        providerSession: providerSession("opencode"),
+        nativeThothToolProviders: ["opencode"],
+        hasInFlightRun: () => false,
+        // Simulate a provider cache/session that cannot be resumed. The answer must still
+        // continue from the durable card/topic context using a replacement provider session.
+        hasRunnableSession: () => false,
+        streamRuns: [
+          nativeStream({
+            type: "turn_started",
+            provider: "opencode",
+            turnId: "turn-after-restart",
+          }),
+        ],
+      });
+      try {
+        await restored.session.handleSnapshotRequest({
+          type: "workspace_secretary.snapshot.request",
+          requestId: "snapshot-after-restart",
+          workspaceId: workspace.workspaceId,
+          workspacePath: workspace.cwd,
+          topicId: "topic-main",
+        });
+        const snapshot = restored.emitted.find(
+          (message) =>
+            message.type === "workspace_secretary.snapshot.response" &&
+            message.payload.requestId === "snapshot-after-restart",
+        );
+        expect(snapshot?.payload.model?.secretary).toMatchObject({
+          status: { kind: "loading", detail: expect.stringContaining("等待你的确认") },
+          turns: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "clarify_card",
+              card: expect.objectContaining({ id: card.id, submitted: false }),
+            }),
+          ]),
+        });
+
+        await restored.session.handleAnswerRequest({
+          type: "workspace_secretary.answer.request",
+          requestId: "answer-after-restart",
+          workspaceId: workspace.workspaceId,
+          workspacePath: workspace.cwd,
+          topicId: "topic-main",
+          cardId: card.id,
+          uiAgentId: "draft-secretary",
+          answer: {
+            intent: "submit_choices",
+            question_card_id: card.card.question_id,
+            title: card.title,
+            answers: [
+              { question_id: "language", choice_ids: ["cpp"], choice_notes: {} },
+              { question_id: "shape", choice_ids: ["library"], choice_notes: {} },
+            ],
+            raw_answer: "已确认恢复后的 Clarify 选择",
+          },
+        });
+        await flushBackgroundTurns();
+
+        expect(restored.createdAgentConfigs).toContainEqual(
+          expect.objectContaining({
+            provider: "opencode",
+            extra: { thothRuntimeTools: { enabled: true, scope: "clarify" } },
+          }),
+        );
+        expect(String(restored.runPrompts[0])).toContain("workspace_secretary_runtime_context");
+        const response = restored.emitted.find(
+          (message) =>
+            message.type === "workspace_secretary.answer.response" &&
+            message.payload.requestId === "answer-after-restart",
+        );
+        expect(response?.payload.model?.secretary.turns).toContainEqual(
+          expect.objectContaining({
+            kind: "clarify_card",
+            card: expect.objectContaining({ id: card.id, submitted: true }),
+          }),
+        );
+      } finally {
+        restored.cleanup();
+      }
+    } finally {
+      first.cleanup();
+      resetRuntimeAuthorityDecisionsForTest();
+      rmSync(thothHome, { recursive: true, force: true });
     }
   });
 
@@ -1728,6 +2132,95 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
+  it("recovers an approved Quick Plan+Exec after daemon restart before a provider turn began", async () => {
+    const task = {
+      ...taskCard("task-card-recover-quick"),
+      submitted: true,
+      submittedSummary: "已确认并按 Quick 前台执行",
+    };
+    const goals = {
+      ...goalsCard("goals-card-recover-quick"),
+      submitted: true,
+      submittedSummary: "已确认并按 Quick 前台执行",
+    };
+    const topicTurns = [
+      {
+        id: "user-recover-quick",
+        kind: "message" as const,
+        speaker: "user" as const,
+        text: "实现一个高性能快速排序",
+      },
+      {
+        id: `turn-task-${task.id}`,
+        kind: "task_card" as const,
+        card: task,
+      },
+      {
+        id: `turn-goals-${goals.id}`,
+        kind: "goal_card" as const,
+        card: goals,
+      },
+    ];
+    const { session, runPrompts, replacedPrompts, cleanup } = createSession({
+      hasInFlightRun: () => false,
+      workspaceSecretary: {
+        topicSnapshots: [
+          {
+            workspacePath: workspace.cwd,
+            workspaceName: workspace.title,
+            activeTopicId: "topic-main",
+            topics: [{ id: "topic-main", title: "排序", status: "current", updatedLabel: "刚刚" }],
+            turns: topicTurns,
+            topicStates: [
+              {
+                topicId: "topic-main",
+                turns: topicTurns,
+                currentClarifyState: "C_DIRECT",
+                activeTurnPhase: "quick_exec",
+                activeTopicProviderBacked: true,
+                status: {
+                  kind: "recoverable_error",
+                  title: "需要继续",
+                  detail: "之前的 provider turn 在 daemon 重启时中断；可以继续输入重试。",
+                },
+              },
+            ],
+            topicAgents: [
+              {
+                agentKey: "topic-main:structured:codex:gpt-5.5:auto::{}",
+                agentId: "agent-workspace-secretary",
+              },
+            ],
+            nextTopicIndex: 1,
+            currentClarifyState: "C_DIRECT",
+            activeTurnPhase: "quick_exec",
+            activeTopicProviderBacked: true,
+          },
+        ],
+      },
+    });
+
+    try {
+      await session.handleSnapshotRequest({
+        type: "workspace_secretary.snapshot.request",
+        requestId: "recover-approved-quick",
+        workspaceId: workspace.workspaceId,
+        topicId: "topic-main",
+      });
+      await flushBackgroundTurns();
+
+      expect(runPrompts).toHaveLength(1);
+      expect(replacedPrompts).toHaveLength(0);
+      expect(String(runPrompts[0])).toContain("Thoth Quick foreground Plan+Exec agent");
+      expect(String(runPrompts[0])).toContain(
+        "A prior foreground Plan+Exec turn was interrupted before terminal evidence was recorded.",
+      );
+      expect(String(runPrompts[0])).toContain("Do not stop after Goal 1.");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("pauses Clarify without switching the user-selected Loop mode to Quick", async () => {
     const card = clarifyCard("clarify-card-pause");
     const { session, cleanup } = createSession({
@@ -1802,6 +2295,104 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       cleanup();
     }
   });
+
+  it.each([
+    {
+      mode: "loop" as const,
+      loop: "one_plan_one_do" as const,
+      intent: "accept_quick" as const,
+      expectedDetail: "只能继续后台审批或确认注册",
+    },
+    {
+      mode: "quick" as const,
+      loop: null,
+      intent: "accept_loop" as const,
+      expectedDetail: "只能继续前台审批或前台执行",
+    },
+  ])(
+    "keeps a Goals Card pending when $mode receives the opposite execution intent",
+    async ({ mode, loop, intent, expectedDetail }) => {
+      const card = goalsCard(`goals-card-mode-${mode}`);
+      const { session, emitted, cleanup } = createSession({
+        streamRuns: [
+          nativeStream({
+            type: "timeline",
+            provider: "codex",
+            turnId: `turn-mode-${mode}`,
+            item: { type: "goal_card", card },
+          }),
+        ],
+      });
+
+      try {
+        await session.handleSendRequest({
+          type: "workspace_secretary.send.request",
+          requestId: `send-mode-${mode}`,
+          text: "模式隔离测试",
+          uiAgentId: "draft-secretary",
+          composer: {
+            mode,
+            clarifyStrength: "light",
+            loop,
+            authorityLabel: "Codex",
+            authorityReady: true,
+          },
+        });
+        await flushBackgroundTurns();
+
+        const { waitForAnswer } = createRuntimeAuthorityDecision({
+          provider: "codex",
+          agentId: "agent-workspace-secretary",
+          topicId: "topic-main",
+          threadId: `thread-mode-${mode}`,
+          turnId: `turn-mode-${mode}`,
+          callId: `call-mode-${mode}`,
+          toolName: "thoth_submit_goals_card",
+          phase: "approval_breakdown",
+          card: { kind: "goals_card", card },
+          redactedRawInputHash:
+            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        });
+        void waitForAnswer.catch(() => undefined);
+
+        await session.handleAnswerRequest({
+          type: "workspace_secretary.answer.request",
+          requestId: `answer-mode-${mode}`,
+          cardId: card.id,
+          uiAgentId: "draft-secretary",
+          answer: {
+            intent,
+            card_id: card.id,
+            title: card.title,
+            raw_answer: "跨模式执行测试",
+          },
+        });
+
+        const response = emitted.find(
+          (message) =>
+            message.type === "workspace_secretary.answer.response" &&
+            message.payload.requestId === `answer-mode-${mode}`,
+        );
+        expect(response?.payload.model?.secretary.status).toMatchObject({
+          kind: "recoverable_error",
+          detail: expect.stringContaining(expectedDetail),
+        });
+        expect(response?.payload.model?.secretary.turns).toContainEqual(
+          expect.objectContaining({
+            kind: "goal_card",
+            card: expect.objectContaining({ id: card.id, submitted: false }),
+          }),
+        );
+        expect(getPendingRuntimeAuthorityDecisionByCardId(card.id)).toMatchObject({
+          status: "pending",
+        });
+
+        rejectRuntimeAuthorityDecision({ cardId: card.id, message: "test cleanup" });
+      } finally {
+        cleanup();
+      }
+    },
+  );
 
   it("denies native provider questions in structured Clarify without mirroring a permission card", async () => {
     const { session, emitted, permissionResponses, cleanup } = createSession({

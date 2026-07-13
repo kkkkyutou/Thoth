@@ -574,7 +574,7 @@ export interface AgentSessionConfig {
   sandboxMode?: string;
   networkAccess?: boolean;
   webSearch?: boolean;
-  extra?: {
+  extra?: AgentMetadata & {
     codex?: AgentMetadata;
     claude?: Partial<ClaudeAgentOptions>;
   };

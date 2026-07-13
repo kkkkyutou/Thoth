@@ -784,6 +784,15 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
                   agentId: "secretary-agent-1",
                 },
               ],
+              topicStates: [
+                {
+                  topicId: "topic-running",
+                  turns: [],
+                  currentClarifyState: "C_DIRECT",
+                  activeTurnPhase: "clarify",
+                  timelineAgentId: "secretary-agent-1",
+                },
+              ],
               nextTopicIndex: 2,
               currentClarifyState: "C_DIRECT",
               activeTurnPhase: "clarify",
@@ -800,6 +809,10 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
           agentId: "secretary-agent-1",
         },
       ]);
+      expect(
+        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0]
+          ?.timelineAgentId,
+      ).toBe("secretary-agent-1");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

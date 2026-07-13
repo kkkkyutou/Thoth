@@ -1308,8 +1308,9 @@ test("createAgent passes native Thoth tools through launch context without inter
     provider: "codex",
     cwd: workdir,
     extra: {
-      codex: {
-        thothClarifyRuntimeTools: true,
+      thothRuntimeTools: {
+        enabled: true,
+        scope: "clarify",
       },
     },
     mcpServers: {
@@ -1322,7 +1323,10 @@ test("createAgent passes native Thoth tools through launch context without inter
 
   expect(client.lastLaunchContext?.thothTools).toBe(thothTools);
   expect(capturedToolContext?.callerAgentId).toBe(snapshot.id);
-  expect(capturedToolContext?.callerAgentConfig?.extra?.codex?.thothClarifyRuntimeTools).toBe(true);
+  expect(capturedToolContext?.callerAgentConfig?.extra?.thothRuntimeTools).toMatchObject({
+    enabled: true,
+    scope: "clarify",
+  });
   expect(client.lastConfig?.mcpServers).toEqual({
     custom: {
       type: "stdio",
@@ -1819,8 +1823,10 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
       cwd: workdir,
       systemPrompt: "new prompt",
       extra: {
-        codex: {
-          thothLoopSessionHome: "/tmp/thoth-loop-session-home",
+        thothRuntimeTools: {
+          enabled: true,
+          scope: "loop_planexec",
+          sessionHome: "/tmp/thoth-loop-session-home",
         },
       },
       mcpServers: {
@@ -6146,6 +6152,84 @@ test("hydrateTimeline keeps provider user_message items when no canonical user h
   const assistantMessages = timeline.filter((item) => item.type === "assistant_message");
   expect(userMessages).toHaveLength(2);
   expect(assistantMessages).toHaveLength(2);
+});
+
+test("Workspace Secretary keeps its durable user anchor across provider history replay", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-secretary-history-anchor-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+
+  class ProviderHistorySession extends TestAgentSession {
+    async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+      yield {
+        type: "timeline",
+        provider: this.provider,
+        timestamp: "2026-07-12T16:00:00.001Z",
+        item: {
+          type: "user_message",
+          messageId: "provider-native-prompt-id",
+          text: "provider-specific serialized prompt",
+        },
+      };
+      yield {
+        type: "timeline",
+        provider: this.provider,
+        timestamp: "2026-07-12T16:00:01.000Z",
+        item: { type: "assistant_message", text: "provider answer" },
+      };
+    }
+  }
+
+  class ProviderHistoryClient implements AgentClient {
+    readonly provider = "opencode" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new ProviderHistorySession(config);
+    }
+
+    async resumeSession(): Promise<AgentSession> {
+      throw new Error("Not used in this test");
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { opencode: new ProviderHistoryClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000204",
+  });
+
+  try {
+    const snapshot = await manager.createAgent(
+      { provider: "opencode", cwd: workdir, internal: true },
+      undefined,
+      { labels: { surface: "workspace-secretary" } },
+    );
+    await manager.appendTimelineItem(snapshot.id, {
+      type: "user_message",
+      messageId: "stable-ui-message-1",
+      text: "真实用户输入",
+    });
+
+    await manager.hydrateTimelineFromProvider(snapshot.id, { force: true });
+
+    expect(manager.getTimeline(snapshot.id)).toEqual([
+      {
+        type: "user_message",
+        messageId: "stable-ui-message-1",
+        text: "真实用户输入",
+      },
+      { type: "assistant_message", text: "provider answer" },
+    ]);
+  } finally {
+    await manager.flush().catch(() => undefined);
+    await storage.flush().catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
 });
 
 test("hydrateTimeline preserves provider replay timestamps and marks missing ones untrusted", async () => {

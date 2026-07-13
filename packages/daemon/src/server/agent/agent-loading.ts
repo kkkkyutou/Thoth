@@ -41,49 +41,67 @@ export async function ensureAgentLoaded(
     }
 
     const validProviders = deps.validProviders ?? deps.agentManager.getRegisteredProviderIds();
-    if (!isStoredAgentProviderAvailable(record, validProviders)) {
-      throw new Error(`Agent ${agentId} references unavailable provider '${record.provider}'`);
-    }
+    const providerAvailable = isStoredAgentProviderAvailable(record, validProviders);
+    const handle = providerAvailable
+      ? toAgentPersistenceHandle(validProviders, record.persistence)
+      : null;
 
-    const handle = toAgentPersistenceHandle(validProviders, record.persistence);
-
-    let snapshot: ManagedAgent;
-    if (handle) {
-      snapshot = await deps.agentManager.resumeAgentFromPersistence(
-        handle,
-        buildConfigOverrides(record),
-        agentId,
-        {
-          ...extractTimestamps(record),
-          historyOnly: Boolean(record.archivedAt),
-        },
-      );
-      deps.logger.info(
-        {
+    try {
+      let snapshot: ManagedAgent;
+      if (handle) {
+        snapshot = await deps.agentManager.resumeAgentFromPersistence(
+          handle,
+          buildConfigOverrides(record),
           agentId,
-          provider: record.provider,
-          historyOnly: Boolean(record.archivedAt),
-        },
-        record.archivedAt
-          ? "Archived agent history loaded from persistence"
-          : "Agent resumed from persistence",
-      );
-    } else {
-      const config = buildSessionConfig(record, {
-        validProviders,
-      });
-      if (!config) {
-        throw new Error(`Agent ${agentId} references unavailable provider '${record.provider}'`);
+          {
+            ...extractTimestamps(record),
+            historyOnly: Boolean(record.archivedAt),
+          },
+        );
+        deps.logger.info(
+          {
+            agentId,
+            provider: record.provider,
+            historyOnly: Boolean(record.archivedAt),
+          },
+          record.archivedAt
+            ? "Archived agent history loaded from persistence"
+            : "Agent resumed from persistence",
+        );
+      } else {
+        const config = buildSessionConfig(record, {
+          validProviders,
+        });
+        if (!config) {
+          throw new Error(`Agent ${agentId} references unavailable provider '${record.provider}'`);
+        }
+        snapshot = await deps.agentManager.createAgent(config, agentId, {
+          labels: record.labels,
+          workspaceId: record.workspaceId,
+        });
+        deps.logger.info(
+          { agentId, provider: record.provider },
+          "Agent created from stored config",
+        );
       }
-      snapshot = await deps.agentManager.createAgent(config, agentId, {
-        labels: record.labels,
-        workspaceId: record.workspaceId,
-      });
-      deps.logger.info({ agentId, provider: record.provider }, "Agent created from stored config");
-    }
 
-    await deps.agentManager.hydrateTimelineFromProvider(agentId);
-    return deps.agentManager.getAgent(agentId) ?? snapshot;
+      await deps.agentManager.hydrateTimelineFromProvider(agentId);
+      return deps.agentManager.getAgent(agentId) ?? snapshot;
+    } catch (error) {
+      const history = await deps.agentManager.restoreHistoryOnlyAgent(record);
+      if (history) {
+        deps.logger.warn(
+          {
+            agentId,
+            provider: record.provider,
+            providerResumeError: error instanceof Error ? error.message : String(error),
+          },
+          "Provider session could not resume; serving durable local agent history",
+        );
+        return history;
+      }
+      throw error;
+    }
   })();
 
   pendingAgentInitializations.set(agentId, initPromise);

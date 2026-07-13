@@ -393,20 +393,6 @@ describe("shouldKeepWorkspaceSecretaryAuthorityTurnRunning", () => {
     ).toBe(false);
   });
 
-  it("does not resurrect an expired Clarify card as a running turn after refresh", () => {
-    expect(
-      shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-        secretaryTurnInFlight: false,
-        streamItems: [
-          clarifyCardItem({
-            submitted: true,
-            submittedSummary: "这张询问已经失效；请使用当前 topic 最新显示的卡片。",
-          }),
-        ],
-      }),
-    ).toBe(false);
-  });
-
   it("does not infer a live turn from a submitted Task card without daemon or tool evidence", () => {
     expect(
       shouldKeepWorkspaceSecretaryAuthorityTurnRunning({

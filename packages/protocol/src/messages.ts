@@ -181,6 +181,7 @@ const MutableWorkspaceSecretaryConfigSchema = z
                     currentClarifyState: z.string().min(1),
                     activeTurnPhase: z.string().min(1),
                     activeTopicProviderBacked: z.boolean().optional(),
+                    timelineAgentId: z.string().min(1).nullable().optional(),
                     status: SecretaryRuntimeStatusModelSchema.optional(),
                   })
                   .strict(),

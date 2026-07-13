@@ -46,10 +46,13 @@ function createCatalog(
       provider: "codex",
       cwd: "/tmp/thoth-tool-test",
       extra: {
-        codex: {
-          thothClarifyRuntimeTools: true,
-          ...(input.enableLoopRuntimeTools ? { thothLoopRuntimeTools: true } : {}),
-          ...(input.loopPhase ? { thothLoopPhase: input.loopPhase } : {}),
+        thothRuntimeTools: {
+          enabled: true,
+          scope: input.enableLoopRuntimeTools
+            ? input.loopPhase === "review"
+              ? "loop_review"
+              : "loop_planexec"
+            : "clarify",
         },
       },
     },
@@ -60,6 +63,7 @@ function createCatalog(
     getAgent: (agentId: string) =>
       agentId === "agent-1" && callerRegistered ? primaryAgent : null,
     getTimeline: (agentId: string) => (agentId === "agent-1" ? [...timeline] : []),
+    getProviderCapabilities: () => ({ supportsNativeThothTools: true }),
     createAgent: vi.fn(async (config: Parameters<AgentManager["createAgent"]>[0]) => {
       const auditAgent = {
         id: "clarify-audit-agent",
@@ -263,7 +267,7 @@ describe("Thoth runtime authority tools", () => {
       logger: createTestLogger(),
       callerAgentId: "agent-launching",
       callerAgentConfig: {
-        extra: { codex: { thothClarifyRuntimeTools: true } },
+        extra: { thothRuntimeTools: { enabled: true, scope: "clarify" } },
       },
     });
 
@@ -715,8 +719,17 @@ describe("Thoth runtime authority tools", () => {
   it("seals provider dynamic-tool call ids into Loop phase results instead of trusting model-supplied ids", async () => {
     const resolvePlanExecResult = vi.fn(() => true);
     const resolveReviewVerdict = vi.fn(() => true);
-    const { catalog } = createCatalog({
+    const { catalog: planExecCatalog } = createCatalog({
       enableLoopRuntimeTools: true,
+      loopPhase: "planexec",
+      loopTaskService: {
+        resolvePlanExecResult,
+        resolveReviewVerdict,
+      } as unknown as ThothLoopTaskService,
+    });
+    const { catalog: reviewCatalog } = createCatalog({
+      enableLoopRuntimeTools: true,
+      loopPhase: "review",
       loopTaskService: {
         resolvePlanExecResult,
         resolveReviewVerdict,
@@ -732,7 +745,7 @@ describe("Thoth runtime authority tools", () => {
       },
     };
 
-    await catalog.executeTool(
+    await planExecCatalog.executeTool(
       "thoth_loop_submit_planexec_result",
       {
         goal_id: "goal-1",
@@ -744,7 +757,7 @@ describe("Thoth runtime authority tools", () => {
       },
       context,
     );
-    await catalog.executeTool(
+    await reviewCatalog.executeTool(
       "thoth_loop_submit_review_verdict",
       {
         goal_id: "goal-1",

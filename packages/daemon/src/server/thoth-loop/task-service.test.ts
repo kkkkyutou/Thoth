@@ -25,6 +25,7 @@ class FakeAgentManager {
   readonly inFlightAgentIds = new Set<string>();
   readonly agents = new Map<string, ManagedAgent>();
   readonly nextStreamEventBatches: AgentStreamEvent[][] = [];
+  supportsNativeThothTools = true;
 
   async createAgent(
     config: Parameters<AgentManager["createAgent"]>[0],
@@ -47,6 +48,10 @@ class FakeAgentManager {
 
   getAgent(agentId: string): ManagedAgent | null {
     return this.agents.get(agentId) ?? null;
+  }
+
+  getProviderCapabilities() {
+    return { supportsNativeThothTools: this.supportsNativeThothTools };
   }
 
   markAgentInternal(agentId: string): boolean {
@@ -263,7 +268,9 @@ function hasPhaseAgent(
 describe("ThothLoopTaskService", () => {
   it("registers a Loop task, starts PlanExec in provider plan mode, and exposes it in the list", async () => {
     const { service, agentManager, workspacePath } = createService();
-    const task = await service.register(baseRegisterInput(workspacePath));
+    const input = baseRegisterInput(workspacePath);
+    input.provider = { ...input.provider, provider: "opencode" };
+    const task = await service.register(input);
 
     await waitFor(
       () => service.inspect(task.id)?.currentPhase === "planexec",
@@ -280,7 +287,7 @@ describe("ThothLoopTaskService", () => {
       plan_mode: true,
     });
     expect(agentManager.createAgentCalls[0]?.config.extra).toMatchObject({
-      codex: { thothLoopRuntimeTools: true, thothLoopPhase: "planexec" },
+      thothRuntimeTools: { enabled: true, scope: "loop_planexec" },
     });
     expect(agentManager.createAgentCalls[0]?.options?.labels).toMatchObject({
       surface: "thoth-loop",
@@ -293,6 +300,19 @@ describe("ThothLoopTaskService", () => {
       status: "running",
       detailLabel: "PlanExec in progress · Goal 1: Core API · failed reviews 0/10",
     });
+  });
+
+  it("blocks Loop from declared runtime-tool capability rather than a provider-name allowlist", async () => {
+    const { service, agentManager, workspacePath } = createService();
+    agentManager.supportsNativeThothTools = false;
+    const input = baseRegisterInput(workspacePath);
+    input.provider = { ...input.provider, provider: "opencode" };
+    const task = await service.register(input);
+
+    await waitFor(() => service.inspect(task.id)?.status === "blocked", "Loop should block");
+
+    expect(service.inspect(task.id)?.summary).toContain("runtime tools");
+    expect(agentManager.createAgentCalls).toHaveLength(0);
   });
 
   it("recovers a legacy completed phase agent from its Codex session metadata", async () => {
@@ -424,6 +444,40 @@ describe("ThothLoopTaskService", () => {
     expect(service.inspect(task.id)?.budget.maxFailedReviews).toBe(expectedBudget);
   });
 
+  it("acknowledges registration before asynchronous baseline capture and phase launch", async () => {
+    const { service, workspacePath } = createService();
+    const evidenceStore = (
+      service as unknown as {
+        evidenceStore: {
+          captureAsync: (input: Record<string, unknown>) => Promise<unknown>;
+        };
+      }
+    ).evidenceStore;
+    const originalCapture = evidenceStore.captureAsync.bind(evidenceStore);
+    let releaseBaseline: (() => void) | null = null;
+    const baselineGate = new Promise<void>((resolvePromise) => {
+      releaseBaseline = resolvePromise;
+    });
+    vi.spyOn(evidenceStore, "captureAsync").mockImplementation(async (input) => {
+      await baselineGate;
+      return await originalCapture(input);
+    });
+
+    const task = await service.register(baseRegisterInput(workspacePath));
+    expect(task.baselineEvidence).toBeUndefined();
+    expect(service.inspect(task.id)?.status).toBe("queued");
+
+    await new Promise<void>((resolvePromise) => setImmediate(resolvePromise));
+    expect(service.inspect(task.id)?.baselineEvidence).toBeUndefined();
+    expect(service.inspect(task.id)?.summary).toContain("正在封存");
+
+    releaseBaseline?.();
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "planexec",
+      "PlanExec should start after baseline capture",
+    );
+  });
+
   it("advances linearly when Review passes and pass reviews do not consume budget", async () => {
     const { service, workspacePath } = createService();
     const task = await service.register(baseRegisterInput(workspacePath));
@@ -447,6 +501,10 @@ describe("ThothLoopTaskService", () => {
     await waitFor(
       () => service.inspect(task.id)?.currentGoalId === "goal-2",
       "task should advance to second goal",
+    );
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "planexec",
+      "second PlanExec should start",
     );
 
     const current = service.inspect(task.id);
@@ -475,6 +533,10 @@ describe("ThothLoopTaskService", () => {
     await waitFor(
       () => service.inspect(task.id)?.currentGoalId === "goal-2",
       "second goal should start",
+    );
+    await waitFor(
+      () => service.inspect(task.id)?.currentPhase === "planexec",
+      "second PlanExec should start",
     );
     service.resolvePlanExecResult(
       latestAgentIdFor(service, task.id, "goal-2", "planexec"),
@@ -934,7 +996,9 @@ describe("ThothLoopTaskService", () => {
 
   it("applies only an independently approved replan for unstarted goals", async () => {
     const { service, agentManager, workspacePath } = createService();
-    const task = await service.register(baseRegisterInput(workspacePath));
+    const input = baseRegisterInput(workspacePath);
+    input.provider = { ...input.provider, provider: "opencode" };
+    const task = await service.register(input);
     await waitFor(
       () => hasPhaseAgent(service, task.id, "goal-1", "planexec"),
       "PlanExec should start",
@@ -973,6 +1037,10 @@ describe("ThothLoopTaskService", () => {
     const auditCall = agentManager.createAgentCalls.find(
       (call) => call.options?.labels?.surface === "thoth-loop-contract-audit",
     )!;
+    expect(auditCall.config).toMatchObject({
+      provider: "opencode",
+      extra: { thothRuntimeTools: { enabled: true, scope: "contract_audit" } },
+    });
     expect(
       resolveContractPreservationAudit(auditCall.id, {
         outcome: "proceed",

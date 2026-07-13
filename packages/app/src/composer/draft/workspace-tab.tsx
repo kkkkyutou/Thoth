@@ -13,6 +13,7 @@ import {
   dispatchWorkspaceSecretaryAnswer,
   dispatchWorkspaceSecretaryCancel,
   dispatchWorkspaceSecretaryMessage,
+  hydrateWorkspaceSecretaryProviderTimeline,
   removeWorkspaceSecretaryModelItemsFromStream,
   type AgentStreamWriter,
 } from "@/composer/actions";
@@ -58,6 +59,7 @@ import {
 } from "@/attachments/workspace-attachments-store";
 import type { StreamItem, UserMessageImageAttachment } from "@/types/stream";
 import type {
+  ThothCleanUiModel,
   ThothComposerModel,
   WorkspaceSecretaryTurnActionPayload,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
@@ -484,7 +486,7 @@ export function WorkspaceDraftAgentTab({
   );
   const workspaceSecretaryProvider = daemonConfig?.workspaceSecretary?.providerSession;
   const secretaryProvider =
-    workspaceSecretaryProvider?.provider ?? composerState.selectedProvider ?? "codex";
+    workspaceSecretaryProvider?.provider ?? composerState.selectedProvider ?? "workspace-secretary";
   const secretaryModel =
     workspaceSecretaryProvider?.model ?? composerState.effectiveModelId ?? null;
   const clearDraftInput = draftInput.clear;
@@ -494,10 +496,16 @@ export function WorkspaceDraftAgentTab({
   const [secretarySubmitting, setSecretarySubmitting] = useState(false);
   const [secretaryTurnInFlight, setSecretaryTurnInFlight] = useState(false);
   const [secretaryErrorMessage, setSecretaryErrorMessage] = useState("");
+  const [secretaryApprovalMode, setSecretaryApprovalMode] = useState<"quick" | "loop">(
+    workspaceSecretaryComposer.mode,
+  );
   const boundSecretaryTopicId = secretaryTopicId?.trim() || null;
   const secretaryTopicIdRef = useRef<string | null>(boundSecretaryTopicId);
   const secretaryStreamItems =
     useSessionStore((state) => state.sessions[serverId]?.agentStreamTail?.get(tabId)) ??
+    EMPTY_STREAM_ITEMS;
+  const secretaryStreamHead =
+    useSessionStore((state) => state.sessions[serverId]?.agentStreamHead?.get(tabId)) ??
     EMPTY_STREAM_ITEMS;
   useEffect(() => {
     secretaryTopicIdRef.current = boundSecretaryTopicId;
@@ -519,7 +527,7 @@ export function WorkspaceDraftAgentTab({
   );
   const secretaryAuthorityTurnRunning = shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
     secretaryTurnInFlight,
-    streamItems: secretaryStreamItems,
+    streamItems: [...secretaryStreamItems, ...secretaryStreamHead],
   });
   const shouldHydrateSecretarySnapshot = shouldHydrateWorkspaceSecretarySnapshotForDraft({
     secretaryTopicId: boundSecretaryTopicId,
@@ -558,6 +566,23 @@ export function WorkspaceDraftAgentTab({
     }),
     [serverId, setAgentStreamHead, setAgentStreamTail],
   );
+  const secretaryModelRef = useRef<ThothCleanUiModel | null>(null);
+  const [secretaryTimelineAgentId, setSecretaryTimelineAgentId] = useState<string | null>(null);
+  const [secretaryTimelineHydrationGeneration, setSecretaryTimelineHydrationGeneration] =
+    useState(0);
+  const rememberSecretaryTimelineModel = useCallback((model: ThothCleanUiModel) => {
+    secretaryModelRef.current = model;
+    setSecretaryApprovalMode(model.secretary.composer.mode);
+    const nextTimelineAgentId = model.secretary.timelineAgentId?.trim() || null;
+    setSecretaryTimelineAgentId((current) =>
+      current === nextTimelineAgentId ? current : nextTimelineAgentId,
+    );
+  }, []);
+  useEffect(() => {
+    secretaryModelRef.current = null;
+    setSecretaryTimelineAgentId(null);
+    setSecretaryApprovalMode(workspaceSecretaryComposer.mode);
+  }, [boundSecretaryTopicId, workspaceSecretaryComposer.mode]);
   const secretarySnapshotHydratedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!shouldHydrateSecretarySnapshot) {
@@ -606,6 +631,7 @@ export function WorkspaceDraftAgentTab({
         }
         rememberSecretaryTopicId(payload.model.secretary.activeTopicId);
         applyWorkspaceSecretaryModelToStream(tabId, payload.model, getSecretaryStreamWriter());
+        rememberSecretaryTimelineModel(payload.model);
         setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(payload.model));
         const restoredTitle = resolveWorkspaceSecretaryDraftTitleFromModel(payload.model);
         if (restoredTitle) {
@@ -628,6 +654,7 @@ export function WorkspaceDraftAgentTab({
     getSecretaryStreamWriter,
     onDraftTitleChange,
     rememberSecretaryTopicId,
+    rememberSecretaryTimelineModel,
     serverId,
     shouldHydrateSecretarySnapshot,
     tabId,
@@ -652,6 +679,7 @@ export function WorkspaceDraftAgentTab({
       }
       rememberSecretaryTopicId(payload.model.secretary.activeTopicId);
       applyWorkspaceSecretaryModelToStream(tabId, payload.model, getSecretaryStreamWriter());
+      rememberSecretaryTimelineModel(payload.model);
       setSecretaryTurnInFlight((current) =>
         resolveWorkspaceSecretaryTurnInFlight({
           current,
@@ -673,6 +701,68 @@ export function WorkspaceDraftAgentTab({
     getSecretaryStreamWriter,
     onDraftTitleChange,
     rememberSecretaryTopicId,
+    rememberSecretaryTimelineModel,
+    tabId,
+  ]);
+  const secretaryTimelineHydratedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const timelineAgentId = secretaryTimelineAgentId;
+    const model = secretaryModelRef.current;
+    if (!client || !timelineAgentId || !model || !boundSecretaryTopicId) {
+      return;
+    }
+    const hydrateKey = [
+      serverId,
+      tabId,
+      boundSecretaryTopicId,
+      timelineAgentId,
+      secretaryTimelineHydrationGeneration,
+    ].join(":");
+    if (secretaryTimelineHydratedRef.current === hydrateKey) {
+      return;
+    }
+    secretaryTimelineHydratedRef.current = hydrateKey;
+    let cancelled = false;
+    void client
+      .fetchAgentTimeline(timelineAgentId, {
+        direction: "tail",
+        limit: 0,
+        projection: "projected",
+      })
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        const latestModel = secretaryModelRef.current;
+        if (
+          !latestModel ||
+          latestModel.secretary.activeTopicId !== boundSecretaryTopicId ||
+          latestModel.secretary.timelineAgentId !== timelineAgentId
+        ) {
+          return;
+        }
+        hydrateWorkspaceSecretaryProviderTimeline({
+          agentId: tabId,
+          model: latestModel,
+          entries: payload.entries,
+          stream: getSecretaryStreamWriter(),
+          settleRunningItems: latestModel.secretary.status.kind !== "loading",
+        });
+      })
+      .catch((error) => {
+        secretaryTimelineHydratedRef.current = null;
+        console.warn("[WorkspaceSecretary] failed to hydrate provider timeline", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    boundSecretaryTopicId,
+    client,
+    getSecretaryStreamWriter,
+    secretaryTimelineAgentId,
+    secretaryTimelineHydrationGeneration,
+    serverId,
     tabId,
   ]);
   const pendingAutoSubmit = useWorkspaceDraftSubmissionStore((state) => {
@@ -862,7 +952,7 @@ export function WorkspaceDraftAgentTab({
             client,
             agentId: tabId,
             workspaceId: workspaceFields?.id,
-            workspacePath: draftWorkingDirectory,
+            workspacePath: draftWorkingDirectory ?? undefined,
             topicId,
             text: trimmedPrompt,
             attachments,
@@ -871,10 +961,12 @@ export function WorkspaceDraftAgentTab({
             stream: getSecretaryStreamWriter(),
           });
           if (response.model) {
+            const responseModel = response.model;
+            rememberSecretaryTimelineModel(responseModel);
             setSecretaryTurnInFlight((current) =>
-              resolveWorkspaceSecretaryTurnInFlight({ current, model: response.model }),
+              resolveWorkspaceSecretaryTurnInFlight({ current, model: responseModel }),
             );
-            const responseTitle = resolveWorkspaceSecretaryDraftTitleFromModel(response.model);
+            const responseTitle = resolveWorkspaceSecretaryDraftTitleFromModel(responseModel);
             if (responseTitle) {
               onDraftTitleChange?.(responseTitle);
             }
@@ -909,6 +1001,7 @@ export function WorkspaceDraftAgentTab({
       getSecretaryStreamWriter,
       onDraftTitleChange,
       rememberSecretaryTopicId,
+      rememberSecretaryTimelineModel,
       secretarySubmitting,
       t,
       tabId,
@@ -928,15 +1021,17 @@ export function WorkspaceDraftAgentTab({
           client,
           agentId: tabId,
           workspaceId: workspaceFields?.id,
-          workspacePath: draftWorkingDirectory,
+          workspacePath: draftWorkingDirectory ?? undefined,
           topicId: secretaryTopicIdRef.current ?? undefined,
           cardId,
           answer,
           stream: getSecretaryStreamWriter(),
         });
         if (response.model) {
+          const responseModel = response.model;
+          rememberSecretaryTimelineModel(responseModel);
           setSecretaryTurnInFlight((current) =>
-            resolveWorkspaceSecretaryTurnInFlight({ current, model: response.model }),
+            resolveWorkspaceSecretaryTurnInFlight({ current, model: responseModel }),
           );
         }
         const responseError =
@@ -954,7 +1049,15 @@ export function WorkspaceDraftAgentTab({
         throw error;
       }
     },
-    [client, draftWorkingDirectory, getSecretaryStreamWriter, t, tabId, workspaceFields?.id],
+    [
+      client,
+      draftWorkingDirectory,
+      getSecretaryStreamWriter,
+      rememberSecretaryTimelineModel,
+      t,
+      tabId,
+      workspaceFields?.id,
+    ],
   );
   const handleWorkspaceSecretaryCancel = useCallback(async () => {
     if (!client) {
@@ -964,17 +1067,29 @@ export function WorkspaceDraftAgentTab({
       client,
       agentId: tabId,
       workspaceId: workspaceFields?.id,
-      workspacePath: draftWorkingDirectory,
+      workspacePath: draftWorkingDirectory ?? undefined,
       topicId: secretaryTopicIdRef.current ?? undefined,
       stream: getSecretaryStreamWriter(),
     });
     if (response.model) {
+      rememberSecretaryTimelineModel(response.model);
       setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(response.model));
     } else {
       setSecretaryTurnInFlight(false);
     }
+    // The cancel response and terminal agent_stream may arrive in either order. Re-fetching the
+    // durable provider timeline makes the final virtual-tab projection independent of that race.
+    setSecretaryTimelineHydrationGeneration((generation) => generation + 1);
     setSecretaryErrorMessage(response.error ?? "");
-  }, [client, draftWorkingDirectory, getSecretaryStreamWriter, t, tabId, workspaceFields?.id]);
+  }, [
+    client,
+    draftWorkingDirectory,
+    getSecretaryStreamWriter,
+    rememberSecretaryTimelineModel,
+    t,
+    tabId,
+    workspaceFields?.id,
+  ]);
 
   const isReadyForPendingAutoSubmit = Boolean(
     pendingAutoSubmit &&
@@ -1152,6 +1267,7 @@ export function WorkspaceDraftAgentTab({
               agent={secretaryDraftAgent}
               streamItems={secretaryStreamItems}
               pendingPermissions={EMPTY_PENDING_PERMISSIONS}
+              approvalMode={secretaryApprovalMode}
               onOpenWorkspaceFile={onOpenWorkspaceFile}
               onSubmitClarifyAnswer={handleWorkspaceSecretaryAnswer}
             />

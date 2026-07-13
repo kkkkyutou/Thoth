@@ -42,9 +42,8 @@ export interface ThothToolCatalog {
 }
 
 export interface ThothToolRuntimeCallerConfig {
-  extra?: {
-    codex?: Record<string, unknown>;
-  };
+  /** Provider-neutral runtime metadata. Provider-private keys remain nested. */
+  extra?: Record<string, unknown>;
 }
 
 export interface ThothToolRuntimeContext {
