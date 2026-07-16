@@ -68,7 +68,7 @@ describe("external CLI", () => {
       entrypoint: { entryPath: "cli.js", execArgv: [] },
       argvMode: "node-script",
       args: ["daemon", "status"],
-      baseEnv: process.env,
+      baseEnv: { ...process.env, THOTH_STATUS_USE_ENV_LISTEN: "1" },
     });
     expect(mocks.spawnProcess).toHaveBeenCalledWith(
       "node",

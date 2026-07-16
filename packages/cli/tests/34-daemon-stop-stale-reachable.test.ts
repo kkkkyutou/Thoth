@@ -129,7 +129,7 @@ try {
 
   workerProcess = spawn(
     process.execPath,
-    ["--import", "tsx", "../server/src/server/daemon-worker.ts"],
+    ["--import", "tsx", "../daemon/src/server/daemon-worker.ts"],
     {
       cwd: cliRoot,
       env: {

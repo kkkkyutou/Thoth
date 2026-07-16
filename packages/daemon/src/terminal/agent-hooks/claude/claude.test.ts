@@ -170,7 +170,7 @@ describe("Claude terminal agent hooks", () => {
   it("keeps provider names out of generic CLI and bootstrap integration points", () => {
     const genericFiles = [
       join(repositoryRoot, "packages", "cli", "src", "commands", "hooks.ts"),
-      join(repositoryRoot, "packages", "server", "src", "server", "bootstrap.ts"),
+      join(repositoryRoot, "packages", "daemon", "src", "server", "bootstrap.ts"),
     ];
 
     for (const filePath of genericFiles) {

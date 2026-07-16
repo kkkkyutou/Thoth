@@ -20,7 +20,7 @@ async function createThothHome(config: unknown): Promise<string> {
 function expectBundledWebUiDistDir(distDir: string | null): void {
   expect(distDir).not.toBeNull();
   expect(path.isAbsolute(distDir ?? "")).toBe(true);
-  expect(distDir?.endsWith(path.join("packages", "server", "dist", "server", "web-ui"))).toBe(true);
+  expect(distDir?.endsWith(path.join("packages", "daemon", "dist", "server", "web-ui"))).toBe(true);
 }
 
 describe("daemon web UI config", () => {

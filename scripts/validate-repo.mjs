@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { MVP_VERSION } from "./mvp-release-contract.mjs";
+
 const root = process.cwd();
 const expectedPackages = [
   "app",
@@ -77,7 +79,9 @@ function checkPackageMetadata() {
     if (packageJson.license !== "AGPL-3.0-or-later") {
       fail(`${packageJsonPath} license must be AGPL-3.0-or-later`);
     }
-    if (packageJson.version !== "0.0.0") fail(`${packageJsonPath} version must be 0.0.0`);
+    if (packageJson.version !== MVP_VERSION) {
+      fail(`${packageJsonPath} version must be ${MVP_VERSION}`);
+    }
     if (packageJson.type !== "module") fail(`${packageJsonPath} type must be module`);
   }
 
@@ -175,10 +179,7 @@ function checkPackageConfigVoiceResidue() {
     if (!fileExists(absolutePath)) continue;
     let content = readFileSync(absolutePath, "utf8");
     if (path === "packages/app/app.config.js") {
-      content = content.replace(
-        /blockedPermissions:\s*\[\s*["']android\.permission\.RECORD_AUDIO["']\s*\],?/g,
-        "",
-      );
+      content = content.replace(/blockedPermissions:\s*\[[\s\S]*?\],?/g, "");
     }
     if (pattern.test(content)) fail(`voice/audio residue in package/config file: ${path}`);
   }

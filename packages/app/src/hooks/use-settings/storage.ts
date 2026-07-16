@@ -63,7 +63,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
   manageBuiltInDaemon: true,
-  releaseChannel: "stable",
+  releaseChannel: "beta",
 };
 
 export interface KeyValueStorage {

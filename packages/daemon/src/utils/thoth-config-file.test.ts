@@ -104,7 +104,10 @@ describe("thoth config file substrate", () => {
     () => {
       writeFileSync(join(tempDir, "thoth.json"), JSON.stringify({ worktree: { setup: "old" } }));
       const expectedRevision = statThothConfigPath(tempDir);
-      writeFileSync(join(tempDir, "thoth.json"), JSON.stringify({ worktree: { setup: "new" } }));
+      writeFileSync(
+        join(tempDir, "thoth.json"),
+        JSON.stringify({ worktree: { setup: "new value" } }),
+      );
       const currentRevision = statThothConfigPath(tempDir);
 
       const result = writeThothConfigForEdit({
@@ -118,7 +121,7 @@ describe("thoth config file substrate", () => {
         error: { code: "stale_project_config", currentRevision },
       });
       expect(readFileSync(join(tempDir, "thoth.json"), "utf8")).toBe(
-        JSON.stringify({ worktree: { setup: "new" } }),
+        JSON.stringify({ worktree: { setup: "new value" } }),
       );
     },
   );

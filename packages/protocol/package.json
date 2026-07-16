@@ -1,6 +1,6 @@
 {
   "name": "@thoth/protocol",
-  "version": "0.0.0",
+  "version": "0.0.0-mvp-beta",
   "private": true,
   "description": "Thoth shared protocol schemas and wire types",
   "license": "AGPL-3.0-or-later",

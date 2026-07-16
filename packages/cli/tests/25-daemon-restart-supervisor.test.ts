@@ -131,7 +131,7 @@ try {
 
   supervisorProcess = spawn(
     process.execPath,
-    ["--import", "tsx", "../server/scripts/supervisor-entrypoint.ts", "--dev"],
+    ["--import", "tsx", "../daemon/scripts/supervisor-entrypoint.ts", "--dev"],
     {
       cwd: cliRoot,
       env: {
@@ -214,6 +214,15 @@ try {
     workerPidAfterRestart,
     workerPidBeforeRestart,
     "worker pid should change after restart",
+  );
+
+  await waitFor(
+    async () => {
+      const status = await readDaemonStatus(thothHome);
+      return status.localDaemon === "running" && status.pid === supervisorPid;
+    },
+    20000,
+    "daemon did not become responsive after worker restart",
   );
 
   const statusAfterRestart = await readDaemonStatus(thothHome);

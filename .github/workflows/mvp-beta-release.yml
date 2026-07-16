@@ -1,0 +1,435 @@
+name: MVP Beta Release
+
+on:
+  push:
+    branches:
+      - release/mvp-actions
+
+permissions:
+  contents: read
+
+concurrency:
+  group: thoth-mvp-beta-release
+  cancel-in-progress: false
+
+env:
+  THOTH_MVP_VERSION: 0.0.0-mvp-beta
+  THOTH_MVP_TAG: v0.0.0-mvp-beta
+  THOTH_RELAY_ENDPOINT: relay.test.thoth.seeles.ai:443
+  THOTH_RELAY_PUBLIC_ENDPOINT: relay.test.thoth.seeles.ai:443
+  THOTH_RELAY_USE_TLS: "true"
+  THOTH_RELAY_PUBLIC_USE_TLS: "true"
+
+jobs:
+  preflight:
+    runs-on: ubuntu-22.04
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: npm run check:mvp-release-contract
+      - run: npm run check:foundation
+      - run: npm run build:release-runtime
+      - run: npm --workspace=@thoth/app run test -- --project unit
+      - run: npm --workspace=@thoth/daemon run test:unit
+      - run: npm --workspace=@thoth/desktop run test
+      - run: npm --workspace=@thoth/cli run test
+      - run: npm run build:web
+      - run: git diff --check
+      - name: Reject committed credentials and local-only artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -I -E 'gh[pousr]_[A-Za-z0-9]{20,}' -- . ':!/.agent-os/upstreams/**'; then
+            echo "::error::A GitHub credential-like value is committed."
+            exit 1
+          fi
+          test -z "$(git ls-files '.dev/**' '.agent-os/paper-notes/**' '.agent-os/artifacts/**' 'packages/app/android/**' 'packages/app/ios/**' 'packages/desktop/release/**')"
+
+  server-cli:
+    needs: preflight
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: npm run package:server-cli -- --output-dir release-output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-cli
+          path: release-output/thoth-server-cli-0.0.0-mvp-beta.tgz
+          retention-days: 7
+
+  server-cli-smoke:
+    needs: server-cli
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-cli
+          path: server-cli
+      - name: Install and smoke server CLI
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/thoth-cli"
+          home="$RUNNER_TEMP/thoth-home"
+          npm install --global --prefix "$prefix" ./server-cli/thoth-server-cli-0.0.0-mvp-beta.tgz
+          cli="$prefix/bin/thoth"
+          "$cli" --version | grep -F "$THOTH_MVP_VERSION"
+          test -f "$prefix/lib/node_modules/@thoth/cli/node_modules/@thoth/drivers/dist/runtime-skills/thoth-clarify/SKILL.md"
+          test -f "$prefix/lib/node_modules/@thoth/cli/node_modules/@thoth/drivers/dist/runtime-skills/thoth-loop/SKILL.md"
+          "$cli" daemon start --home "$home" --listen 127.0.0.1:16689 --no-web-ui
+          for attempt in $(seq 1 30); do
+            if "$cli" daemon status --home "$home" --json > "$RUNNER_TEMP/status.json" 2>/dev/null && grep -Fq '"localDaemon": "running"' "$RUNNER_TEMP/status.json"; then
+              break
+            fi
+            sleep 1
+          done
+          grep -F '"localDaemon": "running"' "$RUNNER_TEMP/status.json"
+          grep -F 'relay.test.thoth.seeles.ai:443' "$RUNNER_TEMP/status.json"
+          "$cli" daemon stop --home "$home" --force --json
+      - name: Install and smoke server CLI on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $prefix = Join-Path $env:RUNNER_TEMP "thoth-cli"
+          $home = Join-Path $env:RUNNER_TEMP "thoth-home"
+          npm install --global --prefix $prefix ./server-cli/thoth-server-cli-0.0.0-mvp-beta.tgz
+          $cli = Join-Path $prefix "thoth.cmd"
+          (& $cli --version) | Select-String -SimpleMatch $env:THOTH_MVP_VERSION
+          $skills = Join-Path $prefix "node_modules/@thoth/cli/node_modules/@thoth/drivers/dist/runtime-skills"
+          if (-not (Test-Path (Join-Path $skills "thoth-clarify/SKILL.md"))) { throw "Clarify runtime skill missing" }
+          if (-not (Test-Path (Join-Path $skills "thoth-loop/SKILL.md"))) { throw "Loop runtime skill missing" }
+          & $cli daemon start --home $home --listen 127.0.0.1:16689 --no-web-ui
+          $statusPath = Join-Path $env:RUNNER_TEMP "status.json"
+          $ready = $false
+          for ($attempt = 1; $attempt -le 30; $attempt++) {
+            & $cli daemon status --home $home --json 2>$null | Out-File -Encoding utf8 $statusPath
+            if ((Get-Content $statusPath -Raw) -match '"localDaemon":\s*"running"') {
+              $ready = $true
+              break
+            }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) { throw "Thoth daemon did not become ready within 30 seconds" }
+          Get-Content $statusPath | Select-String -SimpleMatch '"localDaemon": "running"'
+          Get-Content $statusPath | Select-String -SimpleMatch 'relay.test.thoth.seeles.ai:443'
+          & $cli daemon stop --home $home --force --json
+
+  desktop-macos:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - name: Build unsigned macOS MVP
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          THOTH_DESKTOP_SMOKE: "1"
+          EP_GH_IGNORE_TIME: "true"
+        run: npm --workspace=@thoth/desktop run build:mvp -- --publish never --mac dmg zip --${{ matrix.arch }} -c.publish.releaseType=prerelease -c.publish.channel=beta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-${{ matrix.arch }}
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.dmg.blockmap
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.zip.blockmap
+            packages/desktop/release/beta-mac.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop-linux:
+    needs: preflight
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: sudo apt-get update && sudo apt-get install -y libfuse2 rpm xvfb
+      - name: Build Linux MVP
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          THOTH_DESKTOP_SMOKE: "1"
+          EP_GH_IGNORE_TIME: "true"
+        run: xvfb-run -a npm --workspace=@thoth/desktop run build:mvp -- --publish never --linux AppImage deb rpm tar.gz --x64 -c.publish.releaseType=prerelease -c.publish.channel=beta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: |
+            packages/desktop/release/*.AppImage
+            packages/desktop/release/*.AppImage.blockmap
+            packages/desktop/release/*.deb
+            packages/desktop/release/*.rpm
+            packages/desktop/release/*.tar.gz
+            packages/desktop/release/beta-linux.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop-windows:
+    needs: preflight
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - name: Build unsigned Windows MVP
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          THOTH_DESKTOP_SMOKE: "1"
+          EP_GH_IGNORE_TIME: "true"
+        run: npm --workspace=@thoth/desktop run build:mvp -- --publish never --win nsis zip --x64 --arm64 -c.publish.releaseType=prerelease -c.publish.channel=beta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: |
+            packages/desktop/release/*.exe
+            packages/desktop/release/*.exe.blockmap
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.zip.blockmap
+            packages/desktop/release/beta.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  android-apk:
+    needs: preflight
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - name: Restore Android MVP signing key
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.THOTH_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/thoth-mvp-beta.jks"
+          chmod 600 "$RUNNER_TEMP/thoth-mvp-beta.jks"
+      - name: Build signed Android Release APK
+        env:
+          THOTH_RELEASE_OUTPUT_DIR: release-output
+          THOTH_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/thoth-mvp-beta.jks
+          THOTH_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.THOTH_ANDROID_KEYSTORE_PASSWORD }}
+          THOTH_ANDROID_KEY_ALIAS: ${{ secrets.THOTH_ANDROID_KEY_ALIAS }}
+          THOTH_ANDROID_KEY_PASSWORD: ${{ secrets.THOTH_ANDROID_KEY_PASSWORD }}
+        run: npm run package:android:release-apk
+      - name: Verify Android package, signature, and permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="release-output/Thoth-$THOTH_MVP_VERSION-android.apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          "$apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
+          "$aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
+          "$aapt" dump permissions "$apk" > "$RUNNER_TEMP/apk-permissions.txt"
+          grep -F "package: name='sh.thoth'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -F "versionName='$THOTH_MVP_VERSION'" "$RUNNER_TEMP/apk-badging.txt"
+          for forbidden_permission in android.permission.RECORD_AUDIO android.permission.SYSTEM_ALERT_WINDOW; do
+            if grep -Fq "$forbidden_permission" "$RUNNER_TEMP/apk-permissions.txt"; then
+              echo "::error::Release APK requests forbidden permission $forbidden_permission."
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: release-output/Thoth-0.0.0-mvp-beta-android.apk
+          retention-days: 7
+
+  relay-smoke:
+    needs: preflight
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cli
+      - name: Verify the real Seele Relay v3 service
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error --max-time 15 https://relay.test.thoth.seeles.ai/health)"
+          test "$response" = '{"status":"ok","protocol":"3","service":"thoth-relay"}'
+          THOTH_RELAY_LIVE_E2E=1 npm --workspace=@thoth/relay run test:live
+
+  publish:
+    needs:
+      - server-cli
+      - server-cli-smoke
+      - desktop-macos
+      - desktop-linux
+      - desktop-windows
+      - android-apk
+      - relay-smoke
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: downloaded/desktop
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: downloaded/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-cli
+          path: downloaded/server
+      - name: Assemble release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-files
+
+          while IFS= read -r -d '' file; do
+            name="$(basename "$file")"
+            case "$name" in
+              builder-*.yml|beta-mac.yml|beta-linux.yml|beta.yml) continue ;;
+            esac
+            cp "$file" "release-files/$name"
+          done < <(find downloaded/desktop -type f -print0)
+
+          cp downloaded/android/Thoth-$THOTH_MVP_VERSION-android.apk release-files/
+          cp downloaded/server/thoth-server-cli-$THOTH_MVP_VERSION.tgz release-files/
+
+          mapfile -t mac_manifests < <(find downloaded/desktop -type f -name beta-mac.yml | sort)
+          test "${#mac_manifests[@]}" -eq 2
+          arm_manifest="$(printf '%s\n' "${mac_manifests[@]}" | grep 'arm64' | head -n 1)"
+          x64_manifest="$(printf '%s\n' "${mac_manifests[@]}" | grep 'x64' | head -n 1)"
+          node scripts/merge-mac-update-manifest.mjs "$arm_manifest" "$x64_manifest" release-files/beta-mac.yml
+
+          linux_manifest="$(find downloaded/desktop -type f -name beta-linux.yml | head -n 1)"
+          windows_manifest="$(find downloaded/desktop -type f -name beta.yml | head -n 1)"
+          test -n "$linux_manifest"
+          test -n "$windows_manifest"
+          cp "$linux_manifest" release-files/beta-linux.yml
+          cp "$windows_manifest" release-files/beta.yml
+
+          release_date="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          node scripts/stamp-mvp-update-manifests.mjs "$release_date" release-files/beta-mac.yml release-files/beta-linux.yml release-files/beta.yml
+
+          printf 'tag=%s\ncommit=%s\nworkflow=%s\n' "$THOTH_MVP_TAG" "$GITHUB_SHA" "$GITHUB_RUN_ID" > release-files/BUILD-SOURCE.txt
+          (
+            cd release-files
+            sha256sum -- * > SHA256SUMS
+          )
+
+          test "$(find release-files -maxdepth 1 -type f -name '*.dmg' | wc -l)" -eq 2
+          test -f "release-files/Thoth-$THOTH_MVP_VERSION-arm64.dmg"
+          test -f "release-files/Thoth-$THOTH_MVP_VERSION-x64.dmg"
+          test -f "release-files/Thoth-$THOTH_MVP_VERSION-arm64.zip"
+          test -f "release-files/Thoth-$THOTH_MVP_VERSION-x64.zip"
+          test -f "release-files/Thoth-Setup-$THOTH_MVP_VERSION-arm64.exe"
+          test -f "release-files/Thoth-Setup-$THOTH_MVP_VERSION-x64.exe"
+          test -f "release-files/Thoth-Setup-$THOTH_MVP_VERSION-arm64.zip"
+          test -f "release-files/Thoth-Setup-$THOTH_MVP_VERSION-x64.zip"
+          test "$(find release-files -maxdepth 1 -type f -name '*.AppImage' | wc -l)" -eq 1
+          test "$(find release-files -maxdepth 1 -type f -name '*.deb' | wc -l)" -eq 1
+          test "$(find release-files -maxdepth 1 -type f -name '*.rpm' | wc -l)" -eq 1
+          test "$(find release-files -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
+          test -f "release-files/beta-mac.yml"
+          test -f "release-files/beta-linux.yml"
+          test -f "release-files/beta.yml"
+          test -f "release-files/Thoth-$THOTH_MVP_VERSION-android.apk"
+          test -f "release-files/thoth-server-cli-$THOTH_MVP_VERSION.tgz"
+
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          Thoth MVP beta automated cross-platform build.
+
+          Desktop packages are unsigned in this MVP release. macOS may show Gatekeeper warnings and Windows may show SmartScreen warnings.
+
+          Android is signed with the dedicated Thoth MVP beta signing key.
+
+          Server CLI installation requires Node.js 24.14 or newer:
+
+          ~~~bash
+          npm install -g https://github.com/SeeleAI/Thoth/releases/download/v0.0.0-mvp-beta/thoth-server-cli-0.0.0-mvp-beta.tgz
+          ~~~
+
+          This build uses the Seele Relay v3 test service at relay.test.thoth.seeles.ai.
+          NOTES
+
+      - name: Ensure this is still the newest action branch commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin release/mvp-actions
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+
+      - name: Replace the single MVP beta release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$THOTH_MVP_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$THOTH_MVP_TAG" --repo "$GITHUB_REPOSITORY" --yes
+          fi
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$THOTH_MVP_TAG" >/dev/null 2>&1 || true
+          gh release create "$THOTH_MVP_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Thoth $THOTH_MVP_TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --draft --prerelease
+          gh release upload "$THOTH_MVP_TAG" release-files/* --repo "$GITHUB_REPOSITORY" --clobber
+          find release-files -maxdepth 1 -type f -printf '%f\n' | sort > "$RUNNER_TEMP/expected-assets.txt"
+          gh release view "$THOTH_MVP_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort > "$RUNNER_TEMP/actual-assets.txt"
+          diff -u "$RUNNER_TEMP/expected-assets.txt" "$RUNNER_TEMP/actual-assets.txt"
+          gh release edit "$THOTH_MVP_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease

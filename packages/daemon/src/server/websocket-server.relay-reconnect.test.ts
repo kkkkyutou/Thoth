@@ -270,6 +270,7 @@ function createServer(options?: {
     undefined,
     createStub<FileBackedChatService>({}),
     createStub<LoopService>({}),
+    undefined,
     createStub<ScheduleService>({}),
     createStub<CheckoutDiffManager>({
       subscribe: vi.fn(),

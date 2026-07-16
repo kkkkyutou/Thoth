@@ -1,6 +1,6 @@
 {
   "name": "@thoth/client",
-  "version": "0.0.0",
+  "version": "0.0.0-mvp-beta",
   "private": true,
   "description": "Thoth client SDK package",
   "license": "AGPL-3.0-or-later",
@@ -37,8 +37,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@thoth/protocol": "file:../protocol",
-    "@thoth/relay": "file:../relay",
+    "@thoth/protocol": "0.0.0-mvp-beta",
+    "@thoth/relay": "0.0.0-mvp-beta",
     "zod": "^4.4.3"
   },
   "devDependencies": {

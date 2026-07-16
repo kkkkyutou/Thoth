@@ -1,6 +1,6 @@
 {
   "name": "@thoth/relay",
-  "version": "0.0.0",
+  "version": "0.0.0-mvp-beta",
   "private": true,
   "description": "Thoth relay for bridging daemon and client connections",
   "license": "AGPL-3.0-or-later",
@@ -41,10 +41,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --exclude 'src/**/*.e2e.test.ts' --exclude 'src/e2e.test.ts'",
     "test:e2e": "FORCE_RELAY_E2E=1 vitest run 'src/**/*.e2e.test.ts' 'src/e2e.test.ts'",
+    "test:live": "vitest run src/live-relay.e2e.test.ts",
     "test:watch": "vitest --exclude 'src/**/*.e2e.test.ts' --exclude 'src/e2e.test.ts'"
   },
   "dependencies": {
-    "@thoth/protocol": "file:../protocol",
+    "@thoth/protocol": "0.0.0-mvp-beta",
     "base64-js": "^1.5.1",
     "tweetnacl": "^1.0.3",
     "ws": "^8.14.2"

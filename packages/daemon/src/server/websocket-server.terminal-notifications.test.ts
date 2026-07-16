@@ -149,6 +149,7 @@ function createServer(terminalManager: TerminalManager, workspaceRegistry?: Work
     workspaceRegistry,
     createStub<FileBackedChatService>({}),
     createStub<LoopService>({}),
+    undefined,
     createStub<ScheduleService>({}),
     createStub<CheckoutDiffManager>({
       subscribe: vi.fn(),

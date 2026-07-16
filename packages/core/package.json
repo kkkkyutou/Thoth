@@ -1,6 +1,6 @@
 {
   "name": "@thoth/core",
-  "version": "0.0.0",
+  "version": "0.0.0-mvp-beta",
   "private": true,
   "description": "Pure domain model and lifecycle rules for Thoth",
   "license": "AGPL-3.0-or-later",

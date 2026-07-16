@@ -815,6 +815,7 @@ export class Session {
         emit: (msg) => this.emit(msg),
         listWorkspaces: () => this.workspaceRegistry.list(),
       },
+      thothHome: this.thothHome,
       agentManager: this.agentManager,
       daemonConfigStore,
       agentStorage,

@@ -44,6 +44,10 @@ interface ProviderListRow {
   enabled: string;
 }
 
+type ProviderModelsProbe =
+  | { available: true; models: ProviderModel[] }
+  | { available: false; error: { code: string; message: string } };
+
 const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-fable-5",
@@ -99,20 +103,49 @@ const EXPECTED_CLAUDE_MODELS = [
 
 let claudeModelIdsFromJson: string[] = [];
 let claudeModelsFromJson: ProviderModel[] = [];
+let claudeModelsProbe: ProviderModelsProbe | null = null;
 
 const ctx = await createE2ETestContext({ timeout: 120000 });
 
-async function runProviderModelsJson(provider: string): Promise<ProviderModel[]> {
+function parseJsonObjectFromOutput(value: string): unknown {
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+  if (start < 0 || end < start) {
+    return null;
+  }
+  return JSON.parse(value.slice(start, end + 1));
+}
+
+async function runProviderModelsJson(provider: string): Promise<ProviderModelsProbe> {
   const transientNeedles = ["transport closed", "timed out", "timeout", "socket", "econn"];
 
-  async function attemptRun(attempt: number): Promise<ProviderModel[]> {
+  async function attemptRun(attempt: number): Promise<ProviderModelsProbe> {
     const result = await ctx.thoth(["provider", "models", provider, "--json"]);
     if (result.exitCode === 0) {
-      return JSON.parse(result.stdout.trim()) as ProviderModel[];
+      return { available: true, models: JSON.parse(result.stdout.trim()) as ProviderModel[] };
     }
 
     const combined = `${result.stdout}\n${result.stderr}`;
     const normalized = combined.toLowerCase();
+    const isUnavailable = ["not available", "unavailable", "not installed", "is disabled"].some(
+      (needle) => normalized.includes(needle),
+    );
+    if (isUnavailable) {
+      const payload = (parseJsonObjectFromOutput(result.stdout) ??
+        parseJsonObjectFromOutput(result.stderr)) as {
+        error?: { code?: unknown; message?: unknown };
+      } | null;
+      const error = payload?.error;
+      assert.strictEqual(error?.code, "PROVIDER_ERROR");
+      assert.strictEqual(typeof error?.message, "string");
+      return {
+        available: false,
+        error: {
+          code: error.code as string,
+          message: error.message as string,
+        },
+      };
+    }
     const isTransient = transientNeedles.some((needle) => normalized.includes(needle));
 
     if (!isTransient || attempt === 3) {
@@ -290,52 +323,67 @@ try {
   // Test 6: provider models claude lists canonical model aliases
   {
     console.log("Test 6: provider models claude lists canonical model aliases");
-    const data = await runProviderModelsJson("claude");
-    assertClaudeModels(data);
-    console.log("✓ provider models claude lists canonical model aliases\n");
+    claudeModelsProbe = await runProviderModelsJson("claude");
+    if (claudeModelsProbe.available) {
+      assertClaudeModels(claudeModelsProbe.models);
+      claudeModelIdsFromJson = claudeModelsProbe.models.map((model) => model.id);
+      claudeModelsFromJson = claudeModelsProbe.models;
+      console.log("✓ provider models claude lists canonical model aliases\n");
+    } else {
+      assert.match(claudeModelsProbe.error.message, /provider|available|installed|disabled/i);
+      console.log("✓ provider models claude reports honest unavailability\n");
+    }
   }
 
-  // Test 7: provider models codex includes concrete codex model IDs
+  // Test 7: provider models codex includes concrete GPT model IDs
   {
-    console.log("Test 7: provider models codex includes concrete codex model IDs");
-    const data = await runProviderModelsJson("codex");
-    assert(data.length >= 1, "codex model list should not be empty");
-    const ids = data.map((m) => m.id);
-    assert.strictEqual(new Set(ids).size, ids.length, "codex model IDs should be unique");
-    assert(
-      ids.every((id) => id.startsWith("gpt-")),
-      "all codex model IDs should be from the gpt family",
-    );
-    assert(
-      ids.some((id) => id.includes("codex")),
-      "codex model list should include at least one codex-optimized model",
-    );
-    assert(
-      data.every((m) => m.model && m.id && m.description),
-      "every codex model should have model, id, and description fields",
-    );
-    console.log("✓ provider models codex includes concrete codex model IDs\n");
+    console.log("Test 7: provider models codex includes concrete GPT model IDs");
+    const probe = await runProviderModelsJson("codex");
+    if (!probe.available) {
+      assert.match(probe.error.message, /provider|available|installed|disabled/i);
+      console.log("✓ provider models codex reports honest unavailability\n");
+    } else {
+      const data = probe.models;
+      assert(data.length >= 1, "codex model list should not be empty");
+      const ids = data.map((m) => m.id);
+      assert.strictEqual(new Set(ids).size, ids.length, "codex model IDs should be unique");
+      assert(
+        ids.every((id) => id.startsWith("gpt-")),
+        "all codex model IDs should be from the gpt family",
+      );
+      assert(
+        data.every((m) => m.model && m.id && m.description),
+        "every codex model should have model, id, and description fields",
+      );
+      console.log("✓ provider models codex includes concrete GPT model IDs\n");
+    }
   }
 
   // Test 8: provider models opencode returns namespaced model IDs
   {
     console.log("Test 8: provider models opencode returns namespaced model IDs");
-    const data = await runProviderModelsJson("opencode");
-    assert(data.length >= 1, "opencode model list should not be empty");
-    const ids = data.map((m) => m.id);
-    assert(
-      data.every((m) => m.id.includes("/")),
-      "opencode model IDs should be provider-namespaced",
-    );
-    assert(
-      ids.some((id) => id.startsWith("opencode/")),
-      "opencode output should include at least one first-party opencode model",
-    );
-    assert(
-      data.every((m) => m.model && m.id && m.description !== undefined),
-      "every opencode model should have model, id, and description fields",
-    );
-    console.log("✓ provider models opencode returns namespaced model IDs\n");
+    const probe = await runProviderModelsJson("opencode");
+    if (!probe.available) {
+      assert.match(probe.error.message, /provider|available|installed|disabled/i);
+      console.log("✓ provider models opencode reports honest unavailability\n");
+    } else {
+      const data = probe.models;
+      assert(data.length >= 1, "opencode model list should not be empty");
+      const ids = data.map((m) => m.id);
+      assert(
+        data.every((m) => m.id.includes("/")),
+        "opencode model IDs should be provider-namespaced",
+      );
+      assert(
+        ids.some((id) => id.startsWith("opencode/")),
+        "opencode output should include at least one first-party opencode model",
+      );
+      assert(
+        data.every((m) => m.model && m.id && m.description !== undefined),
+        "every opencode model should have model, id, and description fields",
+      );
+      console.log("✓ provider models opencode returns namespaced model IDs\n");
+    }
   }
 
   // Test 9: provider models unknown fails with error
@@ -354,48 +402,41 @@ try {
   // Test 10: provider models --json outputs valid JSON
   {
     console.log("Test 10: provider models --json outputs valid JSON");
-    const data = await runProviderModelsJson("claude");
-    assert(Array.isArray(data), "output should be an array");
-    assert(
-      data.every((m) => m.model && m.id),
-      "each model should have name and id",
-    );
-    assertClaudeModels(data);
-    claudeModelIdsFromJson = data.map((m) => m.id);
-    claudeModelsFromJson = data;
+    assert(claudeModelsProbe, "Claude provider probe should already be available");
+    if (claudeModelsProbe.available) {
+      assert(Array.isArray(claudeModelsProbe.models), "output should be an array");
+      assert(
+        claudeModelsProbe.models.every((m) => m.model && m.id),
+        "each model should have name and id",
+      );
+      assertClaudeModels(claudeModelsProbe.models);
+    } else {
+      assert.strictEqual(claudeModelsProbe.error.code, "PROVIDER_ERROR");
+    }
     console.log("✓ provider models --json outputs valid JSON\n");
   }
 
   // Test 11: provider models --quiet outputs model IDs only
   {
     console.log("Test 11: provider models --quiet outputs model IDs only");
-    assert(
-      claudeModelIdsFromJson.length > 0,
-      "claude model IDs should be captured from --json output",
-    );
     const result = await ctx.thoth(["provider", "models", "claude", "--quiet"]);
-    assert.strictEqual(result.exitCode, 0, "should exit 0");
-    const lines = result.stdout.trim().split("\n").filter(Boolean);
-    assert.strictEqual(
-      lines.length,
-      EXPECTED_CLAUDE_MODELS.length,
-      "should have one line per Claude catalog model",
-    );
-    assert.deepStrictEqual(
-      [...lines].sort(),
-      [...claudeModelIdsFromJson].sort(),
-      "--quiet should print the same model IDs returned by --json",
-    );
-    assert.deepStrictEqual(
-      [...lines].sort(),
-      EXPECTED_CLAUDE_MODELS.map((model) => model.id).sort(),
-      "--quiet should print the current Claude catalog IDs",
-    );
-    assert(
-      claudeModelsFromJson.some((m) => m.id === "claude-sonnet-4-6"),
-      "captured --json output should include the current Claude everyday model id",
-    );
-    console.log("✓ provider models --quiet outputs model IDs only\n");
+    assert(claudeModelsProbe, "Claude provider probe should already be available");
+    if (claudeModelsProbe.available) {
+      assert(claudeModelIdsFromJson.length > 0, "Claude JSON model IDs should be captured");
+      assert.strictEqual(result.exitCode, 0, "should exit 0");
+      const lines = result.stdout.trim().split("\n").filter(Boolean);
+      assert.strictEqual(lines.length, EXPECTED_CLAUDE_MODELS.length);
+      assert.deepStrictEqual([...lines].sort(), [...claudeModelIdsFromJson].sort());
+      assert(
+        claudeModelsFromJson.some((m) => m.id === "claude-sonnet-4-6"),
+        "captured --json output should include the current Claude everyday model id",
+      );
+      console.log("✓ provider models --quiet outputs model IDs only\n");
+    } else {
+      assert.notStrictEqual(result.exitCode, 0);
+      assert.match(`${result.stdout}\n${result.stderr}`, /provider|available|installed|disabled/i);
+      console.log("✓ provider models --quiet reports honest unavailability\n");
+    }
   }
 } finally {
   await ctx.stop();

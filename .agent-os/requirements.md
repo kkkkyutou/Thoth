@@ -15,7 +15,7 @@
 7. `NTH-REQ-007`: Use OpenTUI for the TUI shell.
 8. `NTH-REQ-008`: Use a TypeScript / Node monorepo for the new runtime. The new core must not use Python as the main product runtime.
 9. `NTH-REQ-009`: Preserve archived plugin history through archive release and archive branch, not through legacy code in the active working tree.
-10. `NTH-REQ-010`: After runnable surfaces exist, provide a Paseo-like release and packaging pipeline based on explicit release tags and GitHub Actions. It should produce desktop installers, Android APK artifacts and deployable web/relay surfaces, while treating iOS distribution as a TestFlight/App Store/EAS submit path rather than ordinary IPA self-install.
+10. `NTH-REQ-010`: Provide an explicit GitHub Actions release and packaging pipeline. Under `NTH-CD-056`, the current MVP trigger is a push to the dedicated `release/mvp-actions` branch and replaces only the fixed `v0.0.0-mvp-beta` prerelease after every build passes. It produces desktop installers, a signed Android APK and a GitHub-hosted server CLI tgz without npm publication or iOS self-install claims; production web/relay deploy and iOS distribution remain separate decisions.
 11. `NTH-REQ-011`: Keep Thoth as a control plane, not a harness or direct LLM client. All AI execution must occur through configured provider sessions via ACP, harness runtime, app-server, official harness SDK/control surface or local harness CLI.
 12. `NTH-REQ-012`: Keep semantic routing provider-backed or user-selected. The product exposes explicit controls for `Quick` versus `Loop`, clarification strength and loop strength, but Thoth core/daemon must not classify natural-language intent with local heuristic rules.
 13. `NTH-REQ-013`: Use the locked chatbox composer controls: `+`, Provider, Mode, Clarify and Loop. Provider owns model/runtime/permission/fast settings; Clarify has five levels: `auto`, `Don't Bother Me`, `light`, `Balanced`, `deep`; Loop has five levels: `auto`, `One Plan, One Do`, `light`, `balanced`, `Run Until Stopped`; `Run Until Stopped` must be visually high-risk, high-cost and manually stopped.
@@ -29,11 +29,11 @@
 
 1. `NTH-AC-001`: The active working tree no longer contains archived Python runtime, plugin projection, dashboard template, Textual TUI or old tests.
 2. `NTH-AC-002`: The active working tree contains exactly the 10 approved package skeletons under `packages/`.
-3. `NTH-AC-003`: Root and package metadata use `AGPL-3.0-or-later`, package version `0.0.0`, and `npm workspaces`.
+3. `NTH-AC-003`: Root and package metadata use `AGPL-3.0-or-later`, the current decision-locked package version `0.0.0-mvp-beta`, and `npm workspaces`.
 4. `NTH-AC-004`: The recovery path from `AGENTS.md` to `.agent-os/project-index.md` to `.agent-os/todo.md` can explain the current Thoth state without the chat transcript.
 5. `NTH-AC-005`: The canonical design set is present under `.agent-os/designs/`.
 6. `NTH-AC-006`: The archived plugin release and branch are documented for traceability.
-7. `NTH-AC-007`: No document claims the current checkout provides a runnable Thoth product.
+7. `NTH-AC-007`: Claims about runnable Thoth surfaces are backed by current build, test, packaging or release evidence and clearly distinguish local development, MVP beta and archived plugin paths.
 8. `NTH-AC-008`: `npm run check:foundation` passes through repo validation, formatting, foundation lint, foundation build, foundation typecheck and foundation tests.
 9. `NTH-AC-009`: `npm run package:android:debug-apk` produces a real local Debug APK and records its absolute path, sha256 and byte size without committing the APK or generated native project.
 10. `NTH-AC-010`: Root plus all 10 packages have local `AGENTS.md` files, and every `CLAUDE.md` is a symlink to the matching `AGENTS.md`.
@@ -43,7 +43,7 @@
 ## Hard Constraints
 
 1. Do not push unless explicitly requested.
-2. Do not touch `main`, archive branches, release tags, GitHub release assets or marketplace installs in this reset.
+2. Do not touch `main`, archive branches, marketplace installs or any release/tag outside the narrowly authorized `v0.0.0-mvp-beta` replacement flow in `NTH-CD-056`.
 3. Do not reintroduce archived plugin runtime compatibility.
 4. Do not add fake build/test/typecheck scripts before implementation exists.
 5. Do not add a new package outside the approved 10 packages without a tracked decision.

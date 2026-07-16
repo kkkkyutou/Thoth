@@ -1,6 +1,6 @@
 {
   "name": "thoth",
-  "version": "0.0.0",
+  "version": "0.0.0-mvp-beta",
   "private": true,
   "description": "Thoth task control-plane monorepo skeleton",
   "license": "AGPL-3.0-or-later",
@@ -10,6 +10,7 @@
   ],
   "type": "module",
   "scripts": {
+    "check:mvp-release-contract": "node scripts/mvp-release-contract.mjs",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint",
@@ -22,6 +23,8 @@
     "build:client": "npm run build:relay && npm run build:protocol && npm run build --workspace=@thoth/client",
     "build:daemon": "npm run build:client && npm run build --workspace=@thoth/daemon",
     "build:cli": "npm run build:daemon && npm run build --workspace=@thoth/cli",
+    "cli": "node packages/cli/bin/thoth",
+    "build:release-runtime": "npm --prefix packages/app/highlight run build && npm run build --workspace=@thoth/protocol && npm run build --workspace=@thoth/relay && npm run build --workspace=@thoth/client && npm run build --workspace=@thoth/drivers && npm run build --workspace=@thoth/tui && npm run build --workspace=@thoth/daemon && npm run build --workspace=@thoth/cli",
     "build:app-deps": "npm run build:highlight && npm run build:relay && npm run build:protocol && npm run build:client",
     "build:web": "npm --workspace=@thoth/app run build:web",
     "serve:web": "node scripts/serve-static.mjs packages/app/dist",
@@ -65,6 +68,8 @@
     "doctor:android": "node scripts/doctor-android.mjs",
     "setup:android-toolchain": "node scripts/setup-android-toolchain.mjs",
     "package:android:debug-apk": "node scripts/package-android-debug-apk.mjs",
+    "package:android:release-apk": "node scripts/package-android-release-apk.mjs",
+    "package:server-cli": "node scripts/package-server-cli.mjs",
     "package:desktop:linux-appimage": "npm run build:linux-appimage --workspace=@thoth/desktop",
     "package:ios:prebuild": "node scripts/package-ios-build.mjs --prebuild",
     "package:ios:build": "node scripts/package-ios-build.mjs --build",
@@ -76,7 +81,8 @@
     "oxfmt": "0.46.0",
     "oxlint": "1.61.0",
     "typescript": "5.9.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "yaml": "^2.8.4"
   },
   "packageManager": "npm@11.9.0"
 }

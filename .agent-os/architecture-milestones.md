@@ -144,7 +144,7 @@ Acceptance:
 1. No tracked `_paseo` paths remain.
 2. Formal `packages/*` source trees contain the promoted implementation substrate.
 3. Root workspace boundary remains `packages/*` with exactly 10 formal packages.
-4. Formal packages keep `@thoth/*`, `private: true`, `AGPL-3.0-or-later` and version `0.0.0`.
+4. Formal packages keep `@thoth/*`, `private: true` and `AGPL-3.0-or-later`. This milestone's original `0.0.0` substrate version was superseded by the decision-locked `0.0.0-mvp-beta` release version in `NTH-CD-056`.
 5. `packages/app/highlight` remains nested and does not become an 11th workspace package.
 6. Expected broken compile state is documented.
 

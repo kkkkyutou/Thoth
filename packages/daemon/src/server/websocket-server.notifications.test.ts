@@ -116,6 +116,7 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     undefined,
     createStub<FileBackedChatService>({}),
     createStub<LoopService>({}),
+    undefined,
     createStub<ScheduleService>({}),
     createStub<CheckoutDiffManager>({
       subscribe: vi.fn(),

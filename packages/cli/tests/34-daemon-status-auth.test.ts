@@ -3,7 +3,7 @@
 import assert from "node:assert";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createTestThothDaemon } from "../../server/src/server/test-utils/thoth-daemon.ts";
+import { createTestThothDaemon } from "../../daemon/src/server/test-utils/thoth-daemon.ts";
 import { runLocalThoth } from "./helpers/local-cli.ts";
 
 console.log("=== Daemon Status Auth ===\n");

@@ -647,3 +647,28 @@ Retry condition:
 For every internal timeline surface, test the full sequence after snapshot load: live reasoning, tool running and
 completed, permission requested and resolved, turn terminal events, phase switch, disconnect cleanup and absence
 from `listAgents()`. A visible snapshot or a Provider-side success receipt alone is insufficient UI acceptance.
+
+## `NTH-EXP-025` Live Relay Gates Must Subscribe Before Causing The Event
+
+Observed on `2026-07-16`:
+
+1. The hosted Relay v3 health endpoint remained green, but the encrypted live test intermittently timed out
+   waiting for `connected`.
+2. The test created and opened the client WebSocket before attaching the server-control listener. Relay correctly
+   emitted `connected` during the client handshake, so a fast path could permanently lose the event. The same
+   send-before-listen race existed for hello and encrypted payload receipts.
+3. This host also has no usable IPv6 route. DNS rotation caused direct `ws` attempts to alternate between valid
+   IPv4 and guaranteed-failing IPv6 even while HTTPS and explicit IPv4 WebSocket probes succeeded.
+
+Conclusion:
+
+For causal stream assertions, install the observer before triggering the action and accept both incremental
+events and protocol snapshot/sync forms. Hosted endpoint tests should bound retries and handshake time, and may
+pin a transport family when the test host has a known unavailable route; they must still complete a real
+authenticated, encrypted bidirectional exchange rather than degrade to a health probe.
+
+Retry condition:
+
+Whenever Relay connection sequencing changes, run the hosted encrypted E2E repeatedly. Acceptance requires a
+pre-armed control listener, pre-armed payload listeners, listener/timeout cleanup, real Relay v3 token auth and
+successful decryption in both directions. A single HTTP 200 or one lucky WebSocket run is insufficient.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { WebSocket } from "ws";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   generateKeyPair,
   exportPublicKey,
@@ -13,14 +13,17 @@ import {
 // This live test uses the hosted relay's real TLS endpoint. Self-hosted relay TLS
 // opt-in is covered at URL-building/integration level so the local E2E does not
 // need to provision trusted certificates.
-const RELAY_BASE_URL = "wss://relay.thoth.seeles.ai";
-const serverToken = "rst_abcdefghijklmnopqrstuvwxyz123456";
-const pairingToken = "rpt_abcdefghijklmnopqrstuvwxyz123456";
-const deviceToken = "rdt_abcdefghijklmnopqrstuvwxyz123456";
+const RELAY_BASE_URL = process.env.THOTH_RELAY_LIVE_URL ?? "wss://relay.test.thoth.seeles.ai";
+const randomToken = (prefix: string) => `${prefix}_${randomBytes(24).toString("base64url")}`;
+const serverToken = randomToken("rst");
+const pairingToken = randomToken("rpt");
+const deviceToken = randomToken("rdt");
 
 const tokenProtocols = (token: string) => ["thoth.relay.v3", `thoth.relay.token.${token}`];
 const sha256 = (token: string) => createHash("sha256").update(token, "utf8").digest("hex");
 const futureIso = () => new Date(Date.now() + 60_000).toISOString();
+const openRelayWebSocket = (url: string, token: string) =>
+  new WebSocket(url, tokenProtocols(token), { family: 4, handshakeTimeout: 10_000 });
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -44,16 +47,21 @@ async function withRetry<T>(
 
 function waitOpen(ws: WebSocket, label: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error(`Timed out opening ${label} websocket`)),
-      10_000,
-    );
-    const onOpen = () => {
+    const cleanup = () => {
       clearTimeout(timeout);
+      ws.off("open", onOpen);
+      ws.off("error", onError);
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out opening ${label} websocket`));
+    }, 10_000);
+    const onOpen = () => {
+      cleanup();
       resolve();
     };
     const onError = (err: Error) => {
-      clearTimeout(timeout);
+      cleanup();
       reject(err);
     };
     ws.once("open", onOpen);
@@ -63,12 +71,24 @@ function waitOpen(ws: WebSocket, label: string): Promise<void> {
 
 function waitForConnected(ws: WebSocket, connectionId: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Timed out waiting for connected")), 10_000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      ws.off("message", onMessage);
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out waiting for connected"));
+    }, 10_000);
     const onMessage = (raw: WebSocket.RawData) => {
       try {
         const msg = JSON.parse(raw.toString());
-        if (msg && msg.type === "connected" && msg.connectionId === connectionId) {
-          clearTimeout(timeout);
+        const isConnected = msg?.type === "connected" && msg.connectionId === connectionId;
+        const isInSync =
+          msg?.type === "sync" &&
+          Array.isArray(msg.connectionIds) &&
+          msg.connectionIds.includes(connectionId);
+        if (isConnected || isInSync) {
+          cleanup();
           resolve();
         }
       } catch {
@@ -85,9 +105,16 @@ function waitForOnceMessage<T extends "string" | "buffer">(
   timeoutError: string,
 ): Promise<T extends "string" ? string : Buffer> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(timeoutError)), 10_000);
-    const onMessage = (data: WebSocket.RawData) => {
+    const cleanup = () => {
       clearTimeout(timeout);
+      ws.off("message", onMessage);
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(timeoutError));
+    }, 10_000);
+    const onMessage = (data: WebSocket.RawData) => {
+      cleanup();
       resolve(
         (mode === "string" ? data.toString() : (data as Buffer)) as T extends "string"
           ? string
@@ -111,10 +138,10 @@ async function registerRelayRoom(ws: WebSocket): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
 
-describe("Live relay (relay.thoth.seeles.ai) E2E", () => {
-  const liveIt = process.env.RUN_LIVE_RELAY_E2E === "1" ? it : it.skip;
+describe("Live Seele Relay v3 E2E", () => {
+  const liveIt = process.env.THOTH_RELAY_LIVE_E2E === "1" ? it : it.skip;
 
-  liveIt("bridges encrypted traffic end-to-end", { timeout: 45_000 }, async () => {
+  liveIt("bridges encrypted traffic end-to-end", { timeout: 120_000 }, async () => {
     await withRetry(
       async () => {
         const serverId = `srv_live_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -138,7 +165,7 @@ describe("Live relay (relay.thoth.seeles.ai) E2E", () => {
         const clientSharedKey = deriveSharedKey(clientKeyPair.secretKey, daemonPubKeyOnClient);
 
         // === Connect ===
-        const daemonControlWs = new WebSocket(serverControlUrl, tokenProtocols(serverToken));
+        const daemonControlWs = openRelayWebSocket(serverControlUrl, serverToken);
         let clientWs: WebSocket | null = null;
         let daemonWs: WebSocket | null = null;
 
@@ -146,22 +173,22 @@ describe("Live relay (relay.thoth.seeles.ai) E2E", () => {
           await waitOpen(daemonControlWs, "server-control");
           await registerRelayRoom(daemonControlWs);
 
-          clientWs = new WebSocket(clientUrl, tokenProtocols(pairingToken));
-          await waitOpen(clientWs, "client");
-          await waitForConnected(daemonControlWs, connectionId);
+          const waitForClientSeen = waitForConnected(daemonControlWs, connectionId);
+          clientWs = openRelayWebSocket(clientUrl, pairingToken);
+          await Promise.all([waitOpen(clientWs, "client"), waitForClientSeen]);
 
-          daemonWs = new WebSocket(serverDataUrl, tokenProtocols(serverToken));
+          daemonWs = openRelayWebSocket(serverDataUrl, serverToken);
           await waitOpen(daemonWs, "server-data");
 
           // === Handshake ===
           // Client sends hello with its public key (not encrypted).
-          clientWs.send(JSON.stringify({ type: "hello", key: clientPubKeyB64 }));
-
-          const daemonReceivedHello = await waitForOnceMessage(
+          const waitForHello = waitForOnceMessage(
             daemonWs,
             "string",
             "Timed out waiting for hello",
           );
+          clientWs.send(JSON.stringify({ type: "hello", key: clientPubKeyB64 }));
+          const daemonReceivedHello = await waitForHello;
 
           const hello = JSON.parse(daemonReceivedHello) as {
             type: string;
@@ -176,13 +203,13 @@ describe("Live relay (relay.thoth.seeles.ai) E2E", () => {
           // === Encrypted exchange ===
           const plaintextFromClient = "hello-from-client";
           const ciphertextFromClient = encrypt(clientSharedKey, plaintextFromClient);
-          clientWs.send(Buffer.from(ciphertextFromClient));
-
-          const daemonReceivedCiphertext = await waitForOnceMessage(
+          const waitForClientCiphertext = waitForOnceMessage(
             daemonWs,
             "buffer",
             "Timed out waiting for encrypted message",
           );
+          clientWs.send(Buffer.from(ciphertextFromClient));
+          const daemonReceivedCiphertext = await waitForClientCiphertext;
 
           const decryptedOnDaemon = decrypt(
             daemonSharedKey,
@@ -195,13 +222,13 @@ describe("Live relay (relay.thoth.seeles.ai) E2E", () => {
 
           const plaintextFromDaemon = "hello-from-daemon";
           const ciphertextFromDaemon = encrypt(daemonSharedKey, plaintextFromDaemon);
-          daemonWs.send(Buffer.from(ciphertextFromDaemon));
-
-          const clientReceivedCiphertext = await waitForOnceMessage(
+          const waitForDaemonCiphertext = waitForOnceMessage(
             clientWs,
             "buffer",
             "Timed out waiting for encrypted response",
           );
+          daemonWs.send(Buffer.from(ciphertextFromDaemon));
+          const clientReceivedCiphertext = await waitForDaemonCiphertext;
 
           const decryptedOnClient = decrypt(
             clientSharedKey,
@@ -217,7 +244,7 @@ describe("Live relay (relay.thoth.seeles.ai) E2E", () => {
           clientWs?.close();
         }
       },
-      { retries: 2, delayMs: 250 },
+      { retries: 4, delayMs: 1_000 },
     );
   });
 });

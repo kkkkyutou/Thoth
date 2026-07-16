@@ -1,6 +1,47 @@
 # Packaging
 
-This document describes local packaging flows. It does not authorize release, push, tag creation, cloud deploys or store submission.
+This document describes local and MVP beta packaging flows. Packaging commands alone do not
+authorize push, tag creation, Release mutation, cloud deploys or store submission; the explicit MVP
+authorization and branch policy are recorded in [`release.md`](release.md).
+
+## MVP Beta Artifact Contract
+
+The fixed MVP version is `0.0.0-mvp-beta`. The `release/mvp-actions` workflow builds:
+
+- macOS arm64/x64 DMG and ZIP packages
+- Windows arm64/x64 NSIS and ZIP packages
+- Linux x64 AppImage, DEB, RPM and tar.gz packages
+- one universal signed Android Release APK
+- `thoth-server-cli-0.0.0-mvp-beta.tgz`
+- Electron updater manifests and `SHA256SUMS`
+
+Run the local release-contract check before packaging:
+
+```bash
+npm run check:mvp-release-contract
+```
+
+It verifies every workspace version, exact internal semver dependency, private-package policy,
+lockfile consistency and the absence of internal `file:` dependencies.
+
+## Server CLI Bundle
+
+Build the server CLI GitHub Release bundle:
+
+```bash
+npm run package:server-cli
+```
+
+The default output is ignored under `.dev/release-artifacts/`. The archive embeds the runtime
+`@thoth/*` packages and Clarify/Loop `SKILL.md` assets, while the target machine installs
+platform-appropriate third-party dependencies through npm. It requires Node.js `>=24.14.0` and is
+not published to the npm registry.
+
+Release installation command:
+
+```bash
+npm install -g https://github.com/SeeleAI/Thoth/releases/download/v0.0.0-mvp-beta/thoth-server-cli-0.0.0-mvp-beta.tgz
+```
 
 ## Android Debug APK
 
@@ -40,6 +81,30 @@ Current verified debug artifact from the runtime isolation run:
 - Bytes: `302700513`
 - Package: `sh.thoth.debug`
 - Permission check: does not request `android.permission.RECORD_AUDIO`
+
+## Android MVP Release APK
+
+Build the production-identity universal APK with:
+
+```bash
+npm run package:android:release-apk
+```
+
+Required environment variables are `THOTH_ANDROID_KEYSTORE_PATH`,
+`THOTH_ANDROID_KEYSTORE_PASSWORD`, `THOTH_ANDROID_KEY_ALIAS` and
+`THOTH_ANDROID_KEY_PASSWORD`. Production packaging fails when any value is absent and never falls
+back to the public debug key. The local fixed MVP key is kept only under ignored
+`.dev/release-keys/`; GitHub Actions receives it through repository secrets.
+
+The Release APK contract is:
+
+- package id `sh.thoth`
+- version name `0.0.0-mvp-beta`
+- universal ABI support
+- APK Signature Scheme v2 or newer
+- no `android.permission.RECORD_AUDIO`
+- no `android.permission.SYSTEM_ALERT_WINDOW`
+- no Expo development launcher or EAS OTA project binding
 
 ## iOS
 
@@ -110,11 +175,24 @@ Linux AppImage command:
 npm run package:desktop:linux-appimage
 ```
 
+The cross-platform MVP workflow uses `packages/desktop/electron-builder.mvp.yml` through:
+
+```bash
+npm --workspace=@thoth/desktop run build:mvp -- --publish never <platform targets>
+```
+
+Native GitHub-hosted runners build each platform. macOS uses ad-hoc/unsigned output with
+notarization disabled; Windows disables certificate auto-discovery; Linux builds on Ubuntu. MVP
+desktop artifacts may therefore trigger Gatekeeper or SmartScreen warnings. Signing and
+notarization can be added in a later release decision without changing the current package version
+contract.
+
 Current verified local artifact:
 
 - Path: `/mnt/cfs/5vr0p6/yzy/thoth/packages/desktop/release/Thoth-x86_64.AppImage`
-- sha256: `6fc25b0f92cf930b5f7e43d6eb11de8a466cc54f881e8fcbb832f288acd1fd43`
-- Bytes: `131375945`
+- sha256: `e44d33da8d40c6c9315c10386583c73a86d5a84ffa641c315297e5cde030eed3`
+- Bytes: `139651259`
+- Version: `0.0.0-mvp-beta`
 - Packaged smoke: passed with an isolated desktop-managed daemon on a temporary port
 
 `packages/desktop/release/` is local artifact output and must not be committed.
@@ -122,6 +200,9 @@ Current verified local artifact:
 ## Runtime Isolation Packaging Rule
 
 Packaged desktop smoke, Android debug builds and web preview must not stop or reuse the reserved local legacy daemon on `127.0.0.1:6767`. Thoth direct daemon defaults to `127.0.0.1:6688`; packaged smoke should use an isolated temporary home and port when it launches a managed daemon.
+
+All MVP surfaces default to Relay v3 at `relay.test.thoth.seeles.ai:443` with TLS. Packaging must not
+add a localhost, legacy daemon or inactive production-domain fallback.
 
 ## Voice/Audio Policy
 

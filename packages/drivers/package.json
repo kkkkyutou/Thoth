@@ -1,6 +1,6 @@
 {
   "name": "@thoth/drivers",
-  "version": "0.0.0",
+  "version": "0.0.0-mvp-beta",
   "private": true,
   "description": "Harness driver adapters for Thoth",
   "license": "AGPL-3.0-or-later",
@@ -21,7 +21,7 @@
   },
   "scripts": {
     "clean": "node ../../scripts/clean-package-dist.mjs",
-    "build": "tsc -p tsconfig.json --incremental false",
+    "build": "tsc -p tsconfig.json --incremental false && node scripts/copy-runtime-skills.mjs",
     "build:clean": "npm run clean && npm run build",
     "prepack": "npm run build:clean",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -29,7 +29,7 @@
     "eval:clarify": "node dist/clarify/eval.js"
   },
   "dependencies": {
-    "@thoth/protocol": "file:../protocol"
+    "@thoth/protocol": "0.0.0-mvp-beta"
   },
   "devDependencies": {
     "@types/node": "^20.9.0",

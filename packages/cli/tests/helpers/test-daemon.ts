@@ -228,12 +228,12 @@ export async function startTestDaemon(options?: {
 
   const wsUrl = `ws://${TEST_DAEMON_HOST}:${port}`;
 
-  // Find the CLI entry point - use the source file directly with tsx
+  // The suite builds the complete CLI stack before running tests. Exercise that
+  // exact compiled entry instead of recompiling source through nested npx calls.
   const cliDir = join(import.meta.dirname, "..", "..");
-  const cliSrcPath = join(cliDir, "src", "index.ts");
+  const cliEntryPath = join(cliDir, "dist", "index.js");
 
-  // Start daemon process using tsx to run TypeScript directly
-  const daemonProcess = spawn("npx", ["tsx", cliSrcPath, "daemon", "start", "--foreground"], {
+  const daemonProcess = spawn(process.execPath, [cliEntryPath, "daemon", "start", "--foreground"], {
     env: {
       ...process.env,
       ...TEST_DAEMON_ENV_DEFAULTS,
@@ -342,10 +342,10 @@ export async function runThothCli(
   const cwd = options?.cwd ?? ctx.workDir;
 
   const cliDir = join(import.meta.dirname, "..", "..");
-  const cliSrcPath = join(cliDir, "src", "index.ts");
+  const cliEntryPath = join(cliDir, "dist", "index.js");
 
   return new Promise((resolve, reject) => {
-    const proc = spawn("npx", ["tsx", cliSrcPath, ...args], {
+    const proc = spawn(process.execPath, [cliEntryPath, ...args], {
       env: {
         ...process.env,
         ...TEST_DAEMON_ENV_DEFAULTS,

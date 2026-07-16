@@ -27,6 +27,31 @@ function getStaticProviders(): ProviderListItem[] {
   return PROVIDERS;
 }
 
+function providerSnapshotEntryToListItem(entry: ProviderSnapshotEntry): ProviderListItem {
+  return {
+    provider: entry.provider,
+    label: entry.label ?? entry.provider,
+    status: entry.status === "ready" ? "available" : entry.status,
+    enabled: !entry.enabled ? "Disabled" : "Enabled",
+    defaultMode: entry.defaultModeId ?? "default",
+    modes: (entry.modes ?? []).map((mode) => mode.label).join(", "),
+  };
+}
+
+function mergeProviderSnapshot(entries: ProviderSnapshotEntry[]): ProviderListItem[] {
+  const snapshotRows = new Map(
+    entries.map((entry) => [entry.provider, providerSnapshotEntryToListItem(entry)]),
+  );
+  const rows = PROVIDERS.map((provider) => snapshotRows.get(provider.provider) ?? provider);
+  const knownProviders = new Set(PROVIDERS.map((provider) => provider.provider));
+  for (const entry of entries) {
+    if (!knownProviders.has(entry.provider)) {
+      rows.push(providerSnapshotEntryToListItem(entry));
+    }
+  }
+  return rows;
+}
+
 /** Schema for provider ls output */
 export const providerLsSchema: OutputSchema<ProviderListItem> = {
   idField: "provider",
@@ -73,14 +98,7 @@ export async function runLsCommand(
     const snapshot = await client.getProvidersSnapshot();
     return {
       type: "list",
-      data: snapshot.entries.map((entry) => ({
-        provider: entry.provider,
-        label: entry.label ?? entry.provider,
-        status: entry.status === "ready" ? "available" : entry.status,
-        enabled: !entry.enabled ? "Disabled" : "Enabled",
-        defaultMode: entry.defaultModeId ?? "default",
-        modes: (entry.modes ?? []).map((mode) => mode.label).join(", "),
-      })),
+      data: mergeProviderSnapshot(snapshot.entries),
       schema: providerLsSchema,
     };
   } catch {

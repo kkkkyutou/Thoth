@@ -25,7 +25,7 @@ export interface DesktopSettingsPatch {
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
-  releaseChannel: "stable",
+  releaseChannel: "beta",
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: true,

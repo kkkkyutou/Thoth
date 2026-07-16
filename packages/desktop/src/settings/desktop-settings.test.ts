@@ -80,7 +80,7 @@ describe("desktop-settings", () => {
     const settings = await store.get();
 
     expect(settings).toEqual({
-      releaseChannel: "stable",
+      releaseChannel: "beta",
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
@@ -131,7 +131,7 @@ describe("desktop-settings", () => {
 
     expect(patched.daemon.manageBuiltInDaemon).toBe(false);
     expect(migrated.daemon.manageBuiltInDaemon).toBe(false);
-    expect(migrated.releaseChannel).toBe("stable");
+    expect(migrated.releaseChannel).toBe("beta");
     expect(persisted.migrations.legacyRendererSettingsImported).toBe(true);
     expect(persisted.settings.daemon.manageBuiltInDaemon).toBe(false);
   });

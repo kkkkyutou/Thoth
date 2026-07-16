@@ -102,10 +102,19 @@ describe("desktop packaging", () => {
     const deps = pkg.dependencies ?? {};
 
     for (const required of ["@thoth/cli", "@thoth/daemon"]) {
-      expect(deps[required], `${required} must be declared in dependencies`).toMatch(
-        /^(\*|file:\.\.\/)/,
-      );
+      expect(deps[required], `${required} must be declared in dependencies`).toBe("0.0.0-mvp-beta");
     }
+  });
+
+  it("targets the SeeleAI release repository and keeps MVP signing opt-in", () => {
+    const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
+    const mvpConfig = readFileSync(join(packageRoot, "electron-builder.mvp.yml"), "utf8");
+
+    expect(config).toContain("owner: SeeleAI");
+    expect(config).toContain("repo: Thoth");
+    expect(config).not.toContain("from: ../../skills");
+    expect(mvpConfig).toContain("identity: null");
+    expect(mvpConfig).toContain("notarize: false");
   });
 
   it("launches the packaged macOS CLI through Helper instead of the main app executable", () => {

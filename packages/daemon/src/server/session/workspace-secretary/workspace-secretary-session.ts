@@ -81,6 +81,7 @@ interface WorkspaceSecretaryHost {
 
 interface WorkspaceSecretarySessionOptions {
   host: WorkspaceSecretaryHost;
+  thothHome?: string;
   agentManager: AgentManager;
   daemonConfigStore: DaemonConfigStore;
   agentStorage?: AgentStorage;
@@ -1845,7 +1846,10 @@ export class WorkspaceSecretarySession {
 
   constructor(private readonly options: WorkspaceSecretarySessionOptions) {
     configureRuntimeAuthorityDecisionPersistence({
-      filePath: join(options.daemonConfigStore.getThothHome(), "runtime-authority-decisions.json"),
+      filePath: join(
+        options.thothHome ?? options.daemonConfigStore.getThothHome(),
+        "runtime-authority-decisions.json",
+      ),
     });
   }
 

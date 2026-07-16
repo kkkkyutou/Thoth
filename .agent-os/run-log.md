@@ -3211,3 +3211,35 @@ build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --c
   inspected. Both throwaway tasks are `stopped`; authority has no `running`, `queued` or `awaiting_provider` task.
 - Remaining: `NTH-TD-021` stays `doing` for real browser/device `budget_wait`, pause/resume/stop and daemon
   restart/reconnect restoration. This session closes only the viewed internal phase live permission/stream defect.
+
+## 2026-07-16 [MVP beta release automation local acceptance]
+
+- Worked on: `NTH-TD-007`, `NTH-CD-056`. Created the dedicated `release/mvp-actions` line from
+  `dd3a768a`, fixed every root/workspace/nested package at `0.0.0-mvp-beta`, replaced internal `file:`
+  dependencies with exact workspace semver and kept all packages private. The release workflow is branch-only,
+  serial, nine-job automation that builds native macOS/Windows/Linux desktop packages, one dedicated-key signed
+  Android APK, a GitHub-hosted server CLI tgz, updater manifests, source receipt and checksums before replacing
+  only `v0.0.0-mvp-beta`.
+- Packaging implementation: added a portable server CLI bundle that embeds built `@thoth/*` runtime packages
+  and Clarify/Loop skills while leaving third-party native dependencies for target npm installation; added
+  production Android signing injection that refuses missing release credentials; disabled commercial desktop
+  signing/notarization for the MVP; set updater channel to beta and all product defaults to Relay v3 TLS at
+  `relay.test.thoth.seeles.ai:443`.
+- Local artifacts: final CLI tgz is `1416295` bytes with SHA-256
+  `b76a84405128b8c381adf485978378b1315b574d70f6dffd2639e90da1887e59`; Android APK is `151915238`
+  bytes with SHA-256 `f5d03a6f7bb62ebf95577c42621c34308e4820e2905b36c589a70012adebe9da`, package `sh.thoth`,
+  APK Signature v2 and no microphone/overlay permission; Linux AppImage is `139651259` bytes with SHA-256
+  `e44d33da8d40c6c9315c10386583c73a86d5a84ffa641c315297e5cde030eed3`. The matching unpacked desktop
+  passed managed-daemon, bundled-CLI and terminal smoke. Local DEB/RPM assembly reached the external Electron
+  Builder `fpm` download and was stopped by a GitHub CDN timeout; native Actions remains the authority for those
+  two packages.
+- Verification: release contract, format, foundation, daemon/web builds, App `323/323` files and `2708/2708`
+  tests, daemon `229` passed files / `3165` passed tests, desktop `28` passed files / `196` passed tests and CLI
+  `40/40` E2E files all passed. The final tgz was installed globally in an isolated prefix and passed version,
+  runtime-skill, provider-catalog and daemon start/status/stop checks. Hosted Relay v3 encrypted traffic passed
+  repeatedly after fixing a real listener-order race and isolating the live test from this host's unavailable
+  IPv6 route.
+- Remaining release authority: no GitHub branch, tag, Secret or Release mutation is claimed by this local entry.
+  Royalvice repo-local authentication, guarded branch pushes, all native Actions jobs, downloaded-asset
+  revalidation and proof that `main`/archive releases stayed unchanged remain required before `NTH-TD-007` can
+  become verified.

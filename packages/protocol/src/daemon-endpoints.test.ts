@@ -182,7 +182,7 @@ describe("relay websocket URLs", () => {
 
 describe("shouldUseTlsForDefaultHostedRelay", () => {
   test("returns true for the hosted Thoth relay on port 443", () => {
-    expect(shouldUseTlsForDefaultHostedRelay("relay.thoth.seeles.ai:443")).toBe(true);
+    expect(shouldUseTlsForDefaultHostedRelay("relay.test.thoth.seeles.ai:443")).toBe(true);
   });
 
   test("returns false for non-seeles relays even on port 443", () => {

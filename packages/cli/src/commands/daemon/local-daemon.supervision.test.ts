@@ -39,7 +39,7 @@ class FakeDaemonRuntime implements DaemonLaunchRuntime {
   readonly recordedLaunches: RecordedDaemonLaunch[] = [];
   readonly daemonProcess = new FakeDaemonProcess();
   foregroundStatus = 0;
-  runnerEntry = "/repo/packages/server/scripts/supervisor-entrypoint.ts";
+  runnerEntry = "/repo/packages/daemon/scripts/supervisor-entrypoint.ts";
 
   resolveRunnerEntry(): string {
     return this.runnerEntry;

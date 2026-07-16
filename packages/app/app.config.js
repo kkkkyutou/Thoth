@@ -60,7 +60,7 @@ export default {
       policy: "appVersion",
     },
     updates: {
-      url: "https://u.expo.dev/0e7f65ce-0367-46c8-a238-2b65963d235a",
+      enabled: false,
     },
     ios: {
       supportsTablet: true,
@@ -83,7 +83,10 @@ export default {
       // Allow HTTP connections for local network hosts (required for release builds)
       usesCleartextTraffic: true,
       permissions: ["CAMERA", "android.permission.CAMERA"],
-      blockedPermissions: ["android.permission.RECORD_AUDIO"],
+      blockedPermissions: [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+      ],
       package: variant.packageId,
       ...(variant.googleServicesFile ? { googleServicesFile: variant.googleServicesFile } : {}),
     },
@@ -96,6 +99,7 @@ export default {
     },
     plugins: [
       "expo-router",
+      "./plugins/with-thoth-android-release-signing.cjs",
       [
         "expo-camera",
         {
@@ -140,10 +144,6 @@ export default {
     },
     extra: {
       router: {},
-      eas: {
-        projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a",
-      },
     },
-    owner: "thoth",
   },
 };

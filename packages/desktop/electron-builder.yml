@@ -19,12 +19,10 @@ asarUnpack:
 extraResources:
   - from: ../app/dist
     to: app-dist
-  - from: ../../skills
-    to: skills
 publish:
   provider: github
-  owner: thoth
-  repo: thoth
+  owner: SeeleAI
+  repo: Thoth
 mac:
   artifactName: "Thoth-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools
@@ -43,7 +41,7 @@ linux:
   category: Development
   icon: assets
   artifactName: "Thoth-${version}-${arch}.${ext}"
-  maintainer: "Mohamed Boudra <hello@moboudra.com>"
+  maintainer: "SeeleAI <viceyzy@foxmail.com>"
   vendor: "Thoth"
   extraResources:
     - from: bin/thoth

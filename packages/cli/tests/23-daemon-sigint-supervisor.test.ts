@@ -135,7 +135,7 @@ try {
 
   supervisorProcess = spawn(
     process.execPath,
-    ["--import", "tsx", "../server/scripts/supervisor-entrypoint.ts", "--dev"],
+    ["--import", "tsx", "../daemon/scripts/supervisor-entrypoint.ts", "--dev"],
     {
       cwd: cliRoot,
       env: {

@@ -672,7 +672,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
   const runtimeTools = toolCallerConfig
     ? readThothRuntimeToolsConfig(toolCallerConfig, {
         legacyLoopScope:
-          initialToolCallerAgent?.labels.loopPhase === "review" ? "loop_review" : "loop_planexec",
+          initialToolCallerAgent?.labels?.loopPhase === "review" ? "loop_review" : "loop_planexec",
       })
     : null;
   const enableClarifyRuntimeTools = runtimeTools?.scope === "clarify";

@@ -30,7 +30,10 @@ async function waitForLoopInList(
 
 console.log("=== Loop And Schedule Command Tests ===\n");
 
-const ctx = await createE2ETestContext({ timeout: 30000 });
+const ctx = await createE2ETestContext({
+  timeout: 30000,
+  env: { THOTH_NODE_ENV: "development" },
+});
 
 try {
   {
@@ -153,8 +156,14 @@ try {
         "Return any response",
         "--name",
         "smoke-loop",
+        "--provider",
+        "mock",
+        "--model",
+        "ten-second-stream",
         "--verify-check",
         "true",
+        "--max-iterations",
+        "1",
         "--json",
       ],
       { timeout: 30000 },

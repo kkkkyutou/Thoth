@@ -171,12 +171,12 @@ describe("loadSettingsFromStorage", () => {
     expect(result).toEqual(DEFAULT_APP_SETTINGS);
   });
 
-  it("defaults release channel to stable when storage is empty", async () => {
+  it("defaults the MVP release channel to beta when storage is empty", async () => {
     const deps = makeDeps();
 
     const result = await loadSettingsFromStorage(deps);
 
-    expect(result.releaseChannel).toBe("stable");
+    expect(result.releaseChannel).toBe("beta");
   });
 
   it("ignores renderer-owned daemon management state outside Electron", async () => {
@@ -200,13 +200,13 @@ describe("loadSettingsFromStorage", () => {
   it("ignores renderer-owned release channel outside Electron", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ releaseChannel: "beta" }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ releaseChannel: "stable" }),
       }),
     });
 
     const result = await loadSettingsFromStorage(deps);
 
-    expect(result.releaseChannel).toBe("stable");
+    expect(result.releaseChannel).toBe("beta");
   });
 
   it("migrates legacy desktop-owned settings through the bridge before reading effective settings", async () => {
