@@ -408,20 +408,21 @@ Constraints:
 3. Frozen Clarify decisions are not repeatedly pushed back to the user.
 4. Missing execution details use frozen contract or recommended defaults and are recorded.
 5. Review is independent and cannot modify workspace.
-6. Review judges evidence against acceptance, not merely whether tests ran.
-7. Retry must change strategy and avoid repeating the failed approach.
-8. Daemon handles orchestration, repair, permission gate, evidence landing and recovery.
-9. Skill quality is judged from golden Loop transcripts, not from command execution or packet validity alone.
-10. The main development session must use an independent `codex exec` judge to review PlanExec, Review and retry behavior against frozen contracts.
+6. Review judges the approved human task against reality, not merely whether tests ran, fields were filled or PlanExec says the acceptance is met.
+7. Review must independently challenge the current route and may require abandoning a locally plausible but conceptually wrong incremental approach.
+8. Retry must follow a new Review Direction Memo and avoid repeating the failed approach.
+9. Daemon handles orchestration, repair, permission gate, evidence landing, recovery and all phase/budget/receipt mechanics; those mechanics do not enter Agent Harness cognitive context.
+10. Skill quality is judged from golden Loop transcripts, not from command execution, packet validity or schema completeness alone.
+11. The main development session must use an independent `codex exec` judge to review PlanExec, Review and retry behavior against frozen contracts, independent diagnosis and next-direction quality.
 
 Acceptance:
 
 1. `thoth.loop` skill/prompt contract exists.
 2. PlanExec, Review and retry/non-repetition rubrics exist.
-3. Loop golden data records frozen contracts, expected behavior, forbidden strategies and evidence requirements for success, permission, review, retry, blocked and done cases.
-4. Harness covers single-goal success, multi-goal current-goal isolation, permission request, defaulting from frozen contract, Review pass, Review fail, retry strategy change, Review cannot modify workspace, task blocked and task done evidence summary.
-5. Independent `codex exec` judge evidence reviews golden transcripts for frozen-contract compliance, acceptance-based review, non-repeating retry and user cognitive burden.
-6. Final evidence shows background agent does more than run commands: it advances under contract, verifies, changes strategy after failure and leaves reviewable evidence.
+3. Loop golden data records frozen contracts, observable work, expected reasoning behavior, forbidden strategies and evidence requirements for success, permission, Review, retry, blocked and done cases; it does not make daemon state fields the expected Review output.
+4. Harness covers single-goal success, multi-goal current-goal isolation, permission request, defaulting from frozen contract, Review pass, Review fail with root-direction correction, retry strategy change, Review cannot modify workspace, task blocked and task done evidence summary.
+5. Independent `codex exec` judge evidence reviews golden transcripts for frozen-contract compliance, independent Review judgment, root-cause insight, non-incremental correction, non-repeating retry and user cognitive burden.
+6. Final evidence shows background agent does more than run commands: it advances under contract, verifies, lets independent Review redirect a wrong path and leaves reviewable evidence without exposing daemon mechanics to the sessions.
 
 ### `NTH-MS-017` Frontend Loop/Task Dogfood Mapping
 
@@ -432,7 +433,7 @@ Goal: Integrate Clarify, Contract, Loop and Review harness outputs into a user-v
 Constraints:
 
 1. Do not introduce a separate Background Tasks toy main view as the primary loop surface.
-2. Default display is CEO-readable: task goal, constraints, acceptance, current goal, current round and whether user action is needed.
+2. Default display is CEO-readable: task goal, constraints, acceptance, current goal, latest Review direction and whether user action is needed; phase/round/budget mechanics remain diagnostics, not the main task narrative.
 3. Provider stream may be expandable detail but cannot become the main surface.
 4. Review verdict is translated into user-understandable status.
 5. Permission requests emphasize risk and decision, not technical logs.
@@ -448,7 +449,7 @@ Acceptance:
 3. Dogfood smoke covers Task Card approval.
 4. Dogfood smoke covers Pyramid Plan Card approval.
 5. Dogfood smoke covers a registered task and running current goal inside the restored session/workspace/task/detail view system.
-6. Dogfood smoke covers expandable stream, permission handling, Review status, retry round, passed goal and done or blocked state.
+6. Dogfood smoke covers expandable stream, permission handling, Review direction/status, an intelligible retry change, passed goal and done or blocked state.
 7. Web static export and Desktop dev/review entry each produce real smoke or screenshot evidence.
 8. UI does not expose packet, skill or provider role concepts.
 9. Relevant UI tests, daemon/client tests and `npm run check:foundation` pass.

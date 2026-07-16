@@ -168,6 +168,10 @@ export const ar: TranslationResources = {
       mode: "تغيير الوضع",
     },
     runtime: {
+      thoth: {
+        switch: "تفعيل وضع Thoth",
+        tooltip: "فعّل Clarify وLoop في Thoth. عند الإيقاف تُرسل الرسائل مباشرة إلى المزوّد.",
+      },
       clarify: {
         tooltip: "Clarify",
         selectWithValue: "Clarify: {{value}}",

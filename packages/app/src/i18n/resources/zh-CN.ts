@@ -168,6 +168,10 @@ export const zhCN: TranslationResources = {
       mode: "更改模式",
     },
     runtime: {
+      thoth: {
+        switch: "开启 Thoth 模式",
+        tooltip: "开启后使用 Thoth Clarify 与 Loop；关闭后直接发送给 Provider。",
+      },
       clarify: {
         tooltip: "Clarify",
         selectWithValue: "Clarify：{{value}}",

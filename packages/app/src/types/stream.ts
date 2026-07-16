@@ -2,6 +2,7 @@ import type { AgentProvider, ToolCallDetail } from "@thoth/protocol/agent-types"
 import type { AgentAttachment, AgentStreamEventPayload } from "@thoth/protocol/messages";
 import type {
   RegisteredTaskModel,
+  LoopUserDecision,
   ThothApprovalGoalCardModel,
   ThothClarifyCardModel,
   ThothTaskCardModel,
@@ -58,6 +59,7 @@ export type StreamItem =
   | TaskCardItem
   | GoalCardItem
   | RegisteredTaskItem
+  | LoopDecisionItem
   | TodoListItem
   | ActivityLogItem
   | CompactionItem;
@@ -163,6 +165,14 @@ export interface RegisteredTaskItem {
   id: string;
   timestamp: Date;
   task: RegisteredTaskModel;
+}
+
+export interface LoopDecisionItem {
+  kind: "loop_decision";
+  id: string;
+  timestamp: Date;
+  taskId: string;
+  decision: LoopUserDecision;
 }
 
 export type AgentToolCallItem = ToolCallItem & {

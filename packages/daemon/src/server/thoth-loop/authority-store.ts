@@ -49,6 +49,19 @@ export type TaskMemoryKind = ProtocolTaskMemoryKind;
 
 export interface TaskMemoryNode extends TaskMemoryNodeRef {}
 
+export interface LoopTaskRegistrationResult {
+  task: LoopTaskModel;
+  created: boolean;
+}
+
+export interface LoopTaskCommandRecord {
+  commandId: string;
+  taskId: string;
+  action: string;
+  resultRevision: number | null;
+  createdAt: string;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -125,6 +138,20 @@ export class LoopAuthorityStore {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS loop_task_memory_nodes_task_kind
         ON loop_task_memory_nodes(task_id, kind, revision DESC);
+      CREATE TABLE IF NOT EXISTS loop_task_registrations (
+        registration_key TEXT PRIMARY KEY NOT NULL,
+        task_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES loop_task_projections(task_id)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS loop_task_commands (
+        command_id TEXT PRIMARY KEY NOT NULL,
+        task_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        result_revision INTEGER,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (task_id) REFERENCES loop_task_projections(task_id)
+      ) STRICT;
     `);
     this.importLegacySnapshots(input.thothHome, input.logger);
   }
@@ -144,6 +171,168 @@ export class LoopAuthorityStore {
       tasks.push({ ...parsed.data, authorityRevision: row.revision });
     }
     return tasks;
+  }
+
+  findRegisteredTask(registrationKey: string): LoopTaskModel | null {
+    const row = this.database
+      .prepare(
+        `SELECT projection_json, revision
+         FROM loop_task_registrations registration
+         JOIN loop_task_projections projection ON projection.task_id = registration.task_id
+         WHERE registration.registration_key = ?`,
+      )
+      .get(registrationKey) as { projection_json: string; revision: number } | undefined;
+    if (!row) {
+      return null;
+    }
+    const parsed = LoopTaskModelSchema.safeParse(parseJson(row.projection_json));
+    return parsed.success ? { ...parsed.data, authorityRevision: row.revision } : null;
+  }
+
+  registerTask(
+    task: LoopTaskModel,
+    registrationKey: string,
+    input: AppendTaskEventInput,
+  ): LoopTaskRegistrationResult {
+    const now = nowIso();
+    const eventId = input.eventId ?? randomUUID();
+    const payloadJson = JSON.stringify(input.payload ?? {});
+    const causationId = input.causationId ?? eventId;
+    const correlationId = input.correlationId ?? task.id;
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = this.database
+        .prepare(
+          `SELECT projection_json, revision
+           FROM loop_task_registrations registration
+           JOIN loop_task_projections projection ON projection.task_id = registration.task_id
+           WHERE registration.registration_key = ?`,
+        )
+        .get(registrationKey) as { projection_json: string; revision: number } | undefined;
+      if (existing) {
+        const parsed = LoopTaskModelSchema.safeParse(parseJson(existing.projection_json));
+        if (!parsed.success) {
+          throw new Error(`Loop registration ${registrationKey} points at an invalid projection.`);
+        }
+        this.database.exec("COMMIT");
+        return { task: { ...parsed.data, authorityRevision: existing.revision }, created: false };
+      }
+
+      const revision = 1;
+      const next = LoopTaskModelSchema.parse({
+        ...task,
+        authorityRevision: revision,
+        updatedAt: now,
+      });
+      const projectionJson = JSON.stringify(next);
+      this.database
+        .prepare(
+          `INSERT INTO loop_task_projections(task_id, revision, projection_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(task.id, revision, projectionJson, task.createdAt, now);
+      this.database
+        .prepare(
+          `INSERT INTO loop_task_events(
+             event_id, task_id, revision, kind, goal_id, phase_run_id, causation_id,
+             correlation_id, occurred_at, payload_json, payload_sha256, projection_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          eventId,
+          task.id,
+          revision,
+          input.kind,
+          input.goalId ?? null,
+          input.phaseRunId ?? null,
+          causationId,
+          correlationId,
+          now,
+          payloadJson,
+          sha256(payloadJson),
+          projectionJson,
+        );
+      this.database
+        .prepare(
+          "INSERT INTO loop_task_registrations(registration_key, task_id, created_at) VALUES (?, ?, ?)",
+        )
+        .run(registrationKey, task.id, now);
+      this.database.exec("COMMIT");
+      return { task: next, created: true };
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  getCommand(commandId: string): LoopTaskCommandRecord | null {
+    const row = this.database
+      .prepare(
+        `SELECT command_id, task_id, action, result_revision, created_at
+         FROM loop_task_commands WHERE command_id = ?`,
+      )
+      .get(commandId) as
+      | {
+          command_id: string;
+          task_id: string;
+          action: string;
+          result_revision: number | null;
+          created_at: string;
+        }
+      | undefined;
+    return row
+      ? {
+          commandId: row.command_id,
+          taskId: row.task_id,
+          action: row.action,
+          resultRevision: row.result_revision,
+          createdAt: row.created_at,
+        }
+      : null;
+  }
+
+  claimCommand(input: { commandId: string; taskId: string; action: string }): boolean {
+    const result = this.database
+      .prepare(
+        `INSERT OR IGNORE INTO loop_task_commands(command_id, task_id, action, result_revision, created_at)
+         VALUES (?, ?, ?, NULL, ?)`,
+      )
+      .run(input.commandId, input.taskId, input.action, nowIso());
+    return result.changes === 1;
+  }
+
+  rememberCommand(input: {
+    commandId: string;
+    taskId: string;
+    action: string;
+    resultRevision: number | undefined;
+  }): LoopTaskCommandRecord {
+    const existing = this.getCommand(input.commandId);
+    if (existing) {
+      if (existing.taskId !== input.taskId || existing.action !== input.action) {
+        throw new Error(`Loop command ${input.commandId} is already bound to another action.`);
+      }
+      if (input.resultRevision !== undefined && existing.resultRevision !== input.resultRevision) {
+        this.database
+          .prepare("UPDATE loop_task_commands SET result_revision = ? WHERE command_id = ?")
+          .run(input.resultRevision, input.commandId);
+      }
+      return existing;
+    }
+    const record: LoopTaskCommandRecord = {
+      commandId: input.commandId,
+      taskId: input.taskId,
+      action: input.action,
+      resultRevision: input.resultRevision ?? null,
+      createdAt: nowIso(),
+    };
+    this.database
+      .prepare(
+        `INSERT INTO loop_task_commands(command_id, task_id, action, result_revision, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(record.commandId, record.taskId, record.action, record.resultRevision, record.createdAt);
+    return record;
   }
 
   readEvents(taskId: string): LoopAuthorityEvent[] {

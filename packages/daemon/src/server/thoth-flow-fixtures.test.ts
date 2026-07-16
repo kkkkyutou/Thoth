@@ -62,6 +62,10 @@ class FixtureAgentManager {
     return { provider, available: true, error: null };
   }
 
+  getProviderCapabilities() {
+    return { supportsNativeThothTools: true };
+  }
+
   async createAgent(
     config: AgentSessionConfig,
     _agentId?: string,
@@ -515,10 +519,8 @@ function latestPhaseAgentId(
   return record.agentId;
 }
 
-function planexecResult(goalId: string, round: number, marker: string) {
+function planexecResult(_goalId: string, _round: number, marker: string) {
   return {
-    goal_id: goalId,
-    round,
     plan_summary: `Fixture plan ${marker}.`,
     execution_summary: marker,
     evidence: [marker],
@@ -529,34 +531,44 @@ function planexecResult(goalId: string, round: number, marker: string) {
 }
 
 function reviewVerdict(
-  goalId: string,
-  round: number,
-  outcome: "pass" | "fail",
+  _goalId: string,
+  _round: number,
+  outcome: "pass" | "continue",
   marker: string,
   failureRootCause = "REQUIRED_FIX_MARKER missing",
 ) {
   return {
-    goal_id: goalId,
-    round,
     outcome,
     summary: marker,
-    acceptance_matrix: [
-      {
-        acceptance: "Fixture acceptance",
-        status: outcome === "pass" ? "met" : "not_met",
-        evidence: marker,
-      },
-    ],
-    failed_acceptance: outcome === "pass" ? [] : ["Fixture acceptance"],
-    ...(outcome === "fail"
+    ...(outcome === "continue"
       ? {
-          failure_root_cause: failureRootCause,
-          next_round_guidance: "Emit APPLY_REQUIRED_FIX_MARKER",
-          anti_repeat_strategy: ["Do not repeat INITIAL_ATTEMPT"],
+          direction_memo: {
+            conclusion: "The fixture goal is not ready to pass.",
+            reality: [marker],
+            diagnosis: failureRootCause,
+            abandon: ["Do not repeat INITIAL_ATTEMPT"],
+            reframe: "Treat the required marker as the unresolved reality.",
+            next_direction: "Emit APPLY_REQUIRED_FIX_MARKER",
+          },
         }
-      : { anti_repeat_strategy: [] }),
+      : {}),
     evidence_summary: marker,
   };
+}
+
+function submitFixtureReview(
+  service: ThothLoopTaskService,
+  agentId: string,
+  verdict: Parameters<ThothLoopTaskService["resolveReviewVerdict"]>[1],
+): boolean {
+  expect(
+    service.resolveReviewIndependentAssessment(agentId, {
+      observations: ["Fixture Review independently inspected the current goal."],
+      working_theory: "Fixture Review judges the goal from observable workspace evidence.",
+      inspection_focus: ["Approved goal", "Observable evidence"],
+    }),
+  ).toContain("PlanExec's semantic account");
+  return service.resolveReviewVerdict(agentId, verdict);
 }
 
 describe("deterministic Thoth flow fixtures", () => {
@@ -788,7 +800,8 @@ describe("deterministic Thoth flow fixtures", () => {
       () => runtime.loopService.inspect(taskId!)?.currentPhase === "review",
       "goal one Review",
     );
-    runtime.loopService.resolveReviewVerdict(
+    submitFixtureReview(
+      runtime.loopService,
       latestPhaseAgentId(runtime.loopService, taskId!, "goal-1", "review"),
       reviewVerdict(
         (firstReview as Extract<ThothFixtureProviderStep, { type: "review_verdict" }>).goalId,
@@ -798,8 +811,10 @@ describe("deterministic Thoth flow fixtures", () => {
       ),
     );
     await waitFor(
-      () => runtime.loopService.inspect(taskId!)?.currentGoalId === "goal-2",
-      "goal two start",
+      () =>
+        runtime.loopService.inspect(taskId!)?.currentGoalId === "goal-2" &&
+        runtime.loopService.inspect(taskId!)?.currentPhase === "planexec",
+      "goal two PlanExec",
     );
 
     runtime.loopService.resolvePlanExecResult(
@@ -814,7 +829,8 @@ describe("deterministic Thoth flow fixtures", () => {
       () => runtime.loopService.inspect(taskId!)?.currentPhase === "review",
       "goal two Review",
     );
-    runtime.loopService.resolveReviewVerdict(
+    submitFixtureReview(
+      runtime.loopService,
       latestPhaseAgentId(runtime.loopService, taskId!, "goal-2", "review"),
       reviewVerdict(
         (secondReview as Extract<ThothFixtureProviderStep, { type: "review_verdict" }>).goalId,
@@ -891,12 +907,15 @@ describe("deterministic Thoth flow fixtures", () => {
       () => runtime.loopService.inspect(task!.id)?.currentPhase === "review",
       "retry first Review",
     );
-    runtime.loopService.resolveReviewVerdict(
+    submitFixtureReview(
+      runtime.loopService,
       latestPhaseAgentId(runtime.loopService, task!.id, "goal-1", "review"),
-      reviewVerdict("goal-1", 1, "fail", "REQUIRED_FIX_MARKER_MISSING"),
+      reviewVerdict("goal-1", 1, "continue", "REQUIRED_FIX_MARKER_MISSING"),
     );
     await waitFor(
-      () => runtime.loopService.inspect(task!.id)?.goalRound === 2,
+      () =>
+        runtime.loopService.inspect(task!.id)?.goalRound === 2 &&
+        runtime.loopService.inspect(task!.id)?.currentPhase === "planexec",
       "goal one retry PlanExec",
     );
 
@@ -909,7 +928,7 @@ describe("deterministic Thoth flow fixtures", () => {
     )?.prompt;
     expect(retryPrompt).toContain("REQUIRED_FIX_MARKER missing");
     expect(retryPrompt).toContain("Do not repeat INITIAL_ATTEMPT");
-    expect(retryPrompt).toContain("Failed Review budget: 1/5");
+    expect(retryPrompt).not.toContain("Failed Review budget:");
 
     runtime.loopService.resolvePlanExecResult(
       latestPhaseAgentId(runtime.loopService, task!.id, "goal-1", "planexec"),
@@ -919,13 +938,16 @@ describe("deterministic Thoth flow fixtures", () => {
       () => runtime.loopService.inspect(task!.id)?.currentPhase === "review",
       "retry second Review",
     );
-    runtime.loopService.resolveReviewVerdict(
+    submitFixtureReview(
+      runtime.loopService,
       latestPhaseAgentId(runtime.loopService, task!.id, "goal-1", "review"),
       reviewVerdict("goal-1", 2, "pass", "GOAL_1_PASS"),
     );
     await waitFor(
-      () => runtime.loopService.inspect(task!.id)?.currentGoalId === "goal-2",
-      "goal two after retry",
+      () =>
+        runtime.loopService.inspect(task!.id)?.currentGoalId === "goal-2" &&
+        runtime.loopService.inspect(task!.id)?.currentPhase === "planexec",
+      "goal two PlanExec after retry",
     );
     runtime.loopService.resolvePlanExecResult(
       latestPhaseAgentId(runtime.loopService, task!.id, "goal-2", "planexec"),
@@ -935,7 +957,8 @@ describe("deterministic Thoth flow fixtures", () => {
       () => runtime.loopService.inspect(task!.id)?.currentPhase === "review",
       "goal two Review",
     );
-    runtime.loopService.resolveReviewVerdict(
+    submitFixtureReview(
+      runtime.loopService,
       latestPhaseAgentId(runtime.loopService, task!.id, "goal-2", "review"),
       reviewVerdict("goal-2", 1, "pass", "GOAL_2_PASS"),
     );
@@ -966,12 +989,13 @@ describe("deterministic Thoth flow fixtures", () => {
         () => runtime.loopService.inspect(budgetTask.id)?.currentPhase === "review",
         `budget Review ${round}`,
       );
-      runtime.loopService.resolveReviewVerdict(
+      submitFixtureReview(
+        runtime.loopService,
         latestPhaseAgentId(runtime.loopService, budgetTask.id, "goal-1", "review"),
         reviewVerdict(
           "goal-1",
           round,
-          "fail",
+          "continue",
           `BUDGET_FAIL_${round}`,
           `BUDGET_ROOT_CAUSE_${round}`,
         ),

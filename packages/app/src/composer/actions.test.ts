@@ -8,6 +8,7 @@ import type {
 } from "@/attachments/types";
 import type { StreamItem } from "@/types/stream";
 import {
+  applyLoopTaskDecisionToWorkspaceSecretaryStream,
   applyWorkspaceSecretaryModelToStream,
   cancelComposerAgent,
   dispatchComposerAgentMessage,
@@ -34,6 +35,7 @@ import {
   type QueuedComposerMessage,
 } from "./actions";
 import type {
+  LoopTaskModel,
   ThothCleanUiModel,
   WorkspaceSecretaryResponsePayload,
   WorkspaceSecretaryTurnActionPayload,
@@ -565,6 +567,49 @@ describe("dispatchComposerAgentMessage", () => {
 });
 
 describe("dispatchWorkspaceSecretaryMessage", () => {
+  it("projects and updates a durable Loop decision without replacing provider timeline items", () => {
+    const stream = createFakeStream();
+    const providerText: StreamItem = {
+      kind: "assistant_message",
+      id: "provider-text",
+      messageId: "provider-text",
+      text: "I inspected the workspace.",
+      timestamp: new Date(10),
+    };
+    stream.tail.set("agent", [providerText]);
+    const task = {
+      id: "task-loop-decision",
+      pendingUserDecision: {
+        id: "decision-1",
+        title: "Choose a compatibility direction",
+        question: "Which supported target should the task prioritize?",
+        options: [
+          { id: "modern", label: "Modern target" },
+          { id: "legacy", label: "Legacy target" },
+        ],
+        status: "pending",
+        createdAt: "2026-07-14T00:00:00.000Z",
+      },
+    } as LoopTaskModel;
+
+    applyLoopTaskDecisionToWorkspaceSecretaryStream({ agentId: "agent", task, stream });
+    task.pendingUserDecision = {
+      ...task.pendingUserDecision!,
+      status: "submitted",
+      answer: "modern",
+      submittedAt: "2026-07-14T00:01:00.000Z",
+    };
+    applyLoopTaskDecisionToWorkspaceSecretaryStream({ agentId: "agent", task, stream });
+
+    const tail = stream.tail.get("agent") ?? [];
+    expect(tail.find((item) => item.id === providerText.id)).toEqual(providerText);
+    expect(tail.filter((item) => item.kind === "loop_decision")).toHaveLength(1);
+    expect(tail.find((item) => item.kind === "loop_decision")).toMatchObject({
+      taskId: task.id,
+      decision: { status: "submitted", answer: "modern" },
+    });
+  });
+
   it("reconciles canonical authority cards without retaining cards from another topic", () => {
     const model = createSecretaryModel();
     model.secretary.turns = [

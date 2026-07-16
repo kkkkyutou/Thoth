@@ -85,6 +85,7 @@ export const ClarifyTurnPhaseSchema = z.enum([
   "approval_task",
   "approval_breakdown",
   "quick_exec",
+  "background_handoff",
   "repair",
 ]);
 
@@ -782,6 +783,7 @@ export const THOTH_LEGACY_CLARIFY_RUNTIME_TOOL_NAMES = ["thoth_submit_pyramid_pl
 
 export const THOTH_LOOP_RUNTIME_TOOL_NAMES = [
   "thoth_loop_submit_planexec_result",
+  "thoth_loop_submit_review_independent_assessment",
   "thoth_loop_submit_review_verdict",
   "thoth_submit_contract_preservation_audit",
   "thoth_loop_report_blocked",
@@ -972,10 +974,6 @@ export const ThothSubmitGoalsCardInputSchema = z
 
 export const ThothLoopPlanExecResultInputSchema = z
   .object({
-    goal_id: NonEmptyStringSchema,
-    round: z.number().int().positive(),
-    phase_run_id: z.string().optional(),
-    result_tool_call_id: z.string().optional(),
     plan_summary: NonEmptyStringSchema,
     execution_summary: NonEmptyStringSchema,
     evidence: z.array(NonEmptyStringSchema).min(1),
@@ -983,12 +981,57 @@ export const ThothLoopPlanExecResultInputSchema = z
     remaining_risks: z.array(NonEmptyStringSchema).default([]),
     next_review_focus: NonEmptyStringSchema,
   })
-  .strict()
   .superRefine((input, ctx) => {
     rejectForbiddenRuntimeToolText(input, ctx, []);
   });
 
-export const ThothLoopReviewOutcomeSchema = z.enum(["pass", "fail", "blocked"]);
+export const ThothLoopReviewOutcomeSchema = z.enum([
+  "pass",
+  "continue",
+  "reframe_current_goal",
+  "replan_unstarted_goals",
+  "return_to_user_decision",
+  "real_blocker",
+]);
+
+export const ThothLoopReviewDirectionMemoSchema = z
+  .object({
+    conclusion: NonEmptyStringSchema,
+    reality: z.array(NonEmptyStringSchema).min(1),
+    diagnosis: NonEmptyStringSchema,
+    abandon: z.array(NonEmptyStringSchema).default([]),
+    reframe: NonEmptyStringSchema,
+    next_direction: NonEmptyStringSchema,
+  })
+  .strict();
+
+export const ThothLoopReviewIndependentAssessmentInputSchema = z
+  .object({
+    observations: z.array(NonEmptyStringSchema).min(1),
+    working_theory: NonEmptyStringSchema,
+    inspection_focus: z.array(NonEmptyStringSchema).min(1),
+  })
+  .strict();
+
+export const ThothLoopUserDecisionRequestSchema = z
+  .object({
+    title: NonEmptyStringSchema,
+    question: NonEmptyStringSchema,
+    options: z
+      .array(
+        z
+          .object({
+            id: NonEmptyStringSchema,
+            label: NonEmptyStringSchema,
+            description: z.string().optional(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(4),
+    note_placeholder: z.string().optional(),
+  })
+  .strict();
 
 export const ContractPreservationAuditSchema = z
   .object({
@@ -1002,27 +1045,11 @@ export const ThothSubmitContractPreservationAuditInputSchema = ContractPreservat
 
 export const ThothLoopReviewVerdictInputSchema = z
   .object({
-    goal_id: NonEmptyStringSchema,
-    round: z.number().int().positive(),
-    result_tool_call_id: z.string().optional(),
     outcome: ThothLoopReviewOutcomeSchema,
     summary: NonEmptyStringSchema,
-    acceptance_matrix: z
-      .array(
-        z
-          .object({
-            acceptance: NonEmptyStringSchema,
-            status: z.enum(["met", "not_met", "unclear"]),
-            evidence: z.string().optional(),
-          })
-          .strict(),
-      )
-      .min(1),
-    failed_acceptance: z.array(NonEmptyStringSchema).default([]),
-    failure_root_cause: z.string().optional(),
-    next_round_guidance: z.string().optional(),
-    anti_repeat_strategy: z.array(NonEmptyStringSchema).default([]),
-    evidence_summary: NonEmptyStringSchema,
+    evidence_summary: NonEmptyStringSchema.optional(),
+    direction_memo: ThothLoopReviewDirectionMemoSchema.optional(),
+    user_decision: ThothLoopUserDecisionRequestSchema.optional(),
     deferred_goal_replan_proposal: z
       .object({
         base_goals_revision: z.number().int().nonnegative(),
@@ -1047,75 +1074,38 @@ export const ThothLoopReviewVerdictInputSchema = z
       .strict()
       .optional(),
   })
-  .strict()
   .superRefine((input, ctx) => {
     rejectForbiddenRuntimeToolText(input, ctx, []);
-    if (input.outcome === "fail" && !input.failure_root_cause?.trim()) {
+    const retryOutcome = input.outcome === "continue" || input.outcome === "reframe_current_goal";
+    if (retryOutcome && !input.direction_memo) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "failed Review verdicts must include failure_root_cause",
-        path: ["failure_root_cause"],
+        message: "retry Review verdicts must include direction_memo",
+        path: ["direction_memo"],
       });
     }
-    if (input.outcome === "fail" && !input.next_round_guidance?.trim()) {
+    if (input.outcome === "return_to_user_decision" && !input.user_decision) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "failed Review verdicts must include next_round_guidance",
-        path: ["next_round_guidance"],
+        message: "return_to_user_decision requires user_decision",
+        path: ["user_decision"],
       });
     }
-    if (input.outcome === "fail" && input.anti_repeat_strategy.length === 0) {
+    if (input.outcome === "replan_unstarted_goals" && !input.deferred_goal_replan_proposal) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "failed Review verdicts must include anti_repeat_strategy",
-        path: ["anti_repeat_strategy"],
-      });
-    }
-    if (input.outcome === "fail" && input.failed_acceptance.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "failed Review verdicts must list failed_acceptance",
-        path: ["failed_acceptance"],
-      });
-    }
-    if (input.outcome === "pass" && input.failed_acceptance.length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "pass Review verdicts must not list failed acceptance items",
-        path: ["failed_acceptance"],
-      });
-    }
-    if (
-      input.outcome === "pass" &&
-      input.acceptance_matrix.some((entry) => entry.status !== "met")
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "pass Review verdicts must mark every acceptance as met",
-        path: ["acceptance_matrix"],
-      });
-    }
-    if (
-      input.outcome === "blocked" &&
-      input.acceptance_matrix.every((entry) => entry.status === "met")
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "blocked Review verdicts must not mark every acceptance as met",
-        path: ["acceptance_matrix"],
+        message: "replan_unstarted_goals requires deferred_goal_replan_proposal",
+        path: ["deferred_goal_replan_proposal"],
       });
     }
   });
 
 export const ThothLoopReportBlockedInputSchema = z
   .object({
-    goal_id: NonEmptyStringSchema.optional(),
-    phase: z.enum(["planexec", "review"]).optional(),
     title: NonEmptyStringSchema,
     reason: NonEmptyStringSchema,
     next_user_decision: z.string().optional(),
   })
-  .strict()
   .superRefine((input, ctx) => {
     rejectForbiddenRuntimeToolText(input, ctx, []);
   });
@@ -1166,6 +1156,10 @@ export const ThothLoopRuntimeToolInputSchema = z.discriminatedUnion("tool", [
   z.object({
     tool: z.literal("thoth_loop_submit_review_verdict"),
     input: ThothLoopReviewVerdictInputSchema,
+  }),
+  z.object({
+    tool: z.literal("thoth_loop_submit_review_independent_assessment"),
+    input: ThothLoopReviewIndependentAssessmentInputSchema,
   }),
   z.object({
     tool: z.literal("thoth_submit_contract_preservation_audit"),
@@ -1309,6 +1303,11 @@ export type ThothSubmitGoalsCardInput = z.infer<typeof ThothSubmitGoalsCardInput
 export type ThothSubmitPyramidPlanInput = z.infer<typeof ThothSubmitPyramidPlanInputSchema>;
 export type ThothLoopPlanExecResultInput = z.infer<typeof ThothLoopPlanExecResultInputSchema>;
 export type ThothLoopReviewOutcome = z.infer<typeof ThothLoopReviewOutcomeSchema>;
+export type ThothLoopReviewDirectionMemo = z.infer<typeof ThothLoopReviewDirectionMemoSchema>;
+export type ThothLoopReviewIndependentAssessmentInput = z.infer<
+  typeof ThothLoopReviewIndependentAssessmentInputSchema
+>;
+export type ThothLoopUserDecisionRequest = z.infer<typeof ThothLoopUserDecisionRequestSchema>;
 export type ThothLoopReviewVerdictInput = z.infer<typeof ThothLoopReviewVerdictInputSchema>;
 export type ThothLoopReportBlockedInput = z.infer<typeof ThothLoopReportBlockedInputSchema>;
 export type ThothReportBlockedInput = z.infer<typeof ThothReportBlockedInputSchema>;

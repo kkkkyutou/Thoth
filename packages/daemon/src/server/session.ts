@@ -562,6 +562,8 @@ export class Session {
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
+  private observedLoopPhaseAgentId: string | null = null;
+  private unsubscribeObservedLoopPhaseAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
   private readonly agentUpdates: AgentUpdatesService;
   private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
@@ -1170,95 +1172,121 @@ export class Session {
     }
 
     this.unsubscribeAgentEvents = this.agentManager.subscribe(
-      (event) => {
-        if (event.type === "agent_state") {
-          // Loop PlanExec/Review agents can be lazily restored when the
-          // Background Tasks surface fetches their timeline. That restoration
-          // emits a normal manager state event, but it must never enter the
-          // workspace agent directory or create a foreground tab.
-          if (event.agent.internal) {
-            return;
-          }
-          this.sessionLogger.trace(
-            {
-              agentId: event.agent.id,
-              provider: event.agent.provider,
-              providerSessionId: event.agent.persistence?.sessionId ?? undefined,
-              turnId: event.agent.activeForegroundTurnId ?? undefined,
-              lifecycle: event.agent.lifecycle,
-            },
-            "agent.session.forward_update",
-          );
-          void this.agentUpdates.forwardLiveAgent(event.agent);
-          return;
-        }
-
-        if (
-          this.voiceSession.isActiveForAgent(event.agentId) &&
-          event.event.type === "permission_requested" &&
-          isVoicePermissionAllowed(event.event.request)
-        ) {
-          const requestId = event.event.request.id;
-          void this.agentManager
-            .respondToPermission(event.agentId, requestId, {
-              behavior: "allow",
-            })
-            .catch((error) => {
-              this.sessionLogger.warn(
-                {
-                  err: error,
-                  agentId: event.agentId,
-                  requestId,
-                },
-                "Failed to auto-allow speak tool permission in voice mode",
-              );
-            });
-        }
-
-        const serializedEvent = serializeAgentStreamEvent(event.event);
-        if (!serializedEvent) {
-          return;
-        }
-        this.sessionLogger.trace(
-          {
-            agentId: event.agentId,
-            provider: event.event.provider,
-            turnId: getAgentStreamEventTurnId(event.event),
-            seq: event.seq,
-            epoch: event.epoch,
-            event: event.event,
-          },
-          "agent.session.forward_stream",
-        );
-
-        this.emit({
-          type: "agent_stream",
-          payload: this.buildAgentStreamPayload(event, serializedEvent),
-        });
-
-        if (event.event.type === "permission_requested") {
-          this.emit({
-            type: "agent_permission_request",
-            payload: {
-              agentId: event.agentId,
-              request: event.event.request,
-            },
-          });
-        } else if (event.event.type === "permission_resolved") {
-          this.emit({
-            type: "agent_permission_resolved",
-            payload: {
-              agentId: event.agentId,
-              requestId: event.event.requestId,
-              resolution: event.event.resolution,
-            },
-          });
-        }
-
-        // Title updates may be applied asynchronously after agent creation.
-      },
+      (event) => this.forwardAgentManagerEvent(event, { allowInternalStream: false }),
       { replayState: false },
     );
+  }
+
+  private observeLoopPhaseAgentEvents(agentId: string): void {
+    if (this.observedLoopPhaseAgentId === agentId) {
+      return;
+    }
+
+    this.unsubscribeObservedLoopPhaseAgentEvents?.();
+    this.observedLoopPhaseAgentId = agentId;
+    this.unsubscribeObservedLoopPhaseAgentEvents = this.agentManager.subscribe(
+      (event) => {
+        if (this.observedLoopPhaseAgentId !== agentId || event.type === "agent_state") {
+          return;
+        }
+        this.forwardAgentManagerEvent(event, { allowInternalStream: true });
+      },
+      { agentId, replayState: false },
+    );
+  }
+
+  private forwardAgentManagerEvent(
+    event: AgentManagerEvent,
+    options: { allowInternalStream: boolean },
+  ): void {
+    if (event.type === "agent_state") {
+      // Loop PlanExec/Review agents can be lazily restored when the
+      // Background Tasks surface fetches their timeline. That restoration
+      // emits a normal manager state event, but it must never enter the
+      // workspace agent directory or create a foreground tab.
+      if (event.agent.internal) {
+        return;
+      }
+      this.sessionLogger.trace(
+        {
+          agentId: event.agent.id,
+          provider: event.agent.provider,
+          providerSessionId: event.agent.persistence?.sessionId ?? undefined,
+          turnId: event.agent.activeForegroundTurnId ?? undefined,
+          lifecycle: event.agent.lifecycle,
+        },
+        "agent.session.forward_update",
+      );
+      void this.agentUpdates.forwardLiveAgent(event.agent);
+      return;
+    }
+
+    const agent = this.agentManager.getAgent(event.agentId);
+    if (agent?.internal && !options.allowInternalStream) {
+      return;
+    }
+
+    if (
+      this.voiceSession.isActiveForAgent(event.agentId) &&
+      event.event.type === "permission_requested" &&
+      isVoicePermissionAllowed(event.event.request)
+    ) {
+      const requestId = event.event.request.id;
+      void this.agentManager
+        .respondToPermission(event.agentId, requestId, {
+          behavior: "allow",
+        })
+        .catch((error) => {
+          this.sessionLogger.warn(
+            {
+              err: error,
+              agentId: event.agentId,
+              requestId,
+            },
+            "Failed to auto-allow speak tool permission in voice mode",
+          );
+        });
+    }
+
+    const serializedEvent = serializeAgentStreamEvent(event.event);
+    if (!serializedEvent) {
+      return;
+    }
+    this.sessionLogger.trace(
+      {
+        agentId: event.agentId,
+        provider: event.event.provider,
+        turnId: getAgentStreamEventTurnId(event.event),
+        seq: event.seq,
+        epoch: event.epoch,
+        event: event.event,
+      },
+      "agent.session.forward_stream",
+    );
+
+    this.emit({
+      type: "agent_stream",
+      payload: this.buildAgentStreamPayload(event, serializedEvent),
+    });
+
+    if (event.event.type === "permission_requested") {
+      this.emit({
+        type: "agent_permission_request",
+        payload: {
+          agentId: event.agentId,
+          request: event.event.request,
+        },
+      });
+    } else if (event.event.type === "permission_resolved") {
+      this.emit({
+        type: "agent_permission_resolved",
+        payload: {
+          agentId: event.agentId,
+          requestId: event.event.requestId,
+          resolution: event.event.resolution,
+        },
+      });
+    }
   }
 
   private buildAgentStreamPayload(
@@ -1670,6 +1698,8 @@ export class Session {
         return this.handleBackgroundTaskInspectRequest(msg);
       case "background_task.action.request":
         return this.handleBackgroundTaskActionRequest(msg);
+      case "background_task.decision.request":
+        return this.handleBackgroundTaskDecisionRequest(msg);
       case "workspace_secretary.snapshot.request":
         return this.workspaceSecretarySession.handleSnapshotRequest(msg);
       case "workspace_secretary.send.request":
@@ -1723,7 +1753,18 @@ export class Session {
       return;
     }
     const workspacePath = await this.resolveBackgroundTaskWorkspacePath(msg);
-    const tasks = this.loopTaskService.list(workspacePath ? { workspacePath } : undefined);
+    if (!workspacePath) {
+      this.emit({
+        type: "background_task.list.response",
+        payload: {
+          requestId: msg.requestId,
+          tasks: [],
+          error: "A workspace scope is required to list background tasks.",
+        },
+      });
+      return;
+    }
+    const tasks = this.loopTaskService.list({ workspacePath });
     this.emit({
       type: "background_task.list.response",
       payload: {
@@ -1737,13 +1778,22 @@ export class Session {
   private async handleBackgroundTaskInspectRequest(
     msg: Extract<SessionInboundMessage, { type: "background_task.inspect.request" }>,
   ): Promise<void> {
-    const task = this.loopTaskService?.inspect(msg.taskId) ?? null;
+    const workspacePath = await this.resolveBackgroundTaskWorkspacePath(msg);
+    const candidate = this.loopTaskService?.inspect(msg.taskId) ?? null;
+    const task =
+      candidate && workspacePath && resolve(candidate.workspacePath) === resolve(workspacePath)
+        ? candidate
+        : null;
     this.emit({
       type: "background_task.inspect.response",
       payload: {
         requestId: msg.requestId,
         task,
-        error: this.loopTaskService ? null : "Thoth Loop background task service is unavailable.",
+        error: !this.loopTaskService
+          ? "Thoth Loop background task service is unavailable."
+          : candidate && !task
+            ? "Background task does not belong to this workspace."
+            : null,
       },
     });
   }
@@ -1762,13 +1812,98 @@ export class Session {
       });
       return;
     }
-    const task = await this.loopTaskService.action(msg.taskId, msg.action);
+    const workspacePath = await this.resolveBackgroundTaskWorkspacePath(msg);
+    const candidate = this.loopTaskService.inspect(msg.taskId);
+    if (
+      !candidate ||
+      !workspacePath ||
+      resolve(candidate.workspacePath) !== resolve(workspacePath)
+    ) {
+      this.emit({
+        type: "background_task.action.response",
+        payload: {
+          requestId: msg.requestId,
+          task: null,
+          error: candidate
+            ? "Background task does not belong to this workspace."
+            : "Background task not found.",
+        },
+      });
+      return;
+    }
+    let task = null;
+    let actionError: string | null = null;
+    try {
+      task = await this.loopTaskService.action(msg.taskId, msg.action, {
+        expectedAuthorityRevision: msg.expectedAuthorityRevision,
+        commandId: msg.commandId,
+      });
+    } catch (error) {
+      actionError = error instanceof Error ? error.message : String(error);
+    }
     this.emit({
       type: "background_task.action.response",
       payload: {
         requestId: msg.requestId,
         task,
-        error: task ? null : "Background task not found.",
+        error: actionError ?? (task ? null : "Background task not found."),
+      },
+    });
+  }
+
+  private async handleBackgroundTaskDecisionRequest(
+    msg: Extract<SessionInboundMessage, { type: "background_task.decision.request" }>,
+  ): Promise<void> {
+    if (!this.loopTaskService) {
+      this.emit({
+        type: "background_task.decision.response",
+        payload: {
+          requestId: msg.requestId,
+          task: null,
+          error: "Thoth Loop background task service is unavailable.",
+        },
+      });
+      return;
+    }
+    const workspacePath = await this.resolveBackgroundTaskWorkspacePath(msg);
+    const candidate = this.loopTaskService.inspect(msg.taskId);
+    if (
+      !candidate ||
+      !workspacePath ||
+      resolve(candidate.workspacePath) !== resolve(workspacePath)
+    ) {
+      this.emit({
+        type: "background_task.decision.response",
+        payload: {
+          requestId: msg.requestId,
+          task: null,
+          error: candidate
+            ? "Background task does not belong to this workspace."
+            : "Background task not found.",
+        },
+      });
+      return;
+    }
+    let task = null;
+    let decisionError: string | null = null;
+    try {
+      task = await this.loopTaskService.answerUserDecision({
+        taskId: msg.taskId,
+        decisionId: msg.decisionId,
+        choiceId: msg.choiceId,
+        ...(msg.note ? { note: msg.note } : {}),
+        expectedAuthorityRevision: msg.expectedAuthorityRevision,
+        commandId: msg.commandId,
+      });
+    } catch (error) {
+      decisionError = error instanceof Error ? error.message : String(error);
+    }
+    this.emit({
+      type: "background_task.decision.response",
+      payload: {
+        requestId: msg.requestId,
+        task,
+        error: decisionError ?? (task ? null : "Background task not found."),
       },
     });
   }
@@ -5434,12 +5569,16 @@ export class Session {
       : undefined;
 
     try {
-      await this.loopTaskService?.recoverPhaseAgent(msg.agentId);
+      const isLoopPhaseAgent =
+        (await this.loopTaskService?.recoverPhaseAgent(msg.agentId)) ?? false;
       const snapshot = await ensureAgentLoaded(msg.agentId, {
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
         logger: this.sessionLogger,
       });
+      if (isLoopPhaseAgent && snapshot.internal) {
+        this.observeLoopPhaseAgentEvents(msg.agentId);
+      }
       const agentPayload = await this.buildAgentPayload(snapshot);
 
       const controlTimeline = this.agentManager.fetchTimeline(msg.agentId, {
@@ -5840,6 +5979,11 @@ export class Session {
     if (this.unsubscribeAgentEvents) {
       this.unsubscribeAgentEvents();
       this.unsubscribeAgentEvents = null;
+    }
+    if (this.unsubscribeObservedLoopPhaseAgentEvents) {
+      this.unsubscribeObservedLoopPhaseAgentEvents();
+      this.unsubscribeObservedLoopPhaseAgentEvents = null;
+      this.observedLoopPhaseAgentId = null;
     }
     this.agentUpdates.dispose();
     if (this.unsubscribeTerminalWorkspaceContributionEvents) {

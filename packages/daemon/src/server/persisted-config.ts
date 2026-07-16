@@ -180,6 +180,7 @@ const WorkspaceSecretaryProviderSessionSchema = z
 
 const WorkspaceSecretaryConfigSchema = z
   .object({
+    enabled: z.boolean().optional(),
     providerSession: WorkspaceSecretaryProviderSessionSchema.optional(),
     mode: z.enum(["quick", "loop"]).optional(),
     clarifyStrength: z.enum(["none", "auto", "light", "balanced", "dive"]).optional(),
@@ -205,6 +206,7 @@ const WorkspaceSecretaryConfigSchema = z
                     turns: z.array(SecretaryTurnSchema),
                     currentClarifyState: z.string().min(1),
                     activeTurnPhase: z.string().min(1),
+                    foregroundTurnState: z.enum(["background_handoff"]).optional(),
                     activeTopicProviderBacked: z.boolean().optional(),
                     timelineAgentId: z.string().min(1).nullable().optional(),
                     status: SecretaryRuntimeStatusModelSchema.optional(),

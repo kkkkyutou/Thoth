@@ -62,6 +62,12 @@ export function asLoopService(): SessionOptions["loopService"] {
   return createStub<SessionOptions["loopService"]>({});
 }
 
+export function asLoopTaskService(stub: {
+  [K in keyof NonNullable<SessionOptions["loopTaskService"]>]?: unknown;
+}): NonNullable<SessionOptions["loopTaskService"]> {
+  return createStub<NonNullable<SessionOptions["loopTaskService"]>>(stub);
+}
+
 export function asCheckoutDiffManager(stub: {
   [K in keyof SessionOptions["checkoutDiffManager"]]?: unknown;
 }): SessionOptions["checkoutDiffManager"] {

@@ -168,6 +168,11 @@ export const ru: TranslationResources = {
       mode: "Изменить режим",
     },
     runtime: {
+      thoth: {
+        switch: "Включить режим Thoth",
+        tooltip:
+          "Включает Clarify и Loop Thoth. В выключенном состоянии сообщение отправляется поставщику напрямую.",
+      },
       clarify: {
         tooltip: "Clarify",
         selectWithValue: "Clarify: {{value}}",

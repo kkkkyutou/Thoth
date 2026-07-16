@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { CheckCircle2, Clock3, ListTodo, Pause, Play, Square, XCircle } from "lucide-react-native";
 import type { AgentSnapshotPayload, AgentStreamEventPayload } from "@thoth/protocol/messages";
 import type {
@@ -27,14 +27,17 @@ import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import type { PendingPermission } from "@/types/shared";
 import { hydrateStreamState, reduceStreamUpdate, type StreamItem } from "@/types/stream";
 import { isWeb } from "@/constants/platform";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   buildBackgroundTasksSurfaceKey,
   clampBackgroundTasksListWidth,
+  shouldStackBackgroundTasksSurface,
   useBackgroundTasksSurfaceStore,
 } from "@/stores/background-tasks-surface-store";
 
 const AGENT_CHAT_SCROLL_SELECTOR = '[data-testid="agent-chat-scroll"]';
 const BACKGROUND_TASK_DETAIL_SCROLL_TEST_ID = "background-task-detail-scroll";
+const BACKGROUND_TASKS_NARROW_DETAIL_HEADER_WIDTH = 520;
 
 const ThemedListTodo = withUnistyles(ListTodo);
 const ThemedCheckCircle = withUnistyles(CheckCircle2);
@@ -62,10 +65,16 @@ function taskStatusLabel(status: BackgroundTaskModel["status"]): string {
       return "Queued";
     case "running":
       return "Running";
+    case "awaiting_provider":
+      return "Waiting for provider";
+    case "awaiting_user_decision":
+      return "Decision needed";
     case "paused":
       return "Paused";
     case "budget_wait":
       return "Budget wait";
+    case "evidence_capture_failed":
+      return "Evidence capture failed";
     case "evidence_invalid":
       return "Evidence needs attention";
     case "workspace_changed_concurrently":
@@ -113,7 +122,11 @@ function latestPhase(goal: LoopGoalRecord, phase: LoopPhaseKind): LoopPhaseRecor
   return (
     goal.phases
       .filter((entry) => entry.phase === phase)
-      .sort((left, right) => right.round - left.round)[0] ?? null
+      .sort(
+        (left, right) =>
+          right.round - left.round ||
+          (right.executionGeneration ?? 0) - (left.executionGeneration ?? 0),
+      )[0] ?? null
   );
 }
 
@@ -328,6 +341,7 @@ export function BackgroundTasksSurface({
     (state) => state.byWorkspaceKey[surfaceKey],
   );
   const updateSurface = useBackgroundTasksSurfaceStore((state) => state.updateSurface);
+  const isCompactLayout = useIsCompactFormFactor();
   const restoredSelectionRef = useRef(false);
   const [tasks, setTasks] = useState<BackgroundTaskModel[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
@@ -344,29 +358,47 @@ export function BackgroundTasksSurface({
   const [phaseItems, setPhaseItems] = useState<StreamItem[]>([]);
   const [phaseTimelineLoading, setPhaseTimelineLoading] = useState(false);
   const [phaseTimelineError, setPhaseTimelineError] = useState<string | null>(null);
+  const [phaseTimelineStartCursor, setPhaseTimelineStartCursor] = useState<{
+    epoch: string;
+    seq: number;
+  } | null>(null);
+  const [phaseTimelineHasOlder, setPhaseTimelineHasOlder] = useState(false);
+  const [loadingEarlierTimeline, setLoadingEarlierTimeline] = useState(false);
   const phaseStreamRef = useRef<AgentStreamViewHandle | null>(null);
   const timelineShellRef = useRef<View | null>(null);
   const [pendingPermissions, setPendingPermissions] = useState<Map<string, PendingPermission>>(
     () => new Map(),
   );
   const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<BackgroundTaskAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<BackgroundTaskAction | "decision" | null>(
+    null,
+  );
+  const [decisionChoiceId, setDecisionChoiceId] = useState<string | null>(null);
+  const [decisionNote, setDecisionNote] = useState("");
   const [surfaceWidth, setSurfaceWidth] = useState(0);
-  const nowTick = useNowTick(Boolean(selectedTask?.status === "running"));
+  const nowTick = useNowTick(
+    Boolean(selectedTask?.status === "running" || selectedTask?.status === "awaiting_provider"),
+  );
   const resumeEnabled =
     selectedTask?.status === "paused" ||
     selectedTask?.status === "stopped" ||
+    selectedTask?.status === "blocked" ||
     selectedTask?.status === "interrupted" ||
+    selectedTask?.status === "evidence_capture_failed" ||
     selectedTask?.status === "evidence_invalid" ||
     selectedTask?.status === "workspace_changed_concurrently";
   const pauseEnabled =
-    selectedTask?.status === "running" && selectedTask.controlIntent !== "pause_after_phase";
+    (selectedTask?.status === "running" || selectedTask?.status === "awaiting_provider") &&
+    selectedTask.controlIntent !== "pause_after_phase";
   const stopEnabled =
     selectedTask?.status === "queued" ||
     selectedTask?.status === "running" ||
+    selectedTask?.status === "awaiting_provider" ||
+    selectedTask?.status === "awaiting_user_decision" ||
     selectedTask?.status === "paused" ||
     selectedTask?.status === "interrupted" ||
     selectedTask?.status === "budget_wait" ||
+    selectedTask?.status === "evidence_capture_failed" ||
     selectedTask?.status === "evidence_invalid" ||
     selectedTask?.status === "workspace_changed_concurrently";
 
@@ -374,6 +406,14 @@ export function BackgroundTasksSurface({
     () => clampBackgroundTasksListWidth(persistedSurface?.taskListWidth, surfaceWidth),
     [persistedSurface?.taskListWidth, surfaceWidth],
   );
+  const useStackedLayout = shouldStackBackgroundTasksSurface({
+    isCompact: isCompactLayout,
+    surfaceWidth,
+  });
+  const useNarrowDetailHeader =
+    useStackedLayout ||
+    (surfaceWidth > 0 &&
+      surfaceWidth - taskListWidth < BACKGROUND_TASKS_NARROW_DETAIL_HEADER_WIDTH);
   const taskListResizeSizes = useMemo(() => {
     if (surfaceWidth <= 0) {
       return [0.36, 0.64];
@@ -464,22 +504,23 @@ export function BackgroundTasksSurface({
         return;
       }
       const summary = message.payload.summary;
-      if (summary.workspaceName && workspaceId && message.payload.task.workspacePath) {
-        // The daemon already filters list requests by workspace; live updates are global.
-        // Refreshing keeps the panel scoped without duplicating workspace-id inference here.
-        void refreshList();
-      }
+      // Updates are daemon-global while this surface is workspace-scoped. Refresh from
+      // authority, but never inject an unknown task into the current workspace first.
+      void refreshList();
       setTasks((current) => {
         const index = current.findIndex((task) => task.id === summary.id);
         if (index < 0) {
-          return current.some((task) => task.id === "empty") ? [summary] : [summary, ...current];
+          return current;
         }
         const next = [...current];
         next[index] = summary;
         return next;
       });
       setSelectedTask((current) =>
-        current?.id === message.payload.task.id ? message.payload.task : current,
+        current?.id === message.payload.task.id &&
+        current.workspacePath === message.payload.task.workspacePath
+          ? message.payload.task
+          : current,
       );
     });
     return () => {
@@ -495,7 +536,7 @@ export function BackgroundTasksSurface({
     }
     let active = true;
     void client
-      .inspectBackgroundTask({ taskId: selectedTaskId })
+      .inspectBackgroundTask({ taskId: selectedTaskId, workspaceId })
       .then((response) => {
         if (!active) {
           return;
@@ -568,6 +609,9 @@ export function BackgroundTasksSurface({
       setPendingPermissions(new Map());
       setPhaseTimelineLoading(false);
       setPhaseTimelineError(null);
+      setPhaseTimelineStartCursor(null);
+      setPhaseTimelineHasOlder(false);
+      setLoadingEarlierTimeline(false);
       return;
     }
     let active = true;
@@ -590,6 +634,8 @@ export function BackgroundTasksSurface({
           );
         }
         setPhaseItems(hydrateProjectedEntries(payload.entries));
+        setPhaseTimelineStartCursor(payload.startCursor);
+        setPhaseTimelineHasOlder(payload.hasOlder);
         setPhaseTimelineLoading(false);
         if (!payload.agent) {
           setPhaseTimelineError("The provider session metadata could not be restored.");
@@ -600,6 +646,8 @@ export function BackgroundTasksSurface({
           setPhaseAgent(null);
           setPhaseItems([]);
           setPhaseTimelineLoading(false);
+          setPhaseTimelineStartCursor(null);
+          setPhaseTimelineHasOlder(false);
           setPhaseTimelineError(nextError instanceof Error ? nextError.message : String(nextError));
         }
       });
@@ -651,6 +699,28 @@ export function BackgroundTasksSurface({
     };
   }, [client, selectedPhaseAgentId, serverId]);
 
+  const loadEarlierPhaseTimeline = useCallback(async () => {
+    if (!client || !selectedPhaseAgentId || !phaseTimelineStartCursor || loadingEarlierTimeline) {
+      return;
+    }
+    setLoadingEarlierTimeline(true);
+    try {
+      const payload = await client.fetchAgentTimeline(selectedPhaseAgentId, {
+        direction: "before",
+        cursor: phaseTimelineStartCursor,
+        limit: 200,
+        projection: "projected",
+      });
+      setPhaseItems((current) => [...hydrateProjectedEntries(payload.entries), ...current]);
+      setPhaseTimelineStartCursor(payload.startCursor);
+      setPhaseTimelineHasOlder(payload.hasOlder);
+    } catch (nextError) {
+      setPhaseTimelineError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setLoadingEarlierTimeline(false);
+    }
+  }, [client, loadingEarlierTimeline, phaseTimelineStartCursor, selectedPhaseAgentId]);
+
   useEffect(() => {
     if (!selectedPhaseAgentId || phaseItems.length === 0) {
       return;
@@ -670,7 +740,13 @@ export function BackgroundTasksSurface({
       }
       setPendingAction(action);
       try {
-        const response = await client.actOnBackgroundTask({ taskId: selectedTask.id, action });
+        const response = await client.actOnBackgroundTask({
+          taskId: selectedTask.id,
+          action,
+          workspaceId,
+          expectedAuthorityRevision: selectedTask.authorityRevision,
+          commandId: `${selectedTask.id}:${selectedTask.authorityRevision ?? "legacy"}:${action}`,
+        });
         if (response.error) {
           setError(response.error);
         }
@@ -682,8 +758,38 @@ export function BackgroundTasksSurface({
         setPendingAction(null);
       }
     },
-    [client, refreshList, selectedTask],
+    [client, refreshList, selectedTask, workspaceId],
   );
+
+  const handleTaskDecision = useCallback(async () => {
+    const decision = selectedTask?.pendingUserDecision;
+    if (!client || !selectedTask || !decision || !decisionChoiceId) {
+      return;
+    }
+    setPendingAction("decision");
+    try {
+      const response = await client.answerBackgroundTaskDecision({
+        taskId: selectedTask.id,
+        decisionId: decision.id,
+        choiceId: decisionChoiceId,
+        ...(decisionNote.trim() ? { note: decisionNote.trim() } : {}),
+        workspaceId,
+        expectedAuthorityRevision: selectedTask.authorityRevision,
+        commandId: `${selectedTask.id}:${selectedTask.authorityRevision ?? "legacy"}:decision:${decision.id}:${decisionChoiceId}`,
+      });
+      if (response.error) {
+        setError(response.error);
+      }
+      if (response.task) {
+        setSelectedTask(response.task);
+        setDecisionChoiceId(null);
+        setDecisionNote("");
+        void refreshList();
+      }
+    } finally {
+      setPendingAction(null);
+    }
+  }, [client, decisionChoiceId, decisionNote, refreshList, selectedTask, workspaceId]);
 
   if (!client) {
     return (
@@ -698,15 +804,25 @@ export function BackgroundTasksSurface({
   const selectedTaskReplanHistory = selectedTask?.replanHistory ?? [];
 
   return (
-    <View style={styles.root} onLayout={handleSurfaceLayout} testID="background-tasks-panel">
-      <View style={[styles.sidebar, { width: taskListWidth }]} testID="background-task-list-pane">
+    <View
+      style={[styles.root, useStackedLayout && styles.rootStacked]}
+      onLayout={handleSurfaceLayout}
+      testID="background-tasks-panel"
+    >
+      <View
+        style={[
+          styles.sidebar,
+          useStackedLayout ? styles.sidebarStacked : { width: taskListWidth },
+        ]}
+        testID="background-task-list-pane"
+      >
         <Text style={styles.sidebarTitle}>Background tasks</Text>
         {visibleTasks.length === 0 ? (
           <View style={styles.emptyList}>
             <Text style={styles.emptyText}>No Loop tasks yet.</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.taskList}>
+          <ScrollView style={styles.taskListScroll} contentContainerStyle={styles.taskList}>
             {visibleTasks.map((task) => {
               const selected = task.id === selectedTask?.id;
               return (
@@ -730,7 +846,7 @@ export function BackgroundTasksSurface({
           </ScrollView>
         )}
       </View>
-      {isWeb ? (
+      {isWeb && !useStackedLayout ? (
         <ResizeHandle
           direction="horizontal"
           groupId={`background-task-list-${surfaceKey}`}
@@ -739,13 +855,16 @@ export function BackgroundTasksSurface({
           onResizeSplit={handleResizeTaskList}
         />
       ) : null}
-      <View style={styles.detail} testID="background-task-detail-pane">
+      <View
+        style={[styles.detail, useStackedLayout && styles.detailStacked]}
+        testID="background-task-detail-pane"
+      >
         {selectedTask ? (
           <ScrollView
             contentContainerStyle={styles.detailContent}
             testID={BACKGROUND_TASK_DETAIL_SCROLL_TEST_ID}
           >
-            <View style={styles.detailHeader}>
+            <View style={[styles.detailHeader, useNarrowDetailHeader && styles.detailHeaderNarrow]}>
               <View style={styles.detailTitleBlock}>
                 <Text style={styles.detailTitle}>{selectedTask.title}</Text>
                 <Text style={styles.detailStatus}>
@@ -753,13 +872,16 @@ export function BackgroundTasksSurface({
                   {selectedTask.budget.usedFailedReviews}/{selectedTask.budget.maxFailedReviews}
                 </Text>
               </View>
-              <View style={styles.headerActions}>
+              <View
+                style={[styles.headerActions, useNarrowDetailHeader && styles.headerActionsNarrow]}
+              >
                 <ActionButton
                   testID="background-task-resume"
                   label={
+                    selectedTask.status === "evidence_capture_failed" ||
                     selectedTask.status === "evidence_invalid" ||
                     selectedTask.status === "workspace_changed_concurrently"
-                      ? "Re-baseline & resume"
+                      ? "Retry baseline & resume"
                       : "Resume"
                   }
                   icon={
@@ -801,6 +923,59 @@ export function BackgroundTasksSurface({
               </View>
             </View>
             <Text style={styles.detailSummary}>{selectedTask.summary}</Text>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            {selectedTask.status === "awaiting_user_decision" &&
+            selectedTask.pendingUserDecision?.status === "pending" ? (
+              <View style={styles.phaseResultBox} testID="loop-user-decision-card">
+                <Text style={styles.sectionTitle}>{selectedTask.pendingUserDecision.title}</Text>
+                <Text style={styles.sectionBody}>{selectedTask.pendingUserDecision.question}</Text>
+                <View style={styles.decisionOptions}>
+                  {selectedTask.pendingUserDecision.options.map((option) => (
+                    <Pressable
+                      key={option.id}
+                      testID={`loop-user-decision-option-${option.id}`}
+                      disabled={pendingAction !== null}
+                      onPress={() => setDecisionChoiceId(option.id)}
+                      style={[
+                        styles.decisionOption,
+                        decisionChoiceId === option.id && styles.decisionOptionSelected,
+                      ]}
+                    >
+                      <Text style={styles.decisionOptionLabel}>{option.label}</Text>
+                      {option.description ? (
+                        <Text style={styles.sectionMuted}>{option.description}</Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput
+                  testID="loop-user-decision-note"
+                  value={decisionNote}
+                  onChangeText={setDecisionNote}
+                  editable={pendingAction === null}
+                  placeholder={
+                    selectedTask.pendingUserDecision.notePlaceholder ?? "Optional context"
+                  }
+                  placeholderTextColor="#77808d"
+                  multiline
+                  style={styles.decisionNote}
+                />
+                <ActionButton
+                  testID="loop-user-decision-submit"
+                  label="Continue"
+                  icon={
+                    pendingAction === "decision" ? (
+                      <ActivityIndicator size="small" />
+                    ) : (
+                      <Play size={14} />
+                    )
+                  }
+                  disabled={pendingAction !== null || !decisionChoiceId}
+                  onPress={() => void handleTaskDecision()}
+                />
+              </View>
+            ) : null}
 
             {selectedTask.budgetEnvelope && selectedTask.budgetUsage ? (
               <View style={styles.budgetPanel} testID="loop-budget-envelope">
@@ -870,14 +1045,19 @@ export function BackgroundTasksSurface({
               </View>
             ) : null}
 
-            {selectedTask.status === "evidence_invalid" ||
+            {selectedTask.status === "evidence_capture_failed" ||
+            selectedTask.status === "evidence_invalid" ||
             selectedTask.status === "workspace_changed_concurrently" ? (
               <View style={styles.evidenceWarningPanel} testID="loop-evidence-warning">
-                <Text style={styles.sectionTitle}>Evidence held</Text>
+                <Text style={styles.sectionTitle}>
+                  {selectedTask.status === "evidence_capture_failed"
+                    ? "Evidence capture needs retry"
+                    : "Evidence held"}
+                </Text>
                 <Text style={styles.sectionBody}>{selectedTask.summary}</Text>
                 <Text style={styles.sectionMuted}>
-                  The task preserved its receipts and did not revert workspace changes. Re-establish
-                  the workspace baseline before resuming this task.
+                  Resume retries the workspace baseline before any PlanExec work starts. Existing
+                  workspace files are never reverted by this recovery step.
                 </Text>
               </View>
             ) : null}
@@ -898,7 +1078,9 @@ export function BackgroundTasksSurface({
                     testID={`loop-goal-row-${goal.id}`}
                   >
                     <View style={styles.goalStatusIcon}>
-                      {current && selectedTask.status === "running" ? (
+                      {current &&
+                      (selectedTask.status === "running" ||
+                        selectedTask.status === "awaiting_provider") ? (
                         <ActivityIndicator size="small" />
                       ) : goal.status === "passed" ? (
                         <ThemedCheckCircle size={16} uniProps={successColorMapping} />
@@ -933,7 +1115,8 @@ export function BackgroundTasksSurface({
                     const active =
                       selectedTask.currentGoalId === selectedGoal.id &&
                       selectedTask.currentPhase === phase &&
-                      selectedTask.status === "running";
+                      (selectedTask.status === "running" ||
+                        selectedTask.status === "awaiting_provider");
                     return (
                       <Pressable
                         key={phase}
@@ -980,11 +1163,32 @@ export function BackgroundTasksSurface({
                   <View style={styles.phaseResultBox} testID="loop-review-verdict-summary">
                     <Text style={styles.sectionTitle}>Latest Review verdict</Text>
                     <Text style={styles.sectionBody}>{selectedGoal.latestReview.summary}</Text>
-                    <Text style={styles.sectionMuted}>
-                      {selectedGoal.latestReview.acceptanceMatrix
-                        .map((entry) => `${entry.status}: ${entry.acceptance}`)
-                        .join("；")}
-                    </Text>
+                    {selectedGoal.latestReview.directionMemo ? (
+                      <>
+                        <Text style={styles.sectionMuted}>
+                          Reality: {selectedGoal.latestReview.directionMemo.reality.join("；")}
+                        </Text>
+                        <Text style={styles.sectionMuted}>
+                          Diagnosis: {selectedGoal.latestReview.directionMemo.diagnosis}
+                        </Text>
+                        <Text style={styles.sectionMuted}>
+                          Abandon:{" "}
+                          {selectedGoal.latestReview.directionMemo.abandon.join("；") || "none"}
+                        </Text>
+                        <Text style={styles.sectionMuted}>
+                          Reframe: {selectedGoal.latestReview.directionMemo.reframe}
+                        </Text>
+                        <Text style={styles.sectionMuted}>
+                          Next direction: {selectedGoal.latestReview.directionMemo.nextDirection}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.sectionMuted}>
+                        {selectedGoal.latestReview.acceptanceMatrix
+                          .map((entry) => `${entry.status}: ${entry.acceptance}`)
+                          .join("；")}
+                      </Text>
+                    )}
                     {selectedGoal.latestReview.evidenceRef ? (
                       <Text style={styles.sectionMuted} testID="loop-review-evidence-ref">
                         Evidence receipt: {evidenceLabel(selectedGoal.latestReview.evidenceRef)}
@@ -1023,6 +1227,21 @@ export function BackgroundTasksSurface({
                   testID="loop-phase-timeline"
                 >
                   <Text style={styles.sectionTitle}>{phaseLabel(selectedPhase)} timeline</Text>
+                  {phaseTimelineHasOlder && selectedPhaseAgentId ? (
+                    <ActionButton
+                      testID="loop-phase-timeline-load-earlier"
+                      label={loadingEarlierTimeline ? "Loading earlier" : "Load earlier"}
+                      icon={
+                        loadingEarlierTimeline ? (
+                          <ActivityIndicator size="small" />
+                        ) : (
+                          <Clock3 size={14} />
+                        )
+                      }
+                      disabled={loadingEarlierTimeline}
+                      onPress={() => void loadEarlierPhaseTimeline()}
+                    />
+                  ) : null}
                   {phaseAgent && selectedPhaseAgentId ? (
                     <AgentStreamView
                       ref={phaseStreamRef}
@@ -1045,14 +1264,15 @@ export function BackgroundTasksSurface({
                     </View>
                   ) : selectedPhaseRecord?.summary ? (
                     <View style={styles.emptyTimeline}>
-                      <ThemedXCircle size={18} uniProps={dangerColorMapping} />
-                      <Text style={styles.errorText}>{selectedPhaseRecord.summary}</Text>
+                      <ThemedListTodo size={18} uniProps={mutedColorMapping} />
+                      <Text style={styles.emptyText}>{selectedPhaseRecord.summary}</Text>
                     </View>
                   ) : selectedPhaseRecord && selectedPhaseRecord.status !== "queued" ? (
                     <View style={styles.emptyTimeline}>
-                      <ThemedXCircle size={18} uniProps={dangerColorMapping} />
-                      <Text style={styles.errorText}>
-                        This phase is missing its provider session reference.
+                      <ThemedListTodo size={18} uniProps={mutedColorMapping} />
+                      <Text style={styles.emptyText}>
+                        Provider history is unavailable for this phase; its durable task record
+                        remains available.
                       </Text>
                     </View>
                   ) : (
@@ -1113,12 +1333,19 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     backgroundColor: theme.colors.surface0,
   },
+  rootStacked: {
+    flexDirection: "column",
+  },
   sidebar: {
     flexShrink: 0,
     borderRightWidth: theme.borderWidth[1],
     borderRightColor: theme.colors.border,
     padding: theme.spacing[4],
     gap: theme.spacing[3],
+  },
+  sidebarStacked: {
+    width: "100%",
+    maxHeight: 280,
   },
   sidebarTitle: {
     color: theme.colors.foreground,
@@ -1127,6 +1354,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   taskList: {
     gap: theme.spacing[2],
+  },
+  taskListScroll: {
+    flexShrink: 1,
   },
   taskRow: {
     borderRadius: theme.borderRadius.md,
@@ -1158,6 +1388,9 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     padding: theme.spacing[4],
   },
+  detailStacked: {
+    minHeight: 0,
+  },
   detailContent: {
     gap: theme.spacing[4],
   },
@@ -1165,6 +1398,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     justifyContent: "space-between",
     gap: theme.spacing[3],
+  },
+  detailHeaderNarrow: {
+    flexDirection: "column",
+    alignItems: "stretch",
   },
   detailTitleBlock: {
     flex: 1,
@@ -1187,6 +1424,9 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing[2],
+  },
+  headerActionsNarrow: {
+    justifyContent: "flex-start",
   },
   actionButton: {
     flexDirection: "row",
@@ -1266,6 +1506,37 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
     padding: theme.spacing[3],
     gap: theme.spacing[2],
+  },
+  decisionOptions: {
+    gap: theme.spacing[2],
+  },
+  decisionOption: {
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+    padding: theme.spacing[2],
+    gap: theme.spacing[1],
+  },
+  decisionOptionSelected: {
+    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface2,
+  },
+  decisionOptionLabel: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  decisionNote: {
+    minHeight: 72,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    padding: theme.spacing[2],
+    textAlignVertical: "top",
   },
   budgetPanel: {
     borderRadius: theme.borderRadius.md,

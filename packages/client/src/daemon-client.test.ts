@@ -5217,3 +5217,65 @@ test("waitForFinish with timeout=0 omits timeoutMs and has no client deadline", 
     vi.useRealTimers();
   }
 });
+
+test("answerBackgroundTaskDecision sends the task-scoped command with authority fencing", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const responsePromise = client.answerBackgroundTaskDecision({
+    taskId: "loop-task-1",
+    decisionId: "decision-1",
+    choiceId: "modern",
+    note: "  Prefer modern behavior.  ",
+    workspaceId: "workspace-1",
+    workspacePath: "/workspace/thoth",
+    expectedAuthorityRevision: 12,
+    commandId: "decision-command-1",
+    requestId: "req-loop-decision",
+  });
+
+  expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
+    type: "session",
+    message: {
+      type: "background_task.decision.request",
+      requestId: "req-loop-decision",
+      taskId: "loop-task-1",
+      decisionId: "decision-1",
+      choiceId: "modern",
+      note: "Prefer modern behavior.",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      expectedAuthorityRevision: 12,
+      commandId: "decision-command-1",
+    },
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "background_task.decision.response",
+      payload: {
+        requestId: "req-loop-decision",
+        task: null,
+        error: "Background task revision conflict: expected 12, found 13.",
+      },
+    }),
+  );
+
+  await expect(responsePromise).resolves.toEqual({
+    requestId: "req-loop-decision",
+    task: null,
+    error: "Background task revision conflict: expected 12, found 13.",
+  });
+});

@@ -36,14 +36,15 @@ export function SecretaryApprovalCard({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const title = kind === "task" ? "任务总览确认" : "Goals Card 确认";
+  const effectiveApprovalMode = card.turnControls?.mode ?? approvalMode;
   const executionAction =
-    approvalMode === "quick"
+    effectiveApprovalMode === "quick"
       ? {
           intent: "accept_quick" as const,
           label: kind === "task" ? "确认继续" : "前台执行",
           testId: `secretary-${kind}-accept-quick`,
         }
-      : approvalMode === "loop"
+      : effectiveApprovalMode === "loop"
         ? {
             intent: "accept_loop" as const,
             label: kind === "task" ? "确认继续" : "确认注册",

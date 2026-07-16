@@ -98,6 +98,7 @@ import type {
 import type {
   BackgroundTaskAction,
   BackgroundTaskActionResponse,
+  BackgroundTaskDecisionResponse,
   BackgroundTaskInspectResponse,
   BackgroundTaskListResponse,
   WorkspaceSecretaryTurnActionPayload,
@@ -349,6 +350,7 @@ type WorkspaceSecretaryModelUpdatePayload = Extract<
 type BackgroundTaskListPayload = BackgroundTaskListResponse["payload"];
 type BackgroundTaskInspectPayload = BackgroundTaskInspectResponse["payload"];
 type BackgroundTaskActionPayload = BackgroundTaskActionResponse["payload"];
+type BackgroundTaskDecisionPayload = BackgroundTaskDecisionResponse["payload"];
 type FileExplorerPayload = FileExplorerResponse["payload"];
 export type FileExplorerDirectoryPayload = NonNullable<FileExplorerPayload["directory"]>;
 type LegacyFileExplorerFilePayload = NonNullable<FileExplorerPayload["file"]>;
@@ -2183,6 +2185,8 @@ export class DaemonClient {
 
   async inspectBackgroundTask(input: {
     taskId: string;
+    workspaceId?: string;
+    workspacePath?: string;
     requestId?: string;
   }): Promise<BackgroundTaskInspectPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2190,6 +2194,8 @@ export class DaemonClient {
       message: {
         type: "background_task.inspect.request",
         taskId: input.taskId,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
       },
       responseType: "background_task.inspect.response",
     });
@@ -2198,6 +2204,10 @@ export class DaemonClient {
   async actOnBackgroundTask(input: {
     taskId: string;
     action: BackgroundTaskAction;
+    workspaceId?: string;
+    workspacePath?: string;
+    expectedAuthorityRevision?: number;
+    commandId?: string;
     requestId?: string;
   }): Promise<BackgroundTaskActionPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2206,8 +2216,44 @@ export class DaemonClient {
         type: "background_task.action.request",
         taskId: input.taskId,
         action: input.action,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+        ...(input.expectedAuthorityRevision !== undefined
+          ? { expectedAuthorityRevision: input.expectedAuthorityRevision }
+          : {}),
+        ...(input.commandId ? { commandId: input.commandId } : {}),
       },
       responseType: "background_task.action.response",
+    });
+  }
+
+  async answerBackgroundTaskDecision(input: {
+    taskId: string;
+    decisionId: string;
+    choiceId: string;
+    note?: string;
+    workspaceId?: string;
+    workspacePath?: string;
+    expectedAuthorityRevision?: number;
+    commandId?: string;
+    requestId?: string;
+  }): Promise<BackgroundTaskDecisionPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: input.requestId,
+      message: {
+        type: "background_task.decision.request",
+        taskId: input.taskId,
+        decisionId: input.decisionId,
+        choiceId: input.choiceId,
+        ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
+        ...(input.expectedAuthorityRevision !== undefined
+          ? { expectedAuthorityRevision: input.expectedAuthorityRevision }
+          : {}),
+        ...(input.commandId ? { commandId: input.commandId } : {}),
+      },
+      responseType: "background_task.decision.response",
     });
   }
 

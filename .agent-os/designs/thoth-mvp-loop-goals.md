@@ -373,11 +373,11 @@ TODO：`NTH-TD-019`
 3. PlanExec 不能反复把 Clarify 后已经冻结的问题再推给用户。
 4. 如果 provider 问执行细节，Thoth 应从 frozen contract 或推荐默认值回答，并记录。
 5. Review session 必须独立，且不能修改 workspace。
-6. Review 不是跑测试的同义词，它要判断 evidence 是否满足 acceptance。
-7. Review 失败必须给出失败原因、下一轮改变、禁止重复事项。
-8. Loop retry 不是机械重跑；必须针对上轮失败调整策略。
-9. `Goal x/y` 和 `Round a/b` 是为了约束 agent 行为，不是 UI 装饰。
-10. daemon 负责 session orchestration、packet repair、permission gate、stream/evidence 落盘和恢复。
+6. Review 不是跑测试、核对 PlanExec 自述或填写 acceptance matrix 的同义词；它必须独立挑战当前路线，判断问题定义、方法或架构是否已错。
+7. Review 失败必须给出真正症结、应放弃的错误路径和下一轮最高杠杆方向；局部修补只有在它仍是正确路线时才允许。
+8. Loop retry 不是机械重跑；必须由独立 Review 的方向性判断改变策略。
+9. `Goal x/y`、`Round a/b`、task/phase id、预算、receipt、manifest 和恢复状态只约束 daemon 调度与恢复，不能作为 Agent Harness 的 prompt/tool 心智模型。
+10. daemon 负责 session orchestration、packet repair、permission gate、stream/evidence 落盘、最小语义结论到 authority state 的绑定和恢复。
 
 验收：
 
@@ -390,15 +390,15 @@ TODO：`NTH-TD-019`
 7. harness 覆盖多 goal 只推进当前 goal。
 8. harness 覆盖 PlanExec 遇到权限动作时停下并请求 permission。
 9. harness 覆盖 PlanExec 遇到缺省执行细节时使用 frozen contract 或推荐默认值，不反复问用户。
-10. harness 覆盖 Review pass 时输出 evidence-based verdict。
-11. harness 覆盖 Review fail 时输出 failure reason 和下一轮改变。
-12. harness 覆盖 retry round 不重复上轮失败策略。
+10. harness 覆盖 Review pass 时给出独立、可解释的完成判断，而不是复述执行者报告。
+11. harness 覆盖 Review fail 时识别真正症结、明确应放弃的路线并指出下一轮改变。
+12. harness 覆盖 retry 由方向性判断改变策略，而不是在相同方案上机械补丁或重复命令。
 13. harness 覆盖 Review session 无法修改 workspace。
 14. harness 覆盖 task blocked 时给出用户可理解 blocker。
 15. harness 覆盖 task done 时给出 evidence summary。
-16. 独立 `codex exec` judge 审查 golden Loop transcripts，判断 PlanExec 是否遵守 frozen contract、Review 是否按 acceptance 判 evidence、retry 是否真的改变策略且没有浪费用户心智。
-17. judge 审查必须明确指出任何跳 goal、忽略约束、把冻结后的执行细节重新推给用户、证据不足、Review 只等同跑测试、retry 机械重跑或 blocker 不可理解的问题。
-18. 最终验收标准：后台 agent 不只是运行命令，而是在 frozen contract 约束下推进、验证、失败后改变策略，并被独立 judge 判定留下可审查证据。
+16. 独立 `codex exec` judge 审查 golden Loop transcripts，判断 PlanExec 是否遵守 frozen contract、Review 是否独立挑战当前路线、是否命中根因、是否敢于拒绝 incremental 误区，以及 retry 是否真的改变策略且没有浪费用户心智。
+17. judge 审查必须明确指出任何跳 goal、忽略约束、把冻结后的执行细节重新推给用户、证据不足、Review 只等同跑测试/表单核对、被 PlanExec 牵着走、机械重跑或 blocker 不可理解的问题。
+18. 最终验收标准：后台 agent 不只是运行命令，而是在 frozen contract 约束下推进；Review 作为独立纠偏 intelligence 让失败后的下一轮走向更正确的方法，而不是留下字段完整的伪证据。
 
 ## 8. Loop Goal 6: Frontend Loop/Task Dogfood Mapping
 

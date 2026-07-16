@@ -458,3 +458,192 @@ Catalog registration may use the launch config, but handlers that need a live pr
 Retry condition:
 
 When adding an audit, child session or caller-scoped tool, test both catalog creation before caller registration and execution after caller registration. For real transport tests, inject literal tool arguments into every newly-created PlanExec/Review session; otherwise a new provider session will improvise equivalent prose and accidentally turn a flow test into an intelligence test.
+
+## `NTH-EXP-018` Foreground Restore And Background Handoff Must Be Durable State, Not UI Inference
+
+Observed on `2026-07-14`:
+
+1. An archived topic could be retained by an old layout or pinned/retained set and be recreated as a normal
+   foreground tab after a reload.
+2. Goals Card registration started the durable Loop task, but the foreground Secretary could still infer that
+   its provider turn was active and leave a spinner visible.
+3. A non-git workspace baseline used recursive manifest aggregation and a total-workspace delta, allowing
+   cache-heavy directories to overflow the stack or consume the task file budget before PlanExec changed
+   anything.
+
+Conclusion:
+
+Archive state must win over every UI retention hint. Foreground-to-background transfer needs an explicit,
+persisted `background_handoff` state whose authority is the durable task registration, not late provider
+terminal events. Evidence accounting must be bounded, baseline-relative and cache-aware; a generic
+`budget_wait` must never conceal an evidence-capture defect.
+
+Retry condition:
+
+For any provider adapter, replay a persisted archived topic/layout, a late terminal event after background
+handoff and a large non-git workspace with build/cache trees. Verify that no foreground tab/spinner returns,
+the task budget starts at zero and a capture failure is recoverable rather than represented as a completed,
+blocked or budget-exhausted task.
+
+## `NTH-EXP-019` Durable Authority Must Not Become Agent Harness Cognition
+
+Observed on `2026-07-14`:
+
+1. The Loop authority gained useful durable records for recovery and safety: phase state, rounds, budgets,
+   evidence manifests, receipts, retries and task revisions.
+2. Those records then began to shape Review prompts, runtime-tool fields and quality criteria, turning an
+   independent reviewer into a PlanExec-following checklist/acceptance-matrix filler.
+3. This creates a false impression of rigor while making the system more incremental, less capable of
+   rejecting a wrong route and less able to give the next PlanExec a high-leverage correction.
+
+Conclusion:
+
+Treat the Agent Harness as a capable reasoning actor. Daemon mechanics remain authoritative for persistence,
+recovery, concurrency, permission and lifecycle routing, but are never Review's mental model. Review receives
+the approved human task, the actual work and inspectable reality, plus prior substantive direction. It must
+independently diagnose, challenge PlanExec, reject local incrementalism when warranted and write a concise
+Review Direction Memo. Only the smallest semantic conclusion crosses back into daemon lifecycle routing.
+
+Retry condition:
+
+When editing any Clarify/PlanExec/Review/audit prompt, context pack, runtime tool or golden fixture, reject it
+if it injects or requires task/phase/run identifiers, budgets, retry counts, envelopes, manifest/hash details,
+receipt schemas, storage paths, repair state or field-completion checklists as cognitive obligations. Run an
+independent judge case where PlanExec is locally plausible but conceptually wrong; acceptance requires Review
+to identify the non-local correction rather than request another incremental patch.
+
+## `NTH-EXP-020` Phase Completion Must Re-arm Scheduling, And Semantic Tests Need Semantic Routing
+
+Observed on `2026-07-14`:
+
+1. A real Codex PlanExec tool result was accepted and persisted, but the task projection remained
+   `PlanExec completed / Review queued`. The scheduler had been active when the phase completion requested
+   another scheduling pass, so the request could be lost at the worktree-lease boundary.
+2. Codex provider callbacks use a provider-native turn id while AgentManager owns a separate daemon lifecycle
+   turn id. Treating them as identical rejected valid dynamic-tool calls as stale.
+3. After moving phase/round identity out of live tools, the UT-05 Review fixture could no longer select its
+   retry payload from a hidden round. The correct context was the prior Review Direction Memo, not putting a
+   mechanical round field back into the Review prompt.
+4. The independent golden judge correctly rejected a green deterministic report because it lacked negative
+   cases for Review ordering, shallow Direction Memos, daemon-budget reasoning and pass-budget consumption.
+
+Conclusion:
+
+Scheduler state needs a durable re-run intent whenever phase completion can queue work while the scheduler
+still owns the lease. Provider adapters must distinguish native correlation from daemon lifecycle ids. A
+semantic fixture routes retries from semantic history, such as the Direction Memo, and never reintroduces
+daemon mechanics merely to make a scripted test convenient. A golden report is not adequate until the
+negative cases can fail for the same reasons a capable but misdirected agent would fail.
+
+Retry condition:
+
+Whenever a new phase can be queued by a provider callback, test it while scheduler execution is already in
+flight. For every adapter, test stale native-turn callbacks separately from daemon stream ids. When changing
+Agent Harness cognition, rerun an independent judge and add a deterministic negative case for each judge
+finding before accepting the green report.
+
+## `NTH-EXP-021` A Computed Optical Filter Is Not Evidence Of Visible Refraction
+
+Observed on `2026-07-16`:
+
+1. Chromium accepted an SVG displacement URL in the Dive row's `backdrop-filter`, and the computed style,
+   filter node and displacement values were all present.
+2. The pixels behind the transparent row were almost uniform, so displacing them produced no user-visible
+   refraction. The text used only a small continuous displacement and still read as ordinary text over blue
+   glass.
+3. The technical checks and error-free screenshot therefore proved that the effect rendered, but not that the
+   requested optical behavior was perceptible.
+
+Conclusion:
+
+Visual-effect acceptance must prove a visible pixel relationship, not merely DOM/CSS activation. Refraction
+needs recognizable source detail behind the lens. In a compact control with a mostly uniform backdrop, provide
+that detail by optically re-imaging the semantic foreground itself: clipped lens bands, opposing offsets and
+restrained chromatic separation. Keep random displacement subordinate so the result reads as refraction rather
+than generic blur or warped text.
+
+Retry condition:
+
+For future glass, shader or distortion work, inspect the final capture at native size and enlarged pixel scale.
+Acceptance requires a human-visible displaced edge, split contour or changed spatial relationship while the
+label remains legible. Computed filters, animation names and a zero-error console are necessary diagnostics but
+cannot substitute for this visual evidence.
+
+## `NTH-EXP-022` Current Composer Preference Is Not Historical Execution Authority
+
+Observed on `2026-07-16`:
+
+1. One Workspace Secretary topic first ran a Quick foreground turn, then the user switched to Loop and sent a
+   new request in the same provider session.
+2. Task/Goals approval rendering and daemon conflict validation both read the mutable clean-model composer.
+   A late model update could therefore expose `accept_quick` while daemon separately observed Loop, making a
+   valid Loop flow impossible to register.
+3. The provider session continuity was correct; the missing boundary was between the user's preference for the
+   next send and the durable execution target of the authority flow already in progress.
+
+Conclusion:
+
+Composer controls are future-send intent. At send time daemon must freeze the effective controls on the durable
+user turn and bind every Task/Goals Card in that flow to the same snapshot. Card rendering, answer validation,
+Loop budget selection and restart handoff must read that Card-owned snapshot. Provider-supplied tool arguments
+cannot author runtime mechanics, and a later clean model cannot rewrite historical authority.
+
+Retry condition:
+
+Whenever a composer control can change while a provider turn or authority card remains active, test both switch
+directions, a second switch while the Card is pending, and daemon restart after approval. Acceptance requires one
+continuous provider session, unchanged Card actions, correct Quick/Loop handoff, preserved next-send preference
+and provider-neutral behavior.
+
+## `NTH-EXP-023` A Provider Startup Error Is Not A Failed Review
+
+Observed on `2026-07-16`:
+
+1. A Loop task registered successfully and completed G1 PlanExec, but Review failed before producing any stream
+   event because its generated provider `config.toml` was observed mid-write as an unclosed table.
+2. Every isolated Codex session linked `config.toml` to the same global writable file. PlanExec teardown and
+   Review startup could therefore race through shared configuration despite having separate session homes.
+3. The async generator threw before emitting `turn_failed`. The generic wait catch saw the task still running
+   and converted the infrastructure error into semantic `blocked`, leaving failed reviews at `0/1` while also
+   disabling Resume.
+4. Workspace Secretary authority was already persisted as `background_handoff + ready`, but changing composer
+   mode cleared the App's model ref. Retained running timeline tools then reconstructed a false foreground spinner.
+
+Conclusion:
+
+Provider session homes need private writable configuration snapshots; shared authentication may remain linked.
+An exception before a semantic Review verdict is a recoverable provider interruption, not a Review judgment and
+not a budget event. Foreground handoff authority must outrank historical timeline activity, and next-send controls
+must not clear the current topic model.
+
+Retry condition:
+
+Test provider generators that throw before their first event, concurrent PlanExec/Review session creation,
+background handoff with retained running tool items, and Resume from both interrupted and legacy blocked phase
+cursors. Verify failed-Review budget remains unchanged until an actual Review verdict is submitted.
+
+## `NTH-EXP-024` Internal Snapshot Visibility Does Not Imply A Live Phase Stream
+
+Observed on `2026-07-16`:
+
+1. Background Tasks could recover an internal Loop Review agent and render its timeline snapshot, including a
+   pending `Apply file changes` permission card.
+2. The Provider received the approval and completed two `apply_patch` calls, then continued reasoning. The UI
+   nevertheless appeared frozen because its WebSocket session owned only the global `AgentManager` subscription,
+   and that subscription intentionally filters every internal agent event.
+3. The App already listened for `agent_stream`, `agent_permission_request` and `agent_permission_resolved`; the
+   missing boundary was daemon-side scoped routing after `fetch_agent_timeline_request`, not card state,
+   permission-handler continuation or Provider recovery.
+
+Conclusion:
+
+Any UI that intentionally exposes a hidden/internal phase snapshot must also establish an equally scoped live
+subscription for that exact phase. The exception must be session-local and identity-checked, must reuse the same
+serialization semantics as foreground agents, must never forward internal `agent_state` into the Agent directory,
+and must release on phase switch and session cleanup. Global internal filtering remains the correct default.
+
+Retry condition:
+
+For every internal timeline surface, test the full sequence after snapshot load: live reasoning, tool running and
+completed, permission requested and resolved, turn terminal events, phase switch, disconnect cleanup and absence
+from `listAgents()`. A visible snapshot or a Provider-side success receipt alone is insufficient UI acceptance.

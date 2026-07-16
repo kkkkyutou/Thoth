@@ -36,6 +36,8 @@ interface WorkspaceDigest {
   treeSha256: string;
   changedFiles: number;
   changedLines: number;
+  coverage?: "complete" | "bounded";
+  scannedEntries?: number;
   gitHead?: string;
   gitStatusSha256?: string;
   gitDiffSha256?: string;
@@ -68,6 +70,53 @@ function nowIso(): string {
 }
 
 const execFileAsync = promisify(execFile);
+const DIRECTORY_DIGEST_EXCLUDED_NAMES = new Set([
+  ".cache",
+  ".dev",
+  ".git",
+  ".next",
+  ".thoth",
+  ".venv",
+  "__pycache__",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "venv",
+]);
+const DIRECTORY_DIGEST_ENTRY_LIMIT = 4_096;
+
+function shouldExcludeFromDirectoryDigest(name: string): boolean {
+  return DIRECTORY_DIGEST_EXCLUDED_NAMES.has(name);
+}
+
+interface DirectoryDigest {
+  treeSha256: string;
+  changedFiles: number;
+  coverage: "complete" | "bounded";
+  scannedEntries: number;
+}
+
+function addDirectoryDigestRecord(hash: ReturnType<typeof createHash>, record: unknown[]): void {
+  hash.update(JSON.stringify(record));
+  hash.update("\n");
+}
+
+function finalizeDirectoryDigest(input: {
+  hash: ReturnType<typeof createHash>;
+  changedFiles: number;
+  scannedEntries: number;
+  truncated: boolean;
+}): DirectoryDigest {
+  const coverage = input.truncated ? "bounded" : "complete";
+  addDirectoryDigestRecord(input.hash, ["coverage", coverage, input.scannedEntries]);
+  return {
+    treeSha256: input.hash.digest("hex"),
+    changedFiles: input.changedFiles,
+    coverage,
+    scannedEntries: input.scannedEntries,
+  };
+}
 
 function git(root: string, args: string[]): string | null {
   try {
@@ -93,68 +142,102 @@ async function gitAsync(root: string, args: string[]): Promise<string | null> {
   }
 }
 
-function walkDirectory(root: string, relative = ""): Array<{ path: string; digest: string }> {
-  const absolute = path.join(root, relative);
-  const entries = readdirSync(absolute, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-  const rows: Array<{ path: string; digest: string }> = [];
-  for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === ".thoth") {
-      continue;
-    }
-    const nextRelative = path.join(relative, entry.name);
-    const nextAbsolute = path.join(root, nextRelative);
-    if (entry.isDirectory()) {
-      rows.push(...walkDirectory(root, nextRelative));
-      continue;
-    }
-    const stat = lstatSync(nextAbsolute);
-    if (stat.isSymbolicLink()) {
-      rows.push({ path: nextRelative, digest: `symlink:${readlinkSync(nextAbsolute)}` });
-      continue;
-    }
-    if (stat.isFile()) {
-      // Hashing metadata keeps non-git workspaces bounded; git workspaces use
-      // the actual diff/tree below for stronger evidence.
-      rows.push({ path: nextRelative, digest: `${stat.size}:${stat.mtimeMs}:${stat.mode}` });
+function walkDirectory(root: string, relative = ""): DirectoryDigest {
+  const hash = createHash("sha256");
+  let changedFiles = 0;
+  let scannedEntries = 0;
+  let truncated = false;
+  const pendingDirectories = [relative];
+  let nextDirectoryIndex = 0;
+
+  scanDirectories: while (nextDirectoryIndex < pendingDirectories.length) {
+    const currentRelative = pendingDirectories[nextDirectoryIndex++]!;
+    const absolute = path.join(root, currentRelative);
+    const entries = readdirSync(absolute, { withFileTypes: true })
+      .filter((entry) => !shouldExcludeFromDirectoryDigest(entry.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (scannedEntries >= DIRECTORY_DIGEST_ENTRY_LIMIT) {
+        truncated = true;
+        break scanDirectories;
+      }
+      scannedEntries += 1;
+      const nextRelative = path.join(currentRelative, entry.name);
+      const nextAbsolute = path.join(root, nextRelative);
+      if (entry.isDirectory()) {
+        const stat = lstatSync(nextAbsolute);
+        addDirectoryDigestRecord(hash, [
+          nextRelative,
+          `directory:${stat.mtimeMs}:${stat.ctimeMs}:${stat.mode}`,
+        ]);
+        pendingDirectories.push(nextRelative);
+        continue;
+      }
+      const stat = lstatSync(nextAbsolute);
+      if (stat.isSymbolicLink()) {
+        addDirectoryDigestRecord(hash, [nextRelative, `symlink:${readlinkSync(nextAbsolute)}`]);
+        changedFiles += 1;
+        continue;
+      }
+      if (stat.isFile()) {
+        // Git worktrees use a stronger tree/diff receipt. Non-git paths use
+        // stable metadata records and report bounded coverage explicitly when
+        // a broad directory would otherwise starve the task scheduler.
+        addDirectoryDigestRecord(hash, [nextRelative, `${stat.size}:${stat.mtimeMs}:${stat.mode}`]);
+        changedFiles += 1;
+      }
     }
   }
-  return rows;
+  return finalizeDirectoryDigest({ hash, changedFiles, scannedEntries, truncated });
 }
 
-async function walkDirectoryAsync(
-  root: string,
-  relative = "",
-): Promise<Array<{ path: string; digest: string }>> {
-  const absolute = path.join(root, relative);
-  const entries = (await readdir(absolute, { withFileTypes: true })).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-  const rows: Array<{ path: string; digest: string }> = [];
-  for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === ".thoth") {
-      continue;
-    }
-    const nextRelative = path.join(relative, entry.name);
-    const nextAbsolute = path.join(root, nextRelative);
-    if (entry.isDirectory()) {
-      rows.push(...(await walkDirectoryAsync(root, nextRelative)));
-      continue;
-    }
-    const entryStat = await lstat(nextAbsolute);
-    if (entryStat.isSymbolicLink()) {
-      rows.push({ path: nextRelative, digest: `symlink:${await readlink(nextAbsolute)}` });
-      continue;
-    }
-    if (entryStat.isFile()) {
-      rows.push({
-        path: nextRelative,
-        digest: `${entryStat.size}:${entryStat.mtimeMs}:${entryStat.mode}`,
-      });
+async function walkDirectoryAsync(root: string, relative = ""): Promise<DirectoryDigest> {
+  const hash = createHash("sha256");
+  let changedFiles = 0;
+  let scannedEntries = 0;
+  let truncated = false;
+  const pendingDirectories = [relative];
+  let nextDirectoryIndex = 0;
+
+  scanDirectories: while (nextDirectoryIndex < pendingDirectories.length) {
+    const currentRelative = pendingDirectories[nextDirectoryIndex++]!;
+    const absolute = path.join(root, currentRelative);
+    const entries = (await readdir(absolute, { withFileTypes: true }))
+      .filter((entry) => !shouldExcludeFromDirectoryDigest(entry.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (scannedEntries >= DIRECTORY_DIGEST_ENTRY_LIMIT) {
+        truncated = true;
+        break scanDirectories;
+      }
+      scannedEntries += 1;
+      const nextRelative = path.join(currentRelative, entry.name);
+      const nextAbsolute = path.join(root, nextRelative);
+      if (entry.isDirectory()) {
+        const entryStat = await lstat(nextAbsolute);
+        addDirectoryDigestRecord(hash, [
+          nextRelative,
+          `directory:${entryStat.mtimeMs}:${entryStat.ctimeMs}:${entryStat.mode}`,
+        ]);
+        pendingDirectories.push(nextRelative);
+        continue;
+      }
+      const entryStat = await lstat(nextAbsolute);
+      if (entryStat.isSymbolicLink()) {
+        addDirectoryDigestRecord(hash, [nextRelative, `symlink:${await readlink(nextAbsolute)}`]);
+        changedFiles += 1;
+        continue;
+      }
+      if (entryStat.isFile()) {
+        addDirectoryDigestRecord(hash, [
+          nextRelative,
+          `${entryStat.size}:${entryStat.mtimeMs}:${entryStat.mode}`,
+        ]);
+        changedFiles += 1;
+      }
     }
   }
-  return rows;
+  return finalizeDirectoryDigest({ hash, changedFiles, scannedEntries, truncated });
 }
 
 export function captureWorkspaceDigest(workspacePath: string): WorkspaceDigest {
@@ -189,13 +272,17 @@ export function captureWorkspaceDigest(workspacePath: string): WorkspaceDigest {
       gitDiffSha256: sha256(diff),
     };
   }
-  const rows = existsSync(canonicalPath) ? walkDirectory(canonicalPath) : [];
+  const directoryDigest = existsSync(canonicalPath)
+    ? walkDirectory(canonicalPath)
+    : { treeSha256: sha256(""), changedFiles: 0, coverage: "complete" as const, scannedEntries: 0 };
   return {
     kind: "directory",
     canonicalPath,
-    treeSha256: sha256(JSON.stringify(rows)),
-    changedFiles: rows.length,
+    treeSha256: directoryDigest.treeSha256,
+    changedFiles: directoryDigest.changedFiles,
     changedLines: 0,
+    coverage: directoryDigest.coverage,
+    scannedEntries: directoryDigest.scannedEntries,
   };
 }
 
@@ -237,13 +324,17 @@ export async function captureWorkspaceDigestAsync(workspacePath: string): Promis
       gitDiffSha256: sha256(diff),
     };
   }
-  const rows = existsSync(canonicalPath) ? await walkDirectoryAsync(canonicalPath) : [];
+  const directoryDigest = existsSync(canonicalPath)
+    ? await walkDirectoryAsync(canonicalPath)
+    : { treeSha256: sha256(""), changedFiles: 0, coverage: "complete" as const, scannedEntries: 0 };
   return {
     kind: "directory",
     canonicalPath,
-    treeSha256: sha256(JSON.stringify(rows)),
-    changedFiles: rows.length,
+    treeSha256: directoryDigest.treeSha256,
+    changedFiles: directoryDigest.changedFiles,
     changedLines: 0,
+    coverage: directoryDigest.coverage,
+    scannedEntries: directoryDigest.scannedEntries,
   };
 }
 
@@ -315,6 +406,10 @@ export class LoopEvidenceStore {
       sha256: sha256(serialized),
       kind: manifest.kind,
       createdAt: manifest.createdAt,
+      ...(manifest.workspace.coverage ? { coverage: manifest.workspace.coverage } : {}),
+      ...(manifest.workspace.scannedEntries !== undefined
+        ? { scannedEntries: manifest.workspace.scannedEntries }
+        : {}),
     };
   }
 
@@ -363,6 +458,10 @@ export class LoopEvidenceStore {
       sha256: sha256(serialized),
       kind: manifest.kind,
       createdAt: manifest.createdAt,
+      ...(manifest.workspace.coverage ? { coverage: manifest.workspace.coverage } : {}),
+      ...(manifest.workspace.scannedEntries !== undefined
+        ? { scannedEntries: manifest.workspace.scannedEntries }
+        : {}),
     };
   }
 

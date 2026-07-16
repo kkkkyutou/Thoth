@@ -46,6 +46,32 @@ vi.mock("lucide-react-native", () => ({
   ChevronRight: () => React.createElement("span", { "data-icon": "ChevronRight" }),
   GitBranch: () => React.createElement("span", { "data-icon": "GitBranch" }),
   SearchCheck: () => React.createElement("span", { "data-icon": "SearchCheck" }),
+  Sparkles: () => React.createElement("span", { "data-icon": "Sparkles" }),
+}));
+
+vi.mock("@/components/ui/switch", () => ({
+  Switch: ({
+    value,
+    onValueChange,
+    disabled,
+    accessibilityLabel,
+    testID,
+  }: {
+    value: boolean;
+    onValueChange?: (value: boolean) => void;
+    disabled?: boolean;
+    accessibilityLabel?: string;
+    testID?: string;
+  }) =>
+    React.createElement("button", {
+      type: "button",
+      role: "switch",
+      disabled: Boolean(disabled),
+      "data-testid": testID,
+      "aria-label": accessibilityLabel,
+      "aria-checked": value,
+      onClick: () => onValueChange?.(!value),
+    }),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -101,11 +127,13 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     onSelect,
     disabled,
     selected,
+    leading,
     testID,
   }: React.PropsWithChildren<{
     onSelect?: () => void;
     disabled?: boolean;
     selected?: boolean;
+    leading?: React.ReactNode;
     testID?: string;
   }>) =>
     React.createElement(
@@ -116,6 +144,7 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
         "aria-selected": selected ? "true" : "false",
         onClick: onSelect,
       },
+      leading,
       children,
     ),
 }));
@@ -150,6 +179,8 @@ describe("RuntimeControls", () => {
     render(<RuntimeControls serverId="server-1" />);
 
     expect(screen.getByTestId("thoth-clarify-control").textContent).toContain("Dive");
+    expect(screen.getByTestId("thoth-clarify-dive-label").textContent).toBe("Dive");
+    expect(screen.queryByTestId("thoth-clarify-dive-water")).toBeNull();
     expect(screen.getByTestId("thoth-mode-control").textContent).toContain("Balanced");
     expect(screen.getByTestId("thoth-mode-control").textContent).not.toContain("Async");
     expect(screen.getByTestId("thoth-clarify-menu-dive").getAttribute("aria-selected")).toBe(
@@ -171,6 +202,15 @@ describe("RuntimeControls", () => {
 
     expect(screen.getByTestId("thoth-mode-control").textContent).toContain("Single");
     expect(screen.getByTestId("thoth-mode-control").textContent).not.toContain("Async");
+  });
+
+  it("keeps the animated Dive label in the original menu row", () => {
+    configState.current.workspaceSecretary.clarifyStrength = "light";
+
+    render(<RuntimeControls serverId="server-1" />);
+
+    expect(screen.getByTestId("thoth-clarify-dive-label").textContent).toBe("Dive");
+    expect(screen.queryByTestId("thoth-clarify-dive-water")).toBeNull();
   });
 
   it("renders Quick as a short selected label without Live detail", () => {
@@ -202,6 +242,31 @@ describe("RuntimeControls", () => {
     expect(patchConfigMock).toHaveBeenNthCalledWith(3, {
       workspaceSecretary: { mode: "quick" },
     });
+  });
+
+  it("makes raw provider conversation the explicit off state", async () => {
+    configState.current = {
+      workspaceSecretary: {
+        enabled: false,
+        mode: "loop",
+        clarifyStrength: "dive",
+        loopStrength: "balanced",
+      },
+    };
+
+    render(<RuntimeControls serverId="server-1" />);
+
+    expect(screen.getByTestId("thoth-enabled-switch").getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByTestId("thoth-clarify-control")).toBeNull();
+    expect(screen.queryByTestId("thoth-mode-control")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("thoth-enabled-switch"));
+
+    await waitFor(() =>
+      expect(patchConfigMock).toHaveBeenCalledWith({
+        workspaceSecretary: { enabled: true, clarifyStrength: "dive" },
+      }),
+    );
   });
 
   it("renders Infinite with the laser label in the menu and chip", () => {

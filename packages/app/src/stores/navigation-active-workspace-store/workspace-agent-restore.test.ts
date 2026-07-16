@@ -59,6 +59,7 @@ function createAgentPayload(input: {
   updatedAt: string;
   workspaceId?: string;
   title?: string | null;
+  archivedAt?: string | null;
 }): AgentSnapshotPayload {
   return {
     id: input.id,
@@ -84,7 +85,7 @@ function createAgentPayload(input: {
     persistence: null,
     title: input.title ?? null,
     labels: {},
-    archivedAt: "2026-07-09T00:10:00.000Z",
+    archivedAt: input.archivedAt ?? null,
   };
 }
 
@@ -202,5 +203,31 @@ describe("restoreWorkspaceAgentTabFromHistory", () => {
     ).resolves.toBe(false);
 
     expect(useWorkspaceLayoutStore.getState().getWorkspaceTabs(WORKSPACE_KEY)).toEqual([]);
+  });
+
+  it("never restores an archived history entry into a workspace tab", async () => {
+    const archived = createHistoryEntry(
+      createAgentPayload({
+        id: "agent-archived",
+        updatedAt: "2026-07-09T00:02:00.000Z",
+        title: "Archived weather question",
+        archivedAt: "2026-07-09T00:10:00.000Z",
+      }),
+    );
+    const client = createClient([archived]);
+
+    await expect(
+      restoreWorkspaceAgentTabFromHistory({
+        serverId: SERVER_ID,
+        workspaceId: WORKSPACE_ID,
+        client,
+      }),
+    ).resolves.toBe(false);
+
+    expect(useWorkspaceLayoutStore.getState().getWorkspaceTabs(WORKSPACE_KEY)).toEqual([]);
+    expect(
+      useSessionStore.getState().sessions[SERVER_ID]?.agentDetails.get("agent-archived")
+        ?.archivedAt,
+    ).toBeInstanceOf(Date);
   });
 });

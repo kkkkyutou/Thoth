@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  BackgroundTaskDecisionRequestSchema,
+  BackgroundTaskDecisionResponseSchema,
   SecretaryClarifyAnswerPayloadSchema,
+  SecretaryTurnSchema,
   ThothCleanUiModelSchema,
+  ThothGoalsCardModelSchema,
+  ThothTaskCardModelSchema,
   WorkspaceSecretaryAnswerRequestSchema,
   WorkspaceSecretaryCancelRequestSchema,
   WorkspaceSecretaryCancelResponseSchema,
@@ -136,6 +141,57 @@ function createModel() {
 }
 
 describe("workspace secretary RPC schemas", () => {
+  it("preserves per-send controls on user turns and approval cards", () => {
+    const turnControls = {
+      mode: "loop" as const,
+      clarifyStrength: "balanced" as const,
+      loop: "one_plan_one_do" as const,
+    };
+    const userTurn = SecretaryTurnSchema.parse({
+      id: "turn-hot-switch",
+      kind: "message",
+      speaker: "user",
+      text: "register this run in the background",
+      turnControls,
+    });
+    const taskCard = ThothTaskCardModelSchema.parse({
+      id: "task-hot-switch",
+      roundLabel: "Task",
+      title: "Hot-switched task",
+      goal: "Keep the current Clarify flow while changing its execution target.",
+      constraints: ["Do not create another provider session."],
+      acceptance: ["The Task and Goals cards retain Loop mode."],
+      provenanceSummary: "Current Clarify transcript",
+      turnControls,
+      submitted: false,
+    });
+    const goalsCard = ThothGoalsCardModelSchema.parse({
+      id: "goals-hot-switch",
+      roundLabel: "Goals",
+      title: "Hot-switched goals",
+      summary: "One linear test goal.",
+      goalsCountRationale: "A single fixture goal is sufficient for this protocol test.",
+      goals: [
+        {
+          id: "goal-hot-switch",
+          order: 1,
+          title: "Register",
+          goal: "Register the approved background task.",
+          constraints: ["Use the frozen turn controls."],
+          acceptance: ["Registration uses Loop Single."],
+          provenance: "Task Card",
+        },
+      ],
+      provenanceSummary: "Approved Task Card",
+      turnControls,
+      submitted: false,
+    });
+
+    expect(userTurn.turnControls).toEqual(turnControls);
+    expect(taskCard.turnControls).toEqual(turnControls);
+    expect(goalsCard.turnControls).toEqual(turnControls);
+  });
+
   it("accepts secretary send requests with message id, images, and structured attachments", () => {
     const parsed = WorkspaceSecretarySendRequestSchema.parse({
       type: "workspace_secretary.send.request",
@@ -192,6 +248,19 @@ describe("workspace secretary RPC schemas", () => {
 
     expect(model.secretary.timelineAgentId).toBe("provider-agent-topic-main");
     expect(model.secretary.turns[0]).toMatchObject({ messageId: "user-message-1" });
+  });
+
+  it("accepts a provider-neutral background handoff lifecycle marker", () => {
+    const input = createModel();
+    const model = ThothCleanUiModelSchema.parse({
+      ...input,
+      secretary: {
+        ...input.secretary,
+        foregroundTurnState: "background_handoff",
+      },
+    });
+
+    expect(model.secretary.foregroundTurnState).toBe("background_handoff");
   });
 
   it("accepts deprecated clean-event compatibility updates without raw provider payloads", () => {
@@ -365,6 +434,33 @@ describe("workspace secretary RPC schemas", () => {
     expect(response.payload.model?.secretary.status.kind).toBe("ready");
   });
 
+  it("accepts task-scoped Loop decision requests with revision and command fencing", () => {
+    const request = BackgroundTaskDecisionRequestSchema.parse({
+      type: "background_task.decision.request",
+      requestId: "req-loop-decision",
+      taskId: "loop-task-1",
+      decisionId: "decision-1",
+      choiceId: "modern",
+      note: "Prefer the supported modern target.",
+      workspaceId: "workspace-1",
+      workspacePath: "/workspace/thoth",
+      expectedAuthorityRevision: 12,
+      commandId: "decision-command-1",
+    });
+    const response = BackgroundTaskDecisionResponseSchema.parse({
+      type: "background_task.decision.response",
+      payload: {
+        requestId: "req-loop-decision",
+        task: null,
+        error: "Background task revision conflict: expected 12, found 13.",
+      },
+    });
+
+    expect(request.commandId).toBe("decision-command-1");
+    expect(request.expectedAuthorityRevision).toBe(12);
+    expect(response.payload.error).toContain("revision conflict");
+  });
+
   it("keeps Loop budget and evidence wait states visible in background task summaries", () => {
     const model = createModel();
     model.backgroundTasks.tasks = [
@@ -381,6 +477,12 @@ describe("workspace secretary RPC schemas", () => {
         summary: "Workspace evidence needs attention.",
       },
       {
+        id: "loop-evidence-capture-failed",
+        title: "Capture task",
+        status: "evidence_capture_failed",
+        summary: "Workspace evidence capture can be retried.",
+      },
+      {
         id: "loop-workspace-changed",
         title: "Concurrent workspace task",
         status: "workspace_changed_concurrently",
@@ -393,6 +495,7 @@ describe("workspace secretary RPC schemas", () => {
     expect(parsed.backgroundTasks.tasks.map((task) => task.status)).toEqual([
       "budget_wait",
       "evidence_invalid",
+      "evidence_capture_failed",
       "workspace_changed_concurrently",
     ]);
   });

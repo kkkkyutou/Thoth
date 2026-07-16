@@ -166,6 +166,10 @@ export const en = {
       mode: "Change mode",
     },
     runtime: {
+      thoth: {
+        switch: "Enable Thoth mode",
+        tooltip: "Turn on Thoth Clarify and Loop. Off sends directly to the provider.",
+      },
       clarify: {
         tooltip: "Clarify",
         selectWithValue: "Clarify: {{value}}",

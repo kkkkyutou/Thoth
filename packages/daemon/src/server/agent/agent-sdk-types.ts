@@ -384,7 +384,7 @@ export type AgentTimelineItem =
   | { type: "error"; message: string }
   | CompactionTimelineItem;
 
-export type AgentStreamEvent =
+export type AgentStreamEvent = (
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
   | { type: "turn_started"; provider: AgentProvider; turnId?: string }
   | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage; turnId?: string }
@@ -435,10 +435,22 @@ export type AgentStreamEvent =
       provider: AgentProvider;
       reason: "finished" | "error" | "permission";
       timestamp: string;
-    };
+    }
+) & {
+  /**
+   * Provider-native turn correlation id. `turnId` remains the daemon stream
+   * lifecycle id, which may be synthesized before a provider returns its own
+   * id. Loop authority uses this field only to fence native runtime-tool calls.
+   */
+  providerTurnId?: string;
+};
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {
   return "turnId" in event ? event.turnId : undefined;
+}
+
+export function getAgentStreamEventProviderTurnId(event: AgentStreamEvent): string | undefined {
+  return event.providerTurnId;
 }
 
 export type AgentPermissionRequestKind = "tool" | "plan" | "question" | "mode" | "other";

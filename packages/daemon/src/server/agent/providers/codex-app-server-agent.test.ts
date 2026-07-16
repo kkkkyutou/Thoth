@@ -2577,6 +2577,25 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("keeps Codex native turn correlation separate from the daemon lifecycle turn id", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    asInternals(session).handleNotification("turn/started", {
+      turn: { id: "provider-native-turn-1" },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "turn_started",
+        provider: "codex",
+        turnId: "test-turn",
+        providerTurnId: "provider-native-turn-1",
+      },
+    ]);
+  });
+
   test("does not emit Codex plan thread items as timeline cards while plan approval is pending", () => {
     const session = createSession({
       featureValues: { plan_mode: true, fast_mode: true },

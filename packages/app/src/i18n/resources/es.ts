@@ -168,6 +168,10 @@ export const es: TranslationResources = {
       mode: "Cambiar modo",
     },
     runtime: {
+      thoth: {
+        switch: "Activar modo Thoth",
+        tooltip: "Activa Clarify y Loop de Thoth. Desactivado envia directamente al proveedor.",
+      },
       clarify: {
         tooltip: "Clarify",
         selectWithValue: "Clarify: {{value}}",

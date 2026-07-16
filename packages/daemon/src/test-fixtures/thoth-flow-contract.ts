@@ -34,7 +34,7 @@ export type ThothFixtureProviderStep =
       type: "review_verdict";
       goalId: string;
       round: number;
-      outcome: "pass" | "fail";
+      outcome: "pass" | "continue";
       marker: string;
     };
 
@@ -168,7 +168,7 @@ export const THOTH_FLOW_FIXTURES = {
         type: "review_verdict",
         goalId: "goal-1",
         round: 1,
-        outcome: "fail",
+        outcome: "continue",
         marker: "REQUIRED_FIX_MARKER_MISSING",
       },
       { type: "planexec_result", goalId: "goal-1", round: 2, marker: "APPLY_REQUIRED_FIX_MARKER" },

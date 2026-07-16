@@ -20,6 +20,7 @@ const { clientMock, listeners, scrollToBottomMock, theme } = vi.hoisted(() => ({
     listBackgroundTasks: vi.fn(),
     inspectBackgroundTask: vi.fn(),
     actOnBackgroundTask: vi.fn(),
+    answerBackgroundTaskDecision: vi.fn(),
     fetchAgentTimeline: vi.fn(),
     on: vi.fn((type: string, listener: (message: any) => void) => {
       const bucket = listeners.get(type) ?? new Set();
@@ -60,7 +61,7 @@ vi.mock("react-native-unistyles", () => ({
       const { uniProps: _uniProps, ...rest } = props;
       return React.createElement(Component, rest);
     },
-  useUnistyles: () => ({ theme }),
+  useUnistyles: () => ({ theme, rt: { breakpoint: "lg" } }),
 }));
 
 vi.mock("lucide-react-native", () => ({
@@ -293,6 +294,10 @@ function setupClient(task = loopTask()): void {
     requestId: "action-1",
     task: loopTask("paused"),
   });
+  clientMock.answerBackgroundTaskDecision.mockResolvedValue({
+    requestId: "decision-1",
+    task: loopTask("running"),
+  });
   clientMock.fetchAgentTimeline.mockResolvedValue({
     requestId: "timeline-1",
     agent: {
@@ -367,7 +372,7 @@ describe("BackgroundTasksSurface", () => {
     expect(screen.getByText("Goal 2: Documentation")).toBeTruthy();
     expect(screen.getByText("running_review · loop round 2")).toBeTruthy();
     expect(screen.getByText("Latest PlanExec evidence")).toBeTruthy();
-    expect(screen.getByText("Updated docs.")).toBeTruthy();
+    expect(screen.getAllByText("Updated docs.").length).toBeGreaterThan(0);
     expect(screen.getByText(/Docs include usage example/)).toBeTruthy();
     expect(screen.getByTestId("loop-phase-review")).toBeTruthy();
     await waitFor(() => expect(screen.getByTestId("agent-stream-agent-review-2")).toBeTruthy());
@@ -388,6 +393,47 @@ describe("BackgroundTasksSurface", () => {
 
     await waitFor(() => expect(screen.getByText("Phase agent record not found")).toBeTruthy());
     expect(screen.queryByText("This phase has not created a provider session yet.")).toBeNull();
+  });
+
+  it("shows a durable Loop user decision and submits it with workspace revision context", async () => {
+    const task: LoopTaskModel = {
+      ...loopTask("awaiting_user_decision"),
+      authorityRevision: 12,
+      currentPhase: null,
+      pendingUserDecision: {
+        id: "decision-1",
+        title: "Choose delivery policy",
+        question: "Which policy should continue this goal?",
+        options: [
+          { id: "conservative", label: "Conservative", description: "Keep the current boundary." },
+          { id: "aggressive", label: "Aggressive", description: "Use the broader approach." },
+        ],
+        status: "pending",
+        createdAt: "2026-07-14T00:00:00.000Z",
+      },
+      goals: loopTask("awaiting_user_decision").goals.map((goal) =>
+        goal.id === "goal-2" ? { ...goal, status: "awaiting_user_decision" } : goal,
+      ),
+    };
+    setupClient(task);
+
+    renderSurface();
+
+    await waitFor(() => expect(screen.getByTestId("loop-user-decision-card")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("loop-user-decision-option-conservative"));
+    fireEvent.click(screen.getByTestId("loop-user-decision-submit"));
+    await waitFor(() =>
+      expect(clientMock.answerBackgroundTaskDecision).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: "loop-task-1",
+          decisionId: "decision-1",
+          choiceId: "conservative",
+          workspaceId: "workspace-1",
+          expectedAuthorityRevision: 12,
+          commandId: "loop-task-1:12:decision:decision-1:conservative",
+        }),
+      ),
+    );
   });
 
   it("chains mouse wheel from the phase timeline to the outer detail scroll at timeline edges", async () => {
@@ -459,10 +505,14 @@ describe("BackgroundTasksSurface", () => {
 
     fireEvent.click(screen.getByText("Pause"));
     await waitFor(() =>
-      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith({
-        taskId: "loop-task-1",
-        action: "pause",
-      }),
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: "loop-task-1",
+          action: "pause",
+          workspaceId: "workspace-1",
+          commandId: "loop-task-1:legacy:pause",
+        }),
+      ),
     );
   });
 
@@ -507,10 +557,14 @@ describe("BackgroundTasksSurface", () => {
 
     fireEvent.click(screen.getByTestId("background-task-budget-continue"));
     await waitFor(() =>
-      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith({
-        taskId: "loop-task-1",
-        action: "budget_continue",
-      }),
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: "loop-task-1",
+          action: "budget_continue",
+          workspaceId: "workspace-1",
+          commandId: "loop-task-1:legacy:budget_continue",
+        }),
+      ),
     );
 
     await waitFor(() =>
@@ -520,10 +574,14 @@ describe("BackgroundTasksSurface", () => {
     );
     fireEvent.click(screen.getByTestId("background-task-review-only"));
     await waitFor(() =>
-      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith({
-        taskId: "loop-task-1",
-        action: "review_only",
-      }),
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: "loop-task-1",
+          action: "review_only",
+          workspaceId: "workspace-1",
+          commandId: "loop-task-1:legacy:review_only",
+        }),
+      ),
     );
   });
 
@@ -551,6 +609,46 @@ describe("BackgroundTasksSurface", () => {
     );
   });
 
+  it("offers a baseline retry for evidence capture failure without treating it as a generic block", async () => {
+    setupClient(loopTask("evidence_capture_failed"));
+
+    renderSurface();
+
+    await waitFor(() =>
+      expect(screen.getByText(/Evidence capture failed · failed reviews/)).toBeTruthy(),
+    );
+    expect(screen.getByTestId("loop-evidence-warning")).toBeTruthy();
+    expect(screen.getByText("Evidence capture needs retry")).toBeTruthy();
+    expect(screen.getByTestId("background-task-resume").getAttribute("aria-disabled")).not.toBe(
+      "true",
+    );
+    expect(screen.getByTestId("background-task-resume").textContent).toContain(
+      "Retry baseline & resume",
+    );
+  });
+
+  it("allows an explicitly blocked phase to be resumed after its prerequisite is repaired", async () => {
+    setupClient(loopTask("blocked"));
+
+    renderSurface();
+
+    await waitFor(() => expect(screen.getByText(/Blocked · failed reviews/)).toBeTruthy());
+    expect(screen.getByTestId("background-task-resume").getAttribute("aria-disabled")).not.toBe(
+      "true",
+    );
+    fireEvent.click(screen.getByTestId("background-task-resume"));
+    await waitFor(() =>
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: "loop-task-1",
+          action: "resume",
+          workspaceId: "workspace-1",
+          commandId: "loop-task-1:legacy:resume",
+        }),
+      ),
+    );
+  });
+
   it("keeps Resume left of Pause and enables it only after the task has stopped", async () => {
     setupClient();
 
@@ -572,10 +670,14 @@ describe("BackgroundTasksSurface", () => {
 
     fireEvent.click(screen.getByTestId("background-task-resume"));
     await waitFor(() =>
-      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith({
-        taskId: "loop-task-1",
-        action: "resume",
-      }),
+      expect(clientMock.actOnBackgroundTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: "loop-task-1",
+          action: "resume",
+          workspaceId: "workspace-1",
+          commandId: "loop-task-1:legacy:resume",
+        }),
+      ),
     );
     expect(stop).toBeTruthy();
   });

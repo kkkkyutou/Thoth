@@ -13,6 +13,7 @@ import {
   clampBackgroundTasksListWidth,
   clampBackgroundTasksSurfaceWidth,
   resolveBackgroundTasksSurfaceOpen,
+  shouldStackBackgroundTasksSurface,
   useBackgroundTasksSurfaceStore,
 } from "./background-tasks-surface-store";
 
@@ -41,6 +42,13 @@ describe("background tasks surface state helpers", () => {
     expect(clampBackgroundTasksSurfaceWidth(1800, 2400)).toBe(BACKGROUND_TASKS_SURFACE_MAX_WIDTH);
   });
 
+  it("repairs a persisted narrow panel width when desktop capacity can show both task panes", () => {
+    expect(clampBackgroundTasksSurfaceWidth(500, 1400)).toBe(BACKGROUND_TASKS_SURFACE_MIN_WIDTH);
+    expect(clampBackgroundTasksSurfaceWidth(undefined, 1400)).toBe(
+      BACKGROUND_TASKS_SURFACE_DEFAULT_WIDTH,
+    );
+  });
+
   it("preserves enough live session width while resizing the right surface", () => {
     expect(clampBackgroundTasksSurfaceWidth(900, 1000)).toBe(580);
   });
@@ -56,6 +64,18 @@ describe("background tasks surface state helpers", () => {
     expect(clampBackgroundTasksListWidth(100, 1000)).toBe(BACKGROUND_TASKS_LIST_MIN_WIDTH);
     expect(clampBackgroundTasksListWidth(700, 1000)).toBe(BACKGROUND_TASKS_LIST_MAX_WIDTH);
     expect(clampBackgroundTasksListWidth(500, 640)).toBe(280);
+  });
+
+  it("stacks the nested task list and detail whenever they cannot fit side by side", () => {
+    expect(shouldStackBackgroundTasksSurface({ isCompact: false, surfaceWidth: 0 })).toBe(false);
+    expect(shouldStackBackgroundTasksSurface({ isCompact: false, surfaceWidth: 500 })).toBe(true);
+    expect(
+      shouldStackBackgroundTasksSurface({
+        isCompact: false,
+        surfaceWidth: BACKGROUND_TASKS_SURFACE_MIN_WIDTH,
+      }),
+    ).toBe(false);
+    expect(shouldStackBackgroundTasksSurface({ isCompact: true, surfaceWidth: 1200 })).toBe(true);
   });
 });
 

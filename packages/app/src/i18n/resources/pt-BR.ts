@@ -168,6 +168,10 @@ export const ptBR: TranslationResources = {
       mode: "Alterar modo de permissão",
     },
     runtime: {
+      thoth: {
+        switch: "Ativar modo Thoth",
+        tooltip: "Ativa o Clarify e o Loop do Thoth. Desativado envia diretamente ao provedor.",
+      },
       clarify: {
         tooltip: "Clarify",
         selectWithValue: "Clarify: {{value}}",

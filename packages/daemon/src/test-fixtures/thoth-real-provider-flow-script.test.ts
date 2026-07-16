@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   ThothLoopPlanExecResultInputSchema,
+  ThothLoopReviewIndependentAssessmentInputSchema,
   ThothLoopReviewVerdictInputSchema,
   ThothSubmitClarifyCardInputSchema,
   ThothSubmitGoalsCardInputSchema,
@@ -28,6 +29,9 @@ describe("scripted real-provider flow contract", () => {
       for (const input of script.planExec) {
         expect(ThothLoopPlanExecResultInputSchema.parse(input)).toEqual(input);
       }
+      for (const input of script.reviewIndependent) {
+        expect(ThothLoopReviewIndependentAssessmentInputSchema.parse(input)).toEqual(input);
+      }
       for (const input of script.review) {
         expect(ThothLoopReviewVerdictInputSchema.parse(input)).toEqual(input);
       }
@@ -41,6 +45,9 @@ describe("scripted real-provider flow contract", () => {
         expect(prompt).toContain("thoth_submit_clarify_card");
         expect(prompt).toContain("thoth_submit_task_card");
         expect(prompt).toContain("thoth_submit_goals_card");
+      }
+      if (script.reviewIndependent.length > 0) {
+        expect(prompt).toContain("thoth_loop_submit_review_independent_assessment");
       }
     },
   );

@@ -45,6 +45,24 @@ export function shouldApplyWorkspaceSecretarySnapshotForDraft(input: {
   return Boolean(secretaryTopicId) && input.modelActiveTopicId === secretaryTopicId;
 }
 
+export function shouldApplyLoopTaskDecisionUpdateForDraft(input: {
+  secretaryTopicId?: string | null;
+  draftWorkspacePath?: string | null;
+  taskSourceTopicId?: string | null;
+  taskWorkspacePath?: string | null;
+}): boolean {
+  const secretaryTopicId = input.secretaryTopicId?.trim();
+  const draftWorkspacePath = input.draftWorkspacePath?.trim();
+  const taskSourceTopicId = input.taskSourceTopicId?.trim();
+  const taskWorkspacePath = input.taskWorkspacePath?.trim();
+  return Boolean(
+    secretaryTopicId &&
+    draftWorkspacePath &&
+    taskSourceTopicId === secretaryTopicId &&
+    taskWorkspacePath === draftWorkspacePath,
+  );
+}
+
 export function deriveWorkspaceSecretaryDraftTitleFromText(text: string): string | null {
   const firstContentLine = text
     .split(/\r?\n/)
@@ -74,6 +92,10 @@ export function isWorkspaceSecretaryModelRunning(model: ThothCleanUiModel): bool
   return model.secretary.status.kind === "loading";
 }
 
+export function isWorkspaceSecretaryBackgroundHandoff(model: ThothCleanUiModel | null): boolean {
+  return model?.secretary.foregroundTurnState === "background_handoff";
+}
+
 export function resolveWorkspaceSecretaryTurnInFlight(input: {
   current: boolean;
   model: ThothCleanUiModel;
@@ -85,6 +107,9 @@ export function resolveWorkspaceSecretaryTurnInFlight(input: {
     | "provider_blocked"
     | "provider_error";
 }): boolean {
+  if (isWorkspaceSecretaryBackgroundHandoff(input.model)) {
+    return false;
+  }
   if (isWorkspaceSecretaryModelRunning(input.model)) {
     return true;
   }
@@ -126,7 +151,11 @@ function latestWorkspaceSecretaryAuthorityItem(items: readonly StreamItem[]): St
 export function shouldKeepWorkspaceSecretaryAuthorityTurnRunning(input: {
   secretaryTurnInFlight: boolean;
   streamItems: readonly StreamItem[];
+  backgroundHandoff?: boolean;
 }): boolean {
+  if (input.backgroundHandoff) {
+    return false;
+  }
   if (input.secretaryTurnInFlight) {
     return true;
   }

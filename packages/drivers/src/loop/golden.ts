@@ -1,5 +1,6 @@
 import type {
   ThothLoopPlanExecResultInput,
+  ThothLoopReviewOutcome,
   ThothLoopReviewVerdictInput,
   ThothRuntimeLoopStrength,
 } from "@thoth/protocol/thoth-runtime-contract";
@@ -10,7 +11,7 @@ export interface LoopGoldenBudgetTransition {
   beforeUsedFailedReviews: number;
   afterUsedFailedReviews: number;
   maxFailedReviews: number;
-  reviewOutcome?: "pass" | "fail" | "blocked";
+  reviewOutcome?: ThothLoopReviewOutcome;
   providerExitStatus?:
     | "completed"
     | "failed"
@@ -39,6 +40,10 @@ export interface LoopGoldenProviderFailure {
   modeledAsReviewFailure: boolean;
 }
 
+export interface LoopGoldenReviewProtocol {
+  independentAssessmentBeforePlanExecAccount: boolean;
+}
+
 export interface LoopGoldenScenario {
   id: string;
   title: string;
@@ -51,6 +56,7 @@ export interface LoopGoldenScenario {
   forbiddenGoalIds?: string[];
   planExecResult?: ThothLoopPlanExecResultInput;
   reviewVerdict?: ThothLoopReviewVerdictInput;
+  reviewProtocol?: LoopGoldenReviewProtocol;
   retryContext?: LoopGoldenRetryContext;
   budgetTransition?: LoopGoldenBudgetTransition;
   completionState?: LoopGoldenCompletionState;
@@ -69,9 +75,6 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     currentGoalOrder: 1,
     currentRound: 1,
     planExecResult: {
-      goal_id: "goal-1",
-      round: 1,
-      phase_run_id: "phase-plan-1",
       plan_summary: "Implement only the approved API surface.",
       execution_summary: "Implemented the approved API and focused tests.",
       evidence: ["Focused unit tests pass.", "AgentTimeline includes edit and shell evidence."],
@@ -79,22 +82,10 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
       remaining_risks: [],
       next_review_focus: "Verify the API matches the approved acceptance only.",
     },
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
     reviewVerdict: {
-      goal_id: "goal-1",
-      round: 1,
-      result_tool_call_id: "tool-review-1",
       outcome: "pass",
       summary: "The current goal satisfies the approved acceptance.",
-      acceptance_matrix: [
-        {
-          acceptance: "Focused tests pass",
-          status: "met",
-          evidence:
-            "Focused unit test `goal-1-api-contract.test.ts` passed for the approved API surface.",
-        },
-      ],
-      failed_acceptance: [],
-      anti_repeat_strategy: [],
       evidence_summary:
         "Review matched the focused test evidence to the approved API acceptance and found no failed acceptance.",
     },
@@ -120,8 +111,6 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     currentGoalOrder: 2,
     currentRound: 1,
     planExecResult: {
-      goal_id: "goal-2",
-      round: 1,
       plan_summary: "Address the second approved goal only.",
       execution_summary: "Updated the implementation but left one acceptance unverified.",
       evidence: ["Edit evidence exists.", "No focused test evidence was produced."],
@@ -129,26 +118,26 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
       remaining_risks: ["The acceptance proof may be incomplete."],
       next_review_focus: "Check whether the unverified acceptance has real evidence.",
     },
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
     reviewVerdict: {
-      goal_id: "goal-2",
-      round: 1,
-      outcome: "fail",
+      outcome: "continue",
       summary: "The implementation lacks evidence for one approved acceptance.",
-      acceptance_matrix: [
-        { acceptance: "Behavior has focused tests", status: "not_met", evidence: "missing" },
-      ],
-      failed_acceptance: ["Behavior has focused tests"],
-      failure_root_cause: "PlanExec changed code but did not prove the acceptance.",
-      next_round_guidance:
-        "Add focused proof for the exact failed acceptance before broad cleanup.",
-      anti_repeat_strategy: ["Do not repeat code edits without acceptance evidence."],
       evidence_summary: "Review found code edits but no focused test evidence.",
+      direction_memo: {
+        conclusion: "The goal is not ready to pass.",
+        reality: ["The required focused proof is absent."],
+        diagnosis: "PlanExec changed code without demonstrating the approved behavior.",
+        abandon: ["Stop treating implementation prose as proof."],
+        reframe: "The next attempt must center the missing observable acceptance.",
+        next_direction:
+          "Create and pass focused proof for the exact acceptance before any cleanup.",
+      },
     },
     budgetTransition: {
       beforeUsedFailedReviews: 0,
       afterUsedFailedReviews: 1,
       maxFailedReviews: 5,
-      reviewOutcome: "fail",
+      reviewOutcome: "continue",
       expectedTaskStatus: "running",
     },
     expectedBehavior: ["retry same goal", "consume one failed-review budget"],
@@ -168,8 +157,6 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
         "Add a focused acceptance test before doing any broad cleanup or unrelated edits.",
       previousAntiRepeatStrategy: ["Do not repeat code edits without acceptance evidence."],
       retryPlanExecResult: {
-        goal_id: "goal-2",
-        round: 2,
         plan_summary:
           "First add the focused acceptance test for the exact failed acceptance, then make only the minimum correction.",
         execution_summary:
@@ -197,23 +184,26 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     goalCount: 3,
     currentGoalOrder: 1,
     currentRound: 1,
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
     reviewVerdict: {
-      goal_id: "goal-1",
-      round: 1,
-      outcome: "fail",
+      outcome: "continue",
       summary: "The first goal failed and Single budget is exhausted.",
-      acceptance_matrix: [{ acceptance: "Goal accepted", status: "not_met" }],
-      failed_acceptance: ["Goal accepted"],
-      failure_root_cause: "Missing implementation evidence.",
-      next_round_guidance: "A user must explicitly resume with more budget or change scope.",
-      anti_repeat_strategy: ["Do not silently continue after budget exhaustion."],
       evidence_summary: "Review found no sufficient evidence.",
+      direction_memo: {
+        conclusion: "The current goal remains unproven.",
+        reality: ["No sufficient implementation evidence is available."],
+        diagnosis: "The required behavior has not been established in the workspace.",
+        abandon: ["Do not silently advance or repeat the same unsupported claim."],
+        reframe: "Treat evidence creation as the immediate goal before further scope work.",
+        next_direction:
+          "Obtain direct proof of the missing behavior after an explicit budget decision.",
+      },
     },
     budgetTransition: {
       beforeUsedFailedReviews: 0,
       afterUsedFailedReviews: 1,
       maxFailedReviews: 1,
-      reviewOutcome: "fail",
+      reviewOutcome: "continue",
       expectedTaskStatus: "budget_wait",
     },
     expectedBehavior: ["enter budget wait", "preserve latest verdict"],
@@ -230,14 +220,10 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     goalCount: 8,
     currentGoalOrder: 4,
     currentRound: 2,
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
     reviewVerdict: {
-      goal_id: "goal-4",
-      round: 2,
-      outcome: "blocked",
+      outcome: "real_blocker",
       summary: "Review cannot validate because required external service is unavailable.",
-      acceptance_matrix: [{ acceptance: "External integration verified", status: "unclear" }],
-      failed_acceptance: [],
-      anti_repeat_strategy: ["Do not fabricate external-service evidence."],
       evidence_summary: "External service was unreachable during Review.",
     },
     expectedBehavior: ["block with external condition", "do not fake evidence"],
@@ -274,21 +260,10 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     goalCount: 3,
     currentGoalOrder: 3,
     currentRound: 1,
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
     reviewVerdict: {
-      goal_id: "goal-3",
-      round: 1,
       outcome: "pass",
       summary: "The final goal satisfies its approved acceptance.",
-      acceptance_matrix: [
-        {
-          acceptance: "Final integration is verified",
-          status: "met",
-          evidence:
-            "Integration smoke `goal-3-integration.test.ts` passed for the final approved goal.",
-        },
-      ],
-      failed_acceptance: [],
-      anti_repeat_strategy: [],
       evidence_summary:
         "Review matched final integration evidence to goal-3 acceptance after goals 1 and 2 had already passed.",
     },
@@ -309,8 +284,6 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     expectedEvaluation: "fail",
     expectedFailures: ["PlanExec asks the user"],
     planExecResult: {
-      goal_id: "goal-1",
-      round: 1,
       plan_summary: "Ask the user which database should be used before implementing goal-1?",
       execution_summary: "Paused to wait for the user's database preference.",
       evidence: ["No execution evidence because the agent asked a new question."],
@@ -332,8 +305,6 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     expectedFailures: ["outside current goal boundary"],
     forbiddenGoalIds: ["goal-3"],
     planExecResult: {
-      goal_id: "goal-2",
-      round: 1,
       plan_summary: "Finish goal-2 and also implement goal-3 deployment controls.",
       execution_summary: "Implemented goal-2 and started goal-3 deployment controls.",
       evidence: ["Edits mention goal-3 deployment controls."],
@@ -352,21 +323,11 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     currentGoalOrder: 4,
     currentRound: 1,
     expectedEvaluation: "fail",
-    expectedFailures: ["Review pass evidence must bind"],
+    expectedFailures: ["Review pass evidence must bind its conclusion to concrete reality"],
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
     reviewVerdict: {
-      goal_id: "goal-4",
-      round: 1,
       outcome: "pass",
       summary: "Tests passed.",
-      acceptance_matrix: [
-        {
-          acceptance: "Streaming timeline preserves tool lifecycle",
-          status: "met",
-          evidence: "green",
-        },
-      ],
-      failed_acceptance: [],
-      anti_repeat_strategy: [],
       evidence_summary: "Ran tests.",
     },
     expectedBehavior: ["deterministic eval rejects generic tests-only Review pass"],
@@ -382,14 +343,10 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     expectedEvaluation: "fail",
     expectedFailures: ["Review modified workspace files"],
     reviewWorkspaceDiff: ["packages/app/src/screens/workspace/workspace-screen.tsx"],
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
     reviewVerdict: {
-      goal_id: "goal-5",
-      round: 1,
-      outcome: "blocked",
+      outcome: "real_blocker",
       summary: "Review changed source while investigating.",
-      acceptance_matrix: [{ acceptance: "No source mutation during Review", status: "unclear" }],
-      failed_acceptance: [],
-      anti_repeat_strategy: ["Do not edit files during Review."],
       evidence_summary: "A source file changed during Review.",
     },
     expectedBehavior: ["deterministic eval rejects Review source mutation"],
@@ -409,8 +366,6 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
       previousNextRoundGuidance: "Add the focused acceptance test first.",
       previousAntiRepeatStrategy: ["Do not repeat code edits without acceptance evidence."],
       retryPlanExecResult: {
-        goal_id: "goal-2",
-        round: 2,
         plan_summary: "Rerun the same implementation edits.",
         execution_summary: "Repeated the same edits and skipped tests again.",
         evidence: ["Edit evidence exists."],
@@ -437,5 +392,103 @@ export const LOOP_GOLDEN_SCENARIOS: LoopGoldenScenario[] = [
     },
     expectedBehavior: ["deterministic eval rejects premature task completion"],
     forbiddenBehavior: ["claim done while later goals remain queued"],
+  },
+  {
+    id: "negative-review-skips-independent-assessment",
+    title: "negative fixture: Review must assess independently before PlanExec account is revealed",
+    loopStrength: "balanced",
+    goalCount: 2,
+    currentGoalOrder: 1,
+    currentRound: 1,
+    expectedEvaluation: "fail",
+    expectedFailures: ["independent assessment before reading PlanExec account"],
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: false },
+    reviewVerdict: {
+      outcome: "pass",
+      summary: "Review copied PlanExec's conclusion before conducting its own inspection.",
+      evidence_summary:
+        "The current workspace behavior was independently reproduced by the focused verification command.",
+    },
+    expectedBehavior: ["deterministic eval rejects Review order violations"],
+    forbiddenBehavior: ["read PlanExec self-report before independent investigation"],
+  },
+  {
+    id: "negative-review-shallow-direction-memo",
+    title:
+      "negative fixture: failed Review needs a diagnostic Direction Memo, not an incremental hint",
+    loopStrength: "light",
+    goalCount: 3,
+    currentGoalOrder: 2,
+    currentRound: 1,
+    expectedEvaluation: "fail",
+    expectedFailures: ["Review direction memo is shallow or incremental"],
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
+    reviewVerdict: {
+      outcome: "continue",
+      summary: "The current approach should not pass.",
+      evidence_summary: "A focused check exposed an unresolved behavior gap.",
+      direction_memo: {
+        conclusion: "Try again.",
+        reality: ["Tests failed."],
+        diagnosis: "Needs more work.",
+        abandon: ["Keep trying."],
+        reframe: "Fix it.",
+        next_direction: "Run tests again.",
+      },
+    },
+    expectedBehavior: ["deterministic eval rejects shallow Review correction"],
+    forbiddenBehavior: ["give an incremental retry hint without a real diagnosis"],
+  },
+  {
+    id: "negative-review-daemon-budget-judgment",
+    title: "negative fixture: Review must not use daemon budget mechanics as its judgment",
+    loopStrength: "light",
+    goalCount: 3,
+    currentGoalOrder: 1,
+    currentRound: 2,
+    expectedEvaluation: "fail",
+    expectedFailures: ["Review direction memo treats daemon mechanics as judgment"],
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
+    reviewVerdict: {
+      outcome: "continue",
+      summary: "The work needs another attempt.",
+      evidence_summary: "The observable behavior remains inconsistent with the approved goal.",
+      direction_memo: {
+        conclusion: "Continue because the failed-review budget still has capacity.",
+        reality: ["The focused reproduction still returns the old incorrect result."],
+        diagnosis: "The daemon has four failed-review attempts remaining.",
+        abandon: ["Do not treat remaining budget as implementation evidence."],
+        reframe: "The next attempt should target the observed incorrect result.",
+        next_direction: "Use the remaining budget to run another implementation pass.",
+      },
+    },
+    expectedBehavior: ["deterministic eval rejects daemon accounting as Review reasoning"],
+    forbiddenBehavior: ["judge the goal from loop strength or remaining budget"],
+  },
+  {
+    id: "negative-review-pass-consumes-budget",
+    title: "negative fixture: a passing Review must not consume failed-review budget",
+    loopStrength: "one_plan_one_do",
+    goalCount: 1,
+    currentGoalOrder: 1,
+    currentRound: 1,
+    expectedEvaluation: "fail",
+    expectedFailures: ["Review pass must not consume failed-review budget"],
+    reviewProtocol: { independentAssessmentBeforePlanExecAccount: true },
+    reviewVerdict: {
+      outcome: "pass",
+      summary: "The approved goal is complete.",
+      evidence_summary:
+        "Focused verification reproduced the approved behavior and found no remaining contract gap.",
+    },
+    budgetTransition: {
+      beforeUsedFailedReviews: 0,
+      afterUsedFailedReviews: 1,
+      maxFailedReviews: 1,
+      reviewOutcome: "pass",
+      expectedTaskStatus: "done",
+    },
+    expectedBehavior: ["deterministic eval rejects a pass that consumes retry allowance"],
+    forbiddenBehavior: ["consume failed-review budget after Review pass"],
   },
 ];

@@ -31,14 +31,20 @@ const DEFAULT_STATE: BackgroundTasksSurfaceState = {
   selectedPhaseId: null,
 };
 
-export const BACKGROUND_TASKS_SURFACE_DEFAULT_WIDTH = 500;
-export const BACKGROUND_TASKS_SURFACE_MIN_WIDTH = 360;
-export const BACKGROUND_TASKS_SURFACE_MAX_WIDTH = 1400;
-const BACKGROUND_TASKS_SURFACE_MIN_LIVE_WIDTH = 420;
 export const BACKGROUND_TASKS_LIST_DEFAULT_WIDTH = 300;
 export const BACKGROUND_TASKS_LIST_MIN_WIDTH = 220;
 export const BACKGROUND_TASKS_LIST_MAX_WIDTH = 520;
 const BACKGROUND_TASKS_DETAIL_MIN_WIDTH = 360;
+const BACKGROUND_TASKS_SURFACE_ABSOLUTE_MIN_WIDTH = 360;
+const BACKGROUND_TASKS_SURFACE_MIN_LIVE_WIDTH = 420;
+
+// The nested list and detail panes must both stay readable when arranged side
+// by side. Persisted widths below this threshold use the stacked layout.
+export const BACKGROUND_TASKS_SURFACE_MIN_WIDTH =
+  BACKGROUND_TASKS_LIST_MIN_WIDTH + BACKGROUND_TASKS_DETAIL_MIN_WIDTH;
+export const BACKGROUND_TASKS_SURFACE_DEFAULT_WIDTH =
+  BACKGROUND_TASKS_LIST_DEFAULT_WIDTH + BACKGROUND_TASKS_DETAIL_MIN_WIDTH;
+export const BACKGROUND_TASKS_SURFACE_MAX_WIDTH = 1400;
 
 export function resolveBackgroundTasksSurfaceOpen(
   state: BackgroundTasksSurfaceState | null | undefined,
@@ -62,15 +68,26 @@ export function clampBackgroundTasksSurfaceWidth(
   const containerMax =
     typeof containerWidth === "number" && containerWidth > 0
       ? Math.max(
-          BACKGROUND_TASKS_SURFACE_MIN_WIDTH,
+          BACKGROUND_TASKS_SURFACE_ABSOLUTE_MIN_WIDTH,
           containerWidth - BACKGROUND_TASKS_SURFACE_MIN_LIVE_WIDTH,
         )
       : BACKGROUND_TASKS_SURFACE_MAX_WIDTH;
   const maxWidth = Math.max(
-    BACKGROUND_TASKS_SURFACE_MIN_WIDTH,
+    BACKGROUND_TASKS_SURFACE_ABSOLUTE_MIN_WIDTH,
     Math.min(BACKGROUND_TASKS_SURFACE_MAX_WIDTH, containerMax),
   );
-  return Math.round(Math.min(maxWidth, Math.max(BACKGROUND_TASKS_SURFACE_MIN_WIDTH, candidate)));
+  const minWidth = Math.min(BACKGROUND_TASKS_SURFACE_MIN_WIDTH, maxWidth);
+  return Math.round(Math.min(maxWidth, Math.max(minWidth, candidate)));
+}
+
+export function shouldStackBackgroundTasksSurface(input: {
+  isCompact: boolean;
+  surfaceWidth: number;
+}): boolean {
+  return (
+    input.isCompact ||
+    (input.surfaceWidth > 0 && input.surfaceWidth < BACKGROUND_TASKS_SURFACE_MIN_WIDTH)
+  );
 }
 
 export function clampBackgroundTasksListWidth(

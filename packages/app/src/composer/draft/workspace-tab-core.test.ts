@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@/types/stream";
 import {
   deriveWorkspaceSecretaryDraftTitleFromText,
+  isWorkspaceSecretaryBackgroundHandoff,
   isWorkspaceSecretaryModelRunning,
   resolveWorkspaceSecretaryTurnInFlight,
   resolveWorkspaceSecretaryDraftTitleFromModel,
   shouldApplyWorkspaceSecretaryModelUpdateForDraft,
+  shouldApplyLoopTaskDecisionUpdateForDraft,
   shouldApplyWorkspaceSecretarySnapshotForDraft,
   shouldHydrateWorkspaceSecretarySnapshotForDraft,
   shouldKeepWorkspaceSecretaryAuthorityTurnRunning,
@@ -89,6 +91,38 @@ describe("shouldApplyWorkspaceSecretarySnapshotForDraft", () => {
   });
 });
 
+describe("shouldApplyLoopTaskDecisionUpdateForDraft", () => {
+  it("projects a task decision only to its original topic in the same workspace", () => {
+    expect(
+      shouldApplyLoopTaskDecisionUpdateForDraft({
+        secretaryTopicId: "topic-renderer",
+        draftWorkspacePath: "/repo",
+        taskSourceTopicId: "topic-renderer",
+        taskWorkspacePath: "/repo",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a task update from another topic or workspace", () => {
+    expect(
+      shouldApplyLoopTaskDecisionUpdateForDraft({
+        secretaryTopicId: "topic-renderer",
+        draftWorkspacePath: "/repo",
+        taskSourceTopicId: "topic-other",
+        taskWorkspacePath: "/repo",
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyLoopTaskDecisionUpdateForDraft({
+        secretaryTopicId: "topic-renderer",
+        draftWorkspacePath: "/repo",
+        taskSourceTopicId: "topic-renderer",
+        taskWorkspacePath: "/another-workspace",
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("Workspace Secretary draft title helpers", () => {
   it("derives a provisional draft title from the first non-empty prompt line", () => {
     expect(
@@ -159,6 +193,27 @@ describe("resolveWorkspaceSecretaryTurnInFlight", () => {
     model.secretary.status = { kind: "loading", title: "loading", detail: "loading" };
 
     expect(resolveWorkspaceSecretaryTurnInFlight({ current: false, model })).toBe(true);
+  });
+
+  it("ends the foreground lifecycle immediately when authority hands work to Background Tasks", () => {
+    const model = createSecretaryModelWithTopicTitle("实现高性能快速排序");
+    model.secretary.foregroundTurnState = "background_handoff";
+
+    expect(isWorkspaceSecretaryBackgroundHandoff(model)).toBe(true);
+    expect(
+      resolveWorkspaceSecretaryTurnInFlight({
+        current: true,
+        model,
+        reason: "provider_progress",
+      }),
+    ).toBe(false);
+    expect(
+      shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
+        secretaryTurnInFlight: true,
+        streamItems: [runningToolItem("late-provider-tool")],
+        backgroundHandoff: true,
+      }),
+    ).toBe(false);
   });
 });
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MutableDaemonConfig, SessionOutboundMessage } from "@thoth/protocol/messages";
 import type {
+  LoopTaskModel,
   ThothClarifyCardModel,
   ThothGoalCardModel,
   ThothGoalsCardModel,
@@ -20,6 +21,7 @@ import {
   resetRuntimeAuthorityDecisionsForTest,
 } from "../../agent/runtime-tool-decisions.js";
 import { WorkspaceSecretarySession } from "./workspace-secretary-session.js";
+import type { ThothLoopTaskService } from "../../thoth-loop/task-service.js";
 
 const workspace: PersistedWorkspaceRecord = {
   workspaceId: "workspace-1",
@@ -186,8 +188,52 @@ function goalsCard(id = "goals-card-1"): ThothGoalsCardModel {
   };
 }
 
+function loopTaskForTest(input: {
+  card: ThothGoalsCardModel;
+  task: ThothTaskCardModel;
+}): LoopTaskModel {
+  const now = "2026-07-14T00:00:00.000Z";
+  return {
+    id: "loop-task-handoff",
+    title: input.task.title,
+    workspaceName: workspace.title,
+    workspacePath: workspace.cwd,
+    sourceTopicId: "topic-main",
+    status: "queued",
+    summary: "后台任务已注册，正在排队。",
+    loopStrength: "light",
+    budget: { loopStrength: "light" },
+    recentEvents: [],
+    taskMemoryRefs: [],
+    replanHistory: [],
+    currentGoalId: input.card.goals[0]?.id ?? null,
+    currentPhase: null,
+    goalRound: 1,
+    globalFailureCount: 0,
+    goals: input.card.goals.map((goal) => ({
+      ...goal,
+      status: "queued",
+      round: 1,
+      phases: [],
+    })),
+    taskCard: input.task,
+    goalsCard: input.card,
+    providerSession: { provider: "opencode", model: "opencode-model", modeId: "auto" },
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 function nativeStream(...items: AgentStreamEvent[]): AgentStreamEvent[] {
   return items;
+}
+
+type AgentStreamScript = AgentStreamEvent[] | AsyncGenerator<AgentStreamEvent>;
+
+function isAsyncAgentStreamScript(
+  value: AgentStreamScript,
+): value is AsyncGenerator<AgentStreamEvent> {
+  return Symbol.asyncIterator in value;
 }
 
 function createSession(input?: {
@@ -195,15 +241,17 @@ function createSession(input?: {
   workspaceSecretary?: Partial<NonNullable<MutableDaemonConfig["workspaceSecretary"]>>;
   daemonConfig?: MutableDaemonConfig;
   thothHome?: string;
-  streamRuns?: AgentStreamEvent[][];
+  streamRuns?: AgentStreamScript[];
   workspaces?: PersistedWorkspaceRecord[];
   hasInFlightRun?: (agentId: string) => boolean;
   hasRunnableSession?: (agentId: string) => boolean;
   nativeThothToolProviders?: readonly string[];
+  loopTaskService?: ThothLoopTaskService | null;
 }) {
   const emitted: SessionOutboundMessage[] = [];
   const runPrompts: unknown[] = [];
   const runOptions: unknown[] = [];
+  const runAgentIds: string[] = [];
   const replacedPrompts: unknown[] = [];
   const replacedOptions: unknown[] = [];
   const createdAgentConfigs: AgentSessionConfig[] = [];
@@ -236,6 +284,9 @@ function createSession(input?: {
         { type: "turn_completed", provider: configuredProvider, turnId: "turn-1" },
       );
     streamIndex += 1;
+    if (isAsyncAgentStreamScript(configuredRun)) {
+      return configuredRun;
+    }
     return (async function* () {
       for (const event of configuredRun) {
         yield event;
@@ -255,12 +306,14 @@ function createSession(input?: {
       createdAgentConfigs.push(config);
       return { id: "agent-workspace-secretary" } as ManagedAgent;
     },
-    streamAgent: (_agentId: string, prompt: unknown, options?: unknown) => {
+    streamAgent: (agentId: string, prompt: unknown, options?: unknown) => {
+      runAgentIds.push(agentId);
       runPrompts.push(prompt);
       runOptions.push(options);
       return nextConfiguredStream();
     },
-    replaceAgentRun: (_agentId: string, prompt: unknown, options?: unknown) => {
+    replaceAgentRun: (agentId: string, prompt: unknown, options?: unknown) => {
+      runAgentIds.push(agentId);
       replacedPrompts.push(prompt);
       replacedOptions.push(options);
       return nextConfiguredStream();
@@ -322,6 +375,7 @@ function createSession(input?: {
     },
     agentManager,
     daemonConfigStore,
+    loopTaskService: input?.loopTaskService,
     probeRelayHealth: async () => "healthy",
   });
   return {
@@ -329,6 +383,7 @@ function createSession(input?: {
     emitted,
     runPrompts,
     runOptions,
+    runAgentIds,
     replacedPrompts,
     replacedOptions,
     createdAgentConfigs,
@@ -376,6 +431,37 @@ async function flushBackgroundTurns(): Promise<void> {
 }
 
 describe("WorkspaceSecretarySession runtime tool bridge", () => {
+  it("uses raw Quick + Direct when the explicit Thoth switch is off", async () => {
+    const { session, emitted, cleanup } = createSession({
+      workspaceSecretary: {
+        enabled: false,
+        mode: "loop",
+        clarifyStrength: "dive",
+        loopStrength: "run_until_stopped",
+      },
+    });
+
+    try {
+      await session.handleSnapshotRequest({
+        type: "workspace_secretary.snapshot.request",
+        requestId: "snapshot-thoth-off",
+      });
+
+      const message = emitted.find(
+        (entry) => entry.type === "workspace_secretary.snapshot.response",
+      );
+      expect(
+        message && "payload" in message ? message.payload.model?.secretary.composer : null,
+      ).toMatchObject({
+        mode: "quick",
+        clarifyStrength: "none",
+        loop: null,
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
   it("hydrates Loop composer strength from persisted config", async () => {
     const { session, emitted, cleanup } = createSession({
       workspaceSecretary: { mode: "loop", loopStrength: "light" },
@@ -632,6 +718,174 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       expect(model.secretary.turns).toEqual([
         expect.objectContaining({ kind: "message", speaker: "user", text: "hi" }),
       ]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps one provider session through Thoth on -> raw off -> Thoth on", async () => {
+    const { session, createdAgentConfigs, runAgentIds, runPrompts, cleanup } = createSession({
+      streamRuns: [
+        nativeStream(
+          { type: "turn_started", provider: "codex", turnId: "turn-structured-1" },
+          { type: "turn_completed", provider: "codex", turnId: "turn-structured-1" },
+        ),
+        nativeStream(
+          { type: "turn_started", provider: "codex", turnId: "turn-raw" },
+          { type: "turn_completed", provider: "codex", turnId: "turn-raw" },
+        ),
+        nativeStream(
+          { type: "turn_started", provider: "codex", turnId: "turn-structured-2" },
+          { type: "turn_completed", provider: "codex", turnId: "turn-structured-2" },
+        ),
+      ],
+    });
+
+    try {
+      const send = async (requestId: string, text: string, clarifyStrength: "none" | "light") => {
+        await session.handleSendRequest({
+          type: "workspace_secretary.send.request",
+          requestId,
+          text,
+          uiAgentId: "draft-secretary",
+          composer: {
+            mode: "quick",
+            clarifyStrength,
+            loop: null,
+            authorityLabel: "Codex",
+            authorityReady: true,
+          },
+        });
+        await flushBackgroundTurns();
+      };
+
+      await send("structured-1", "先用 Thoth 共同澄清这个任务", "light");
+      await send("raw", "当前工作区是 git 吗？", "none");
+      await send("structured-2", "继续用 Thoth 帮我澄清验收边界", "light");
+
+      expect(createdAgentConfigs).toHaveLength(1);
+      expect(createdAgentConfigs[0]).toMatchObject({
+        extra: { thothRuntimeTools: { enabled: true, scope: "clarify" } },
+      });
+      expect(runAgentIds).toEqual([
+        "agent-workspace-secretary",
+        "agent-workspace-secretary",
+        "agent-workspace-secretary",
+      ]);
+      expect(String(runPrompts[0])).toContain("workspace_secretary_runtime_context");
+      expect(runPrompts[1]).toBe("当前工作区是 git 吗？");
+      expect(String(runPrompts[2])).toContain("workspace_secretary_runtime_context");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("provisions native runtime tools for a raw-first topic without creating a second session later", async () => {
+    const { session, createdAgentConfigs, runAgentIds, runPrompts, cleanup } = createSession({
+      streamRuns: [
+        nativeStream(
+          { type: "turn_started", provider: "codex", turnId: "turn-raw-first" },
+          { type: "turn_completed", provider: "codex", turnId: "turn-raw-first" },
+        ),
+        nativeStream(
+          { type: "turn_started", provider: "codex", turnId: "turn-thoth-second" },
+          { type: "turn_completed", provider: "codex", turnId: "turn-thoth-second" },
+        ),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "raw-first",
+        text: "原始 provider 问答",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "none",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "thoth-second",
+        text: "现在帮我澄清这个任务",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "light",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      expect(createdAgentConfigs).toHaveLength(1);
+      expect(createdAgentConfigs[0]).toMatchObject({
+        extra: { thothRuntimeTools: { enabled: true, scope: "clarify" } },
+      });
+      expect(runAgentIds).toEqual(["agent-workspace-secretary", "agent-workspace-secretary"]);
+      expect(runPrompts[0]).toBe("原始 provider 问答");
+      expect(String(runPrompts[1])).toContain("Thoth structured Workspace Secretary turn.");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reconciles legacy bare and structured topic mappings to the structured conversation", async () => {
+    const { session, createdAgentConfigs, runAgentIds, cleanup } = createSession({
+      workspaceSecretary: {
+        topicSnapshots: [
+          {
+            workspacePath: workspace.cwd,
+            workspaceName: workspace.title,
+            activeTopicId: "topic-main",
+            topics: [
+              { id: "topic-main", title: "旧对话", status: "current", updatedLabel: "刚刚" },
+            ],
+            turns: [],
+            topicAgents: [
+              {
+                agentKey: "topic-main:bare:codex:codex-model:auto::{}",
+                agentId: "agent-legacy-bare",
+              },
+              {
+                agentKey: "topic-main:structured:codex:codex-model:auto::{}",
+                agentId: "agent-legacy-structured",
+              },
+            ],
+            nextTopicIndex: 1,
+            currentClarifyState: "C_DIRECT",
+            activeTurnPhase: "clarify",
+            activeTopicProviderBacked: true,
+          },
+        ],
+      },
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "legacy-raw",
+        topicId: "topic-main",
+        text: "原始问答仍要复用旧上下文",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "none",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      expect(createdAgentConfigs).toHaveLength(0);
+      expect(runAgentIds).toEqual(["agent-legacy-structured"]);
     } finally {
       cleanup();
     }
@@ -1924,6 +2178,87 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
+  it("continues to Goals when the provider completes just after an approved Task Card", async () => {
+    const card = taskCard("task-card-completed-after-answer");
+    let releaseTerminal: (() => void) | null = null;
+    const terminalGate = new Promise<void>((resolve) => {
+      releaseTerminal = resolve;
+    });
+    const { waitForAnswer } = createRuntimeAuthorityDecision({
+      provider: "codex",
+      agentId: "agent-workspace-secretary",
+      topicId: "topic-main",
+      threadId: "thread-task-race",
+      turnId: "turn-task-race",
+      callId: "call-task-race",
+      toolName: "thoth_submit_task_card",
+      phase: "workspace_secretary",
+      card: { kind: "task_card", card },
+      redactedRawInputHash:
+        "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    });
+    const { session, emitted, runPrompts, replacedPrompts, cleanup } = createSession({
+      hasInFlightRun: () => true,
+      streamRuns: [
+        (async function* () {
+          yield { type: "turn_started", provider: "codex", turnId: "turn-task-race" };
+          yield {
+            type: "timeline",
+            provider: "codex",
+            turnId: "turn-task-race",
+            item: { type: "task_card", card },
+          };
+          await terminalGate;
+          yield { type: "turn_completed", provider: "codex", turnId: "turn-task-race" };
+        })(),
+        nativeStream({ type: "turn_started", provider: "codex", turnId: "turn-goals-race" }),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-task-race",
+        text: "验证 Task Card 终态竞态",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "light",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      await session.handleAnswerRequest({
+        type: "workspace_secretary.answer.request",
+        requestId: "answer-task-race",
+        cardId: card.id,
+        uiAgentId: "draft-secretary",
+        answer: {
+          intent: "accept_quick",
+          card_id: card.id,
+          title: card.title,
+          raw_answer: "确认任务总览",
+        },
+      });
+      await expect(waitForAnswer).resolves.toMatchObject({ answer: { intent: "accept_quick" } });
+
+      releaseTerminal?.();
+      await flushBackgroundTurns();
+      await flushBackgroundTurns();
+
+      expect(runPrompts).toHaveLength(1);
+      expect(replacedPrompts).toHaveLength(1);
+      expect(JSON.stringify(replacedPrompts[0])).toContain("thoth_submit_goals_card");
+      expect(JSON.stringify(replacedPrompts[0])).toContain("Do not repeat the Task Card");
+      expect(lastWorkspaceModel(emitted).secretary.status.kind).not.toBe("recoverable_error");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("starts a same-session foreground Plan+Exec turn for every approved Goals Card", async () => {
     const clarify = {
       ...clarifyCard("clarify-card-frozen-context"),
@@ -2296,6 +2631,444 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
     }
   });
 
+  it("hands Loop approval to the background task without leaving the foreground provider turn loading", async () => {
+    const task = {
+      ...taskCard("task-card-background-handoff"),
+      submitted: true,
+      submittedSummary: "已确认并按 Loop 后台执行",
+    };
+    const goals = goalsCard("goals-card-background-handoff");
+    const loopTask = loopTaskForTest({ card: goals, task });
+    let releaseTerminal: (() => void) | null = null;
+    const terminalGate = new Promise<void>((resolve) => {
+      releaseTerminal = resolve;
+    });
+    const loopTaskService = {
+      register: async () => loopTask,
+      list: () => [
+        {
+          id: loopTask.id,
+          title: loopTask.title,
+          status: "queued" as const,
+          summary: loopTask.summary,
+          workspaceName: loopTask.workspaceName,
+          sourceTopicId: loopTask.sourceTopicId,
+        },
+      ],
+      // The Secretary handoff only owns the list projection. Task detail is
+      // materialized by the Background Tasks authority RPC, not by this test double.
+      inspect: () => null,
+    } as unknown as ThothLoopTaskService;
+    const { waitForAnswer } = createRuntimeAuthorityDecision({
+      provider: "opencode",
+      agentId: "agent-workspace-secretary",
+      topicId: "topic-main",
+      threadId: "thread-background-handoff",
+      turnId: "turn-background-handoff",
+      callId: "call-background-handoff",
+      toolName: "thoth_submit_goals_card",
+      phase: "approval_breakdown",
+      card: { kind: "goals_card", card: goals },
+      redactedRawInputHash:
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    });
+    const { session, emitted, cleanup } = createSession({
+      providerSession: providerSession("opencode"),
+      nativeThothToolProviders: ["opencode"],
+      loopTaskService,
+      streamRuns: [
+        (async function* () {
+          yield { type: "turn_started", provider: "opencode", turnId: "turn-background-handoff" };
+          yield {
+            type: "timeline",
+            provider: "opencode",
+            turnId: "turn-background-handoff",
+            item: { type: "task_card", card: task },
+          };
+          yield {
+            type: "timeline",
+            provider: "opencode",
+            turnId: "turn-background-handoff",
+            item: { type: "goal_card", card: goals },
+          };
+          await terminalGate;
+          yield {
+            type: "turn_failed",
+            provider: "opencode",
+            turnId: "turn-background-handoff",
+            error: "late provider terminal event",
+          };
+        })(),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-background-handoff",
+        text: "后台 handoff 生命周期测试",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "loop",
+          clarifyStrength: "light",
+          loop: "light",
+          authorityLabel: "OpenCode",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      await session.handleAnswerRequest({
+        type: "workspace_secretary.answer.request",
+        requestId: "answer-background-handoff",
+        cardId: goals.id,
+        uiAgentId: "draft-secretary",
+        answer: {
+          intent: "accept_loop",
+          card_id: goals.id,
+          title: goals.title,
+          raw_answer: "确认注册后台任务",
+        },
+      });
+
+      await expect(waitForAnswer).resolves.toMatchObject({ answer: { intent: "accept_loop" } });
+      const response = emitted.find(
+        (message) =>
+          message.type === "workspace_secretary.answer.response" &&
+          message.payload.requestId === "answer-background-handoff",
+      );
+      expect(response?.payload.model?.secretary).toMatchObject({
+        composer: { mode: "loop", loop: "light" },
+        foregroundTurnState: "background_handoff",
+        status: { kind: "ready", detail: "该工作已交由后台流程继续处理。" },
+      });
+      expect(response?.payload.model?.backgroundTasks).toMatchObject({
+        selectedTaskId: loopTask.id,
+        tasks: [expect.objectContaining({ id: loopTask.id, status: "queued" })],
+      });
+
+      const internalState = (session as unknown as { state: WorkspaceSecretaryStateForTest }).state;
+      expect(internalState.activeTurnPhase).toBe("background_handoff");
+      expect(internalState.currentClarifyState).toBe("C_REGISTER");
+
+      releaseTerminal?.();
+      await flushBackgroundTurns();
+      expect(lastModelUpdate(emitted).model.secretary.status).toMatchObject({
+        kind: "ready",
+        detail: "该工作已交由后台流程继续处理。",
+      });
+    } finally {
+      resetRuntimeAuthorityDecisionsForTest();
+      cleanup();
+    }
+  });
+
+  it("migrates a legacy registered Loop topic to a ready background handoff after restart", async () => {
+    const task = {
+      ...taskCard("task-card-legacy-background-handoff"),
+      submitted: true,
+      submittedSummary: "已确认并注册后台任务",
+    };
+    const goals = {
+      ...goalsCard("goals-card-legacy-background-handoff"),
+      submitted: true,
+      submittedSummary: "已确认并注册后台任务",
+    };
+    const loopTask = loopTaskForTest({ card: goals, task });
+    const loopTaskService = {
+      list: () => [
+        {
+          id: loopTask.id,
+          title: loopTask.title,
+          status: "running" as const,
+          summary: "后台任务正在运行。",
+          workspaceName: loopTask.workspaceName,
+          sourceTopicId: loopTask.sourceTopicId,
+        },
+      ],
+      inspect: () => null,
+    } as unknown as ThothLoopTaskService;
+    const topicTurns = [
+      {
+        id: "user-legacy-background-handoff",
+        kind: "message" as const,
+        speaker: "user" as const,
+        text: "实现一个后台任务",
+      },
+      { id: `turn-task-${task.id}`, kind: "task_card" as const, card: task },
+      { id: `turn-goals-${goals.id}`, kind: "goal_card" as const, card: goals },
+    ];
+    const { session, emitted, cleanup } = createSession({
+      loopTaskService,
+      workspaceSecretary: {
+        mode: "loop",
+        loopStrength: "one_plan_one_do",
+        topicSnapshots: [
+          {
+            workspacePath: workspace.cwd,
+            workspaceName: workspace.title,
+            activeTopicId: "topic-main",
+            topics: [
+              { id: "topic-main", title: "后台任务", status: "current", updatedLabel: "刚刚" },
+            ],
+            turns: topicTurns,
+            topicStates: [
+              {
+                topicId: "topic-main",
+                turns: topicTurns,
+                currentClarifyState: "C_DIRECT",
+                activeTurnPhase: "quick_exec",
+                activeTopicProviderBacked: true,
+                status: {
+                  kind: "recoverable_error",
+                  title: "需要继续",
+                  detail: "真实 provider 回合没有成功完成。",
+                },
+              },
+            ],
+            topicAgents: [],
+            nextTopicIndex: 1,
+            currentClarifyState: "C_DIRECT",
+            activeTurnPhase: "quick_exec",
+            activeTopicProviderBacked: true,
+          },
+        ],
+      },
+    });
+
+    try {
+      await session.handleSnapshotRequest({
+        type: "workspace_secretary.snapshot.request",
+        requestId: "snapshot-legacy-background-handoff",
+        workspaceId: workspace.workspaceId,
+        topicId: "topic-main",
+      });
+
+      const response = emitted.find(
+        (message) =>
+          message.type === "workspace_secretary.snapshot.response" &&
+          message.payload.requestId === "snapshot-legacy-background-handoff",
+      );
+      expect(response?.payload.model?.secretary).toMatchObject({
+        foregroundTurnState: "background_handoff",
+        status: { kind: "ready", detail: "该工作已交由后台流程继续处理。" },
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("restores a registered Loop handoff after the global controls switch back to Quick", async () => {
+    const turnControls = {
+      mode: "loop" as const,
+      clarifyStrength: "balanced" as const,
+      loop: "light" as const,
+    };
+    const task = {
+      ...taskCard("task-card-restored-hot-switch"),
+      turnControls,
+      submitted: true,
+      submittedSummary: "已确认任务总览",
+    };
+    const goals = {
+      ...goalsCard("goals-card-restored-hot-switch"),
+      turnControls,
+      submitted: true,
+      submittedSummary: "已确认并注册后台任务",
+    };
+    const loopTask = loopTaskForTest({ card: goals, task });
+    const loopTaskService = {
+      list: () => [
+        {
+          id: loopTask.id,
+          title: loopTask.title,
+          status: "running" as const,
+          summary: loopTask.summary,
+          workspaceName: loopTask.workspaceName,
+          sourceTopicId: loopTask.sourceTopicId,
+        },
+      ],
+      inspect: () => null,
+    } as unknown as ThothLoopTaskService;
+    const topicTurns = [
+      {
+        id: "user-restored-hot-switch",
+        kind: "message" as const,
+        speaker: "user" as const,
+        text: "按 Loop 注册",
+        turnControls,
+      },
+      { id: `turn-task-${task.id}`, kind: "task_card" as const, card: task },
+      { id: `turn-goals-${goals.id}`, kind: "goal_card" as const, card: goals },
+    ];
+    const { session, emitted, cleanup } = createSession({
+      loopTaskService,
+      workspaceSecretary: {
+        mode: "quick",
+        clarifyStrength: "light",
+        topicSnapshots: [
+          {
+            workspacePath: workspace.cwd,
+            workspaceName: workspace.title,
+            activeTopicId: "topic-main",
+            topics: [
+              { id: "topic-main", title: "后台任务", status: "current", updatedLabel: "刚刚" },
+            ],
+            turns: topicTurns,
+            topicStates: [
+              {
+                topicId: "topic-main",
+                turns: topicTurns,
+                currentClarifyState: "C_DIRECT",
+                activeTurnPhase: "quick_exec",
+                activeTopicProviderBacked: true,
+              },
+            ],
+            topicAgents: [],
+            nextTopicIndex: 1,
+            currentClarifyState: "C_DIRECT",
+            activeTurnPhase: "quick_exec",
+            activeTopicProviderBacked: true,
+          },
+        ],
+      },
+    });
+
+    try {
+      await session.handleSnapshotRequest({
+        type: "workspace_secretary.snapshot.request",
+        requestId: "snapshot-restored-hot-switch",
+        workspaceId: workspace.workspaceId,
+        topicId: "topic-main",
+      });
+
+      const response = emitted.find(
+        (message) =>
+          message.type === "workspace_secretary.snapshot.response" &&
+          message.payload.requestId === "snapshot-restored-hot-switch",
+      );
+      expect(response?.payload.model?.secretary).toMatchObject({
+        composer: { mode: "quick" },
+        foregroundTurnState: "background_handoff",
+        status: { kind: "ready", detail: "该工作已交由后台流程继续处理。" },
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("restores a task-scoped Loop decision in the originating Secretary topic", async () => {
+    const task = {
+      ...taskCard("task-card-loop-decision"),
+      submitted: true,
+      submittedSummary: "已确认并注册后台任务",
+    };
+    const goals = {
+      ...goalsCard("goals-card-loop-decision"),
+      submitted: true,
+      submittedSummary: "已确认并注册后台任务",
+    };
+    const loopTask = {
+      ...loopTaskForTest({ card: goals, task }),
+      sourceGoalsCardId: goals.id,
+      status: "awaiting_user_decision" as const,
+      pendingUserDecision: {
+        id: "loop-decision-1",
+        title: "选择兼容性方向",
+        question: "该目标应优先支持哪一种运行环境？",
+        options: [
+          { id: "modern", label: "现代环境" },
+          { id: "legacy", label: "兼容旧环境" },
+        ],
+        status: "pending" as const,
+        createdAt: "2026-07-14T00:00:00.000Z",
+      },
+    };
+    const topicTurns = [
+      {
+        id: "user-loop-decision",
+        kind: "message" as const,
+        speaker: "user" as const,
+        text: "实现一个后台模块",
+      },
+      { id: `turn-task-${task.id}`, kind: "task_card" as const, card: task },
+      { id: `turn-goals-${goals.id}`, kind: "goal_card" as const, card: goals },
+    ];
+    const loopTaskService = {
+      findBySourceBinding: () => loopTask,
+      list: () => [
+        {
+          id: loopTask.id,
+          title: loopTask.title,
+          status: loopTask.status,
+          summary: loopTask.summary,
+          workspaceName: loopTask.workspaceName,
+          workspacePath: loopTask.workspacePath,
+          sourceTopicId: loopTask.sourceTopicId,
+        },
+      ],
+      inspect: () => null,
+    } as unknown as ThothLoopTaskService;
+    const { session, emitted, cleanup } = createSession({
+      loopTaskService,
+      workspaceSecretary: {
+        mode: "loop",
+        loopStrength: "one_plan_one_do",
+        topicSnapshots: [
+          {
+            workspacePath: workspace.cwd,
+            workspaceName: workspace.title,
+            activeTopicId: "topic-main",
+            topics: [
+              { id: "topic-main", title: "后台模块", status: "current", updatedLabel: "刚刚" },
+            ],
+            turns: topicTurns,
+            topicStates: [
+              {
+                topicId: "topic-main",
+                turns: topicTurns,
+                currentClarifyState: "C_REGISTER",
+                activeTurnPhase: "background_handoff",
+                foregroundTurnState: "background_handoff",
+                activeTopicProviderBacked: true,
+                status: { kind: "ready", title: "已交给后台", detail: "后台正在等待决策。" },
+              },
+            ],
+            topicAgents: [],
+            nextTopicIndex: 1,
+            currentClarifyState: "C_REGISTER",
+            activeTurnPhase: "background_handoff",
+            activeTopicProviderBacked: true,
+          },
+        ],
+      },
+    });
+
+    try {
+      await session.handleSnapshotRequest({
+        type: "workspace_secretary.snapshot.request",
+        requestId: "snapshot-loop-decision",
+        workspaceId: workspace.workspaceId,
+        topicId: "topic-main",
+      });
+
+      const response = emitted.find(
+        (message) =>
+          message.type === "workspace_secretary.snapshot.response" &&
+          message.payload.requestId === "snapshot-loop-decision",
+      );
+      expect(response?.payload.model?.secretary.turns).toContainEqual(
+        expect.objectContaining({
+          kind: "loop_decision",
+          taskId: loopTask.id,
+          decision: expect.objectContaining({ status: "pending" }),
+        }),
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
   it.each([
     {
       mode: "loop" as const,
@@ -2393,6 +3166,159 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       }
     },
   );
+
+  it("registers the Loop flow from the send that hot-switched an existing Quick topic", async () => {
+    const task = {
+      ...taskCard("task-card-hot-switch-loop"),
+      submitted: true,
+      submittedSummary: "已确认任务总览",
+    };
+    const goals = goalsCard("goals-card-hot-switch-loop");
+    const loopTask = loopTaskForTest({ card: goals, task });
+    let registeredStrength: string | null = null;
+    const loopTaskService = {
+      register: async (input: { loopStrength: string }) => {
+        registeredStrength = input.loopStrength;
+        return loopTask;
+      },
+      list: () => [
+        {
+          id: loopTask.id,
+          title: loopTask.title,
+          status: "queued" as const,
+          summary: loopTask.summary,
+          workspaceName: loopTask.workspaceName,
+          sourceTopicId: loopTask.sourceTopicId,
+        },
+      ],
+      inspect: () => null,
+    } as unknown as ThothLoopTaskService;
+    const { session, cleanup } = createSession({
+      loopTaskService,
+      streamRuns: [
+        nativeStream(
+          { type: "turn_started", provider: "codex", turnId: "turn-hot-switch-quick" },
+          {
+            type: "timeline",
+            provider: "codex",
+            turnId: "turn-hot-switch-quick",
+            item: { type: "assistant_message", text: "Quick foreground reply" },
+          },
+          { type: "turn_completed", provider: "codex", turnId: "turn-hot-switch-quick" },
+        ),
+        nativeStream(
+          { type: "turn_started", provider: "codex", turnId: "turn-hot-switch-loop" },
+          {
+            type: "timeline",
+            provider: "codex",
+            turnId: "turn-hot-switch-loop",
+            item: { type: "task_card", card: task },
+          },
+          {
+            type: "timeline",
+            provider: "codex",
+            turnId: "turn-hot-switch-loop",
+            item: { type: "goal_card", card: goals },
+          },
+        ),
+      ],
+    });
+
+    try {
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-before-hot-switch",
+        text: "先在前台回答一句",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "none",
+          loop: null,
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      await session.handleSendRequest({
+        type: "workspace_secretary.send.request",
+        requestId: "send-after-hot-switch",
+        text: "这次按 Loop 注册后台任务",
+        uiAgentId: "draft-secretary",
+        composer: {
+          mode: "loop",
+          clarifyStrength: "balanced",
+          loop: "light",
+          authorityLabel: "Codex",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      const internalState = (session as unknown as { state: WorkspaceSecretaryStateForTest }).state;
+      const projectedTask = internalState.model.secretary.turns.find(
+        (turn) => turn.kind === "task_card" && turn.card.id === task.id,
+      );
+      const projectedGoals = internalState.model.secretary.turns.find(
+        (turn) => turn.kind === "goal_card" && turn.card.id === goals.id,
+      );
+      expect(projectedTask?.kind === "task_card" ? projectedTask.card.turnControls : null).toEqual({
+        mode: "loop",
+        clarifyStrength: "balanced",
+        loop: "light",
+      });
+      expect(
+        projectedGoals?.kind === "goal_card" ? projectedGoals.card.turnControls : null,
+      ).toEqual({
+        mode: "loop",
+        clarifyStrength: "balanced",
+        loop: "light",
+      });
+
+      // The controls can already point at the next Quick send. The pending Goals Card still owns
+      // the Loop target frozen by the user send that produced it.
+      internalState.model.secretary.composer = {
+        ...internalState.model.secretary.composer,
+        mode: "quick",
+        loop: null,
+      };
+      const { waitForAnswer } = createRuntimeAuthorityDecision({
+        provider: "codex",
+        agentId: "agent-workspace-secretary",
+        topicId: "topic-main",
+        threadId: "thread-hot-switch-loop",
+        turnId: "turn-hot-switch-loop",
+        callId: "call-hot-switch-loop",
+        toolName: "thoth_submit_goals_card",
+        phase: "approval_breakdown",
+        card: { kind: "goals_card", card: goals },
+        redactedRawInputHash:
+          "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      });
+
+      await session.handleAnswerRequest({
+        type: "workspace_secretary.answer.request",
+        requestId: "answer-hot-switch-loop",
+        cardId: goals.id,
+        uiAgentId: "draft-secretary",
+        answer: {
+          intent: "accept_loop",
+          card_id: goals.id,
+          title: goals.title,
+          raw_answer: "确认注册后台任务",
+        },
+      });
+
+      await expect(waitForAnswer).resolves.toMatchObject({ answer: { intent: "accept_loop" } });
+      expect(registeredStrength).toBe("light");
+      expect(internalState.activeTurnPhase).toBe("background_handoff");
+      expect(internalState.model.secretary.foregroundTurnState).toBe("background_handoff");
+      expect(internalState.model.secretary.composer.mode).toBe("quick");
+    } finally {
+      resetRuntimeAuthorityDecisionsForTest();
+      cleanup();
+    }
+  });
 
   it("denies native provider questions in structured Clarify without mirroring a permission card", async () => {
     const { session, emitted, permissionResponses, cleanup } = createSession({
@@ -2689,10 +3615,16 @@ type WorkspaceSecretaryStateForTest = {
   currentClarifyState: string;
   model: {
     secretary: {
+      composer: {
+        mode: "quick" | "loop";
+        loop: string | null;
+        [key: string]: unknown;
+      };
+      foregroundTurnState?: "background_handoff";
       turns: Array<
         | { kind: "clarify_card"; card: ThothClarifyCardModel }
         | { kind: "task_card"; card: ThothTaskCardModel }
-        | { kind: "goal_card"; card: ThothGoalCardModel }
+        | { kind: "goal_card"; card: ThothGoalCardModel | ThothGoalsCardModel }
         | { kind: string; [key: string]: unknown }
       >;
     };

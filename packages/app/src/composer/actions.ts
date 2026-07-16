@@ -1,6 +1,7 @@
 import type { AgentStreamEventPayload, GitHubSearchItem } from "@thoth/protocol/messages";
 import type { AgentProvider } from "@thoth/protocol/agent-types";
 import type {
+  LoopTaskModel,
   SecretaryTurn,
   ThothCleanUiModel,
   ThothComposerModel,
@@ -401,6 +402,42 @@ export function applyWorkspaceSecretaryModelToStream(
 }
 
 /**
+ * Project a durable task-scoped decision into its originating Secretary topic without granting
+ * the topic a second authority write path. The task remains the sole source of decision state.
+ */
+export function applyLoopTaskDecisionToWorkspaceSecretaryStream(input: {
+  agentId: string;
+  task: LoopTaskModel;
+  stream: AgentStreamWriter;
+}): void {
+  const decision = input.task.pendingUserDecision;
+  if (!decision) {
+    return;
+  }
+  const item: StreamItem = {
+    kind: "loop_decision",
+    id: `loop_decision_${input.task.id}`,
+    timestamp: new Date(decision.createdAt),
+    taskId: input.task.id,
+    decision,
+  };
+  input.stream.setTail((prev) => {
+    const next = new Map(prev);
+    const current = next.get(input.agentId) ?? [];
+    const index = current.findIndex((candidate) => candidate.id === item.id);
+    if (index < 0) {
+      next.set(input.agentId, [...current, item]);
+      return next;
+    }
+    const updated = [...current];
+    // Preserve the first-rendered time so answer/status updates cannot reorder the transcript.
+    updated[index] = { ...item, timestamp: current[index]!.timestamp };
+    next.set(input.agentId, updated);
+    return next;
+  });
+}
+
+/**
  * Rebuild the virtual Workspace Secretary timeline from its durable provider agent. The provider
  * records the full Plan+Exec stream; the clean model remains authoritative for cards and literal
  * user text. This is used after reload/reconnect and as a cancellation race barrier.
@@ -633,6 +670,16 @@ function secretaryTurnToStreamItem(turn: SecretaryTurn): StreamItem[] {
           id: `registered_task_${turn.task.id}`,
           timestamp,
           task: turn.task,
+        },
+      ];
+    case "loop_decision":
+      return [
+        {
+          kind: "loop_decision",
+          id: `loop_decision_${turn.taskId}`,
+          timestamp,
+          taskId: turn.taskId,
+          decision: turn.decision,
         },
       ];
     default:

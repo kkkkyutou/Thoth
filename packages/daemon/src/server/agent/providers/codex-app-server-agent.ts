@@ -1210,17 +1210,6 @@ const clarifyConvergenceAuditJsonSchema = {
   },
 };
 
-const loopAcceptanceMatrixEntryJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["acceptance", "status"],
-  properties: {
-    acceptance: { type: "string", minLength: 1 },
-    status: { type: "string", enum: ["met", "not_met", "unclear"] },
-    evidence: { type: "string" },
-  },
-};
-
 const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, CodexDynamicToolSpec> =
   {
     thoth_submit_clarify_card: {
@@ -1306,23 +1295,12 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
   thoth_loop_submit_planexec_result: {
     name: "thoth_loop_submit_planexec_result",
     description:
-      "Submit the completed PlanExec result for the current Thoth background Loop goal after planning, implementing only this goal, and collecting validation evidence. goal_id must exactly equal the stable Current goal id supplied in the phase prompt, never its display ordinal.",
+      "Submit the completed PlanExec result for the current Thoth background Loop goal after planning, implementing only this goal, and collecting validation evidence. Thoth binds the active goal and attempt from the session context.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: [
-        "goal_id",
-        "round",
-        "plan_summary",
-        "execution_summary",
-        "evidence",
-        "next_review_focus",
-      ],
+      required: ["plan_summary", "execution_summary", "evidence", "next_review_focus"],
       properties: {
-        goal_id: { type: "string", minLength: 1 },
-        round: { type: "integer", minimum: 1 },
-        phase_run_id: { type: "string" },
-        result_tool_call_id: { type: "string" },
         plan_summary: { type: "string", minLength: 1 },
         execution_summary: { type: "string", minLength: 1 },
         evidence: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
@@ -1332,30 +1310,81 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
       },
     },
   },
-  thoth_loop_submit_review_verdict: {
-    name: "thoth_loop_submit_review_verdict",
+  thoth_loop_submit_review_independent_assessment: {
+    name: "thoth_loop_submit_review_independent_assessment",
     description:
-      "Submit the independent Review verdict for the current Thoth background Loop goal. goal_id must exactly equal the stable Current goal id supplied in the phase prompt, never its display ordinal. Pass advances and must bind concrete evidence to every acceptance. Fail consumes one failed-review budget and must include failed acceptance, root cause, next-round guidance and anti-repeat strategy.",
+      "Submit your independent investigation of the current goal before reading PlanExec's self-report. Thoth then returns the PlanExec semantic account for comparison.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["goal_id", "round", "outcome", "summary", "acceptance_matrix", "evidence_summary"],
+      required: ["observations", "working_theory", "inspection_focus"],
       properties: {
-        goal_id: { type: "string", minLength: 1 },
-        round: { type: "integer", minimum: 1 },
-        result_tool_call_id: { type: "string" },
-        outcome: { type: "string", enum: ["pass", "fail", "blocked"] },
-        summary: { type: "string", minLength: 1 },
-        acceptance_matrix: {
-          type: "array",
-          minItems: 1,
-          items: loopAcceptanceMatrixEntryJsonSchema,
+        observations: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+        working_theory: { type: "string", minLength: 1 },
+        inspection_focus: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+      },
+    },
+  },
+  thoth_loop_submit_review_verdict: {
+    name: "thoth_loop_submit_review_verdict",
+    description:
+      "Submit the independent Review verdict for the current Thoth background Loop goal after the independent assessment tool has returned PlanExec's semantic account. Pass advances. Continue or reframe must provide a concrete Direction Memo for the same goal. Use return_to_user_decision only for a genuine user-owned premise.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["outcome", "summary"],
+      properties: {
+        outcome: {
+          type: "string",
+          enum: [
+            "pass",
+            "continue",
+            "reframe_current_goal",
+            "replan_unstarted_goals",
+            "return_to_user_decision",
+            "real_blocker",
+          ],
         },
-        failed_acceptance: { type: "array", items: { type: "string", minLength: 1 } },
-        failure_root_cause: { type: "string" },
-        next_round_guidance: { type: "string" },
-        anti_repeat_strategy: { type: "array", items: { type: "string", minLength: 1 } },
+        summary: { type: "string", minLength: 1 },
         evidence_summary: { type: "string", minLength: 1 },
+        direction_memo: {
+          type: "object",
+          additionalProperties: false,
+          required: ["conclusion", "reality", "diagnosis", "reframe", "next_direction"],
+          properties: {
+            conclusion: { type: "string", minLength: 1 },
+            reality: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+            diagnosis: { type: "string", minLength: 1 },
+            abandon: { type: "array", items: { type: "string", minLength: 1 } },
+            reframe: { type: "string", minLength: 1 },
+            next_direction: { type: "string", minLength: 1 },
+          },
+        },
+        user_decision: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "question", "options"],
+          properties: {
+            title: { type: "string", minLength: 1 },
+            question: { type: "string", minLength: 1 },
+            options: {
+              type: "array",
+              minItems: 2,
+              maxItems: 4,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["id", "label"],
+                properties: {
+                  id: { type: "string", minLength: 1 },
+                  label: { type: "string", minLength: 1 },
+                  description: { type: "string" },
+                },
+              },
+            },
+            note_placeholder: { type: "string" },
+          },
+        },
         deferred_goal_replan_proposal: {
           type: "object",
           additionalProperties: false,
@@ -1405,8 +1434,6 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
       additionalProperties: false,
       required: ["title", "reason"],
       properties: {
-        goal_id: { type: "string", minLength: 1 },
-        phase: { type: "string", enum: ["planexec", "review"] },
         title: { type: "string", minLength: 1 },
         reason: { type: "string", minLength: 1 },
         next_user_decision: { type: "string" },
@@ -5027,7 +5054,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
     this.currentTurnId = parsed.turnId;
     this.resetTurnTrackingState();
-    this.emitEvent({ type: "turn_started", provider: CODEX_PROVIDER });
+    this.emitEvent({
+      type: "turn_started",
+      provider: CODEX_PROVIDER,
+      providerTurnId: parsed.turnId,
+    });
   }
 
   private handleTurnCompletedNotification(

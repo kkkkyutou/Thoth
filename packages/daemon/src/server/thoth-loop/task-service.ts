@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import type {
   ThothLoopPlanExecResultInput,
   ThothLoopReportBlockedInput,
+  ThothLoopReviewIndependentAssessmentInput,
   ThothLoopReviewVerdictInput,
   ThothRuntimeLoopStrength,
   ContractPreservationAudit,
@@ -26,6 +27,10 @@ import {
   BackgroundTaskModelSchema,
   LoopTaskModelSchema,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import {
+  getAgentStreamEventTurnId,
+  getAgentStreamEventProviderTurnId,
+} from "../agent/agent-sdk-types.js";
 import type {
   AgentPermissionResponse,
   AgentPromptInput,
@@ -79,10 +84,28 @@ interface ThothLoopTaskServiceOptions {
 
 type LoopWorktreeLockRecord = LoopWorktreeLease;
 
+type DaemonBoundPlanExecResult = ThothLoopPlanExecResultInput & {
+  goal_id: string;
+  round: number;
+  phase_run_id?: string;
+  result_tool_call_id?: string;
+};
+
+type DaemonBoundReviewVerdict = ThothLoopReviewVerdictInput & {
+  goal_id: string;
+  round: number;
+  result_tool_call_id?: string;
+};
+
+type DaemonBoundBlockedResult = ThothLoopReportBlockedInput & {
+  goal_id?: string;
+  phase?: LoopPhaseKind;
+};
+
 type PhaseResult =
-  | { kind: "planexec"; result: ThothLoopPlanExecResultInput }
-  | { kind: "review"; result: ThothLoopReviewVerdictInput }
-  | { kind: "blocked"; result: ThothLoopReportBlockedInput };
+  | { kind: "planexec"; result: DaemonBoundPlanExecResult }
+  | { kind: "review"; result: DaemonBoundReviewVerdict }
+  | { kind: "blocked"; result: DaemonBoundBlockedResult };
 
 interface PendingPhaseResult {
   taskId: string;
@@ -90,6 +113,10 @@ interface PendingPhaseResult {
   phase: LoopPhaseKind;
   round: number;
   phaseRunId?: string;
+  attemptId?: string;
+  executionGeneration?: number;
+  providerTurnId?: string;
+  reviewAssessment?: ThothLoopReviewIndependentAssessmentInput;
   resolve: (result: PhaseResult) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
@@ -104,8 +131,9 @@ interface ActivePhaseTelemetry {
   artifactRoot?: string;
 }
 
-const PHASE_RESULT_TIMEOUT_MS = 30 * 60 * 1000;
 const WORKTREE_LEASE_MS = 2 * 60 * 1000;
+const WORKTREE_HEARTBEAT_MS = Math.floor(WORKTREE_LEASE_MS / 3);
+const PHASE_AWAITING_PROVIDER_MS = 60 * 1000;
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -203,6 +231,7 @@ function toBackgroundTaskModel(task: LoopTaskModel): BackgroundTaskModel {
       ? `${task.summary} Latest Review: ${task.latestVerdictSummary}`
       : task.summary,
     workspaceName: task.workspaceName,
+    workspacePath: task.workspacePath,
     sourceTopicId: task.sourceTopicId,
     detailLabel: [
       phaseLabelText,
@@ -230,6 +259,17 @@ function goalPhase(goal: LoopGoalRecord, phase: LoopPhaseKind, round: number): L
 
 function phaseTitle(phase: LoopPhaseKind): string {
   return phase === "planexec" ? "PlanExec" : "Review";
+}
+
+function loopPhaseSessionId(input: {
+  taskId: string;
+  goalId: string;
+  phase: LoopPhaseKind;
+  round: number;
+}): string {
+  return input.phase === "planexec"
+    ? `loop-${input.taskId}-${input.goalId}-planexec`
+    : `loop-${input.taskId}-${input.goalId}-review-${input.round}`;
 }
 
 function asPromptText(input: AgentPromptInput): string {
@@ -269,8 +309,14 @@ export class ThothLoopTaskService {
   private readonly authorityStore: LoopAuthorityStore;
   private readonly evidenceStore: LoopEvidenceStore;
   private readonly activePhaseTelemetry = new Map<string, ActivePhaseTelemetry>();
+  private readonly worktreeHeartbeatTimers = new Map<string, NodeJS.Timeout>();
+  private readonly actionTails = new Map<string, Promise<void>>();
   private schedulerRunning = false;
   private schedulerQueued = false;
+  // `schedule()` can be called by a phase completion while the scheduler owns
+  // the current worktree lease. Preserve that request until the active loop
+  // releases the lease; dropping it leaves PlanExec completed and Review queued.
+  private schedulerRerunRequested = false;
 
   constructor(private readonly options: ThothLoopTaskServiceOptions) {
     this.authorityStore = new LoopAuthorityStore({
@@ -319,6 +365,22 @@ export class ThothLoopTaskService {
     });
   }
 
+  findBySourceBinding(input: {
+    workspacePath: string;
+    sourceTopicId: string;
+    sourceGoalsCardId: string;
+  }): LoopTaskModel | null {
+    const workspacePath = resolve(input.workspacePath);
+    return (
+      Array.from(this.tasks.values()).find(
+        (task) =>
+          resolve(task.workspacePath) === workspacePath &&
+          task.sourceTopicId === input.sourceTopicId &&
+          task.sourceGoalsCardId === input.sourceGoalsCardId,
+      ) ?? null
+    );
+  }
+
   authorityEvents(taskId: string) {
     return this.authorityStore.readEvents(taskId);
   }
@@ -334,6 +396,16 @@ export class ThothLoopTaskService {
       await this.restoreLegacyForegroundVisibility(agentId, existing);
       return false;
     }
+    prepareLoopRuntimeSession({
+      provider: phaseOwner.task.providerSession.provider,
+      thothHome: this.options.thothHome,
+      sessionId: loopPhaseSessionId({
+        taskId: phaseOwner.task.id,
+        goalId: phaseOwner.goal.id,
+        phase: phaseOwner.phase.phase,
+        round: phaseOwner.phase.round,
+      }),
+    });
     if (existing) {
       if (!existing.internal) {
         await storage.upsert({ ...existing, internal: true, updatedAt: nowIso() });
@@ -388,6 +460,7 @@ export class ThothLoopTaskService {
       workspaceName: input.workspaceName,
       workspacePath: input.workspacePath,
       sourceTopicId: input.sourceTopicId,
+      sourceGoalsCardId: input.goalsCard.id,
       status: "queued",
       summary: "已注册后台 Loop，等待当前 worktree 执行锁。",
       loopStrength: input.loopStrength,
@@ -422,36 +495,217 @@ export class ThothLoopTaskService {
       createdAt: now,
       updatedAt: now,
     });
-    this.tasks.set(task.id, task);
-    this.providerByTask.set(task.id, input.provider);
-    this.touch(task, "task_registered", {
-      sourceTopicId: input.sourceTopicId,
-      loopStrength: input.loopStrength,
+    const registrationKey = `${resolve(input.workspacePath)}:${input.sourceTopicId}:${input.goalsCard.id}`;
+    const registration = this.authorityStore.registerTask(task, registrationKey, {
+      kind: "task_registered",
+      correlationId: input.sourceTopicId,
+      payload: {
+        sourceTopicId: input.sourceTopicId,
+        sourceGoalsCardId: input.goalsCard.id,
+        loopStrength: input.loopStrength,
+      },
     });
-    this.appendTaskMemory(task, "clarify_transcript", input.clarifyTranscript);
-    this.appendTaskMemory(task, "task_card", input.taskCard);
-    this.appendTaskMemory(task, "goals_card", input.goalsCard);
+    const persistedTask = registration.task;
+    this.tasks.set(persistedTask.id, persistedTask);
+    this.providerByTask.set(persistedTask.id, input.provider);
+    if (!registration.created) {
+      return persistedTask;
+    }
+    this.appendTaskMemory(persistedTask, "clarify_transcript", input.clarifyTranscript);
+    this.appendTaskMemory(persistedTask, "task_card", input.taskCard);
+    this.appendTaskMemory(persistedTask, "goals_card", input.goalsCard);
     this.schedule();
-    return task;
+    return persistedTask;
   }
 
-  async action(taskId: string, action: BackgroundTaskAction): Promise<LoopTaskModel | null> {
+  async action(
+    taskId: string,
+    action: BackgroundTaskAction,
+    input: { expectedAuthorityRevision?: number; commandId?: string } = {},
+  ): Promise<LoopTaskModel | null> {
+    const previous = this.actionTails.get(taskId) ?? Promise.resolve();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const tail = previous.catch(() => undefined).then(() => gate);
+    this.actionTails.set(taskId, tail);
+    await previous.catch(() => undefined);
+    try {
+      const priorCommand = input.commandId ? this.authorityStore.getCommand(input.commandId) : null;
+      if (priorCommand) {
+        if (priorCommand.taskId !== taskId || priorCommand.action !== action) {
+          throw new Error("Background task command id is already bound to another command.");
+        }
+        return this.tasks.get(taskId) ?? null;
+      }
+      const task = this.tasks.get(taskId);
+      if (!task) {
+        return null;
+      }
+      if (
+        input.expectedAuthorityRevision !== undefined &&
+        task.authorityRevision !== input.expectedAuthorityRevision
+      ) {
+        throw new Error(
+          `Background task revision conflict: expected ${input.expectedAuthorityRevision}, found ${task.authorityRevision ?? "unknown"}.`,
+        );
+      }
+      if (
+        input.commandId &&
+        !this.authorityStore.claimCommand({ commandId: input.commandId, taskId, action })
+      ) {
+        return this.tasks.get(taskId) ?? null;
+      }
+      const result = await this.performAction(taskId, action);
+      if (result && input.commandId) {
+        this.authorityStore.rememberCommand({
+          commandId: input.commandId,
+          taskId,
+          action,
+          resultRevision: result.authorityRevision,
+        });
+      }
+      return result;
+    } finally {
+      release?.();
+      if (this.actionTails.get(taskId) === tail) {
+        this.actionTails.delete(taskId);
+      }
+    }
+  }
+
+  async answerUserDecision(input: {
+    taskId: string;
+    decisionId: string;
+    choiceId: string;
+    note?: string;
+    expectedAuthorityRevision?: number;
+    commandId?: string;
+  }): Promise<LoopTaskModel | null> {
+    const previous = this.actionTails.get(input.taskId) ?? Promise.resolve();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const tail = previous.catch(() => undefined).then(() => gate);
+    this.actionTails.set(input.taskId, tail);
+    await previous.catch(() => undefined);
+    try {
+      const commandAction = "answer_user_decision";
+      const priorCommand = input.commandId ? this.authorityStore.getCommand(input.commandId) : null;
+      if (priorCommand) {
+        if (priorCommand.taskId !== input.taskId || priorCommand.action !== commandAction) {
+          throw new Error("Background task command id is already bound to another command.");
+        }
+        return this.tasks.get(input.taskId) ?? null;
+      }
+      const task = this.tasks.get(input.taskId);
+      if (!task) {
+        return null;
+      }
+      if (
+        input.expectedAuthorityRevision !== undefined &&
+        task.authorityRevision !== input.expectedAuthorityRevision
+      ) {
+        throw new Error(
+          `Background task revision conflict: expected ${input.expectedAuthorityRevision}, found ${task.authorityRevision ?? "unknown"}.`,
+        );
+      }
+      if (
+        input.commandId &&
+        !this.authorityStore.claimCommand({
+          commandId: input.commandId,
+          taskId: task.id,
+          action: commandAction,
+        })
+      ) {
+        return this.tasks.get(task.id) ?? null;
+      }
+      const decision = task.pendingUserDecision;
+      if (
+        task.status !== "awaiting_user_decision" ||
+        !decision ||
+        decision.status !== "pending" ||
+        decision.id !== input.decisionId
+      ) {
+        throw new Error("This Loop user decision is no longer awaiting an answer.");
+      }
+      const choice = decision.options.find((option) => option.id === input.choiceId);
+      if (!choice) {
+        throw new Error("The selected Loop decision option is not available.");
+      }
+      const answer = [choice.label, input.note?.trim()].filter(Boolean).join("\n\n");
+      decision.status = "submitted";
+      decision.submittedAt = nowIso();
+      decision.answer = answer;
+      const goal = this.currentGoal(task);
+      if (!goal) {
+        throw new Error("The Loop task has no current goal to resume.");
+      }
+      goal.status = "queued";
+      task.status = "queued";
+      task.currentGoalId = goal.id;
+      task.currentPhase = "planexec";
+      task.controlIntent = "run";
+      task.resumeKind = "paused_continuation";
+      task.summary = `用户已回答 Review 决策；将继续 Goal ${goal.order}。`;
+      this.touch(task, "loop_user_decision_answered", {
+        goalId: goal.id,
+        decisionId: decision.id,
+        choiceId: choice.id,
+      });
+      this.appendTaskMemory(task, "execution_note", {
+        kind: "loop_user_decision_answer",
+        title: decision.title,
+        question: decision.question,
+        choice: choice.label,
+        ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+      });
+      if (input.commandId) {
+        this.authorityStore.rememberCommand({
+          commandId: input.commandId,
+          taskId: task.id,
+          action: commandAction,
+          resultRevision: task.authorityRevision,
+        });
+      }
+      this.schedule();
+      return task;
+    } finally {
+      release?.();
+      if (this.actionTails.get(input.taskId) === tail) {
+        this.actionTails.delete(input.taskId);
+      }
+    }
+  }
+
+  private async performAction(
+    taskId: string,
+    action: BackgroundTaskAction,
+  ): Promise<LoopTaskModel | null> {
     const task = this.tasks.get(taskId);
     if (!task) {
       return null;
     }
     if (action === "stop") {
+      if (["done", "stopped", "blocked"].includes(task.status)) {
+        throw new Error(`Cannot stop a ${task.status} background task.`);
+      }
       task.status = "stopped";
       task.controlIntent = "stopped";
       task.stoppedAt = nowIso();
       task.summary = "用户已停止后台任务。";
+      if (task.pendingUserDecision?.status === "pending") {
+        task.pendingUserDecision.status = "canceled";
+      }
       this.markCurrentGoal(task, "stopped");
       await this.cancelCurrentPhase(task);
       this.touch(task);
       return task;
     }
     if (action === "pause") {
-      if (task.status === "running") {
+      if (task.status === "running" || task.status === "awaiting_provider") {
         task.controlIntent = "pause_after_phase";
         task.pauseRequestedAt = nowIso();
         task.summary = `${phaseTitle(task.currentPhase ?? "planexec")} 会完成当前原子阶段，然后暂停后续 Loop。`;
@@ -473,13 +727,28 @@ export class ThothLoopTaskService {
         task.status === "paused" ||
         task.status === "interrupted" ||
         task.status === "stopped" ||
+        task.status === "blocked" ||
+        task.status === "evidence_capture_failed" ||
         task.status === "evidence_invalid" ||
         task.status === "workspace_changed_concurrently"
       ) {
+        const blockedPhase =
+          task.status === "blocked"
+            ? [...(this.currentGoal(task)?.phases ?? [])]
+                .reverse()
+                .find((phase) => phase.status === "blocked")
+            : undefined;
         const rebaselineRequired =
           task.status === "evidence_invalid" || task.status === "workspace_changed_concurrently";
+        const retryingBaselineCapture = task.status === "evidence_capture_failed";
         const resumeKind = task.status === "stopped" ? "stopped_recovery" : "paused_continuation";
         const goal = this.currentGoal(task);
+        if (blockedPhase && goal) {
+          blockedPhase.status = "interrupted";
+          blockedPhase.interruptedReason = "user_resumed_blocked_phase";
+          task.currentPhase = blockedPhase.phase;
+          goal.status = "interrupted";
+        }
         let rebaselineEvidence: LoopTaskModel["baselineEvidence"];
         if (rebaselineRequired && goal) {
           // The user explicitly chose to continue after reviewing an external
@@ -514,20 +783,25 @@ export class ThothLoopTaskService {
         }
         task.summary = rebaselineRequired
           ? `已重新建立 workspace evidence baseline；将重跑 Goal ${goal?.order ?? "当前"} 的 PlanExec。`
-          : resumeKind === "stopped_recovery"
-            ? "后台任务将从停止时的阶段游标继续，并优先复用原 provider session。"
-            : "后台任务将从已完成阶段后的游标继续。";
+          : retryingBaselineCapture
+            ? "正在重新封存 workspace evidence baseline；完成后会自动开始当前 Goal。"
+            : blockedPhase
+              ? `将从 Goal ${goal?.order ?? "当前"} 的 ${phaseTitle(blockedPhase.phase)} 阶段恢复。`
+              : resumeKind === "stopped_recovery"
+                ? "后台任务将从停止时的阶段游标继续，并优先复用原 provider session。"
+                : "后台任务将从已完成阶段后的游标继续。";
         this.touch(task);
         if (rebaselineEvidence) {
           this.appendTaskMemory(task, "baseline_evidence", rebaselineEvidence);
         }
         this.schedule();
+        return task;
       }
-      return task;
+      throw new Error(`Cannot resume a ${task.status} background task.`);
     }
     if (action === "budget_continue") {
       if (task.status !== "budget_wait") {
-        return task;
+        throw new Error("Raise strength is only available while the task is waiting on budget.");
       }
       const nextStrength = nextLoopStrength(task.loopStrength);
       if (nextStrength) {
@@ -566,13 +840,20 @@ export class ThothLoopTaskService {
       return task;
     }
     if (action === "review_only") {
-      const goal = this.currentGoal(task);
+      if (task.status !== "budget_wait") {
+        throw new Error("Review evidence is only available while the task is waiting on budget.");
+      }
+      const currentMarkedGoal = task.currentGoalId
+        ? (task.goals.find((goal) => goal.id === task.currentGoalId) ?? null)
+        : null;
+      const goal = currentMarkedGoal?.latestPlanExecResult
+        ? currentMarkedGoal
+        : this.currentGoal(task);
       if (!goal?.latestPlanExecResult) {
-        task.summary = "当前 goal 还没有可供 Review 的 PlanExec 证据。";
-        this.touch(task, "review_only_rejected");
-        return task;
+        throw new Error("The current goal has no PlanExec evidence available for Review.");
       }
       task.currentPhase = "review";
+      task.currentGoalId = goal.id;
       task.status = "queued";
       task.budgetWait = undefined;
       task.controlIntent = "run";
@@ -584,24 +865,159 @@ export class ThothLoopTaskService {
     return task;
   }
 
-  resolvePlanExecResult(agentId: string, input: ThothLoopPlanExecResultInput): boolean {
-    return this.resolvePhaseResult(agentId, { kind: "planexec", result: input });
+  resolvePlanExecResult(
+    agentId: string,
+    input: ThothLoopPlanExecResultInput,
+    providerTurnId?: string,
+    resultToolCallId?: string,
+  ): boolean {
+    return this.resolvePhaseResult(
+      agentId,
+      {
+        kind: "planexec",
+        result: {
+          ...input,
+          goal_id: "",
+          round: 0,
+          ...(resultToolCallId ? { result_tool_call_id: resultToolCallId } : {}),
+        },
+      },
+      providerTurnId,
+    );
   }
 
-  resolveReviewVerdict(agentId: string, input: ThothLoopReviewVerdictInput): boolean {
-    return this.resolvePhaseResult(agentId, { kind: "review", result: input });
+  resolveReviewIndependentAssessment(
+    agentId: string,
+    input: ThothLoopReviewIndependentAssessmentInput,
+    providerTurnId?: string,
+  ): string | null {
+    const pending = this.pendingByAgent.get(agentId);
+    if (!pending || pending.phase !== "review" || pending.reviewAssessment) {
+      return null;
+    }
+    if (
+      providerTurnId &&
+      providerTurnId !== "unknown-turn" &&
+      pending.providerTurnId &&
+      pending.providerTurnId !== providerTurnId
+    ) {
+      this.options.logger.warn(
+        {
+          taskId: pending.taskId,
+          goalId: pending.goalId,
+          phase: pending.phase,
+          attemptId: pending.attemptId,
+          expectedTurnId: pending.providerTurnId,
+          receivedTurnId: providerTurnId,
+        },
+        "Ignored stale Loop independent Review assessment from an older provider turn",
+      );
+      return null;
+    }
+    if (providerTurnId && providerTurnId !== "unknown-turn" && !pending.providerTurnId) {
+      pending.providerTurnId = providerTurnId;
+    }
+    const task = this.tasks.get(pending.taskId);
+    const goal = task?.goals.find((entry) => entry.id === pending.goalId);
+    const planExec = goal?.latestPlanExecResult;
+    if (!task || !goal || !planExec) {
+      return null;
+    }
+    pending.reviewAssessment = input;
+    task.summary = `Review 已形成独立判断，正在对照 PlanExec 对 Goal ${goal.order} 的工作说明。`;
+    this.touch(task, "review_independent_assessment", {
+      goalId: goal.id,
+      phaseRunId: pending.phaseRunId,
+    });
+    this.appendTaskMemory(task, "execution_note", {
+      kind: "review_independent_assessment",
+      goalTitle: goal.title,
+      observations: input.observations,
+      workingTheory: input.working_theory,
+      inspectionFocus: input.inspection_focus,
+    });
+    return [
+      "You have now completed the independent assessment. Compare it against PlanExec's semantic account below; treat it as a fallible account, not authority.",
+      `Plan used: ${planExec.planSummary}`,
+      `Work claimed: ${planExec.executionSummary}`,
+      `Inspectible evidence offered: ${planExec.evidence.join("; ")}`,
+      `Validation claimed: ${planExec.validationPerformed.join("; ") || "none reported"}`,
+      `Remaining risks claimed: ${planExec.remainingRisks.join("; ") || "none reported"}`,
+      `Requested review focus: ${planExec.nextReviewFocus}`,
+      "Now submit the final Review Direction Memo and exactly one semantic outcome.",
+    ].join("\n\n");
   }
 
-  resolveBlocked(agentId: string, input: ThothLoopReportBlockedInput): boolean {
-    return this.resolvePhaseResult(agentId, { kind: "blocked", result: input });
+  resolveReviewVerdict(
+    agentId: string,
+    input: ThothLoopReviewVerdictInput,
+    providerTurnId?: string,
+    resultToolCallId?: string,
+  ): boolean {
+    const pending = this.pendingByAgent.get(agentId);
+    if (pending?.phase === "review" && !pending.reviewAssessment) {
+      this.options.logger.warn(
+        { taskId: pending.taskId, goalId: pending.goalId, agentId },
+        "Rejected Review verdict before independent assessment",
+      );
+      return false;
+    }
+    return this.resolvePhaseResult(
+      agentId,
+      {
+        kind: "review",
+        result: {
+          ...input,
+          goal_id: "",
+          round: 0,
+          ...(resultToolCallId ? { result_tool_call_id: resultToolCallId } : {}),
+        },
+      },
+      providerTurnId,
+    );
   }
 
-  private resolvePhaseResult(agentId: string, result: PhaseResult): boolean {
+  resolveBlocked(
+    agentId: string,
+    input: ThothLoopReportBlockedInput,
+    providerTurnId?: string,
+  ): boolean {
+    return this.resolvePhaseResult(
+      agentId,
+      { kind: "blocked", result: { ...input } },
+      providerTurnId,
+    );
+  }
+
+  private resolvePhaseResult(
+    agentId: string,
+    result: PhaseResult,
+    providerTurnId?: string,
+  ): boolean {
     const pending = this.pendingByAgent.get(agentId);
     if (!pending) {
       return false;
     }
-    const normalizedResult = this.normalizeCurrentGoalOrdinal(pending, result);
+    if (
+      providerTurnId &&
+      providerTurnId !== "unknown-turn" &&
+      pending.providerTurnId &&
+      pending.providerTurnId !== providerTurnId
+    ) {
+      this.options.logger.warn(
+        {
+          taskId: pending.taskId,
+          goalId: pending.goalId,
+          phase: pending.phase,
+          attemptId: pending.attemptId,
+          expectedTurnId: pending.providerTurnId,
+          receivedTurnId: providerTurnId,
+        },
+        "Ignored stale Loop runtime-tool result from an older provider turn",
+      );
+      return false;
+    }
+    const normalizedResult = this.bindPendingPhaseResult(pending, result);
     const mismatch = this.validatePendingPhaseResult(pending, normalizedResult);
     if (mismatch) {
       clearTimeout(pending.timeout);
@@ -616,53 +1032,58 @@ export class ThothLoopTaskService {
     }
     clearTimeout(pending.timeout);
     this.pendingByAgent.delete(agentId);
+    const task = this.tasks.get(pending.taskId);
+    if (task?.status === "awaiting_provider") {
+      const goal = task.goals.find((entry) => entry.id === pending.goalId);
+      const phase = goal ? goalPhase(goal, pending.phase, pending.round) : null;
+      if (phase) {
+        phase.status = "running";
+        phase.lastActivityAt = nowIso();
+      }
+      task.status = "running";
+      task.summary = `${phaseTitle(pending.phase)} 已收到 provider 语义结论，正在收敛当前阶段。`;
+      this.touch(task, "provider_result_resumed", { phaseRunId: pending.phaseRunId });
+    }
     pending.resolve(normalizedResult);
     return true;
   }
 
   /**
-   * The runtime contract uses immutable goal ids such as `g1`, but providers
-   * can occasionally copy the user-facing ordinal (`1`) from the prompt.
-   * Accept only the exact ordinal of the pending goal; every other reference
-   * remains a hard mismatch so an old or cross-goal result cannot advance a
-   * task.
+   * Phase identity is daemon authority, never an Agent Harness task. The
+   * caller's active execution generation owns this binding, so late provider
+   * tool callbacks cannot redirect a result to another goal or round.
    */
-  private normalizeCurrentGoalOrdinal(
-    pending: PendingPhaseResult,
-    result: PhaseResult,
-  ): PhaseResult {
-    if (result.kind === "blocked" || result.result.goal_id === pending.goalId) {
-      return result;
-    }
-    const task = this.tasks.get(pending.taskId);
-    const pendingGoal = task?.goals.find((goal) => goal.id === pending.goalId);
-    if (!pendingGoal || result.result.goal_id !== String(pendingGoal.order)) {
-      return result;
-    }
-    this.options.logger.warn(
-      {
-        taskId: pending.taskId,
-        goalId: pending.goalId,
-        receivedGoalReference: result.result.goal_id,
-      },
-      "Normalized Loop result display ordinal to the active stable goal id",
-    );
-    if (result.kind === "planexec") {
+  private bindPendingPhaseResult(pending: PendingPhaseResult, result: PhaseResult): PhaseResult {
+    if (result.kind === "blocked") {
       return {
-        kind: "planexec",
+        kind: "blocked",
         result: {
           ...result.result,
           goal_id: pending.goalId,
+          phase: pending.phase,
         },
       };
     }
-    return {
-      kind: "review",
-      result: {
-        ...result.result,
-        goal_id: pending.goalId,
-      },
-    };
+    const withBinding =
+      result.kind === "planexec"
+        ? {
+            kind: "planexec" as const,
+            result: {
+              ...result.result,
+              goal_id: pending.goalId,
+              round: pending.round,
+              phase_run_id: pending.phaseRunId,
+            },
+          }
+        : {
+            kind: "review" as const,
+            result: {
+              ...result.result,
+              goal_id: pending.goalId,
+              round: pending.round,
+            },
+          };
+    return withBinding;
   }
 
   private validatePendingPhaseResult(
@@ -670,27 +1091,20 @@ export class ThothLoopTaskService {
     result: PhaseResult,
   ): string | null {
     if (result.kind === "blocked") {
-      if (result.result.goal_id && result.result.goal_id !== pending.goalId) {
-        return `Loop blocked result targeted ${result.result.goal_id}, but current goal is ${pending.goalId}.`;
-      }
-      if (result.result.phase && result.result.phase !== pending.phase) {
-        return `Loop blocked result targeted ${result.result.phase}, but current phase is ${pending.phase}.`;
-      }
       return null;
     }
     if (result.kind !== pending.phase) {
       return `Loop result used ${result.kind}, but current phase is ${pending.phase}.`;
     }
-    if (result.result.goal_id !== pending.goalId) {
+    if (result.result.goal_id && result.result.goal_id !== pending.goalId) {
       return `Loop result targeted ${result.result.goal_id}, but current goal is ${pending.goalId}.`;
     }
-    if (result.result.round !== pending.round) {
+    if (result.result.round !== undefined && result.result.round !== pending.round) {
       return `Loop result targeted round ${result.result.round}, but current round is ${pending.round}.`;
     }
     if (
       pending.phaseRunId &&
       result.kind === "planexec" &&
-      result.result.phase_run_id !== undefined &&
       result.result.phase_run_id !== pending.phaseRunId
     ) {
       return `Loop result targeted phase run ${result.result.phase_run_id}, but active phase run is ${pending.phaseRunId}.`;
@@ -700,7 +1114,12 @@ export class ThothLoopTaskService {
 
   private load(): void {
     try {
+      let recoveredLegacyBudgetWait = false;
       for (const task of this.authorityStore.listTasks()) {
+        const migrateLegacyBaselineFailure =
+          task.status === "blocked" &&
+          !task.baselineEvidence &&
+          task.summary === "无法封存后台任务的 workspace evidence baseline。";
         if (task.status === "running") {
           task.status = "interrupted";
           task.summary = "daemon 重启后检测到阶段中断；Resume 会从当前阶段重开。";
@@ -712,9 +1131,23 @@ export class ThothLoopTaskService {
         }
         this.tasks.set(task.id, task);
         this.providerByTask.set(task.id, task.providerSession);
+        if (migrateLegacyBaselineFailure) {
+          task.status = "evidence_capture_failed";
+          task.currentPhase = null;
+          task.summary =
+            "workspace evidence baseline 未封存成功；可以 Resume 后重新封存并继续当前 Goal。";
+          this.touch(task, "legacy_baseline_capture_failure_reclassified");
+        }
+        recoveredLegacyBudgetWait =
+          this.repairLegacyWorkspaceSizeBudgetWait(task) || recoveredLegacyBudgetWait;
         if (task.status === "interrupted" && task.authorityRevision !== undefined) {
           this.touch(task, "daemon_restart_interrupted");
         }
+      }
+      if (recoveredLegacyBudgetWait) {
+        // Run after constructor initialization, when every persisted task and
+        // worktree lock has been loaded into this scheduler instance.
+        queueMicrotask(() => this.schedule());
       }
     } catch (error) {
       this.options.logger.warn({ err: error }, "Failed to load Thoth loop tasks");
@@ -785,15 +1218,46 @@ export class ThothLoopTaskService {
     goal: LoopGoalRecord;
     phase: LoopPhaseRecord;
   } | null {
+    const candidates: Array<{
+      task: LoopTaskModel;
+      goal: LoopGoalRecord;
+      phase: LoopPhaseRecord;
+    }> = [];
     for (const task of this.tasks.values()) {
       for (const goal of task.goals) {
-        const phase = goal.phases.find((entry) => entry.agentId === agentId);
-        if (phase) {
-          return { task, goal, phase };
+        for (const phase of goal.phases) {
+          if (phase.agentId === agentId) {
+            candidates.push({ task, goal, phase });
+          }
         }
       }
     }
-    return null;
+    return (
+      candidates.sort((left, right) => {
+        const leftCurrent =
+          left.task.currentGoalId === left.goal.id && left.task.currentPhase === left.phase.phase
+            ? 1
+            : 0;
+        const rightCurrent =
+          right.task.currentGoalId === right.goal.id &&
+          right.task.currentPhase === right.phase.phase
+            ? 1
+            : 0;
+        if (leftCurrent !== rightCurrent) {
+          return rightCurrent - leftCurrent;
+        }
+        if (left.phase.round !== right.phase.round) {
+          return right.phase.round - left.phase.round;
+        }
+        if ((left.phase.executionGeneration ?? 0) !== (right.phase.executionGeneration ?? 0)) {
+          return (right.phase.executionGeneration ?? 0) - (left.phase.executionGeneration ?? 0);
+        }
+        return (
+          Date.parse(right.phase.attemptStartedAt ?? "") -
+          Date.parse(left.phase.attemptStartedAt ?? "")
+        );
+      })[0] ?? null
+    );
   }
 
   private async restoreLegacyForegroundVisibility(
@@ -891,7 +1355,24 @@ export class ThothLoopTaskService {
       return false;
     }
     this.worktreeLocks.set(workspacePath, lock);
+    this.startWorktreeHeartbeat(task);
     return true;
+  }
+
+  private startWorktreeHeartbeat(task: LoopTaskModel): void {
+    const workspacePath = resolve(task.workspacePath);
+    if (this.worktreeHeartbeatTimers.has(workspacePath)) {
+      return;
+    }
+    const timer = setInterval(() => {
+      const current = this.tasks.get(task.id);
+      if (!current || !this.worktreeLocks.has(workspacePath)) {
+        return;
+      }
+      this.updateWorktreeLock(current);
+    }, WORKTREE_HEARTBEAT_MS);
+    timer.unref?.();
+    this.worktreeHeartbeatTimers.set(workspacePath, timer);
   }
 
   private updateWorktreeLock(task: LoopTaskModel, input: { phaseAgentId?: string } = {}): void {
@@ -913,6 +1394,11 @@ export class ThothLoopTaskService {
 
   private releaseWorktreeLock(task: LoopTaskModel): void {
     const workspacePath = resolve(task.workspacePath);
+    const heartbeat = this.worktreeHeartbeatTimers.get(workspacePath);
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      this.worktreeHeartbeatTimers.delete(workspacePath);
+    }
     if (this.worktreeLocks.get(workspacePath)?.taskId === task.id) {
       this.worktreeLocks.delete(workspacePath);
       this.authorityStore.releaseLease(workspacePath, task.id);
@@ -974,6 +1460,7 @@ export class ThothLoopTaskService {
   }
 
   private schedule(): void {
+    this.schedulerRerunRequested = true;
     if (this.schedulerRunning || this.schedulerQueued) {
       return;
     }
@@ -984,12 +1471,20 @@ export class ThothLoopTaskService {
         return;
       }
       this.schedulerRunning = true;
-      void this.runScheduler().finally(() => {
-        this.schedulerRunning = false;
-        if (Array.from(this.tasks.values()).some((task) => task.status === "queued")) {
-          this.schedule();
-        }
-      });
+      this.schedulerRerunRequested = false;
+      void this.runScheduler()
+        .catch((error) => {
+          this.options.logger.error({ err: error }, "Thoth Loop scheduler run failed");
+        })
+        .finally(() => {
+          this.schedulerRunning = false;
+          if (
+            this.schedulerRerunRequested ||
+            Array.from(this.tasks.values()).some((task) => task.status === "queued")
+          ) {
+            this.schedule();
+          }
+        });
     });
   }
 
@@ -1064,6 +1559,7 @@ export class ThothLoopTaskService {
       task.status = "queued";
       task.summary = `PlanExec 已完成；等待独立 Review Goal ${goal.order}。`;
       this.touch(task, "phase_queued", { phase: "review", goalId: goal.id });
+      this.schedule();
       return;
     }
 
@@ -1099,14 +1595,27 @@ export class ThothLoopTaskService {
         workspacePath: task.workspacePath,
         timelineRefs: [],
       });
+      if (task.status !== "running") {
+        // Stop/restart may settle while a filesystem digest is in flight. The
+        // capture is then historical diagnostic data, not authority to launch
+        // a new PlanExec phase after the task has been stopped.
+        return false;
+      }
+      if (task.controlIntent === "pause_after_phase") {
+        task.status = "paused";
+        task.summary = "workspace evidence baseline 已封存；已在开始 PlanExec 前暂停。";
+        this.touch(task, "task_baseline_capture_paused");
+        return false;
+      }
       task.baselineEvidence = baselineEvidence;
       this.appendTaskMemory(task, "baseline_evidence", baselineEvidence);
       this.touch(task, "task_baseline_captured", { baselineEvidenceId: baselineEvidence.id });
       return true;
     } catch (error) {
-      task.status = "blocked";
+      task.status = "evidence_capture_failed";
       task.currentPhase = null;
-      task.summary = "无法封存后台任务的 workspace evidence baseline。";
+      task.summary =
+        "workspace evidence baseline 未封存成功；可以 Resume 后重试，不会执行半完成的 Goal。";
       this.touch(task, "task_baseline_capture_failed", {
         reason: error instanceof Error ? error.message : String(error),
       });
@@ -1224,15 +1733,105 @@ export class ThothLoopTaskService {
       tokenMetered: false,
     };
     const manifest = this.evidenceStore.readManifest(input.latestEvidence);
+    const baselineManifest = task.baselineEvidence
+      ? this.evidenceStore.readManifest(task.baselineEvidence)
+      : null;
+    const changedFiles = manifest
+      ? Math.max(
+          0,
+          manifest.workspace.changedFiles - (baselineManifest?.workspace.changedFiles ?? 0),
+        )
+      : current.changedFiles;
+    const changedLines = manifest
+      ? Math.max(
+          0,
+          manifest.workspace.changedLines - (baselineManifest?.workspace.changedLines ?? 0),
+        )
+      : current.changedLines;
     task.budgetUsage = {
       ...current,
       activeDurationMs: current.activeDurationMs + input.activeDurationMs,
       tokens: current.tokens + input.tokens,
       toolCalls: current.toolCalls + input.toolCalls,
-      changedFiles: manifest?.workspace.changedFiles ?? current.changedFiles,
-      changedLines: manifest?.workspace.changedLines ?? current.changedLines,
+      // The budget belongs to this task, not to arbitrary pre-existing files
+      // in a selected workspace. Manifest totals are therefore measured from
+      // the sealed task baseline rather than used as absolute workspace size.
+      changedFiles,
+      changedLines,
       tokenMetered: current.tokenMetered || input.tokenMetered,
     };
+  }
+
+  /**
+   * Before task-scoped baselines existed, file and line envelopes used a
+   * whole-workspace manifest total. Rebuild only these two dimensions from
+   * durable evidence while loading so broad pre-existing workspaces cannot
+   * remain in a false budget wait after the accounting correction ships.
+   */
+  private repairLegacyWorkspaceSizeBudgetWait(task: LoopTaskModel): boolean {
+    const baseline = task.baselineEvidence
+      ? this.evidenceStore.readManifest(task.baselineEvidence)
+      : null;
+    const latestEvidence = this.latestPhaseEvidence(task);
+    const latest = latestEvidence ? this.evidenceStore.readManifest(latestEvidence) : null;
+    const usage = task.budgetUsage;
+    if (!baseline || !latest || !usage) {
+      return false;
+    }
+
+    const changedFiles = Math.max(
+      0,
+      latest.workspace.changedFiles - baseline.workspace.changedFiles,
+    );
+    const changedLines = Math.max(
+      0,
+      latest.workspace.changedLines - baseline.workspace.changedLines,
+    );
+    if (usage.changedFiles === changedFiles && usage.changedLines === changedLines) {
+      return false;
+    }
+
+    usage.changedFiles = changedFiles;
+    usage.changedLines = changedLines;
+    const wasWorkspaceOnlyBudgetWait =
+      task.status === "budget_wait" &&
+      (task.budgetWait?.exhaustedDimensions ?? []).every(
+        (dimension) => dimension === "changed_files" || dimension === "changed_lines",
+      );
+    const exhausted = this.budgetExceeded(task);
+    if (wasWorkspaceOnlyBudgetWait && exhausted.length === 0) {
+      const goal = this.currentGoal(task);
+      if (goal?.status === "paused") {
+        goal.status = "queued";
+      }
+      task.status = "queued";
+      task.currentPhase = null;
+      task.controlIntent = "run";
+      task.budgetWait = undefined;
+      task.summary = "已按任务基线重算 workspace 改动预算；继续当前 Goal。";
+      this.touch(task, "legacy_workspace_size_budget_wait_recovered", {
+        changedFiles,
+        changedLines,
+      });
+      return true;
+    }
+    this.touch(task, "workspace_size_budget_usage_recomputed", {
+      changedFiles,
+      changedLines,
+    });
+    return false;
+  }
+
+  private latestPhaseEvidence(task: LoopTaskModel): LoopEvidenceRef | null {
+    const refs = task.goals.flatMap((goal) =>
+      goal.phases.flatMap((phase) => (phase.evidenceRef ? [phase.evidenceRef] : [])),
+    );
+    if (refs.length === 0) {
+      return null;
+    }
+    return refs.reduce((latest, candidate) =>
+      Date.parse(candidate.createdAt) > Date.parse(latest.createdAt) ? candidate : latest,
+    );
   }
 
   private budgetExceeded(task: LoopTaskModel): string[] {
@@ -1320,6 +1919,8 @@ export class ThothLoopTaskService {
     phase.startedAt = nowIso();
     phase.attemptStartedAt = phase.startedAt;
     phase.phaseRunId = `loop-phase-${randomUUID()}`;
+    phase.attemptId = `loop-attempt-${randomUUID()}`;
+    phase.executionGeneration = (phase.executionGeneration ?? 0) + 1;
     phase.providerExitStatus = undefined;
     phase.canceledReason = undefined;
     phase.resultToolCallId = undefined;
@@ -1363,7 +1964,12 @@ export class ThothLoopTaskService {
       this.blockTask(task, goal, "PlanExec 阶段提交了错误类型的 Loop 结果。");
       return;
     }
-    const planExecResult = this.toPlanExecResult(result.result, phase.phaseRunId);
+    const planExecResult = this.toPlanExecResult(
+      result.result,
+      phase.phaseRunId,
+      goal.id,
+      goal.round,
+    );
     const evidenceRef = await this.completePhaseEvidence({
       task,
       goal,
@@ -1384,11 +1990,6 @@ export class ThothLoopTaskService {
     phase.summary = result.result.execution_summary;
     task.currentPhase = null;
     goal.status = "queued";
-    const exhausted = this.budgetExceeded(task);
-    if (exhausted.length > 0) {
-      this.enterBudgetWait(task, goal, exhausted);
-      return;
-    }
     this.touch(task, "planexec_completed", { goalId: goal.id, phaseRunId: phase.phaseRunId });
     this.appendTaskMemory(task, "planexec_result", planExecResult);
   }
@@ -1403,6 +2004,8 @@ export class ThothLoopTaskService {
     phase.startedAt = nowIso();
     phase.attemptStartedAt = phase.startedAt;
     phase.phaseRunId = `loop-phase-${randomUUID()}`;
+    phase.attemptId = `loop-attempt-${randomUUID()}`;
+    phase.executionGeneration = (phase.executionGeneration ?? 0) + 1;
     phase.providerExitStatus = undefined;
     phase.canceledReason = undefined;
     phase.resultToolCallId = undefined;
@@ -1417,33 +2020,9 @@ export class ThothLoopTaskService {
     const reviewArtifactRoot = phase.phaseRunId
       ? this.activePhaseTelemetry.get(phase.phaseRunId)?.artifactRoot
       : undefined;
-    const reviewStartEvidence = phase.evidenceRef;
-    const planExecEvidence = goal.latestPlanExecResult?.evidenceRef;
-    if (
-      planExecEvidence &&
-      reviewStartEvidence &&
-      !this.evidenceStore.reviewWorkspaceUnchanged(planExecEvidence, reviewStartEvidence)
-    ) {
-      phase.status = "blocked";
-      phase.providerExitStatus = "blocked";
-      phase.completedAt = nowIso();
-      phase.summary =
-        "PlanExec 完成后、Review 开始前 workspace 发生外部修改；需要重新建立 evidence baseline。";
-      task.status = "workspace_changed_concurrently";
-      task.currentGoalId = goal.id;
-      task.currentPhase = null;
-      task.summary =
-        "检测到无法归因于当前 PlanExec 的 workspace 修改；未启动 Review，等待用户确认后重新建立 evidence baseline。";
-      goal.status = "blocked";
-      if (phase.phaseRunId) {
-        this.activePhaseTelemetry.delete(phase.phaseRunId);
-      }
-      this.touch(task, "workspace_changed_concurrently", {
-        goalId: goal.id,
-        phaseRunId: phase.phaseRunId,
-      });
-      return;
-    }
+    // Review runs under the selected provider trust policy. Workspace receipts
+    // remain auditable evidence, but daemon-side manifest comparison must not
+    // replace the Review agent's judgment or create an automatic lifecycle hold.
     const agentId =
       resumableAgentId ??
       (await this.createReviewAgent(task, goal, provider, phase.phaseRunId, reviewArtifactRoot));
@@ -1472,48 +2051,30 @@ export class ThothLoopTaskService {
       return;
     }
     const previousRootCause = goal.latestReview?.failureRootCause?.trim();
-    const verdict = this.toReviewVerdict(result.result);
-    const telemetry = phase.phaseRunId
-      ? this.activePhaseTelemetry.get(phase.phaseRunId)
-      : undefined;
+    const verdict = this.toReviewVerdict(result.result, goal.round);
     const evidenceRef = await this.completePhaseEvidence({
       task,
       goal,
       phase: "review",
       record: phase,
-      declaredEvidence: [result.result.evidence_summary],
+      declaredEvidence: result.result.evidence_summary ? [result.result.evidence_summary] : [],
     });
-    if (
-      telemetry?.reviewStartEvidence &&
-      evidenceRef &&
-      !this.evidenceStore.reviewWorkspaceUnchanged(telemetry.reviewStartEvidence, evidenceRef)
-    ) {
-      phase.status = "blocked";
-      phase.providerExitStatus = "blocked";
-      phase.summary = "Review 修改或检测到并发修改 workspace；证据无效。";
-      task.status = "evidence_invalid";
-      task.currentGoalId = goal.id;
-      task.currentPhase = null;
-      task.summary = "Review 期间 workspace 发生非外置评测资产修改；已保留 diff 与证据，等待处理。";
-      goal.status = "blocked";
-      this.touch(task, "review_evidence_invalid", {
-        goalId: goal.id,
-        phaseRunId: phase.phaseRunId,
-      });
-      return;
-    }
     if (evidenceRef) {
       verdict.evidenceRef = evidenceRef;
     }
     goal.latestReview = verdict;
     task.latestVerdictSummary = verdict.summary;
     phase.completedAt = nowIso();
-    phase.providerExitStatus = verdict.outcome === "blocked" ? "blocked" : "completed";
+    phase.providerExitStatus = verdict.outcome === "real_blocker" ? "blocked" : "completed";
     phase.resultToolCallId = result.result.result_tool_call_id;
     phase.summary = verdict.summary;
-    if (verdict.outcome === "pass") {
+    if (verdict.outcome === "pass" || verdict.outcome === "replan_unstarted_goals") {
       phase.status = "completed";
       goal.status = "passed";
+      if (verdict.outcome === "replan_unstarted_goals" && !verdict.deferredGoalReplanProposal) {
+        this.blockTask(task, goal, "Review 要求重规划未开始 goals，但没有提供可审计的 proposal。 ");
+        return;
+      }
       if (
         !(await this.maybeApplyDeferredGoalReplan(task, goal, verdict.deferredGoalReplanProposal))
       ) {
@@ -1528,9 +2089,41 @@ export class ThothLoopTaskService {
       this.appendTaskMemory(task, "review_verdict", verdict);
       return;
     }
-    if (verdict.outcome === "blocked") {
+    if (verdict.outcome === "return_to_user_decision") {
+      if (!result.result.user_decision) {
+        this.blockTask(task, goal, "Review 要求用户决策，但没有提供可回答的决策卡。 ");
+        return;
+      }
+      phase.status = "completed";
+      task.pendingUserDecision = {
+        id: `loop-decision-${randomUUID()}`,
+        title: result.result.user_decision.title,
+        question: result.result.user_decision.question,
+        options: result.result.user_decision.options,
+        ...(result.result.user_decision.note_placeholder
+          ? { notePlaceholder: result.result.user_decision.note_placeholder }
+          : {}),
+        status: "pending",
+        createdAt: nowIso(),
+      };
+      task.status = "awaiting_user_decision";
+      task.currentPhase = null;
+      goal.status = "awaiting_user_decision";
+      task.summary = `Review 需要用户决定后才能继续 Goal ${goal.order}。`;
+      this.touch(task, "loop_user_decision_requested", {
+        goalId: goal.id,
+        phaseRunId: phase.phaseRunId,
+      });
+      this.appendTaskMemory(task, "review_verdict", verdict);
+      return;
+    }
+    if (verdict.outcome === "real_blocker") {
       phase.status = "blocked";
       this.blockTask(task, goal, verdict.summary);
+      return;
+    }
+    if (verdict.outcome !== "continue" && verdict.outcome !== "reframe_current_goal") {
+      this.blockTask(task, goal, `Review 提交了无法映射的语义结论：${verdict.outcome}`);
       return;
     }
     phase.status = "failed";
@@ -1582,7 +2175,11 @@ export class ThothLoopTaskService {
     try {
       return await waitForResult;
     } catch (error) {
-      if (input.task.status === "paused" || input.task.status === "stopped") {
+      if (
+        input.task.status === "paused" ||
+        input.task.status === "stopped" ||
+        input.task.status === "interrupted"
+      ) {
         return null;
       }
       this.blockTask(
@@ -1602,16 +2199,26 @@ export class ThothLoopTaskService {
   }): Promise<PhaseResult> {
     return new Promise((resolvePromise, rejectPromise) => {
       const timeout = setTimeout(() => {
-        this.pendingByAgent.delete(input.agentId);
-        const message = `${phaseTitle(input.phase)} 阶段没有提交可验证的 Loop 结果。`;
+        const pending = this.pendingByAgent.get(input.agentId);
+        if (
+          !pending ||
+          pending.phaseRunId !== goalPhase(input.goal, input.phase, input.goal.round).phaseRunId
+        ) {
+          return;
+        }
         const record = goalPhase(input.goal, input.phase, input.goal.round);
-        record.status = "blocked";
-        record.providerExitStatus = "timeout";
-        record.completedAt = nowIso();
-        record.summary = message;
-        this.touch(input.task);
-        rejectPromise(new Error(message));
-      }, PHASE_RESULT_TIMEOUT_MS);
+        if (input.task.status !== "running" || record.status !== "running") {
+          return;
+        }
+        record.status = "awaiting_provider";
+        record.lastActivityAt = nowIso();
+        input.task.status = "awaiting_provider";
+        input.task.summary = `${phaseTitle(input.phase)} 仍在等待 provider 继续；尚未判定失败。`;
+        this.touch(input.task, "phase_awaiting_provider", {
+          phase: input.phase,
+          phaseRunId: record.phaseRunId,
+        });
+      }, PHASE_AWAITING_PROVIDER_MS);
       timeout.unref?.();
       this.pendingByAgent.set(input.agentId, {
         taskId: input.task.id,
@@ -1619,6 +2226,9 @@ export class ThothLoopTaskService {
         phase: input.phase,
         round: input.goal.round,
         phaseRunId: goalPhase(input.goal, input.phase, input.goal.round).phaseRunId,
+        attemptId: goalPhase(input.goal, input.phase, input.goal.round).attemptId,
+        executionGeneration: goalPhase(input.goal, input.phase, input.goal.round)
+          .executionGeneration,
         resolve: resolvePromise,
         reject: rejectPromise,
         timeout,
@@ -1633,10 +2243,49 @@ export class ThothLoopTaskService {
     phase: LoopPhaseKind,
     round: number,
     events: AsyncGenerator<AgentStreamEvent>,
+    protocolRepair = false,
   ): Promise<void> {
     try {
       for await (const event of events) {
         const phaseRecord = goalPhase(goal, phase, round);
+        const pending = this.pendingByAgent.get(agentId);
+        // `turnId` is the daemon stream lifecycle id. A provider can expose a
+        // different native id for runtime-tool callbacks, so fence semantic
+        // results on `providerTurnId` whenever an adapter supplies it.
+        const eventTurnId =
+          getAgentStreamEventProviderTurnId(event) ?? getAgentStreamEventTurnId(event);
+        if (
+          pending &&
+          eventTurnId &&
+          pending.providerTurnId &&
+          pending.providerTurnId !== eventTurnId
+        ) {
+          this.options.logger.debug(
+            {
+              taskId: task.id,
+              goalId: goal.id,
+              phase,
+              attemptId: pending.attemptId,
+              expectedTurnId: pending.providerTurnId,
+              receivedTurnId: eventTurnId,
+            },
+            "Ignored stale Loop phase stream event",
+          );
+          continue;
+        }
+        if (pending && eventTurnId && !pending.providerTurnId) {
+          pending.providerTurnId = eventTurnId;
+        }
+        phaseRecord.lastActivityAt = nowIso();
+        if (task.status === "awaiting_provider") {
+          task.status = "running";
+          phaseRecord.status = "running";
+          task.summary = `${phaseTitle(phase)} 已收到 provider 活动，继续执行。`;
+          this.touch(task, "provider_activity_resumed", {
+            phase,
+            phaseRunId: phaseRecord.phaseRunId,
+          });
+        }
         this.recordPhaseTelemetryEvent(phaseRecord.phaseRunId, event);
         this.updateWorktreeLock(task, { phaseAgentId: agentId });
         if (event.type === "permission_requested" && event.request.kind === "plan") {
@@ -1653,10 +2302,7 @@ export class ThothLoopTaskService {
           if (record.status === "completed") {
             return;
           }
-          task.summary = `${phaseTitle(phase)} provider 回合失败：${event.error}`;
-          record.providerExitStatus = "failed";
-          record.summary = task.summary;
-          this.touch(task);
+          this.interruptPhase(task, goal, phase, round, "failed", event.error);
           const pending = this.pendingByAgent.get(agentId);
           if (pending) {
             clearTimeout(pending.timeout);
@@ -1670,31 +2316,55 @@ export class ThothLoopTaskService {
           if (record.status === "completed") {
             return;
           }
-          record.providerExitStatus = "canceled";
-          record.canceledReason = "provider turn canceled";
-          record.summary = "Provider turn canceled.";
-          this.touch(task);
+          if (task.status !== "stopped") {
+            this.interruptPhase(
+              task,
+              goal,
+              phase,
+              round,
+              "canceled",
+              event.reason ?? "provider turn canceled",
+            );
+          }
+          const pending = this.pendingByAgent.get(agentId);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            this.pendingByAgent.delete(agentId);
+            pending.reject(new Error("Loop provider turn canceled"));
+          }
+          return;
         }
       }
-      // A phase is only completed by its semantic runtime tool. If the
-      // provider turn ends without one, waiting for the generic 30 minute
-      // timeout falsely presents a completed PlanExec while Review can never
-      // start. Give an already-delivered tool callback one event-loop turn,
-      // then fail this exact pending phase with an actionable state.
+      // A semantic tool result is still required. Ask the same provider session
+      // once to close its protocol before treating this as an interrupted phase.
       await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 0));
       const pending = this.pendingByAgent.get(agentId);
       if (pending && pending.phase === phase && pending.round === round) {
+        const record = goalPhase(goal, phase, round);
+        if (!protocolRepair && !record.protocolRepairAttempted) {
+          record.protocolRepairAttempted = true;
+          record.status = "awaiting_provider";
+          task.status = "awaiting_provider";
+          task.summary = `${phaseTitle(phase)} 已结束但缺少语义结论；正在请求同一 session 完成协议收敛。`;
+          this.touch(task, "provider_protocol_repair_requested", {
+            phase,
+            phaseRunId: record.phaseRunId,
+          });
+          void this.requestProtocolRepair(task, goal, phase, round, agentId);
+          return;
+        }
         clearTimeout(pending.timeout);
         this.pendingByAgent.delete(agentId);
-        const message = `${phaseTitle(phase)} provider 回合结束，但没有提交可验证的 Loop 结果。`;
-        const record = goalPhase(goal, phase, round);
-        record.status = "blocked";
-        // The provider did complete its turn; the task-level blocked state
-        // below records that its required semantic result was absent.
-        record.providerExitStatus = "completed";
-        record.completedAt = nowIso();
-        record.summary = message;
-        this.touch(task);
+        const message = `${phaseTitle(phase)} provider 回合结束，但没有提交语义结论；可 Resume 后继续同一 session。`;
+        this.interruptPhase(
+          task,
+          goal,
+          phase,
+          round,
+          "completed",
+          message,
+          "provider_protocol_incomplete",
+        );
         pending.reject(new Error(message));
       }
     } catch (error) {
@@ -1702,9 +2372,93 @@ export class ThothLoopTaskService {
       if (pending) {
         clearTimeout(pending.timeout);
         this.pendingByAgent.delete(agentId);
-        pending.reject(error instanceof Error ? error : new Error(String(error)));
+        const failure = error instanceof Error ? error : new Error(String(error));
+        const record = goalPhase(goal, phase, round);
+        if (
+          record.status !== "completed" &&
+          task.status !== "paused" &&
+          task.status !== "stopped" &&
+          task.status !== "interrupted"
+        ) {
+          this.interruptPhase(
+            task,
+            goal,
+            phase,
+            round,
+            "failed",
+            failure.message,
+            "provider_stream_error",
+          );
+        }
+        pending.reject(failure);
       }
     }
+  }
+
+  private async requestProtocolRepair(
+    task: LoopTaskModel,
+    goal: LoopGoalRecord,
+    phase: LoopPhaseKind,
+    round: number,
+    agentId: string,
+  ): Promise<void> {
+    const prompt = [
+      "Your previous turn ended without the required Thoth Loop semantic result.",
+      `Do not redo implementation or investigation. Complete only the current ${phaseTitle(phase)} conclusion now.`,
+      phase === "planexec"
+        ? "Call thoth_loop_submit_planexec_result exactly once with the work and evidence already available."
+        : "If you have not done so, submit the independent assessment first; then call thoth_loop_submit_review_verdict exactly once.",
+    ].join("\n\n");
+    try {
+      const events = this.options.agentManager.hasInFlightRun(agentId)
+        ? this.options.agentManager.replaceAgentRun(agentId, prompt)
+        : this.options.agentManager.streamAgent(agentId, prompt);
+      await this.consumePhaseEvents(task, goal, agentId, phase, round, events, true);
+    } catch (error) {
+      const pending = this.pendingByAgent.get(agentId);
+      if (!pending) {
+        return;
+      }
+      clearTimeout(pending.timeout);
+      this.pendingByAgent.delete(agentId);
+      const message = `无法恢复 ${phaseTitle(phase)} provider 协议：${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      this.interruptPhase(
+        task,
+        goal,
+        phase,
+        round,
+        "failed",
+        message,
+        "provider_protocol_incomplete",
+      );
+      pending.reject(new Error(message));
+    }
+  }
+
+  private interruptPhase(
+    task: LoopTaskModel,
+    goal: LoopGoalRecord,
+    phase: LoopPhaseKind,
+    round: number,
+    providerExitStatus: NonNullable<LoopPhaseRecord["providerExitStatus"]>,
+    reason: string,
+    interruptedReason = "provider_terminal",
+  ): void {
+    const record = goalPhase(goal, phase, round);
+    record.status = "interrupted";
+    record.providerExitStatus = providerExitStatus;
+    record.canceledReason = providerExitStatus === "canceled" ? reason : undefined;
+    record.interruptedReason = interruptedReason;
+    record.completedAt = nowIso();
+    record.summary = reason;
+    task.status = "interrupted";
+    task.currentGoalId = goal.id;
+    task.currentPhase = phase;
+    task.summary = `${phaseTitle(phase)} 已中断：${reason}`;
+    goal.status = "interrupted";
+    this.touch(task, "phase_interrupted", { phase, phaseRunId: record.phaseRunId, reason });
   }
 
   private async autoApprovePlanPermission(agentId: string, requestId: string): Promise<void> {
@@ -1726,7 +2480,12 @@ export class ThothLoopTaskService {
     goal: LoopGoalRecord,
     provider: ProviderSessionConfig,
   ): Promise<string> {
-    const sessionId = `loop-${task.id}-${goal.id}-planexec`;
+    const sessionId = loopPhaseSessionId({
+      taskId: task.id,
+      goalId: goal.id,
+      phase: "planexec",
+      round: goal.round,
+    });
     const runtimeSession = prepareLoopRuntimeSession({
       provider: provider.provider,
       thothHome: this.options.thothHome,
@@ -1773,7 +2532,12 @@ export class ThothLoopTaskService {
     phaseRunId?: string,
     artifactRoot?: string,
   ): Promise<string> {
-    const sessionId = `loop-${task.id}-${goal.id}-review-${goal.round}`;
+    const sessionId = loopPhaseSessionId({
+      taskId: task.id,
+      goalId: goal.id,
+      phase: "review",
+      round: goal.round,
+    });
     const runtimeSession = prepareLoopRuntimeSession({
       provider: provider.provider,
       thothHome: this.options.thothHome,
@@ -1828,17 +2592,27 @@ export class ThothLoopTaskService {
     resumeKind?: LoopTaskModel["resumeKind"],
   ): string {
     const previousReview = goal.latestReview;
-    const previousGuidance = previousReview?.nextRoundGuidance ?? "none";
-    const previousRootCause = previousReview?.failureRootCause ?? "none";
-    const previousAntiRepeat = previousReview?.antiRepeatStrategy.join("; ") || "none";
-    const memoryRefs = this.taskMemoryReferenceSummary(task);
+    const previousDirection = previousReview?.directionMemo
+      ? [
+          `Conclusion: ${previousReview.directionMemo.conclusion}`,
+          `Reality: ${previousReview.directionMemo.reality.join("; ")}`,
+          `Diagnosis: ${previousReview.directionMemo.diagnosis}`,
+          `Abandon: ${previousReview.directionMemo.abandon.join("; ") || "none"}`,
+          `Reframe: ${previousReview.directionMemo.reframe}`,
+          `Highest-leverage direction: ${previousReview.directionMemo.nextDirection}`,
+        ].join("\n")
+      : previousReview
+        ? [
+            `Diagnosis: ${previousReview.failureRootCause ?? previousReview.summary}`,
+            `Next direction: ${previousReview.nextRoundGuidance ?? "Re-examine the current approach from the approved goal."}`,
+          ].join("\n")
+        : "none";
     return [
       "You are the Thoth Loop PlanExec agent for one background task goal.",
       "Do not ask the user any clarification questions. Treat all supplied cards and context as final.",
       "First produce a concise plan in provider plan mode, then implement only the current goal.",
       "Do not jump to later goals. Do not work outside the current goal boundary.",
-      "At the end, call thoth_loop_submit_planexec_result exactly once.",
-      "For the result tool, use the exact Current goal id and Current phase run id below. Do not substitute the displayed goal number.",
+      "At the end, call thoth_loop_submit_planexec_result exactly once. Thoth binds the active goal and attempt automatically.",
       ...(resumeKind
         ? [
             "This is a continuation of the existing provider session after a user control action.",
@@ -1850,26 +2624,12 @@ export class ThothLoopTaskService {
       `Task goal: ${task.taskCard.goal}`,
       `Task constraints:\n${task.taskCard.constraints.map((item) => `- ${item}`).join("\n")}`,
       `Task acceptance:\n${task.taskCard.acceptance.map((item) => `- ${item}`).join("\n")}`,
-      `Goals Card summary: ${task.goalsCard.summary}`,
-      `Approved linear goals:\n${task.goals
-        .map(
-          (candidate) =>
-            `${candidate.order}. ${candidate.title}\nGoal: ${candidate.goal}\nAcceptance: ${candidate.acceptance.join("; ")}`,
-        )
-        .join("\n\n")}`,
-      `Current goal ${goal.order}/${task.goals.length}: ${goal.title}`,
-      `Current goal id: ${goal.id}`,
-      `Current phase run id: ${goalPhase(goal, "planexec", goal.round).phaseRunId ?? "not assigned"}`,
+      `Current goal: ${goal.title}`,
       `Goal: ${goal.goal}`,
       `Goal constraints:\n${goal.constraints.map((item) => `- ${item}`).join("\n")}`,
       `Goal acceptance:\n${goal.acceptance.map((item) => `- ${item}`).join("\n")}`,
-      `Round: ${goal.round}`,
-      `Failed Review budget: ${task.budget.usedFailedReviews}/${task.budget.maxFailedReviews}`,
-      `Previous Review root cause: ${previousRootCause}`,
-      `Previous Review guidance: ${previousGuidance}`,
-      `Previous anti-repeat strategy: ${previousAntiRepeat}`,
-      `Task memory references: ${memoryRefs}`,
-      "The approved Task Card and Goals Card above are the complete execution authority. Do not request the raw Clarify transcript unless a real provenance blocker is recorded.",
+      `Previous Review Direction Memo:\n${previousDirection}`,
+      "The approved Task Card and current goal above are the execution authority. Do not request the raw Clarify transcript unless a real provenance blocker is recorded.",
       `Passed goals:\n${
         task.goals
           .filter((candidate) => candidate.status === "passed")
@@ -1887,11 +2647,16 @@ export class ThothLoopTaskService {
     resumeKind?: LoopTaskModel["resumeKind"],
     artifactRoot?: string,
   ): string {
-    const planExecPhase = goal.phases.find(
-      (phase) => phase.phase === "planexec" && phase.round === goal.round,
-    );
-    const planExecResult = goal.latestPlanExecResult;
-    const memoryRefs = this.taskMemoryReferenceSummary(task);
+    const previousDirection = goal.latestReview?.directionMemo
+      ? [
+          `Conclusion: ${goal.latestReview.directionMemo.conclusion}`,
+          `Reality: ${goal.latestReview.directionMemo.reality.join("; ")}`,
+          `Diagnosis: ${goal.latestReview.directionMemo.diagnosis}`,
+          `Abandon: ${goal.latestReview.directionMemo.abandon.join("; ") || "none"}`,
+          `Reframe: ${goal.latestReview.directionMemo.reframe}`,
+          `Highest-leverage direction: ${goal.latestReview.directionMemo.nextDirection}`,
+        ].join("\n")
+      : "none";
     return [
       "You are the independent Thoth Loop Review agent.",
       "Strictly validate the current goal against the approved cards and acceptance criteria.",
@@ -1904,10 +2669,8 @@ export class ThothLoopTaskService {
         : [
             "Do not create files; an external Review artifact directory is unavailable for this run.",
           ]),
-      "If validation fails, be direct, creative, and precise about the root cause and next-round guidance.",
-      "If validation passes, provide enough evidence for the next goal to start with context.",
-      "At the end, call thoth_loop_submit_review_verdict exactly once.",
-      "For the verdict tool, use the exact Current goal id below. Do not substitute the displayed goal number.",
+      "If validation fails, be direct, creative, and precise about the root cause and next-round direction. Do not preserve an incremental approach merely because PlanExec used it.",
+      "First inspect independently and call thoth_loop_submit_review_independent_assessment exactly once. Thoth will then return PlanExec's semantic account for comparison. Only after that call thoth_loop_submit_review_verdict exactly once with a direction memo and outcome.",
       ...(resumeKind
         ? [
             "This is a continuation of the existing provider session after a user control action.",
@@ -1917,26 +2680,12 @@ export class ThothLoopTaskService {
       "",
       `Task title: ${task.taskCard.title}`,
       `Task goal: ${task.taskCard.goal}`,
-      `Goals Card summary: ${task.goalsCard.summary}`,
-      `Approved linear goals:\n${task.goals
-        .map(
-          (candidate) =>
-            `${candidate.order}. ${candidate.title}\nGoal: ${candidate.goal}\nAcceptance: ${candidate.acceptance.join("; ")}`,
-        )
-        .join("\n\n")}`,
-      `Current goal ${goal.order}/${task.goals.length}: ${goal.title}`,
-      `Current goal id: ${goal.id}`,
-      `Current phase run id: ${goalPhase(goal, "review", goal.round).phaseRunId ?? "not assigned"}`,
+      `Current goal: ${goal.title}`,
       `Goal: ${goal.goal}`,
       `Goal constraints:\n${goal.constraints.map((item) => `- ${item}`).join("\n")}`,
       `Goal acceptance:\n${goal.acceptance.map((item) => `- ${item}`).join("\n")}`,
-      `Round: ${goal.round}`,
-      `PlanExec agent id: ${planExecPhase?.agentId ?? "unknown"}`,
-      `PlanExec phase run id: ${planExecPhase?.phaseRunId ?? "unknown"}`,
-      `PlanExec result:\n${planExecResult ? JSON.stringify(planExecResult, null, 2) : "not submitted"}`,
-      `Task memory references: ${memoryRefs}`,
-      "Treat the approved cards and sealed PlanExec evidence above as authority; do not infer extra user requirements from absent transcript text.",
-      `Failed Review budget: ${task.budget.usedFailedReviews}/${task.budget.maxFailedReviews}`,
+      `Prior Review Direction Memo for this goal:\n${previousDirection}`,
+      "Do not infer extra user requirements from absent transcript text. The approved Task Card and current goal define the boundary; inspect reality before reading PlanExec's account.",
       `Earlier passed goals:\n${
         task.goals
           .filter((candidate) => candidate.status === "passed")
@@ -2117,12 +2866,14 @@ export class ThothLoopTaskService {
   }
 
   private toPlanExecResult(
-    input: ThothLoopPlanExecResultInput,
+    input: DaemonBoundPlanExecResult,
     phaseRunId: string | undefined,
+    goalId: string,
+    round: number,
   ): LoopPlanExecResult {
     return {
-      goalId: input.goal_id,
-      round: input.round,
+      goalId: input.goal_id ?? goalId,
+      round: input.round ?? round,
       phaseRunId: input.phase_run_id ?? phaseRunId,
       resultToolCallId: input.result_tool_call_id,
       planSummary: input.plan_summary,
@@ -2135,37 +2886,31 @@ export class ThothLoopTaskService {
     };
   }
 
-  private taskMemoryReferenceSummary(task: LoopTaskModel): string {
-    const kinds = [
-      "clarify_transcript",
-      "task_card",
-      "goals_card",
-      "baseline_evidence",
-      "planexec_result",
-      "review_verdict",
-    ] as const;
-    const refs = kinds.flatMap((kind) => {
-      const node = this.authorityStore.latestMemory(task.id, kind);
-      return node ? [`${kind}@${node.revision}:${node.contentSha256.slice(0, 12)}`] : [];
-    });
-    return refs.join(", ") || "none";
-  }
-
-  private toReviewVerdict(input: ThothLoopReviewVerdictInput): LoopReviewVerdict {
+  private toReviewVerdict(input: DaemonBoundReviewVerdict, round: number): LoopReviewVerdict {
     return {
       outcome: input.outcome,
-      round: input.round,
+      round: input.round || round,
       summary: input.summary,
-      acceptanceMatrix: input.acceptance_matrix.map((entry) => ({
-        acceptance: entry.acceptance,
-        status: entry.status,
-        ...(entry.evidence ? { evidence: entry.evidence } : {}),
-      })),
-      failedAcceptance: input.failed_acceptance,
-      ...(input.failure_root_cause ? { failureRootCause: input.failure_root_cause } : {}),
-      ...(input.next_round_guidance ? { nextRoundGuidance: input.next_round_guidance } : {}),
-      antiRepeatStrategy: input.anti_repeat_strategy,
-      evidenceSummary: input.evidence_summary,
+      // These legacy projection slots remain for existing task history and UI
+      // parsing, but no longer shape the Review agent's live semantic tool.
+      acceptanceMatrix: [],
+      failedAcceptance: [],
+      ...(input.direction_memo ? { failureRootCause: input.direction_memo.diagnosis } : {}),
+      ...(input.direction_memo ? { nextRoundGuidance: input.direction_memo.next_direction } : {}),
+      antiRepeatStrategy: input.direction_memo?.abandon ?? [],
+      evidenceSummary: input.evidence_summary ?? "",
+      ...(input.direction_memo
+        ? {
+            directionMemo: {
+              conclusion: input.direction_memo.conclusion,
+              reality: input.direction_memo.reality,
+              diagnosis: input.direction_memo.diagnosis,
+              abandon: input.direction_memo.abandon,
+              reframe: input.direction_memo.reframe,
+              nextDirection: input.direction_memo.next_direction,
+            },
+          }
+        : {}),
       ...(input.deferred_goal_replan_proposal
         ? {
             deferredGoalReplanProposal: {
@@ -2232,7 +2977,11 @@ export class ThothLoopTaskService {
   private currentGoal(task: LoopTaskModel): LoopGoalRecord | null {
     if (task.currentGoalId) {
       const current = task.goals.find((goal) => goal.id === task.currentGoalId);
-      if (current && current.status !== "passed") {
+      if (
+        current &&
+        (current.status !== "passed" ||
+          (task.currentPhase === "review" && current.latestPlanExecResult !== undefined))
+      ) {
         return current;
       }
     }

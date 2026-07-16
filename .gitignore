@@ -26,6 +26,7 @@ __pycache__/
 .agent-os/.trash/
 .agent-os/upstreams/
 .agent-os/artifacts/
+.agent-os/paper-notes/
 *.egg-info/
 .venv/
 venv/

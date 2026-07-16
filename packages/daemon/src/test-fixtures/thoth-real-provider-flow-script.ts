@@ -1,5 +1,6 @@
 import type {
   ThothLoopPlanExecResultInput,
+  ThothLoopReviewIndependentAssessmentInput,
   ThothLoopReviewVerdictInput,
   ThothSubmitClarifyCardInput,
   ThothSubmitGoalsCardInput,
@@ -20,6 +21,7 @@ export interface ThothRealProviderFlowScript {
   task: ThothSubmitTaskCardInput | null;
   goals: ThothSubmitGoalsCardInput | null;
   planExec: readonly ThothLoopPlanExecResultInput[];
+  reviewIndependent: readonly ThothLoopReviewIndependentAssessmentInput[];
   review: readonly ThothLoopReviewVerdictInput[];
 }
 
@@ -154,14 +156,8 @@ function goalsCard(marker: string): ThothSubmitGoalsCardInput {
   };
 }
 
-function planExec(input: {
-  goalId: string;
-  round: number;
-  marker: string;
-}): ThothLoopPlanExecResultInput {
+function planExec(input: { marker: string }): ThothLoopPlanExecResultInput {
   return {
-    goal_id: input.goalId,
-    round: input.round,
     plan_summary: `Prescribed plan ${input.marker}.`,
     execution_summary: `Prescribed execution ${input.marker}.`,
     evidence: [`Prescribed evidence ${input.marker}.`],
@@ -171,51 +167,35 @@ function planExec(input: {
   };
 }
 
-function reviewPass(input: {
-  goalId: string;
-  round: number;
-  marker: string;
-}): ThothLoopReviewVerdictInput {
+function reviewIndependent(marker: string): ThothLoopReviewIndependentAssessmentInput {
   return {
-    goal_id: input.goalId,
-    round: input.round,
+    observations: [`Independent prescribed observation ${marker}.`],
+    working_theory: `Independent prescribed theory ${marker}.`,
+    inspection_focus: [`Independent prescribed focus ${marker}.`],
+  };
+}
+
+function reviewPass(input: { marker: string }): ThothLoopReviewVerdictInput {
+  return {
     outcome: "pass",
     summary: `Prescribed Review pass ${input.marker}.`,
-    acceptance_matrix: [
-      {
-        acceptance: `Prescribed acceptance ${input.marker}.`,
-        status: "met",
-        evidence: `Prescribed evidence ${input.marker}.`,
-      },
-    ],
-    failed_acceptance: [],
-    anti_repeat_strategy: [],
     evidence_summary: `Prescribed evidence summary ${input.marker}.`,
   };
 }
 
-function reviewFail(input: {
-  goalId: string;
-  round: number;
-  marker: string;
-}): ThothLoopReviewVerdictInput {
+function reviewFail(input: { marker: string }): ThothLoopReviewVerdictInput {
   return {
-    goal_id: input.goalId,
-    round: input.round,
-    outcome: "fail",
+    outcome: "continue",
     summary: `Prescribed Review failure ${input.marker}.`,
-    acceptance_matrix: [
-      {
-        acceptance: `Prescribed acceptance ${input.marker}.`,
-        status: "not_met",
-        evidence: `Missing prescribed marker ${input.marker}.`,
-      },
-    ],
-    failed_acceptance: [`Prescribed acceptance ${input.marker}.`],
-    failure_root_cause: `FIXTURE_R5_ROOT_CAUSE_${input.marker}`,
-    next_round_guidance: `FIXTURE_R5_GUIDANCE_${input.marker}`,
-    anti_repeat_strategy: [`FIXTURE_R5_ANTI_REPEAT_${input.marker}`],
     evidence_summary: `Prescribed failure evidence ${input.marker}.`,
+    direction_memo: {
+      conclusion: `Prescribed retry conclusion ${input.marker}.`,
+      reality: [`Prescribed reality ${input.marker}.`],
+      diagnosis: `FIXTURE_R5_ROOT_CAUSE_${input.marker}`,
+      abandon: [`FIXTURE_R5_ABANDON_${input.marker}`],
+      reframe: `FIXTURE_R5_REFRAME_${input.marker}`,
+      next_direction: `FIXTURE_R5_GUIDANCE_${input.marker}`,
+    },
   };
 }
 
@@ -258,6 +238,7 @@ export const THOTH_REAL_PROVIDER_FLOW_SCRIPTS = {
     task: null,
     goals: null,
     planExec: [],
+    reviewIndependent: [],
     review: [],
   },
   quickClarifyForeground: {
@@ -267,6 +248,7 @@ export const THOTH_REAL_PROVIDER_FLOW_SCRIPTS = {
     task: taskCard("UT02"),
     goals: goalsCard("UT02"),
     planExec: [],
+    reviewIndependent: [],
     review: [],
   },
   quickClarifyRecovery: {
@@ -276,6 +258,7 @@ export const THOTH_REAL_PROVIDER_FLOW_SCRIPTS = {
     task: taskCard("UT03"),
     goals: goalsCard("UT03"),
     planExec: [],
+    reviewIndependent: [],
     review: [],
   },
   loopLinearPass: {
@@ -284,14 +267,9 @@ export const THOTH_REAL_PROVIDER_FLOW_SCRIPTS = {
     clarify: [u4Clarify],
     task: taskCard("UT04"),
     goals: goalsCard("UT04"),
-    planExec: [
-      planExec({ goalId: "UT04-goal-1", round: 1, marker: "UT04_G1_R1" }),
-      planExec({ goalId: "UT04-goal-2", round: 1, marker: "UT04_G2_R1" }),
-    ],
-    review: [
-      reviewPass({ goalId: "UT04-goal-1", round: 1, marker: "UT04_G1_R1" }),
-      reviewPass({ goalId: "UT04-goal-2", round: 1, marker: "UT04_G2_R1" }),
-    ],
+    planExec: [planExec({ marker: "UT04_G1_R1" }), planExec({ marker: "UT04_G2_R1" })],
+    reviewIndependent: [reviewIndependent("UT04_G1_R1"), reviewIndependent("UT04_G2_R1")],
+    review: [reviewPass({ marker: "UT04_G1_R1" }), reviewPass({ marker: "UT04_G2_R1" })],
   },
   loopRetryAndBudget: {
     id: "UT-05-loop-retry-and-budget",
@@ -300,14 +278,19 @@ export const THOTH_REAL_PROVIDER_FLOW_SCRIPTS = {
     task: taskCard("UT05"),
     goals: goalsCard("UT05"),
     planExec: [
-      planExec({ goalId: "UT05-goal-1", round: 1, marker: "UT05_G1_R1" }),
-      planExec({ goalId: "UT05-goal-1", round: 2, marker: "UT05_G1_R2" }),
-      planExec({ goalId: "UT05-goal-2", round: 1, marker: "UT05_G2_R1" }),
+      planExec({ marker: "UT05_G1_R1" }),
+      planExec({ marker: "UT05_G1_R2" }),
+      planExec({ marker: "UT05_G2_R1" }),
+    ],
+    reviewIndependent: [
+      reviewIndependent("UT05_G1_R1"),
+      reviewIndependent("UT05_G1_R2"),
+      reviewIndependent("UT05_G2_R1"),
     ],
     review: [
-      reviewFail({ goalId: "UT05-goal-1", round: 1, marker: "UT05_G1_R1" }),
-      reviewPass({ goalId: "UT05-goal-1", round: 2, marker: "UT05_G1_R2" }),
-      reviewPass({ goalId: "UT05-goal-2", round: 1, marker: "UT05_G2_R1" }),
+      reviewFail({ marker: "UT05_G1_R1" }),
+      reviewPass({ marker: "UT05_G1_R2" }),
+      reviewPass({ marker: "UT05_G2_R1" }),
     ],
   },
 } as const satisfies Record<string, ThothRealProviderFlowScript>;
@@ -322,9 +305,13 @@ function backgroundPhaseScript(script: ThothRealProviderFlowScript): string {
   }
   return [
     "BACKGROUND PHASE ACTORS:",
-    "A PlanExec agent must locate the entry that exactly matches its current goal_id and round, then make exactly that call. It must not inspect, write, or otherwise change the workspace.",
+    "A PlanExec agent must locate the entry matching its current goal title and round, then make exactly that call. It must not inspect, write, or otherwise change the workspace. Thoth binds goal and attempt identity itself.",
     ...script.planExec.map((input) => literalCall("thoth_loop_submit_planexec_result", input)),
-    "A Review agent must locate the entry that exactly matches its current goal_id and round, then make exactly that call. It must not inspect, write, or otherwise change the workspace.",
+    "A Review agent must locate the entries matching its current goal title and semantic retry context. It must first submit the matching independent assessment, wait for the tool result, then submit the matching final verdict. It must not inspect, write, or otherwise change the workspace.",
+    "For the initial attempt of a goal, the Prior Review Direction Memo block is none, so use that goal's R1 entries. For the scripted retry in UT-05, that block contains FIXTURE_R5_GUIDANCE_UT05_G1_R1; use the literal UT05_G1_R2 entries. This is fixture routing only: do not infer or submit a phase number.",
+    ...script.reviewIndependent.map((input) =>
+      literalCall("thoth_loop_submit_review_independent_assessment", input),
+    ),
     ...script.review.map((input) => literalCall("thoth_loop_submit_review_verdict", input)),
   ].join("\n\n");
 }

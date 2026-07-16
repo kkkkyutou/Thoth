@@ -103,6 +103,7 @@ describe("workspace agent visibility", () => {
     expect(result.activeAgentIds).toEqual(new Set<string>());
     expect(result.autoOpenAgentIds).toEqual(new Set<string>());
     expect(result.knownAgentIds).toEqual(new Set(["archived-child"]));
+    expect(result.archivedAgentIds).toEqual(new Set(["archived-child"]));
   });
 
   it("excludes a child from auto-open even when its snapshot arrives before the parent", () => {
@@ -167,6 +168,7 @@ describe("workspace agent visibility", () => {
     expect(result.knownAgentIds.has("visible-agent")).toBe(true);
     expect(result.knownAgentIds.has("archived-agent")).toBe(true);
     expect(result.knownAgentIds.has("other-workspace-agent")).toBe(false);
+    expect(result.archivedAgentIds).toEqual(new Set(["archived-agent"]));
   });
 
   it("keeps archived lazy history known without treating it as a restorable tab", () => {
@@ -190,6 +192,7 @@ describe("workspace agent visibility", () => {
 
     expect(result.activeAgentIds).toEqual(new Set(["active-agent"]));
     expect(result.knownAgentIds).toEqual(new Set(["active-agent", "historical-agent"]));
+    expect(result.archivedAgentIds).toEqual(new Set(["historical-agent"]));
     expect(result.restorableAgentIds).toEqual(new Set<string>());
   });
 
@@ -209,6 +212,7 @@ describe("workspace agent visibility", () => {
 
     expect(result.activeAgentIds).toEqual(new Set<string>());
     expect(result.knownAgentIds).toEqual(new Set(["archived-agent"]));
+    expect(result.archivedAgentIds).toEqual(new Set(["archived-agent"]));
     expect(result.restorableAgentIds).toEqual(new Set<string>());
   });
 
@@ -346,6 +350,7 @@ describe("workspace agent visibility", () => {
       activeAgentIds: agentVisibility.activeAgentIds,
       autoOpenAgentIds: agentVisibility.autoOpenAgentIds,
       knownAgentIds: agentVisibility.knownAgentIds,
+      archivedAgentIds: new Set<string>(),
       restorableAgentIds: agentVisibility.restorableAgentIds,
       knownTerminalIds: ["terminal-1", "script-terminal"],
       standaloneTerminalIds: ["terminal-1"],

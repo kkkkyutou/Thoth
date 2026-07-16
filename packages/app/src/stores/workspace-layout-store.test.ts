@@ -1522,7 +1522,7 @@ describe("workspace-layout-store actions", () => {
     ).toEqual(["agent_historical-agent"]);
   });
 
-  it("reconcileTabs preserves retained restored agent tabs before visibility catches up", () => {
+  it("reconcileTabs preserves retained restored agent tabs before agents hydrate", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();
 
@@ -1530,7 +1530,7 @@ describe("workspace-layout-store actions", () => {
     store.openTabFocused(workspaceKey, { kind: "agent", agentId: "historical-agent" });
 
     store.reconcileTabs(workspaceKey, {
-      agentsHydrated: true,
+      agentsHydrated: false,
       terminalsHydrated: true,
       activeAgentIds: [],
       autoOpenAgentIds: [],
@@ -1545,6 +1545,29 @@ describe("workspace-layout-store actions", () => {
         .getWorkspaceTabs(workspaceKey)
         .map((tab) => tab.tabId),
     ).toEqual(["agent_historical-agent"]);
+  });
+
+  it("reconcileTabs prunes a retained tab once the hydrated authority no longer restores it", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+
+    store.retainRestoredAgent(workspaceKey, "archived-agent");
+    store.pinAgent(workspaceKey, "archived-agent");
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "archived-agent" });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: [],
+      autoOpenAgentIds: [],
+      knownAgentIds: ["archived-agent"],
+      archivedAgentIds: ["archived-agent"],
+      restorableAgentIds: [],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+    });
+
+    expect(workspaceLayoutStore.getState().getWorkspaceTabs(workspaceKey)).toEqual([]);
   });
 
   it("openTabFocused reopens hidden subagent tabs and clears hidden intent", () => {

@@ -13,14 +13,14 @@ import {
   Animated,
   Easing,
   Text,
+  View,
   type PressableStateCallbackType,
   type StyleProp,
   type TextStyle,
-  type View,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ChevronLeft, ChevronRight, GitBranch, SearchCheck } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, GitBranch, SearchCheck, Sparkles } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import {
@@ -34,21 +34,25 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { isWeb } from "@/constants/platform";
+import { Switch } from "@/components/ui/switch";
+import {
+  isThothModeEnabled,
+  resolveThothClarifyStrength,
+  resolveThothLoopStrength,
+  type ThothClarifyStrength,
+} from "@/composer/agent-controls/thoth-mode";
 import type {
-  ThothRuntimeClarifyStrength,
   ThothRuntimeLoopStrength,
   ThothRuntimeMode,
 } from "@thoth/protocol/thoth-runtime-contract";
 
-type ClarifyStrength = Exclude<ThothRuntimeClarifyStrength, "deep">;
+type ClarifyStrength = ThothClarifyStrength;
 type LoopStrength = Exclude<ThothRuntimeLoopStrength, "auto">;
 
 const CLARIFY_OPTIONS: Array<{ id: ClarifyStrength; label: string }> = [
-  { id: "none", label: "Direct" },
   { id: "light", label: "Light" },
   { id: "balanced", label: "Balanced" },
   { id: "dive", label: "Dive" },
-  { id: "auto", label: "Auto" },
 ];
 
 const DEFAULT_LOOP_STRENGTH: LoopStrength = "one_plan_one_do";
@@ -62,6 +66,8 @@ const LOOP_STRENGTH_OPTIONS: Array<{ id: LoopStrength; label: string }> = [
 
 const WEB_LASER_KEYFRAME_ID = "thoth-loop-infinite-laser-keyframes";
 const WEB_LASER_ANIMATION_NAME = "thoth-loop-infinite-laser";
+const WEB_DIVE_TEXT_KEYFRAME_ID = "thoth-clarify-dive-text-keyframes";
+const WEB_DIVE_TEXT_ANIMATION_NAME = "thoth-clarify-dive-text";
 const WEB_LASER_KEYFRAME_CSS = `
   @keyframes ${WEB_LASER_ANIMATION_NAME} {
     0% { background-position: 0% 50%; filter: saturate(1); }
@@ -69,8 +75,21 @@ const WEB_LASER_KEYFRAME_CSS = `
     100% { background-position: 0% 50%; filter: saturate(1); }
   }
 `;
+const WEB_DIVE_TEXT_KEYFRAME_CSS = `
+  @keyframes ${WEB_DIVE_TEXT_ANIMATION_NAME} {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-testid="thoth-clarify-dive-label"] {
+      animation: none !important;
+      background-position: 50% 50% !important;
+    }
+  }
+`;
 
 let webLaserKeyframesRegistered = false;
+let webDiveTextKeyframesRegistered = false;
 
 interface RuntimeControlsProps {
   serverId: string | null;
@@ -78,16 +97,12 @@ interface RuntimeControlsProps {
 }
 
 function getClarifyLabel(value: ClarifyStrength): string {
-  return CLARIFY_OPTIONS.find((option) => option.id === value)?.label ?? "Balanced";
+  return CLARIFY_OPTIONS.find((option) => option.id === value)?.label ?? "Light";
 }
 
 function normalizeLoopStrength(value: unknown): LoopStrength {
-  return value === "one_plan_one_do" ||
-    value === "light" ||
-    value === "balanced" ||
-    value === "run_until_stopped"
-    ? value
-    : DEFAULT_LOOP_STRENGTH;
+  const normalized = resolveThothLoopStrength(value);
+  return normalized === "auto" ? DEFAULT_LOOP_STRENGTH : normalized;
 }
 
 function getLoopStrengthLabel(value: LoopStrength): string {
@@ -127,6 +142,28 @@ function ensureWebLaserKeyframes() {
   webLaserKeyframesRegistered = true;
 }
 
+function ensureWebDiveTextKeyframes() {
+  if (!isWeb || typeof document === "undefined") {
+    return;
+  }
+  const existing = document.getElementById(WEB_DIVE_TEXT_KEYFRAME_ID);
+  if (existing) {
+    if (existing.textContent !== WEB_DIVE_TEXT_KEYFRAME_CSS) {
+      existing.textContent = WEB_DIVE_TEXT_KEYFRAME_CSS;
+    }
+    webDiveTextKeyframesRegistered = true;
+    return;
+  }
+  if (webDiveTextKeyframesRegistered) {
+    return;
+  }
+  const styleElement = document.createElement("style");
+  styleElement.id = WEB_DIVE_TEXT_KEYFRAME_ID;
+  styleElement.textContent = WEB_DIVE_TEXT_KEYFRAME_CSS;
+  document.head.appendChild(styleElement);
+  webDiveTextKeyframesRegistered = true;
+}
+
 function makeChipStyle(
   disabled: boolean,
   open: boolean,
@@ -148,7 +185,8 @@ export const RuntimeControls = memo(function RuntimeControls({
   const toast = useToast();
   const { config, patchConfig } = useDaemonConfig(serverId);
 
-  const clarify = (config?.workspaceSecretary?.clarifyStrength ?? "balanced") as ClarifyStrength;
+  const thothEnabled = isThothModeEnabled(config?.workspaceSecretary);
+  const clarify = resolveThothClarifyStrength(config?.workspaceSecretary?.clarifyStrength);
   const mode = (config?.workspaceSecretary?.mode ?? "quick") as ThothRuntimeMode;
   const loopStrength = normalizeLoopStrength(config?.workspaceSecretary?.loopStrength);
   const controlDisabled = disabled || !serverId;
@@ -162,6 +200,26 @@ export const RuntimeControls = memo(function RuntimeControls({
       }
     },
     [patchConfig, toast],
+  );
+
+  const persistThothEnabled = useCallback(
+    async (enabled: boolean) => {
+      try {
+        await patchConfig({
+          workspaceSecretary: enabled
+            ? {
+                enabled: true,
+                clarifyStrength: resolveThothClarifyStrength(
+                  config?.workspaceSecretary?.clarifyStrength,
+                ),
+              }
+            : { enabled: false },
+        });
+      } catch (error) {
+        toast.error(toErrorMessage(error));
+      }
+    },
+    [config?.workspaceSecretary?.clarifyStrength, patchConfig, toast],
   );
 
   const persistQuickMode = useCallback(async () => {
@@ -224,27 +282,48 @@ export const RuntimeControls = memo(function RuntimeControls({
   );
 
   return (
-    <>
-      <LoopControlMenu
-        trigger={modeTrigger}
-        tooltip={t("agentControls.runtime.mode.tooltip")}
-        mode={mode}
-        loopStrength={loopStrength}
-        disabled={controlDisabled}
-        onSelectQuick={persistQuickMode}
-        onSelectLoopStrength={persistLoopStrength}
-        testID="thoth-mode-menu"
-      />
-      <RuntimeControlMenu
-        trigger={clarifyTrigger}
-        tooltip={t("agentControls.runtime.clarify.tooltip")}
-        options={CLARIFY_OPTIONS}
-        selected={clarify}
-        disabled={controlDisabled}
-        onSelect={persistClarify}
-        testID="thoth-clarify-menu"
-      />
-    </>
+    <View style={styles.controls}>
+      <View style={[styles.thothSwitch, controlDisabled && styles.chipDisabled]}>
+        <Sparkles
+          size={theme.iconSize.md}
+          color={thothEnabled ? theme.colors.accent : theme.colors.foregroundMuted}
+        />
+        <Text style={[styles.thothLabel, thothEnabled && styles.thothLabelEnabled]}>Thoth</Text>
+        <Switch
+          value={thothEnabled}
+          onValueChange={persistThothEnabled}
+          disabled={controlDisabled}
+          accessibilityLabel={t("agentControls.runtime.thoth.switch")}
+          testID="thoth-enabled-switch"
+        />
+      </View>
+      {thothEnabled ? (
+        <>
+          <LoopControlMenu
+            trigger={modeTrigger}
+            tooltip={t("agentControls.runtime.mode.tooltip")}
+            mode={mode}
+            loopStrength={loopStrength}
+            disabled={controlDisabled}
+            onSelectQuick={persistQuickMode}
+            onSelectLoopStrength={persistLoopStrength}
+            testID="thoth-mode-menu"
+          />
+          <RuntimeControlMenu
+            trigger={clarifyTrigger}
+            tooltip={t("agentControls.runtime.clarify.tooltip")}
+            options={CLARIFY_OPTIONS}
+            selected={clarify}
+            disabled={controlDisabled}
+            onSelect={persistClarify}
+            renderOptionLabel={(option) =>
+              option.id === "dive" ? <DiveAzureLabel>{option.label}</DiveAzureLabel> : option.label
+            }
+            testID="thoth-clarify-menu"
+          />
+        </>
+      ) : null}
+    </View>
   );
 });
 
@@ -459,6 +538,55 @@ function LoopInfiniteLabel({
   );
 }
 
+function DiveAzureLabel({ children }: { children: ReactNode }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    ensureWebDiveTextKeyframes();
+    if (isWeb) {
+      return undefined;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  const nativeColor = pulse.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: ["#0284c7", "#22d3ee", "#2563eb"],
+  });
+
+  const animatedStyle = isWeb
+    ? (styles.diveAzureTextWeb as StyleProp<TextStyle>)
+    : ({ color: nativeColor } as StyleProp<TextStyle>);
+
+  return (
+    <Animated.Text
+      accessibilityLabel="Clarify Dive"
+      numberOfLines={1}
+      testID="thoth-clarify-dive-label"
+      style={[styles.diveAzureText, animatedStyle]}
+    >
+      {children}
+    </Animated.Text>
+  );
+}
+
 function RuntimeControlMenu<T extends string>({
   trigger,
   tooltip,
@@ -466,6 +594,7 @@ function RuntimeControlMenu<T extends string>({
   selected,
   disabled,
   onSelect,
+  renderOptionLabel,
   testID,
 }: {
   trigger: ReactElement;
@@ -474,6 +603,7 @@ function RuntimeControlMenu<T extends string>({
   selected: T;
   disabled: boolean;
   onSelect: (value: T) => void | Promise<void>;
+  renderOptionLabel?: (option: { id: T; label: string }) => ReactNode;
   testID: string;
 }) {
   const handleSelect = useCallback(
@@ -503,7 +633,7 @@ function RuntimeControlMenu<T extends string>({
             disabled={disabled}
             testID={`${testID}-${option.id}`}
           >
-            {option.label}
+            {renderOptionLabel?.(option) ?? option.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -512,6 +642,26 @@ function RuntimeControlMenu<T extends string>({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  controls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  thothSwitch: {
+    height: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+  },
+  thothLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  thothLabelEnabled: {
+    color: theme.colors.foreground,
+  },
   chip: {
     height: 28,
     flexDirection: "row",
@@ -535,6 +685,21 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
   },
+  diveAzureText: {
+    color: "#0284c7",
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.normal,
+  },
+  diveAzureTextWeb: {
+    color: "transparent",
+    backgroundImage: "linear-gradient(90deg, #0369a1, #0ea5e9, #67e8f9, #2563eb, #0369a1)",
+    backgroundSize: "260% 100%",
+    backgroundClip: "text",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    animation: `${WEB_DIVE_TEXT_ANIMATION_NAME} 3.2s ease-in-out infinite`,
+    textShadow: "0 0 5px rgba(14, 165, 233, 0.18)",
+  } as TextStyle,
   laserText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,

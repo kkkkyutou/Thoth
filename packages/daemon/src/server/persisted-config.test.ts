@@ -46,6 +46,16 @@ describe("PersistedConfigSchema daemon append system prompt config", () => {
   });
 });
 
+describe("PersistedConfigSchema Workspace Secretary mode", () => {
+  test("accepts the explicit Thoth mode switch", () => {
+    const parsed = PersistedConfigSchema.parse({
+      workspaceSecretary: { enabled: false },
+    });
+
+    expect(parsed.workspaceSecretary?.enabled).toBe(false);
+  });
+});
+
 describe("PersistedConfigSchema daemon relay config", () => {
   test("accepts optional relay TLS setting", () => {
     const parsed = PersistedConfigSchema.parse({
@@ -707,6 +717,78 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
     }
   });
 
+  test("round-trips Workspace Secretary per-send controls on authority cards", () => {
+    const home = createTempHome();
+    const turnControls = {
+      mode: "loop" as const,
+      clarifyStrength: "balanced" as const,
+      loop: "light" as const,
+    };
+    const turns = [
+      {
+        id: "turn-hot-switch-user",
+        kind: "message" as const,
+        speaker: "user" as const,
+        text: "按 Loop 注册",
+        turnControls,
+      },
+      {
+        id: "turn-hot-switch-task",
+        kind: "task_card" as const,
+        card: {
+          id: "task-hot-switch",
+          roundLabel: "Task",
+          title: "热切换任务",
+          goal: "按发送时的模式继续审批。",
+          constraints: ["保持同一 provider session。"],
+          acceptance: ["能够注册后台任务。"],
+          provenanceSummary: "完整 Clarify transcript",
+          turnControls,
+          submitted: false,
+        },
+      },
+    ];
+    try {
+      savePersistedConfig(home, {
+        workspaceSecretary: {
+          topicSnapshots: [
+            {
+              workspacePath: "/workspace/thoth",
+              workspaceName: "Thoth",
+              activeTopicId: "topic-hot-switch",
+              topics: [
+                {
+                  id: "topic-hot-switch",
+                  title: "Hot switch",
+                  status: "current",
+                  updatedLabel: "刚刚",
+                },
+              ],
+              turns,
+              topicStates: [
+                {
+                  topicId: "topic-hot-switch",
+                  turns,
+                  currentClarifyState: "C_TASK_CARD",
+                  activeTurnPhase: "approval_task",
+                },
+              ],
+              nextTopicIndex: 2,
+              currentClarifyState: "C_TASK_CARD",
+              activeTurnPhase: "approval_task",
+            },
+          ],
+        },
+      });
+
+      const restored = loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0];
+      expect(restored?.turns).toEqual(turns);
+      expect(restored?.topicStates?.[0]?.turns).toEqual(turns);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("round-trips Workspace Secretary per-topic runtime status", () => {
     const home = createTempHome();
     try {
@@ -732,6 +814,7 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
                   turns: [],
                   currentClarifyState: "C_DIRECT",
                   activeTurnPhase: "clarify",
+                  foregroundTurnState: "background_handoff",
                   status: {
                     kind: "loading",
                     title: "正在处理",
@@ -748,11 +831,14 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
       });
 
       expect(
-        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0]?.status,
-      ).toEqual({
-        kind: "loading",
-        title: "正在处理",
-        detail: "provider turn 正在运行。",
+        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0],
+      ).toMatchObject({
+        foregroundTurnState: "background_handoff",
+        status: {
+          kind: "loading",
+          title: "正在处理",
+          detail: "provider turn 正在运行。",
+        },
       });
     } finally {
       rmSync(home, { recursive: true, force: true });

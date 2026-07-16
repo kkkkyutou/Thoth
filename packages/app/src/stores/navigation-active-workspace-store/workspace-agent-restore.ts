@@ -61,12 +61,12 @@ function selectLatestAgentForWorkspace(input: {
 
   const candidates = new Map<string, Agent>();
   for (const agent of session.agents.values()) {
-    if (workspaceIdsMatch(agent.workspaceId, input.workspaceId)) {
+    if (workspaceIdsMatch(agent.workspaceId, input.workspaceId) && !agent.archivedAt) {
       candidates.set(agent.id, agent);
     }
   }
   for (const agent of session.agentDetails.values()) {
-    if (workspaceIdsMatch(agent.workspaceId, input.workspaceId)) {
+    if (workspaceIdsMatch(agent.workspaceId, input.workspaceId) && !agent.archivedAt) {
       candidates.set(agent.id, agent);
     }
   }
@@ -158,7 +158,10 @@ async function fetchWorkspaceHistoryAgent(input: {
     serverId: input.serverId,
     entries: matchingEntries,
   });
-  return restoredAgents.sort(compareAgentActivityDescending)[0] ?? null;
+  return (
+    restoredAgents.filter((agent) => !agent.archivedAt).sort(compareAgentActivityDescending)[0] ??
+    null
+  );
 }
 
 export async function restoreWorkspaceAgentTabFromHistory(input: {

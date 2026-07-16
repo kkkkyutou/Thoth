@@ -16,6 +16,7 @@ import {
 import { Session } from "./session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
+import type { AgentManagerEvent, ManagedAgent } from "./agent/agent-manager.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type { SessionOptions } from "./session.js";
@@ -29,6 +30,7 @@ import {
   asChatService,
   asScheduleService,
   asLoopService,
+  asLoopTaskService,
   asCheckoutDiffManager,
   asGitHubService,
   asWorkspaceGitService,
@@ -154,6 +156,334 @@ vi.mock("../utils/checkout-git.js", async (importOriginal) => {
   };
 });
 
+function createClosedManagedAgent(input: {
+  id: string;
+  internal?: boolean;
+  title: string;
+}): ManagedAgent {
+  const timestamp = new Date("2026-07-16T00:00:00.000Z");
+  return {
+    id: input.id,
+    provider: "codex",
+    cwd: "/tmp/thoth-loop-phase-stream",
+    capabilities: {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: true,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsToolInvocations: true,
+      supportsRewindConversation: false,
+      supportsRewindFiles: false,
+      supportsRewindBoth: false,
+    },
+    config: {
+      provider: "codex",
+      cwd: "/tmp/thoth-loop-phase-stream",
+      title: input.title,
+      internal: input.internal,
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    availableModes: [],
+    currentModeId: "auto",
+    pendingPermissions: new Map(),
+    bufferedPermissionResolutions: new Map(),
+    inFlightPermissionResponses: new Set(),
+    pendingReplacement: false,
+    persistence: null,
+    historyPrimed: true,
+    lastUserMessageAt: null,
+    attention: { requiresAttention: false },
+    foregroundTurnWaiters: new Set(),
+    finalizedForegroundTurnIds: new Set(),
+    unsubscribeSession: null,
+    internal: input.internal,
+    labels: input.internal ? { surface: "thoth-loop" } : {},
+    lifecycle: "closed",
+    session: null,
+    activeForegroundTurnId: null,
+  };
+}
+
+describe("Loop phase live stream observation", () => {
+  test("forwards only the currently viewed internal phase and releases it on switch and cleanup", async () => {
+    const phaseOneId = "00000000-0000-4000-8000-000000000301";
+    const phaseTwoId = "00000000-0000-4000-8000-000000000302";
+    const foregroundId = "00000000-0000-4000-8000-000000000303";
+    const permissionId = "permission-apply-review-artifact";
+    const agents = new Map<string, ManagedAgent>([
+      [
+        phaseOneId,
+        createClosedManagedAgent({
+          id: phaseOneId,
+          internal: true,
+          title: "Review: Goal 1",
+        }),
+      ],
+      [
+        phaseTwoId,
+        createClosedManagedAgent({
+          id: phaseTwoId,
+          internal: true,
+          title: "Review: Goal 2",
+        }),
+      ],
+      [foregroundId, createClosedManagedAgent({ id: foregroundId, title: "Foreground" })],
+    ]);
+    const subscriptions: Array<{
+      agentId: string | null;
+      emit: (event: AgentManagerEvent) => void;
+      unsubscribe: ReturnType<typeof vi.fn>;
+    }> = [];
+    const subscribe = vi.fn(
+      (
+        callback: (event: AgentManagerEvent) => void,
+        options?: { agentId?: string; replayState?: boolean },
+      ) => {
+        let active = true;
+        const unsubscribe = vi.fn(() => {
+          active = false;
+        });
+        subscriptions.push({
+          agentId: options?.agentId ?? null,
+          emit: (event) => {
+            if (active) {
+              callback(event);
+            }
+          },
+          unsubscribe,
+        });
+        return unsubscribe;
+      },
+    );
+    const messages: SessionOutboundMessage[] = [];
+    const recoverPhaseAgent = vi.fn(
+      async (agentId: string) => agents.get(agentId)?.internal === true,
+    );
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        subscribe,
+        getAgent: vi.fn((agentId: string) => agents.get(agentId) ?? null),
+        fetchTimeline: vi.fn(() => ({
+          epoch: "loop-phase-epoch",
+          reset: false,
+          staleCursor: false,
+          gap: false,
+          window: { minSeq: 0, maxSeq: 0, nextSeq: 1 },
+          rows: [],
+          hasOlder: false,
+          hasNewer: false,
+        })),
+      },
+      agentStorage: { get: vi.fn().mockResolvedValue(null) },
+      loopTaskService: { recoverPhaseAgent },
+    });
+
+    const globalSubscription = subscriptions.find((record) => record.agentId === null);
+    expect(globalSubscription).toBeTruthy();
+    globalSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseOneId,
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "reasoning", text: "hidden before observation" },
+      },
+    });
+    expect(messages.some((message) => message.type === "agent_stream")).toBe(false);
+
+    globalSubscription?.emit({
+      type: "agent_stream",
+      agentId: foregroundId,
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "assistant_message", text: "foreground remains live" },
+      },
+    });
+    expect(messages.some((message) => message.type === "agent_stream")).toBe(true);
+    messages.splice(0);
+
+    await session.handleMessage({
+      type: "fetch_agent_timeline_request",
+      requestId: "fetch-phase-one",
+      agentId: phaseOneId,
+      projection: "projected",
+    });
+    const phaseOneSubscription = subscriptions.find((record) => record.agentId === phaseOneId);
+    expect(phaseOneSubscription).toBeTruthy();
+    expect(recoverPhaseAgent).toHaveBeenCalledWith(phaseOneId);
+    await session.handleMessage({
+      type: "fetch_agent_timeline_request",
+      requestId: "fetch-phase-one-again",
+      agentId: phaseOneId,
+      projection: "projected",
+    });
+    expect(subscriptions.filter((record) => record.agentId === phaseOneId)).toHaveLength(1);
+    expect(phaseOneSubscription?.unsubscribe).not.toHaveBeenCalled();
+    messages.splice(0);
+
+    phaseOneSubscription?.emit({
+      type: "agent_state",
+      agent: agents.get(phaseOneId)!,
+    });
+    phaseOneSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseOneId,
+      event: {
+        type: "permission_requested",
+        provider: "codex",
+        request: {
+          id: permissionId,
+          provider: "codex",
+          name: "apply_patch",
+          kind: "tool",
+          title: "Apply file changes",
+          actions: [
+            { id: "reject", label: "Reject", behavior: "deny", variant: "danger" },
+            { id: "accept", label: "Accept", behavior: "allow", variant: "primary" },
+          ],
+        },
+      },
+    });
+    phaseOneSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseOneId,
+      event: {
+        type: "permission_resolved",
+        provider: "codex",
+        requestId: permissionId,
+        resolution: { behavior: "allow", selectedActionId: "accept" },
+      },
+    });
+    phaseOneSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseOneId,
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: {
+          type: "tool_call",
+          callId: "apply-review-artifact",
+          name: "apply_patch",
+          status: "completed",
+          error: null,
+          detail: {
+            type: "edit",
+            filePath: "/tmp/thoth-review-artifacts/core-contract.cpp",
+          },
+        },
+      },
+    });
+    phaseOneSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseOneId,
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "reasoning", text: "continued after approval" },
+      },
+    });
+
+    expect(messages.some((message) => message.type === "agent_update")).toBe(false);
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "agent_stream",
+          payload: expect.objectContaining({ agentId: phaseOneId, internal: true }),
+        }),
+        expect.objectContaining({
+          type: "agent_permission_request",
+          payload: expect.objectContaining({ agentId: phaseOneId }),
+        }),
+        expect.objectContaining({
+          type: "agent_permission_resolved",
+          payload: expect.objectContaining({
+            agentId: phaseOneId,
+            requestId: permissionId,
+          }),
+        }),
+      ]),
+    );
+    const streamedItems = messages
+      .filter((message) => message.type === "agent_stream")
+      .map((message) => message.payload.event);
+    expect(streamedItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "permission_requested" }),
+        expect.objectContaining({ type: "permission_resolved", requestId: permissionId }),
+        expect.objectContaining({
+          type: "timeline",
+          item: expect.objectContaining({
+            type: "tool_call",
+            callId: "apply-review-artifact",
+            status: "completed",
+          }),
+        }),
+        expect.objectContaining({
+          type: "timeline",
+          item: expect.objectContaining({ type: "reasoning", text: "continued after approval" }),
+        }),
+      ]),
+    );
+
+    await session.handleMessage({
+      type: "fetch_agent_timeline_request",
+      requestId: "fetch-phase-two",
+      agentId: phaseTwoId,
+      projection: "projected",
+    });
+    const phaseTwoSubscription = subscriptions.find((record) => record.agentId === phaseTwoId);
+    expect(phaseOneSubscription?.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(phaseTwoSubscription).toBeTruthy();
+    messages.splice(0);
+
+    phaseOneSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseOneId,
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "assistant_message", text: "stale phase" },
+      },
+    });
+    phaseTwoSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseTwoId,
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "assistant_message", text: "current phase" },
+      },
+    });
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "agent_stream",
+      payload: {
+        agentId: phaseTwoId,
+        internal: true,
+        event: { type: "timeline", item: { type: "assistant_message", text: "current phase" } },
+      },
+    });
+
+    await session.cleanup();
+    expect(phaseTwoSubscription?.unsubscribe).toHaveBeenCalledTimes(1);
+    messages.splice(0);
+    phaseTwoSubscription?.emit({
+      type: "agent_stream",
+      agentId: phaseTwoId,
+      event: {
+        type: "timeline",
+        provider: "codex",
+        item: { type: "assistant_message", text: "after cleanup" },
+      },
+    });
+    expect(messages).toEqual([]);
+  });
+});
+
 vi.mock("./thoth-worktree-service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./thoth-worktree-service.js")>();
   return {
@@ -218,6 +548,7 @@ interface SessionForTestOptions {
   serverId?: SessionOptions["serverId"];
   daemonVersion?: SessionOptions["daemonVersion"];
   daemonRuntimeConfig?: SessionOptions["daemonRuntimeConfig"];
+  loopTaskService?: { [K in keyof NonNullable<SessionOptions["loopTaskService"]>]?: unknown };
   downloadTokenStore?: SessionOptions["downloadTokenStore"];
   messages?: unknown[];
   binaryMessages?: Uint8Array[];
@@ -281,10 +612,14 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     chatService: asChatService(),
     scheduleService: asScheduleService(),
     loopService: asLoopService(),
+    loopTaskService: options.loopTaskService
+      ? asLoopTaskService(options.loopTaskService)
+      : undefined,
     checkoutDiffManager: asCheckoutDiffManager(checkoutDiffManager),
     github: asGitHubService(github),
     workspaceGitService: asWorkspaceGitService(workspaceGitService),
     daemonConfigStore: asDaemonConfigStore({
+      getThothHome: vi.fn(() => options.thothHome ?? "/tmp/thoth-home"),
       get: vi.fn(() => ({
         mcp: { injectIntoAgents: false },
         providers: {},

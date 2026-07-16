@@ -91,6 +91,38 @@ function evidenceIsGeneric(evidence: string | undefined): boolean {
   );
 }
 
+function directionMemoIsShallow(input: {
+  conclusion: string;
+  reality: string[];
+  diagnosis: string;
+  abandon: string[];
+  reframe: string;
+  next_direction: string;
+}): boolean {
+  const combined = [
+    input.conclusion,
+    ...input.reality,
+    input.diagnosis,
+    ...input.abandon,
+    input.reframe,
+    input.next_direction,
+  ].join(" ");
+  return (
+    input.reality.some((entry) => evidenceIsGeneric(entry)) ||
+    input.diagnosis.trim().length < 24 ||
+    input.abandon.length === 0 ||
+    input.reframe.trim().length < 24 ||
+    input.next_direction.trim().length < 24 ||
+    /\b(try again|fix it|keep trying|run tests again|needs more work)\b/i.test(combined)
+  );
+}
+
+function directionMemoUsesDaemonMechanics(text: string): boolean {
+  return /\b(failed[- ]review budget|remaining budget|loop strength|loopstrength|phase[_ -]?run|task revision|receipt hash|retry count|attempts? remaining)\b/i.test(
+    text,
+  );
+}
+
 function textMentionsGoal(text: string, goalId: string): boolean {
   const escaped = goalId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`\\b${escaped}\\b`, "i").test(text);
@@ -102,13 +134,16 @@ function evaluateSkillArtifact(): LoopEvalScenarioResult {
     "## Runtime Tools",
     "## PlanExec Rules",
     "## Review Rules",
-    "## Budget Semantics",
     "thoth_loop_submit_planexec_result",
+    "thoth_loop_submit_review_independent_assessment",
     "thoth_loop_submit_review_verdict",
     "thoth_loop_report_blocked",
     "Never ask the user clarifying questions",
     "Do not modify source files",
-    "anti_repeat_strategy",
+    "direction_memo",
+    "independent corrective intelligence",
+    "Direction Memo as the whole direction",
+    "Thoth alone decides task lifecycle",
   ];
   const failures = required
     .filter((phrase) => !artifact.source.includes(phrase))
@@ -155,18 +190,11 @@ function evaluateScenario(scenario: LoopGoldenScenario): LoopEvalScenarioResult 
     if (!parsed.success) {
       observedFailures.push("PlanExec result fails runtime tool schema");
     } else {
-      if (parsed.data.round !== scenario.currentRound) {
-        observedFailures.push("PlanExec result round must match current round");
-      }
       if (parsed.data.evidence.length === 0) {
         observedFailures.push("PlanExec result must include evidence");
       }
       if (!parsed.data.next_review_focus.trim()) {
         observedFailures.push("PlanExec result must tell Review what to inspect");
-      }
-      const expectedGoalId = `goal-${scenario.currentGoalOrder}`;
-      if (parsed.data.goal_id !== expectedGoalId) {
-        observedFailures.push("PlanExec result goal_id must match current goal");
       }
       const planText = flattenText(parsed.data);
       if (containsUserClarification(planText)) {
@@ -180,53 +208,44 @@ function evaluateScenario(scenario: LoopGoldenScenario): LoopEvalScenarioResult 
     }
   }
   if (scenario.reviewVerdict) {
+    if (scenario.reviewProtocol?.independentAssessmentBeforePlanExecAccount !== true) {
+      observedFailures.push(
+        "Review must complete independent assessment before reading PlanExec account",
+      );
+    }
     const parsed = ThothLoopReviewVerdictInputSchema.safeParse(scenario.reviewVerdict);
     if (!parsed.success) {
       observedFailures.push("Review verdict fails runtime tool schema");
     } else {
-      if (parsed.data.round !== scenario.currentRound) {
-        observedFailures.push("Review verdict round must match current round");
-      }
-      const expectedGoalId = `goal-${scenario.currentGoalOrder}`;
-      if (parsed.data.goal_id !== expectedGoalId) {
-        observedFailures.push("Review verdict goal_id must match current goal");
-      }
-      if (parsed.data.outcome === "fail") {
-        if (!parsed.data.failure_root_cause?.trim()) {
-          observedFailures.push("failed Review must include failure_root_cause");
+      const retryOutcome =
+        parsed.data.outcome === "continue" || parsed.data.outcome === "reframe_current_goal";
+      if (retryOutcome) {
+        if (!parsed.data.direction_memo) {
+          observedFailures.push("retry Review must include a direction memo");
+        } else {
+          if (parsed.data.direction_memo.reality.length === 0) {
+            observedFailures.push("Review direction memo must cite observable reality");
+          }
+          if (parsed.data.direction_memo.abandon.length === 0) {
+            observedFailures.push("Review direction memo must name a route to abandon");
+          }
+          if (!parsed.data.direction_memo.next_direction.trim()) {
+            observedFailures.push("Review direction memo must provide a next direction");
+          }
+          if (directionMemoIsShallow(parsed.data.direction_memo)) {
+            observedFailures.push("Review direction memo is shallow or incremental");
+          }
+          if (directionMemoUsesDaemonMechanics(flattenText(parsed.data.direction_memo))) {
+            observedFailures.push("Review direction memo treats daemon mechanics as judgment");
+          }
         }
-        if (!parsed.data.next_round_guidance?.trim()) {
-          observedFailures.push("failed Review must include next_round_guidance");
-        }
-        if (parsed.data.anti_repeat_strategy.length === 0) {
-          observedFailures.push("failed Review must include anti_repeat_strategy");
-        }
-      }
-      if (parsed.data.outcome === "pass" && parsed.data.failed_acceptance.length > 0) {
-        observedFailures.push("pass Review must not include failed acceptance");
       }
       if (parsed.data.outcome === "pass") {
-        for (const entry of parsed.data.acceptance_matrix) {
-          if (entry.status !== "met") {
-            observedFailures.push("pass Review must mark every acceptance as met");
-          }
-          if (evidenceIsGeneric(entry.evidence)) {
-            observedFailures.push(
-              "Review pass evidence must bind each acceptance to concrete proof",
-            );
-          }
-        }
         if (evidenceIsGeneric(parsed.data.evidence_summary)) {
           observedFailures.push(
-            "Review pass evidence_summary must cite concrete acceptance evidence",
+            "Review pass evidence must bind its conclusion to concrete reality",
           );
         }
-      }
-      if (
-        parsed.data.outcome === "blocked" &&
-        parsed.data.acceptance_matrix.every((entry) => entry.status === "met")
-      ) {
-        observedFailures.push("blocked Review must not mark every acceptance as met");
       }
     }
   }
@@ -262,7 +281,11 @@ function evaluateScenario(scenario: LoopGoldenScenario): LoopEvalScenarioResult 
     if (scenario.budgetTransition.reviewOutcome === "pass" && after !== before) {
       observedFailures.push("Review pass must not consume failed-review budget");
     }
-    if (scenario.budgetTransition.reviewOutcome === "fail" && after !== before + 1) {
+    if (
+      (scenario.budgetTransition.reviewOutcome === "continue" ||
+        scenario.budgetTransition.reviewOutcome === "reframe_current_goal") &&
+      after !== before + 1
+    ) {
       observedFailures.push("Review fail must consume exactly one failed-review budget");
     }
     if (
@@ -274,7 +297,8 @@ function evaluateScenario(scenario: LoopGoldenScenario): LoopEvalScenarioResult 
     }
     if (
       after >= scenario.budgetTransition.maxFailedReviews &&
-      scenario.budgetTransition.reviewOutcome === "fail" &&
+      (scenario.budgetTransition.reviewOutcome === "continue" ||
+        scenario.budgetTransition.reviewOutcome === "reframe_current_goal") &&
       scenario.budgetTransition.expectedTaskStatus !== "budget_wait"
     ) {
       observedFailures.push("Budget exhaustion must enter budget_wait with latest Review verdict");
@@ -327,7 +351,7 @@ export function buildLoopGoldenEvalReport(): LoopEvalReport {
   ];
   return {
     passed: results.every((entry) => entry.passed),
-    scenarioCount: LOOP_GOLDEN_SCENARIOS.length,
+    scenarioCount: results.length,
     results,
   };
 }

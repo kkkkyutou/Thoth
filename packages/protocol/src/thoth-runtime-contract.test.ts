@@ -880,49 +880,48 @@ describe("thoth runtime contract", () => {
     ).toContain("小型修复");
   });
 
-  it("parses Loop PlanExec and Review tool inputs with audit fields", () => {
-    expect(
-      ThothLoopPlanExecResultInputSchema.parse({
-        goal_id: "goal-1",
-        round: 2,
-        phase_run_id: "phase-plan-2",
-        result_tool_call_id: "tool-plan-2",
-        plan_summary: "Plan the focused retry.",
-        execution_summary: "Implemented the retry.",
-        evidence: ["Tests passed."],
-        validation_performed: ["Ran focused tests."],
-        remaining_risks: [],
-        next_review_focus: "Check the previously failed acceptance.",
-      }).phase_run_id,
-    ).toBe("phase-plan-2");
+  it("keeps Loop runtime tool inputs semantic and strips obsolete daemon mechanics", () => {
+    const planExec = ThothLoopPlanExecResultInputSchema.parse({
+      goal_id: "goal-1",
+      round: 2,
+      phase_run_id: "phase-plan-2",
+      result_tool_call_id: "tool-plan-2",
+      plan_summary: "Plan the focused retry.",
+      execution_summary: "Implemented the retry.",
+      evidence: ["Tests passed."],
+      validation_performed: ["Ran focused tests."],
+      remaining_risks: [],
+      next_review_focus: "Check the previously failed acceptance.",
+    });
+    expect(planExec).not.toHaveProperty("goal_id");
+    expect(planExec).not.toHaveProperty("round");
+    expect(planExec).not.toHaveProperty("phase_run_id");
+    expect(planExec).not.toHaveProperty("result_tool_call_id");
 
-    expect(
-      ThothLoopReviewVerdictInputSchema.parse({
-        goal_id: "goal-1",
-        round: 2,
-        result_tool_call_id: "tool-review-2",
-        outcome: "pass",
-        summary: "Accepted.",
-        acceptance_matrix: [{ acceptance: "Tests pass", status: "met", evidence: "green" }],
-        failed_acceptance: [],
-        anti_repeat_strategy: [],
-        evidence_summary: "Focused tests passed.",
-      }).result_tool_call_id,
-    ).toBe("tool-review-2");
-
-    expect(() =>
-      ThothLoopReviewVerdictInputSchema.parse({
-        goal_id: "goal-1",
-        round: 2,
-        outcome: "fail",
-        summary: "Rejected.",
-        acceptance_matrix: [{ acceptance: "Tests pass", status: "not_met", evidence: "red" }],
-        failed_acceptance: ["Tests pass"],
-        failure_root_cause: "No focused proof.",
-        next_round_guidance: "Add focused proof.",
-        anti_repeat_strategy: [],
-        evidence_summary: "Focused tests were missing.",
-      }),
-    ).toThrow(/anti_repeat_strategy/);
+    const verdict = ThothLoopReviewVerdictInputSchema.parse({
+      goal_id: "goal-1",
+      round: 2,
+      result_tool_call_id: "tool-review-2",
+      outcome: "continue",
+      summary: "Rejected.",
+      acceptance_matrix: [{ acceptance: "Tests pass", status: "not_met", evidence: "red" }],
+      failed_acceptance: ["Tests pass"],
+      failure_root_cause: "No focused proof.",
+      next_round_guidance: "Add focused proof.",
+      anti_repeat_strategy: ["Do not repeat the same route."],
+      evidence_summary: "Focused tests were missing.",
+      direction_memo: {
+        conclusion: "The goal is not ready.",
+        reality: ["Focused proof is absent."],
+        diagnosis: "No focused proof.",
+        abandon: ["Do not treat prose as evidence."],
+        reframe: "Center observable proof.",
+        next_direction: "Establish focused proof before another implementation pass.",
+      },
+    });
+    expect(verdict).not.toHaveProperty("goal_id");
+    expect(verdict).not.toHaveProperty("acceptance_matrix");
+    expect(verdict).not.toHaveProperty("failure_root_cause");
+    expect(verdict.direction_memo?.diagnosis).toBe("No focused proof.");
   });
 });

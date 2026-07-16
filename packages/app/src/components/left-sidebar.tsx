@@ -499,6 +499,7 @@ const SidebarBackgroundTasksHeaderRow = memo(function SidebarBackgroundTasksHead
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
   const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
+  const isCompactLayout = useIsCompactFormFactor();
   const activeSurfaceKey =
     activeWorkspaceServerId && activeWorkspaceId
       ? buildBackgroundTasksSurfaceKey({

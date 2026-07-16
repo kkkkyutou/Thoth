@@ -66,12 +66,14 @@ import {
   ThothSubmitTaskCardInputSchema,
   ThothLoopPlanExecResultInputSchema,
   ThothLoopReportBlockedInputSchema,
+  ThothLoopReviewIndependentAssessmentInputSchema,
   ThothLoopReviewVerdictInputSchema,
   type ClarifyConvergenceReview,
   type ClarifyConvergenceAudit,
   type ClarifyFrontierLedger,
   type ThothLoopPlanExecResultInput,
   type ThothLoopReportBlockedInput,
+  type ThothLoopReviewIndependentAssessmentInput,
   type ThothLoopReviewVerdictInput,
   type ThothReportBlockedInput,
   type ThothSubmitClarifyCardInput,
@@ -107,6 +109,7 @@ import {
   createRuntimeAuthorityDecision,
   listRuntimeAuthorityDecisionRecords,
 } from "../runtime-tool-decisions.js";
+import { assertWorkspaceSecretaryAuthorityTurn } from "./workspace-secretary-turn-policy.js";
 import {
   archiveAgentCommand,
   cancelAgentRunCommand,
@@ -732,6 +735,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       const tool = tools.get(name);
       if (!tool) {
         throw new Error(`Thoth tool not found: ${name}`);
+      }
+      if (runtimeTools?.scope === "clarify" && callerAgentId) {
+        assertWorkspaceSecretaryAuthorityTurn({ agentId: callerAgentId, context });
       }
       return tool.handler(await parseToolInput(tool, input), context);
     },
@@ -1573,13 +1579,14 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         if (!callerAgentId) {
           throw new Error("thoth_loop_submit_planexec_result requires an agent-scoped caller");
         }
-        const resultToolCallId =
-          input.result_tool_call_id ?? resolveRuntimeToolCallContext(context).callId;
+        const runtimeToolContext = resolveRuntimeToolCallContext(context);
         if (
-          !options.loopTaskService?.resolvePlanExecResult(callerAgentId, {
-            ...input,
-            result_tool_call_id: resultToolCallId,
-          })
+          !options.loopTaskService?.resolvePlanExecResult(
+            callerAgentId,
+            input,
+            runtimeToolContext.turnId,
+            runtimeToolContext.callId,
+          )
         ) {
           throw new Error("No active Thoth Loop PlanExec phase is waiting for this agent");
         }
@@ -1601,11 +1608,43 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
 
   if (enableLoopRuntimeTools && loopRuntimePhase !== "planexec") {
     registerTool(
+      "thoth_loop_submit_review_independent_assessment",
+      {
+        title: "Submit independent Review assessment",
+        description:
+          "Submit the Review agent's independent observations and working theory before receiving PlanExec's semantic account for comparison.",
+        inputSchema: ThothLoopReviewIndependentAssessmentInputSchema,
+        outputSchema: z.object({ ok: z.boolean(), status: z.literal("accepted") }).strict(),
+      },
+      async (
+        input: ThothLoopReviewIndependentAssessmentInput,
+        context: ThothToolExecutionContext,
+      ) => {
+        if (!callerAgentId) {
+          throw new Error(
+            "thoth_loop_submit_review_independent_assessment requires an agent-scoped caller",
+          );
+        }
+        const planExecBrief = options.loopTaskService?.resolveReviewIndependentAssessment(
+          callerAgentId,
+          input,
+          resolveRuntimeToolCallContext(context).turnId,
+        );
+        if (!planExecBrief) {
+          throw new Error("No active Thoth Loop Review phase is waiting for this assessment");
+        }
+        return {
+          content: [{ type: "text", text: planExecBrief }],
+          structuredContent: { ok: true, status: "accepted" },
+        };
+      },
+    );
+    registerTool(
       "thoth_loop_submit_review_verdict",
       {
         title: "Submit Thoth Loop Review verdict",
         description:
-          "Submit the independent Review verdict for the current Thoth background Loop goal. Pass advances to the next goal; fail consumes one failed-review budget and guides the retry.",
+          "Submit the independent Review verdict for the current Thoth background Loop goal. Pass advances; continue or reframe supplies the next Direction Memo for the same goal.",
         inputSchema: ThothLoopReviewVerdictInputSchema,
         outputSchema: z.object({ ok: z.boolean(), status: z.literal("accepted") }).strict(),
       },
@@ -1613,13 +1652,14 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         if (!callerAgentId) {
           throw new Error("thoth_loop_submit_review_verdict requires an agent-scoped caller");
         }
-        const resultToolCallId =
-          input.result_tool_call_id ?? resolveRuntimeToolCallContext(context).callId;
+        const runtimeToolContext = resolveRuntimeToolCallContext(context);
         if (
-          !options.loopTaskService?.resolveReviewVerdict(callerAgentId, {
-            ...input,
-            result_tool_call_id: resultToolCallId,
-          })
+          !options.loopTaskService?.resolveReviewVerdict(
+            callerAgentId,
+            input,
+            runtimeToolContext.turnId,
+            runtimeToolContext.callId,
+          )
         ) {
           throw new Error("No active Thoth Loop Review phase is waiting for this agent");
         }
@@ -1646,11 +1686,17 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         inputSchema: ThothLoopReportBlockedInputSchema,
         outputSchema: z.object({ ok: z.boolean(), status: z.literal("blocked") }).strict(),
       },
-      async (input: ThothLoopReportBlockedInput) => {
+      async (input: ThothLoopReportBlockedInput, context: ThothToolExecutionContext) => {
         if (!callerAgentId) {
           throw new Error("thoth_loop_report_blocked requires an agent-scoped caller");
         }
-        if (!options.loopTaskService?.resolveBlocked(callerAgentId, input)) {
+        if (
+          !options.loopTaskService?.resolveBlocked(
+            callerAgentId,
+            input,
+            resolveRuntimeToolCallContext(context).turnId,
+          )
+        ) {
           throw new Error("No active Thoth Loop phase is waiting for this agent");
         }
         return {

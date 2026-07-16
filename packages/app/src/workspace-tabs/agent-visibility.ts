@@ -7,6 +7,7 @@ export interface WorkspaceAgentVisibility {
   activeAgentIds: Set<string>;
   autoOpenAgentIds: Set<string>;
   knownAgentIds: Set<string>;
+  archivedAgentIds?: Set<string>;
   restorableAgentIds?: Set<string>;
 }
 
@@ -26,6 +27,7 @@ export function deriveWorkspaceAgentVisibility(input: {
       activeAgentIds: new Set<string>(),
       autoOpenAgentIds: new Set<string>(),
       knownAgentIds: new Set<string>(),
+      archivedAgentIds: new Set<string>(),
       restorableAgentIds: new Set<string>(),
     };
   }
@@ -33,6 +35,7 @@ export function deriveWorkspaceAgentVisibility(input: {
   const activeAgentIds = new Set<string>();
   const autoOpenAgentIds = new Set<string>();
   const knownAgentIds = new Set<string>();
+  const archivedAgentIds = new Set<string>();
   const restorableAgentIds = new Set<string>();
   const sessionAgentIds = new Set(sessionAgents?.keys() ?? []);
   for (const agent of sessionAgents?.values() ?? []) {
@@ -40,6 +43,9 @@ export function deriveWorkspaceAgentVisibility(input: {
       continue;
     }
     knownAgentIds.add(agent.id);
+    if (agent.archivedAt) {
+      archivedAgentIds.add(agent.id);
+    }
     if (!agent.archivedAt) {
       activeAgentIds.add(agent.id);
       if (shouldAutoOpenAgentTab(agent)) {
@@ -52,6 +58,9 @@ export function deriveWorkspaceAgentVisibility(input: {
       continue;
     }
     knownAgentIds.add(agent.id);
+    if (agent.archivedAt) {
+      archivedAgentIds.add(agent.id);
+    }
     // An archived record can exist only in the detail cache after the active directory has already
     // removed it. It is history, never a restorable foreground tab.
     if (!agent.archivedAt && !sessionAgentIds.has(agent.id)) {
@@ -59,7 +68,7 @@ export function deriveWorkspaceAgentVisibility(input: {
     }
   }
 
-  return { activeAgentIds, autoOpenAgentIds, knownAgentIds, restorableAgentIds };
+  return { activeAgentIds, autoOpenAgentIds, knownAgentIds, archivedAgentIds, restorableAgentIds };
 }
 
 export function buildWorkspaceTabSnapshot(input: {
@@ -76,6 +85,7 @@ export function buildWorkspaceTabSnapshot(input: {
     activeAgentIds: input.agentVisibility.activeAgentIds,
     autoOpenAgentIds: input.agentVisibility.autoOpenAgentIds,
     knownAgentIds: input.agentVisibility.knownAgentIds,
+    archivedAgentIds: input.agentVisibility.archivedAgentIds ?? new Set<string>(),
     restorableAgentIds: input.agentVisibility.restorableAgentIds ?? new Set<string>(),
     knownTerminalIds: input.knownTerminalIds,
     standaloneTerminalIds: input.standaloneTerminalIds,
@@ -91,6 +101,7 @@ export function workspaceAgentVisibilityEqual(
     setsEqual(a.activeAgentIds, b.activeAgentIds) &&
     setsEqual(a.autoOpenAgentIds, b.autoOpenAgentIds) &&
     setsEqual(a.knownAgentIds, b.knownAgentIds) &&
+    setsEqual(a.archivedAgentIds ?? new Set<string>(), b.archivedAgentIds ?? new Set<string>()) &&
     setsEqual(a.restorableAgentIds ?? new Set<string>(), b.restorableAgentIds ?? new Set<string>())
   );
 }

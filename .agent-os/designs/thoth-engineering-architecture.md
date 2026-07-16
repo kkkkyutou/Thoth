@@ -37,7 +37,8 @@ Engineering inputs fixed for MVP:
 18. Provider-visible output must stream through Thoth timeline in real time for Clarify, Quick, Plan+Exec and Review.
 19. `Quick + dont_bother_me` is a provider passthrough path and should stay behaviorally close to a raw Paseo-style provider session.
 20. Formal `loop` attempts run PlanExec inside one provider session using provider-native plan mode when available.
-21. Clarify and Review are independent provider sessions.
+21. Foreground Workspace Secretary Clarify is a per-turn harness overlay on the topic's continuous provider session; only background Loop phase sessions such as Review are independent provider sessions.
+22. Daemon authority metadata is never Agent Harness cognitive context: sessions receive the human task and relevant reality, while daemon retains IDs, budgets, manifests, receipts, phase state and recovery data.
 
 The system has six primary layers:
 
@@ -810,20 +811,26 @@ Input packet:
 3. Clarify handoff packet.
 4. Workspace facts.
 5. Permission policy.
-6. Workspace baseline.
-7. Prior review findings if retry.
-8. Failure focus if retry.
+6. Relevant prior Review direction if retry.
+7. Relevant inspectable work/evidence entry points.
 
-Output packet:
+Daemon-only attachment rules:
 
-1. Execution plan.
-2. Execution report.
-3. Validation plan.
-4. Changed files summary.
-5. Evidence artifacts.
-6. Validator receipts if run.
-7. Known risks.
-8. Provider question auto-answer log.
+1. Workspace baseline, manifest/hash, phase/run id, task revision, budget envelope, retry count, receipt storage and session handle remain daemon authority records.
+2. PlanExec may receive a human-readable summary of relevant workspace facts and prior Review direction, but not those mechanical records as prompt fields or obligations to repeat.
+
+Agent Harness semantic result:
+
+1. Execution plan and concise execution report.
+2. Validation actually attempted and inspectable evidence offered to Review.
+3. Known risks and the focus Review should investigate next.
+
+Daemon-owned evidence attachment:
+
+1. Changed-path/diff summary, command receipts, provider usage and timeline references are captured
+   from the phase stream and workspace by the daemon.
+2. These records support audit, recovery and UI projection; PlanExec is not asked to reproduce their
+   identifiers, hashes or storage shape.
 
 Hard stops:
 
@@ -841,28 +848,38 @@ Hard stops:
 
 Purpose:
 
-1. Check execution against frozen task.
-2. Identify missing evidence, regressions, scope drift and fake success.
-3. Produce verdict and retry hint.
+1. Independently judge whether the current direction genuinely advances the frozen human task.
+2. Challenge PlanExec's problem framing, method, architecture, evidence and conclusion rather than following its checklist.
+3. Diagnose the true obstacle and, when necessary, prescribe a non-local change of direction instead of incremental repair.
+4. Produce a clear review direction for the next PlanExec or a justified conclusion that the goal is complete.
 
 Input packet:
 
-1. Frozen task.
-2. Acceptance spec.
-3. Clarify handoff packet.
-4. PlanExec report.
-5. Diff summary.
-6. Logs and receipts.
-7. Artifact summaries.
-8. Provider question auto-answer log.
+1. Approved human task contract: target, constraints and acceptance.
+2. Current goal and the relevant context from already-passed goals.
+3. The real work produced so far: workspace state, implementation, tests, artifacts and observable behavior.
+4. Prior substantive Review direction when retrying the same goal.
+
+Review sequence:
+
+1. First investigate from the approved contract and reality above, then record an independent assessment.
+2. Only after that assessment may daemon reveal PlanExec's semantic account as one fallible source for
+   comparison. It must not anchor the initial investigation.
+
+Review must not receive as cognitive context:
+
+1. Task/goal/phase/run identifiers, task revision, session handles or event causation IDs.
+2. Failed-review counts, loop-strength budget, envelope dimensions, timeout counters or retry quotas.
+3. Baseline/phase manifest hashes, raw receipt schemas, storage paths or daemon repair state.
+4. A mechanical acceptance matrix, field-completion requirement or a daemon-authored verdict template.
 
 Output packet:
 
-1. Passed or failed verdict.
-2. Findings.
-3. Evidence sufficiency judgment.
-4. Retry hint if failed.
-5. Human review requirement if needed.
+1. A concise independent review memo: current conclusion, strongest supporting/contradicting reality, and the real diagnosis.
+2. A directional decision: pass, continue, reframe the current goal, replan only unstarted goals,
+   return a real user-owned decision, or explain a real blocker.
+3. When not passing, what must be abandoned, what must be understood differently, and the next highest-leverage direction.
+4. A minimal semantic conclusion for daemon lifecycle routing. Daemon attaches it to mechanical task state; Review does not supply phase/round/budget/receipt fields.
 
 Hard stops:
 
@@ -870,6 +887,7 @@ Hard stops:
 2. Do not accept missing evidence.
 3. Do not redefine acceptance.
 4. Do not treat executor self-report as proof.
+5. Do not reduce Review to running tests, comparing a checklist or extending PlanExec's local strategy without independent judgment.
 
 ## 11. Harness Driver Layer
 
@@ -1098,16 +1116,16 @@ Loop task shape:
 Review policy:
 
 1. Review uses same provider by default but independent role runtime.
-2. Review is adversarial against PlanExec.
-3. Review may inspect PlanExec report, diff, logs, receipts and artifacts.
+2. Review is adversarial and intellectually independent from PlanExec.
+3. Review may inspect PlanExec report, implementation, diff, logs, receipts and artifacts, but no one of these defines its reasoning frame.
 4. Review does not modify files.
-5. Review returns verdict and retry hint.
+5. Review returns a direction memo and minimal semantic conclusion, not a completed daemon form.
 
 Failure focus:
 
-1. `failure_focus` is the compact internal record that drives the next attempt.
-2. It captures the failed point, root cause judgment, strategy change, evidence to produce and invalid action to avoid.
-3. It replaces separate retry fields in the MVP object model.
+1. `failure_focus` is a daemon-private recovery/index record, not a Review prompt concept or PlanExec instruction format.
+2. Daemon may derive a short, human-readable Review Direction Memo from the independent review conclusion for the next PlanExec session.
+3. The memo captures the diagnosed obstacle, the strategy change and what not to repeat without exposing phase, budget, receipt or storage mechanics.
 
 Retry policy:
 
@@ -1120,13 +1138,9 @@ Retry policy:
 
 Attempt exhaustion:
 
-1. `one_plan_one_do` allows no retry after the first failed attempt.
-2. `light` allows only small, bounded retry behavior.
-3. `balanced` defaults to max 3 failed attempts.
-4. `run_until_stopped` has no normal attempt-count exhaustion and continues until user stop, while still respecting permission, safety, resource, provider availability and non-repeating-strategy hard stops.
-5. After exhaustion or hard stop, task becomes blocked.
-6. Daemon preserves diff, evidence and state.
-7. Report includes failure cause, repeated blockers, preserved evidence and next options.
+1. Strength limits, failed-review counts and envelope exhaustion are daemon-only control policy.
+2. They decide whether daemon may schedule another phase; they are never presented to Review as a target, explanation or pressure to pass/fail.
+3. After exhaustion or hard stop, daemon preserves diff, evidence and state, then reports the independent Review direction and user options.
 
 ## 17. Memory And Context Packets
 
@@ -1154,23 +1168,22 @@ Context packet rules:
 6. Clarify handoff packet is the authoritative input to PlanExec after contract freeze.
 7. PlanExec should not recover missing product decisions by asking the user again after contract freeze.
 8. Review receives both Clarify handoff and PlanExec evidence.
+9. Context packets never include daemon-only phase IDs, run IDs, revisions, session handles, budget counters, envelope limits, receipt hashes, manifest payloads or raw repair state unless a human explicitly asks to inspect system diagnostics.
 
 Example packet fields:
 
-1. `role`
-2. `task_ref`
-3. `goal`
+1. `role_mission`
+2. `approved_task`
+3. `current_goal`
 4. `constraints`
 5. `acceptance`
 6. `relevant_decisions`
 7. `workspace_facts`
-8. `forbidden_assumptions`
-9. `required_evidence`
-10. `artifact_refs`
-11. `clarify_discussion_summary`
-12. `user_decisions`
-13. `auto_answer_policy`
-14. `provider_question_auto_answers`
+8. `observable_work_and_evidence`
+9. `clarify_discussion_summary`
+10. `user_decisions`
+11. `prior_review_direction`
+12. `permission_boundary`
 
 ## 18. Multi-Device Sync
 

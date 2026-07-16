@@ -2930,3 +2930,284 @@ build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --c
   completed without reported failures. A production static audit found no provider-name equality check in the
   Workspace Secretary, Loop, AgentManager, tool authority or virtual-tab lifecycle code; legacy config parsing
   and provider adapter files are the intentional exceptions.
+
+## 2026-07-14 [Loop handoff, archive restore and evidence-budget recovery]
+
+- Worked on: `NTH-TD-021`, follow-up hardening for browser/runtime regressions in Workspace Secretary and
+  Background Tasks.
+- Archive restore repair: automatic agent restoration, persisted workspace layouts and tab visibility now
+  reject `archivedAt` agents before considering pinned/retained state. Archived history remains available but
+  cannot be re-opened as the foreground session after reload.
+- Loop handoff repair: successful `accept_loop` records `foregroundTurnState: "background_handoff"`, returns
+  a ready Secretary model immediately and ignores late provider terminal state for foreground lifecycle. A
+  live daemon snapshot confirmed the registered random-generator topic is `ready` with the expected handoff
+  detail.
+- Evidence repair: non-git baselines are now iterative, bounded and cache-aware; changed-file/line budget use
+  is baseline-relative. Existing tasks that were held solely by the old workspace-size accounting are replayed
+  and recovered. The live task `loop-task-494e2c0d-f065-4713-9f70-e55c1023c439` recovered from `1665` changed
+  files to `0/75` before later independently entering the intentional Review mutation hold.
+- Background UI repair: fixed the undefined compact-layout callback, made side-by-side width constraints
+  self-consistent and stack the list/detail panes on compact layouts. A freshly exported `8082` build at
+  `390x844` rendered the title and controls legibly with no console/page errors. Capture remains ignored at
+  `.dev/ui-review-captures/loop-repair-20260714/mobile-background-header-readable-after-final-fix.png`.
+- Verification: app Vitest `323/323` files and `2716/2716` tests; targeted Loop/Secretary daemon tests
+  `73/73`; `npm run build:daemon`; `npm run build:web`; `npm run check:foundation`; and `git diff --check`
+  all passed. Thoth `127.0.0.1:6688` and web review `127.0.0.1:8082` stayed available; Paseo/legacy `6767`
+  was not touched. `NTH-TD-021` remains doing because end-to-end browser/device proof of control actions and
+  restart/reconnect recovery is still outstanding.
+
+## 2026-07-14 [Agent Harness review cognition boundary]
+
+- User decision recorded as `NTH-CD-050`: the durable daemon authority must not make Agent Harness sessions
+  think mechanically. State IDs, phase/round records, receipts, manifests, budgets and recovery rules are
+  daemon-only machinery. They support recovery and safety but must not become Review's prompt, tool shape or
+  definition of quality.
+- Review is explicitly repositioned as an independent, aggressive corrective intelligence stage. It must inspect
+  the approved human contract and real work, challenge PlanExec rather than follow it, identify the true root
+  obstacle, abandon locally incremental approaches when needed, and provide the highest-leverage next direction.
+  Future implementation/evaluation must judge this behavioral quality, not field completion or checklist match.
+
+## 2026-07-14 [NTH-CD-050 canonical-document propagation]
+
+- Worked on: documentation authority only; no runtime/source behavior was changed in this pass.
+- Recorded the user decision as `NTH-CD-050`, then propagated it across the core principles, high-level design,
+  engineering architecture, App runtime contract, MVP user journey, Loop Goal 5, architecture milestone,
+  prompt-contract seed and long-running goal-mode prompt.
+- The documents now consistently separate daemon-only authority mechanics from Agent Harness cognition:
+  Review receives the approved human contract and inspectable reality, challenges PlanExec independently and
+  returns a Review Direction Memo plus minimal semantic lifecycle conclusion. IDs, phase/round, budgets,
+  receipts, manifests, recovery state and field-completion requirements remain daemon-only.
+- Added `NTH-TD-022` as the explicit future implementation slice. Its acceptance requires removing those
+  mechanics from runtime context/tool obligations and proving, with golden data plus an independent judge, that
+  Review can reject a locally plausible but conceptually wrong PlanExec route.
+- Verification: cross-document residual scan, `npm run format:check` and `git diff --check` passed. `NTH-TD-021`
+  remains the global top next action; `NTH-TD-022` is ready behind the documented decision.
+
+## 2026-07-14 [Loop background semantic contract and scheduler hardening]
+
+- Worked on: `NTH-TD-021`, `NTH-TD-022`.
+- State changes: made Goals Card registration and phase runtime handling idempotent/fenced across native provider
+  turn ids, execution generations and scheduler re-entry; a completed PlanExec now reliably re-arms scheduling
+  for its independent Review. Provider silence remains `awaiting_provider`; no phase terminal timeout was
+  reintroduced.
+- Agent Harness boundary: live PlanExec/Review/blocked tools no longer expose goal/round/phase/run/call ids,
+  acceptance matrices, failed-acceptance rows or retry/budget fields. The daemon binds those internally. Review
+  first submits an independent assessment, receives PlanExec prose only afterward, and a retry Review receives
+  the prior Direction Memo as semantic context.
+- Quality repair: the independent Loop judge first failed because golden coverage did not reject skipped
+  independent assessment, shallow Memo, budget-driven judgment or pass-budget consumption. Added four negative
+  scenarios and semantic evaluator checks; the judge then passed with 19 scenarios.
+- Evidence: deterministic daemon slice passed `5` files / `136` tests; Loop eval, independent judge, daemon
+  build, web build, app test suite, foundation gate and `git diff --check` passed. Current real Codex UT-04 and
+  UT-05 runs exercised semantic PlanExec/Review tools, linear all-pass and `continue -> retry -> pass` paths.
+- Current limitation: browser/device proof for Background control actions, restart/reconnect and restored live
+  phase timeline remains outstanding. `NTH-TD-021` stays the single top next action; `NTH-TD-022` is in progress
+  with the core cognitive boundary implemented.
+
+## 2026-07-15 [Explicit raw Provider versus Thoth entry]
+
+- User decision: `Quick + Direct` is not an ordinary Clarify/Loop combination. It is the raw Provider/Paseo-like
+  conversation state and needs a first-class Provider-adjacent Thoth switch. Thoth-on exposes `Clarify` and
+  `Loop`; Thoth-off must not inherit a previously selected structured Clarify or Loop mode.
+- Implementation: added optional durable `workspaceSecretary.enabled`; new/empty config resolves to direct,
+  while legacy saved structured Clarify/Loop values remain enabled. The app's effective Workspace Secretary
+  composer model becomes `quick + none + no loop` whenever off. Daemon snapshot projection applies the same
+  rule, so stale persisted `Loop + Dive + Infinite` cannot be rendered or sent as structured work while off.
+  Standard non-Secretary agent composer sends now use the normal provider-agent transport rather than the
+  Workspace Secretary authority RPC.
+- Verification: focused app controls/model tests `10/10`; protocol config test `4/4`; daemon persisted-config
+  test `42/42`; Workspace Secretary session test `43/43`; `npm run build:web` completed successfully. A real
+  Chromium pass on `8082` opened an existing workspace, confirmed the Provider-adjacent switch, toggled it
+  `on -> off -> on`, observed both structured controls disappear while off and restore as `Loop Quick` /
+  `Clarify Light` after re-enable, with no page error. The captures remain ignored under
+  `.dev/ui-review-captures/`.
+- Runtime refresh: the pre-existing `6688` daemon did not contain the new config field, so it was gracefully
+  restarted as the current `npm run dev:daemon` process with the same `.dev/thoth-runtime/home`. The old
+  unproxied `8082` static server was replaced by the documented `THOTH_DAEMON_PROXY_TARGET=127.0.0.1:6688`
+  web serve process. Both `8082` and `6688/api/health` were rechecked after restart; Paseo `6767` was not
+  inspected, stopped or reused.
+
+## 2026-07-15 [One topic, one provider session]
+
+- User decision recorded as `NTH-CD-053`: a Workspace Secretary tab/topic is one continuous foreground
+  provider conversation. Thoth on/off is a per-turn harness overlay, not a `structured` / `bare` provider
+  session type. Background PlanExec and Review remain separate only after a Loop handoff.
+- Implementation: deleted the `structured` / `bare` discriminator from Workspace Secretary topic-agent keys
+  and creation labels. Native-tool-capable topics now provision their stable Clarify tool catalog on the single
+  provider session even if the first turn is raw; raw turns retain an unwrapped provider prompt.
+- Safety: added a provider-neutral daemon turn-policy fence for Workspace Secretary authority tools. A raw
+  turn rejects remembered runtime-tool calls before authority parsing or timeline mutation. The fence is bound
+  to the active run generation and provider-native turn id when supplied, so stale calls cannot advance a new
+  structured turn. Historical dual mappings reconcile to one canonical mapping and prefer the old structured
+  agent for its existing Clarify context.
+- Verification: daemon focused tests passed `60/60`; app Thoth-control tests passed `10/10`; `npm run build:daemon`,
+  `npm run build:web`, `npm run format:check`, `npm run check:foundation` and `git diff --check` passed. Thoth was
+  restarted on `127.0.0.1:6688` and `/api/health` returned `status=ok`; the real Chromium page at `8082` rendered
+  without console/page errors. No provider prompt was sent during this smoke, so the live same-native-thread
+  sequence remains a deliberate user-interaction check rather than fabricated real-provider evidence. No
+  Paseo/legacy service was touched.
+
+## 2026-07-15 [Clarify Dive transparent water chamber]
+
+- User-visible request: make the full `Dive` Clarify menu row feel like a transparent, thick-edged glass chamber
+  filled almost to the top with flowing seawater, with the `Dive` lettering visibly submerged and refracted.
+- Rejected exploration: an original 21-frame opaque pixel-wave atlas passed its technical checks but looked like
+  a pasted texture in the real menu. The atlas, native poster and forced foam-white label were removed rather
+  than retained as a fallback.
+- Current implementation: the row is now a genuinely transparent layered material. A double-edged glass chamber
+  surrounds two independently deforming water bodies whose surface stays near the top. The semantic menu label
+  remains present but visually hidden; a dedicated submerged SVG label uses `feTurbulence` and
+  `feDisplacementMap`, plus a dark refracted edge and bright transmitted face. Sparse bubbles, bottom depth and
+  a separate glass reflection complete the volume. Selected and hovered rows animate slowly; press accelerates
+  the fluid. Reduced-motion and native paths retain a static near-full glass state and readable submerged label.
+- Visual refinement: shifted both water volumes from pale cyan to a saturated azure-to-cobalt jelly palette,
+  centered `Light`, `Balanced` and `Dive` independently of the selected check, centered the submerged SVG word,
+  and increased all three option labels to the theme `base` size. The final typography favors optical refraction
+  over deformation: displacement was reduced to `0.9/1.6/2.2` for idle/active/pressed, turbulence frequency was
+  lowered, and the word now combines deep-blue, cyan and milk-white offset faces. A dedicated front-glass optics
+  layer adds a continuous top lens, side-wall refraction and bottom caustic instead of relying on a stronger blur.
+- Full-volume refinement: moved both animated water contours from the upper `10-20%` band to a `0-3%` meniscus,
+  made the native fallback `100%` full-height, and reduced the two azure volume layers to `0.07-0.27` alpha.
+  The result keeps a saturated blue hue and bottom depth while transmitting substantially more of the underlying
+  menu surface, so the row reads as a full transparent liquid-glass vessel rather than a partially filled button.
+- Verification: focused RuntimeControls test passed `8/8`; the full App suite passed `324/324` files and
+  `2725/2725` tests; `npm run build:web`, `npm run format:check`, `npm run check:foundation` and
+  `git diff --check` passed. A real Chromium pass on `8082` observed both water layers, live interpolated
+  `clip-path`, the SVG text filter, backdrop refraction and active animations, with no page or console errors.
+  The optional App-wide typecheck remains red on broad pre-existing React DOM, fixture-schema, WebView and
+  Unistyles typing debt and is not recorded as passing. Ignored captures remain under
+  `.dev/ui-review-captures/clarify-dive-cinematic-wave-20260715/`.
+
+## 2026-07-16 [Clarify Dive transmission-material refinement]
+
+- Visual reference: inspected `olivierlarose/3d-distorted-glass-effect` through its public source endpoints after
+  the local GitHub CLI credential and a direct clone were unavailable. The reference builds its effect from a
+  fully transmissive, zero-roughness `MeshTransmissionMaterial` with finite thickness, restrained IOR and
+  chromatic aberration, then lets environment light and background content reveal the refraction. No source,
+  model or asset from that repository was copied, and no Three.js/WebGL dependency was added to this 32px menu
+  control.
+- Implementation: added a separate SVG displacement map to the Dive chamber's real CSS `backdrop-filter`, with
+  stronger glass displacement than the submerged word. Reduced the full-volume azure layers to a very light
+  medium tint, moved perceived depth into thick side walls, top lens reflections and a bottom caustic, and kept
+  the existing semantic label, click target, selected check, reduced-motion behavior and native fallback.
+- Browser evidence: Chromium on `8082` computed the transmission layer as
+  `url("#thoth-dive-glass-refraction") blur(0.16px) saturate(1.18) contrast(1.035)`. The active glass displacement
+  was `3.8` while text displacement remained `1.2`; the full menu capture showed a clear center with pale azure
+  transmission and concentrated edge thickness. No page or console errors were observed. Captures and the
+  machine-readable report remain ignored under `.dev/ui-review-captures/clarify-dive-cinematic-wave-20260715/`.
+- Verification: focused RuntimeControls test passed `8/8`; the full App suite passed `324/324` files and
+  `2725/2725` tests; `npm run build:web`, `npm run format:check`, `npm run check:foundation` and
+  `git diff --check` passed. The App suite emitted two existing Vitest browser-context deprecation warnings but
+  no failed tests.
+
+## 2026-07-16 [Clarify Dive visible-refraction correction]
+
+- User acceptance found that the transmission-material pass still had no perceptible refraction. Root cause:
+  the SVG backdrop filter was active, but its source pixels were a nearly uniform menu background; the previous
+  `1.2px` text displacement was also too weak to provide a recognizable optical reference.
+- Replaced the text treatment with three clipped lens bands. The upper, middle and lower portions of `Dive` now
+  refract in opposing horizontal directions, while a restrained secondary displacement and cyan/white spectral
+  separation preserve a fluid surface. Hover/selected uses offsets of `-2.5`, `+3.4` and `-1.9` viewBox pixels;
+  press increases the lens strength without making the full glyph randomly wavy.
+- Chromium acceptance on `8082` captured the split contours at both native size and a `4x` pixel inspection.
+  The SVG DOM and measured text boxes confirmed opposing slice positions, and the visible word remained centered
+  and legible. No page or console errors were observed. The ignored evidence remains under
+  `.dev/ui-review-captures/clarify-dive-cinematic-wave-20260715/`.
+- Verification: focused RuntimeControls test `8/8`; full App suite `324/324` files and `2725/2725` tests;
+  `npm run build:web`, `npm run format:check`, `npm run check:foundation` and `git diff --check` passed. The App
+  suite retained two existing Vitest browser-context deprecation warnings and reported no failed tests.
+
+## 2026-07-16 [Clarify Dive return to original menu]
+
+- User rejected both the liquid-glass and visible-refraction directions and requested the original Dive menu
+  presentation with only dynamic azure typography.
+- Removed the full glass chamber, water volumes, SVG filters, clipped refraction bands, bubbles, optics and all
+  related styles. Also removed the effect-only DropdownMenu background-overlay/forced-centering API and SVG test
+  stubs, leaving no compatibility or dead rendering path behind.
+- Added a single `DiveAzureLabel`: the standard-size menu label uses a slow deep-blue/cyan gradient on Web and a
+  matching animated color interpolation on native. Reduced-motion Web keeps a static centered gradient. The
+  trigger, menu row, selected check, spacing and hover background use the original DropdownMenu behavior.
+- Chromium acceptance on `8082` measured the gradient background position moving from about `0%` to `88%` over
+  `1.2s`, confirmed zero legacy glass nodes and observed no page or console errors. Ignored evidence is stored at
+  `.dev/ui-review-captures/clarify-dive-text-20260716/`.
+- Verification: focused RuntimeControls test `8/8`; full App suite `324/324` files and `2725/2725` tests;
+  `npm run build:web`, `npm run format:check`, `npm run check:foundation` and `git diff --check` passed. The App
+  suite retained two existing Vitest browser-context deprecation warnings and reported no failed tests.
+
+## 2026-07-16 [Workspace Secretary per-send Quick/Loop hot switch]
+
+- Reproduced the authority mismatch: one topic first used Quick foreground, then sent a new Loop request. The
+  approval UI and daemon conflict check both depended on mutable `secretary.composer.mode`, so a late model or
+  user control change could offer `accept_quick` for a Loop-owned Card and make registration fail.
+- Added optional, backward-compatible `SecretaryTurnControls` to durable user turns and Task/Goal/Goals Cards.
+  Daemon freezes the effective controls at send, binds every authority Card to that snapshot, ignores provider-
+  supplied runtime mechanics, and reuses the snapshot for approval validation, Loop strength and restart handoff.
+- Approval UI now treats the Card snapshot as authority and the live composer only as a legacy fallback. The
+  current composer remains untouched after Quick/Loop approval, so user changes made for the next send survive.
+- Added integration coverage for Quick -> Loop in one continuous provider session, a second switch back to Quick
+  while the Loop Goals Card is pending, correct Light registration, foreground handoff and restart restoration.
+  Component tests cover both Card/composer mismatch directions; persisted-config and protocol tests cover durable
+  round trips and old records.
+- Verification: daemon Workspace Secretary/persistence `91/91`; protocol `13/13`; focused App `33/33`; App unit
+  `2706/2706`; App browser `20/20`; `npm run build:daemon`, `npm run build:web` and
+  `npm run check:foundation` passed. The combined App multi-project command hung in Vitest's unit/browser
+  orchestration twice; running the same unit and browser projects independently completed green. No Paseo/legacy
+  service was touched. A read-only Chromium smoke loaded `8082` with HTTP `200` and no console/page errors; its
+  ignored screenshot is under `.dev/ui-review-captures/workspace-secretary-hot-switch-20260716/`. No real-provider
+  hot-switch conversation run is claimed by this entry.
+
+## 2026-07-16 [Background handoff spinner and Review startup recovery]
+
+- Live diagnosis separated two failures on task `loop-task-ee84025c-7293-4ed4-98ce-f7f09e77c435`. Its Secretary
+  topic was durably `background_handoff + ready`, while the App had cleared that model ref on composer-mode change
+  and reconstructed a false foreground spinner from retained running timeline items. Independently, G1 Review had
+  never started: provider config parsing failed on an unclosed TOML table, so failed reviews correctly remained
+  `0/1` even though old task code mislabeled the infrastructure error as blocked.
+- Removed composer mode from Workspace Secretary runtime reset identity. Mode still updates the next-send/legacy
+  approval preference, but cannot clear durable handoff state.
+- Codex provider session isolation now keeps linked shared auth but snapshots writable config per session. Existing
+  config symlinks migrate when an old phase is recovered. Generic Loop provider streams that throw before emitting
+  an event now enter resumable `interrupted(provider_stream_error)` without consuming failed-Review budget.
+- Added explicit Resume from blocked phase cursor and enabled the Background Tasks Resume button for blocked tasks.
+  Review semantic `continue` / `reframe_current_goal` remains the only automatic retry path that consumes the
+  failed-Review budget.
+- Built daemon/web, passed focused daemon `86/86`, focused App `51/51`, foundation and diff/format gates. Restarted
+  `6688` through its official RPC after confirming there were no running/queued background tasks; worker PID moved
+  from `2742116` to `3647175`, health recovered and `6767` was untouched.
+- Issued one real Resume for the affected task at revision 12. G1 Review passed, G2 PlanExec completed and G2 Review
+  started automatically. New G2 PlanExec/Review config files are private regular files, the task lineage and all 11
+  goals remain intact, and failed-Review usage is still `0/1`. The task remains live; no all-goals completion claim
+  is made.
+
+## 2026-07-16 [Background Loop Review Apply live stream recovery]
+
+- Worked on: `NTH-TD-021`, `NTH-EV-036`, `NTH-EXP-024`.
+- Diagnosis: the affected stopped task proved Provider approval was healthy: both Review `apply_patch` calls
+  completed and reasoning continued. Background Tasks had loaded an internal phase snapshot, but the session's
+  global `AgentManager` subscription correctly filtered the internal agent's later stream, so the App never saw
+  `permission_resolved` and its 15-second waiter made the approval look frozen.
+- Implementation: `Session` now installs one targeted subscription only for a Loop phase confirmed by
+  `recoverPhaseAgent()`, reuses the ordinary stream/permission forwarding path, keeps internal state out of
+  foreground agent updates, replaces the subscription on phase switch and releases it on cleanup. Added typed
+  Loop service test stubs and a regression covering hidden-by-default behavior, foreground behavior, permission
+  request/resolution, completed tools, later reasoning, idempotency, switching and cleanup.
+- Deterministic verification: daemon `2` files / `249` tests and Background Tasks App `1` file / `13` tests
+  passed; daemon/web builds, foundation, root format and `git diff --check` passed. The direct single-file `oxfmt`
+  call was debug-only after the root format check identified `session.test.ts`; the rerun root gate passed.
+- Runtime refresh: after confirming no `running` or `queued` tasks, `6688` was restarted through official RPC
+  request `6c3d10ba-09e9-48e8-830d-f395fbd0fb77`; worker `3647175` was replaced and health returned `ok`.
+  Web `8082` and relay health were rechecked. Port `6767` was not inspected, stopped or reused.
+- Browser/Provider acceptance: a first throwaway task exposed two harness mistakes (queued Review mistaken for an
+  active agent, then a missing `session.message` envelope unwrap) and later demonstrated a `70ms` scoped
+  PlanExec resolution. A proof-as-product task was stopped after showing that independent Review correctly would
+  not implement PlanExec's missing deliverable. A final PRNG contract task reproduced the intended independent
+  Review-test shape. G4 Review sequences were `692 -> 694 -> 695 -> 697 -> 705`; the Apply card disappeared in
+  `242ms`, the external `state_contract_probe.cpp` completed, later reasoning streamed and sealed workspace
+  receipts stayed byte-identical. A second Review Apply resolved in `253ms`. Live agent-list probing found no
+  internal phase leakage.
+- Evidence: ignored bundle
+  `.dev/ui-review-captures/loop-background-approval-20260716T094404Z/final-acceptance-report.json`, supporting
+  WebSocket JSON, screenshots, daemon visibility probe and workspace receipts. Key screenshots were opened and
+  inspected. Both throwaway tasks are `stopped`; authority has no `running`, `queued` or `awaiting_provider` task.
+- Remaining: `NTH-TD-021` stays `doing` for real browser/device `budget_wait`, pause/resume/stop and daemon
+  restart/reconnect restoration. This session closes only the viewed internal phase live permission/stream defect.

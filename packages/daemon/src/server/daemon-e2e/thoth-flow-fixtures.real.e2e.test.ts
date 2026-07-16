@@ -426,7 +426,11 @@ async function waitForLoopTask(
     }
     const summary = listed.tasks.find((task) => task.id !== "empty");
     if (summary) {
-      const inspected = await runtime.client.inspectBackgroundTask({ taskId: summary.id });
+      const inspected = await runtime.client.inspectBackgroundTask({
+        taskId: summary.id,
+        workspaceId: runtime.workspaceId,
+        workspacePath: runtime.cwd,
+      });
       if (inspected.error) {
         throw new Error(
           `Background task inspect failed while waiting for ${label}: ${inspected.error}`,

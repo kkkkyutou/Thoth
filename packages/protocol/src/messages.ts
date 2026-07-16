@@ -76,6 +76,7 @@ import {
   BackgroundTaskListRequestSchema,
   BackgroundTaskInspectRequestSchema,
   BackgroundTaskActionRequestSchema,
+  BackgroundTaskDecisionRequestSchema,
   WorkspaceSecretarySnapshotResponseSchema,
   WorkspaceSecretarySendResponseSchema,
   WorkspaceSecretaryAnswerResponseSchema,
@@ -85,6 +86,7 @@ import {
   BackgroundTaskListResponseSchema,
   BackgroundTaskInspectResponseSchema,
   BackgroundTaskActionResponseSchema,
+  BackgroundTaskDecisionResponseSchema,
   BackgroundTaskUpdateSchema,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
 import {
@@ -157,6 +159,7 @@ const MutableWorkspaceSecretaryProviderSessionSchema = z
 
 const MutableWorkspaceSecretaryConfigSchema = z
   .object({
+    enabled: z.boolean().optional(),
     providerSession: MutableWorkspaceSecretaryProviderSessionSchema.optional(),
     mode: ThothRuntimeModeSchema.optional(),
     clarifyStrength: ThothRuntimeClarifyStrengthSchema.exclude(["deep"]).optional(),
@@ -180,6 +183,7 @@ const MutableWorkspaceSecretaryConfigSchema = z
                     turns: z.array(SecretaryTurnSchema),
                     currentClarifyState: z.string().min(1),
                     activeTurnPhase: z.string().min(1),
+                    foregroundTurnState: z.enum(["background_handoff"]).optional(),
                     activeTopicProviderBacked: z.boolean().optional(),
                     timelineAgentId: z.string().min(1).nullable().optional(),
                     status: SecretaryRuntimeStatusModelSchema.optional(),
@@ -2288,6 +2292,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BackgroundTaskListRequestSchema,
   BackgroundTaskInspectRequestSchema,
   BackgroundTaskActionRequestSchema,
+  BackgroundTaskDecisionRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -4454,6 +4459,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BackgroundTaskListResponseSchema,
   BackgroundTaskInspectResponseSchema,
   BackgroundTaskActionResponseSchema,
+  BackgroundTaskDecisionResponseSchema,
   BackgroundTaskUpdateSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,

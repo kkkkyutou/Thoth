@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { MutableDaemonConfigPatchSchema } from "./messages.js";
 
 describe("mutable daemon config patch", () => {
+  it("accepts the explicit Thoth mode switch", () => {
+    expect(
+      MutableDaemonConfigPatchSchema.parse({
+        workspaceSecretary: { enabled: false },
+      }),
+    ).toEqual({
+      workspaceSecretary: { enabled: false },
+    });
+  });
+
   it("accepts Workspace Secretary loop strength", () => {
     expect(
       MutableDaemonConfigPatchSchema.parse({
@@ -42,6 +52,7 @@ describe("mutable daemon config patch", () => {
                   turns: [],
                   currentClarifyState: "C_DIRECT",
                   activeTurnPhase: "clarify",
+                  foregroundTurnState: "background_handoff",
                   status: {
                     kind: "loading",
                     title: "正在处理",
@@ -55,11 +66,14 @@ describe("mutable daemon config patch", () => {
             },
           ],
         },
-      }).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0]?.status,
-    ).toEqual({
-      kind: "loading",
-      title: "正在处理",
-      detail: "provider turn 正在运行。",
+      }).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0],
+    ).toMatchObject({
+      foregroundTurnState: "background_handoff",
+      status: {
+        kind: "loading",
+        title: "正在处理",
+        detail: "provider turn 正在运行。",
+      },
     });
   });
 

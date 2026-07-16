@@ -53,7 +53,7 @@ import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
 import {
   cancelComposerAgent,
-  dispatchWorkspaceSecretaryMessage,
+  dispatchComposerAgentMessage,
   editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
@@ -68,7 +68,6 @@ import {
   type QueueWriter,
   type QueuedComposerMessage,
 } from "@/composer/actions";
-import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useVoiceOptional } from "@/contexts/disabled-voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -95,13 +94,7 @@ import { submitAgentInput } from "@/composer/submit";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
-import type { GitHubSearchItem, MutableDaemonConfig } from "@thoth/protocol/messages";
-import type {
-  ThothRuntimeClarifyStrength,
-  ThothRuntimeLoopStrength,
-  ThothRuntimeMode,
-} from "@thoth/protocol/thoth-runtime-contract";
-import type { ThothComposerModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { GitHubSearchItem } from "@thoth/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -215,40 +208,6 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
       provider: agent?.provider ?? null,
     };
   };
-}
-
-function buildWorkspaceSecretaryComposerModel(
-  config: MutableDaemonConfig | null,
-): ThothComposerModel {
-  const rawMode = config?.workspaceSecretary?.mode;
-  const mode: ThothRuntimeMode = rawMode === "loop" ? "loop" : "quick";
-  const rawClarify = config?.workspaceSecretary?.clarifyStrength;
-  const clarifyStrength: Exclude<ThothRuntimeClarifyStrength, "deep"> =
-    rawClarify === "none" ||
-    rawClarify === "auto" ||
-    rawClarify === "light" ||
-    rawClarify === "dive"
-      ? rawClarify
-      : "balanced";
-  const loopStrength = resolveWorkspaceSecretaryLoopStrength(
-    config?.workspaceSecretary?.loopStrength,
-  );
-  return {
-    mode,
-    clarifyStrength,
-    loop: mode === "loop" ? loopStrength : null,
-    authorityLabel: "真实 provider",
-    authorityReady: true,
-  };
-}
-
-function resolveWorkspaceSecretaryLoopStrength(value: unknown): ThothRuntimeLoopStrength {
-  return value === "one_plan_one_do" ||
-    value === "light" ||
-    value === "balanced" ||
-    value === "run_until_stopped"
-    ? value
-    : "one_plan_one_do";
 }
 
 function renderContextWindowMeter(
@@ -1041,7 +1000,6 @@ export function Composer({
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
   const client = useHostRuntimeClient(serverId);
-  const { config: daemonConfig } = useDaemonConfig(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const agentDirectoryStatus = useHostRuntimeAgentDirectoryStatus(serverId);
   const toast = useToast();
@@ -1059,11 +1017,6 @@ export function Composer({
   const { settings: appSettings } = useAppSettings();
 
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
-  const workspaceSecretaryComposer = useMemo(
-    () => buildWorkspaceSecretaryComposerModel(daemonConfig),
-    [daemonConfig],
-  );
-
   const queuedMessagesRaw = useSessionStore((state) =>
     state.sessions[serverId]?.queuedMessages?.get(agentId),
   );
@@ -1258,26 +1211,17 @@ export function Composer({
         setHead: (updater) => setAgentStreamHead(serverId, updater),
         setTail: (updater) => setAgentStreamTail(serverId, updater),
       };
-      await dispatchWorkspaceSecretaryMessage({
+      await dispatchComposerAgentMessage({
         client,
         agentId: targetAgentId,
         text,
         attachments: sendAttachments,
-        composer: workspaceSecretaryComposer,
         encodeImages,
         stream,
       });
       onAttentionPromptSend?.();
     };
-  }, [
-    client,
-    onAttentionPromptSend,
-    serverId,
-    setAgentStreamTail,
-    setAgentStreamHead,
-    t,
-    workspaceSecretaryComposer,
-  ]);
+  }, [client, onAttentionPromptSend, serverId, setAgentStreamTail, setAgentStreamHead, t]);
 
   useEffect(() => {
     onSubmitMessageRef.current = onSubmitMessage;

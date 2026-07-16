@@ -2030,3 +2030,231 @@ Not yet promoted by this evidence:
 1. Real browser/device acceptance for `budget_wait`, pause/resume/stop and daemon restart/reconnect with the Background Tasks control surface and restored phase AgentTimeline.
 2. Claude/OpenCode Loop execution adapters. They remain honest unsupported/contract-only paths.
 3. This record remains partial only because the browser/device recovery evidence above is still absent, not because a current repository gate or independent judge is pending.
+
+Follow-up repair evidence recorded on `2026-07-14`:
+
+1. Archived Workspace Secretary agents are now excluded from automatic foreground restore regardless of
+   pin/layout retention. Old persisted layouts cannot recreate an archived agent tab; History remains the
+   explicit access path. This fixes the observed archived "今天天气怎么样？" topic reappearing after reload.
+2. A successful Loop Goals Card registration now persists `foregroundTurnState: "background_handoff"`.
+   The Secretary immediately reports `ready` with "该工作已交由后台流程继续处理。" Late terminal
+   events remain timeline evidence and cannot restore a foreground spinner or error. A live snapshot for
+   `topic-5883ef61-a526-492f-9a5f-16de3e84c345` confirmed that exact state.
+3. Non-git evidence baselines now use bounded iterative metadata capture, exclude runtime/build caches and
+   calculate changed files/lines against the sealed baseline. A real legacy task
+   `loop-task-494e2c0d-f065-4713-9f70-e55c1023c439` was recovered from an erroneous `1665` changed-file
+   `budget_wait` to `0/75`; its durable event is `legacy_workspace_size_budget_wait_recovered`. The later
+   `evidence_invalid` state is a separate Review workspace-mutation safeguard and remains intentionally visible.
+4. Background Tasks now opens without the prior `isCompactLayout` runtime exception. The surface maintains
+   a readable side-by-side minimum width on desktop and switches to a stacked list/detail layout on compact
+   widths. A fresh `390x844` Chromium capture confirms a one-line task title, readable controls and no
+   console or page errors: `.dev/ui-review-captures/loop-repair-20260714/mobile-background-header-readable-after-final-fix.png`.
+5. Current-tree verification: `npm --workspace=@thoth/app run test` passed `323` files / `2716` tests;
+   targeted daemon Loop/Secretary tests passed `3` files / `73` tests; `npm run build:daemon`,
+   `npm run build:web`, `npm run check:foundation` and `git diff --check` passed.
+
+This follow-up does not promote `NTH-EV-031` to fully verified. Browser/device proof for actual
+pause/resume/stop, daemon restart/reconnect and restored live phase timelines remains required.
+
+### `NTH-EV-031` 2026-07-14 Loop Semantic-Contract And Scheduler Follow-up
+
+Status: `partial_verification`
+
+1. Live PlanExec, Review and blocked runtime tools now expose semantic task-language only. The daemon
+   binds goal, round, phase run, runtime-tool call id and attempt generation internally; stale native
+   provider turns cannot inject a late PlanExec result or independent Review assessment into the active
+   phase.
+2. Review now has a strict two-step contract: independent assessment first, then daemon releases the
+   fallible PlanExec account for comparison. Retry Review receives the prior substantive Direction Memo
+   for the same goal, but never a round, budget, receipt, manifest or task-revision obligation.
+3. Real Codex app-server runs exercised the current semantic dynamic-tool contract. The all-pass path
+   completed two linear goals through PlanExec, independent Review and pass. The retry path completed
+   `continue -> same-goal Direction-Memo retry -> pass -> next goal -> pass`. The real tool payloads
+   contained no daemon goal/phase/round ids, acceptance matrix, failed-acceptance rows or budget fields.
+4. Final deterministic daemon coverage passed `5` files / `136` tests: five user journeys, Loop
+   scheduler/state service, runtime-tool bridge, Codex app-server adapter and literal real-provider flow
+   script contracts. The five journeys retain their intended boundary: they verify authority flow rather
+   than asking the fixture provider to solve an implementation task intelligently.
+5. `npm run test:drivers -- loop/eval` passed. `npm run judge:loop:golden` first found missing negative
+   coverage and was repaired; its final independent Codex judge passed with 19 deterministic scenarios,
+   including negative cases for Review-before-assessment, shallow/incremental Direction Memo, daemon-budget
+   reasoning and a pass that consumes failed-Review budget.
+6. `npm --workspace=@thoth/app run test`, `npm run build:daemon`, `npm run build:web`,
+   `npm run check:foundation` and `git diff --check` completed successfully in this follow-up.
+
+Current boundary:
+
+1. Review uses Provider Trust for workspace access. Daemon evidence remains audit/recovery/UI material and
+   does not automatically turn a workspace manifest difference into `evidence_invalid` or block lifecycle.
+2. This does not close browser/device proof for task controls, restart/reconnect and complete phase-timeline
+   restoration. Those remain the open acceptance evidence for `NTH-TD-021`; no screenshot or real-provider
+   trace is recorded in this tracked report.
+
+### `NTH-EV-032` Explicit Raw Provider / Thoth Entry Separation
+
+Status: `partial_verification`
+
+Evidence recorded on `2026-07-15`:
+
+1. `workspaceSecretary.enabled` is an optional config field accepted by both daemon persisted config and the
+   protocol patch contract. Empty new config resolves to raw Provider conversation; older saved structured
+   Clarify or Loop settings preserve their opt-in behavior until the user explicitly turns Thoth off.
+2. The Provider-adjacent Thoth switch hides structured controls while off. The effective Workspace Secretary
+   composer is forced to `Quick + Direct`; stale stored `Loop + Dive + Infinite` preferences cannot produce a
+   Clarify Card, Task Card, Goals Card or Loop registration for that send.
+3. When Thoth is re-enabled, Clarify is normalized to `Light`, `Balanced` or `Dive`; it has no visible or
+   effective `Direct`/`Auto` option. Loop selection remains `Quick` or background `Loop` strength.
+4. Focused verification passed: app control/model tests `10/10`, protocol config tests `4/4`, daemon
+   persisted-config tests `42/42`, Workspace Secretary session tests `43/43`, and `npm run build:web`.
+5. Real Chromium on the local `8082` Web surface opened an existing workspace and confirmed the Provider-
+   adjacent switch. It completed `on -> off -> on`: while off, both `Loop` and `Clarify` controls were absent;
+   after re-enable, the stored `Loop Quick` and `Clarify Light` values returned. No page error occurred. The
+   ignored captures are `.dev/ui-review-captures/thoth-entry-20260715-provider-adjacent.png` and
+   `.dev/ui-review-captures/thoth-entry-20260715-switch-off.png`.
+
+Not yet promoted by this evidence:
+
+1. This entry does not change the remaining `NTH-TD-021` Browser/device Loop control and recovery evidence.
+
+### `NTH-EV-033` One Workspace Secretary Topic, One Provider Session
+
+Status: `partial_verification`
+
+Evidence recorded on `2026-07-15`:
+
+1. Workspace Secretary agent identity is now only `topic + provider/model/mode/settings`; the deleted
+   `structured` / `bare` discriminator can no longer create two foreground provider sessions for one topic.
+2. A native-tool-capable topic provisions its stable Clarify tool catalog once, including when its first turn is
+   raw Provider. Raw and structured prompts remain distinct per turn, but both run through the same provider
+   agent/session and preserve its conversation context.
+3. The daemon now owns a provider-neutral per-turn authority fence. A raw Provider turn rejects remembered
+   Thoth authority tool calls before schema parsing, so it creates no timeline card, pending decision or task.
+   The fence binds provider-native turn ids when the adapter supplies them and ignores stale turn generations.
+4. Persisted legacy `topic:structured:*` and `topic:bare:*` records reconcile to one canonical mapping. When
+   both exist, the historical structured agent is retained for its Clarify authority context; the losing legacy
+   route is removed from active routing, not used as a fallback.
+5. Deterministic verification passed: Workspace Secretary and runtime-tool tests `60/60`; app Thoth control
+   tests `10/10`; `npm run build:daemon`, `npm run build:web`, `npm run format:check`, `npm run check:foundation`
+   and `git diff --check` passed. The daemon suite covers Thoth-on -> raw-off -> Thoth-on, raw-first ->
+   Thoth-on, raw tool-call rejection and legacy mapping reconciliation.
+6. The rebuilt Thoth daemon was restarted on `127.0.0.1:6688` and returned `/api/health` `status=ok`; the web
+   surface on `127.0.0.1:8082` rendered in Chromium without console or page errors. Captures remain ignored under
+   `.dev/ui-review-captures/`.
+
+Not yet promoted by this evidence:
+
+1. Real browser/provider evidence must still show one live native provider thread across an on -> off -> on
+   conversation after the rebuilt daemon is restarted. This is a product smoke gap, not a deterministic-state
+   or compile failure.
+
+### `NTH-EV-034` Per-Send Quick/Loop Hot-Switch Authority
+
+Status: `code_verified`
+
+Evidence recorded on `2026-07-16`:
+
+1. Protocol models now persist optional provider-neutral `turnControls` on user turns and Task/Goal/Goals Cards.
+   Legacy records without the field still parse; current sends freeze effective `mode`, Clarify strength and Loop
+   strength before provider execution begins.
+2. Daemon binds authority cards to the latest durable user-send snapshot, ignores provider-supplied control
+   mechanics, validates approval intent against the target Card and uses the same snapshot for Loop budget and
+   restart handoff. A later composer switch remains available for the next send and cannot rewrite the pending
+   Card.
+3. App approval cards prefer their own frozen controls over the live composer. Tests cover a Loop Card while the
+   composer is Quick and a Quick Card while the composer is Loop, so only `确认注册` or `前台执行` respectively is
+   exposed.
+4. Daemon integration covers an existing Quick topic hot-switching to `Loop + Balanced + Light`, both authority
+   cards retaining the Loop snapshot, another switch back to Quick while Goals approval is pending, successful
+   background registration with the Light budget, foreground `background_handoff`, and restart restoration while
+   global controls remain Quick.
+5. Verification passed: Workspace Secretary/persistence `91/91`, protocol schema `13/13`, focused App `33/33`,
+   App unit `2706/2706`, App browser `20/20`, `npm run build:daemon`, `npm run build:web`,
+   `npm run check:foundation`, format check and `git diff --check`.
+6. A read-only Chromium smoke loaded the rebuilt Web export through `127.0.0.1:8082` with HTTP `200`, title
+   `Thoth`, and no console or page errors. The ignored capture is
+   `.dev/ui-review-captures/workspace-secretary-hot-switch-20260716/current-web-readonly.png`.
+
+Boundary:
+
+1. This evidence verifies durable routing, persistence, browser-component behavior and Web surface loading. It
+   does not claim a new real-provider hot-switch conversation run, and it does not close the broader
+   `NTH-TD-021` control/restart/device acceptance gap.
+
+### `NTH-EV-035` Background Handoff And Provider-Failure Recovery
+
+Status: `code_verified_with_live_recovery`
+
+Evidence recorded on `2026-07-16`:
+
+1. The affected Workspace Secretary topic was read from the live daemon after restart and retained
+   `foregroundTurnState=background_handoff`, `status=ready` and the submitted Goals Card. App runtime identity no
+   longer includes mutable composer mode, so a hot switch cannot discard that handoff and reconstruct running
+   from historical timeline tools.
+2. Codex runtime sessions now link shared `auth.json` but copy `config.toml` as a private regular-file snapshot.
+   New G2 PlanExec and Review session homes were inspected live and both configs were regular files. Historical
+   phase recovery also re-runs the provider runtime-session adapter so old config symlinks migrate on Resume.
+3. Provider stream startup exceptions now produce `interrupted(provider_stream_error)` and leave failed-Review
+   usage unchanged. Explicit blocked phases are resumable from their phase cursor, and Background Tasks enables
+   Resume for blocked state.
+4. The live affected task `loop-task-ee84025c-7293-4ed4-98ce-f7f09e77c435` was resumed at authority revision 12.
+   G1 Review completed with pass, daemon advanced to G2, G2 PlanExec completed, and G2 Review started with failed
+   reviews still `0/1`. The task was not re-registered and its 11-goal lineage was preserved.
+5. Verification passed: focused daemon `86/86`, focused App `51/51`, `npm run build:daemon`, `npm run build:web`,
+   `npm run check:foundation`, format check and `git diff --check`. Daemon restart used the official RPC, changed
+   the `6688` worker PID from `2742116` to `3647175`, restored health, and did not touch `6767`.
+
+Boundary:
+
+1. The task remains a live background execution and this evidence does not claim all 11 goals are done. The final
+   historical-session migration patch is built for the next restart but was not used to interrupt the newly
+   recovered live G2 phase.
+
+### `NTH-EV-036` Background Loop Review Apply Live Stream Recovery
+
+Status: `verified_for_scoped_behavior`
+
+Evidence recorded on `2026-07-16`:
+
+1. Root cause was the live-event routing boundary, not Provider permission continuation. Loop PlanExec/Review
+   agents are internal and therefore correctly filtered from global `AgentManager` subscribers, but Background
+   Tasks previously fetched only a timeline snapshot. A pending card could render from that snapshot while its
+   later `permission_resolved`, completed tool and reasoning events were still discarded by the global internal
+   filter, leaving `respondToPermissionAndWait()` to reach its 15-second timeout.
+2. A daemon WebSocket session now installs one idempotent, agent-targeted subscription only after
+   `recoverPhaseAgent(agentId)` confirms a registered Loop phase and the loaded snapshot is internal. Switching
+   phases releases the old subscription; session cleanup always releases the current one. Global subscriptions
+   still hide every internal state/stream, and targeted internal `agent_state` never enters foreground
+   `agentUpdates`.
+3. The shared forwarding path now emits the existing `agent_stream`, `agent_permission_request` and
+   `agent_permission_resolved` messages for the viewed phase with `internal: true`. No protocol schema, client API,
+   App permission-card contract or Review write boundary changed.
+4. Focused regression passed: daemon `session.test.ts` plus `agent-manager.test.ts` passed `2` files / `249`
+   tests; Background Tasks App regression passed `1` file / `13` tests. `npm run build:daemon`,
+   `npm run build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --check` passed. The
+   one direct `./node_modules/.bin/oxfmt packages/daemon/src/server/session.test.ts` invocation was only the
+   documented single-file debug correction after the root format gate identified that file; the subsequent
+   root format gate is the acceptance result.
+5. Real Chromium on `127.0.0.1:8082` observed native Codex Review agent
+   `5aed1a5d-90d9-4753-8ed6-c3f81249d507` for task
+   `loop-task-284b34e3-8cef-4235-a167-732e2ce26737`. The exact WebSocket order was sequence `692`
+   `permission_requested` (`Apply file changes`) -> `694` browser `agent_permission_response` -> `695` scoped
+   internal `permission_resolved` -> `697` `apply_patch completed` -> `705` later Review reasoning. The permission
+   card disappeared in `242ms`, with no refresh and no page error. A second Review repeated the Apply path in
+   `253ms` and then continued into a separately approved artifact compile command.
+6. Review wrote only
+   `.dev/thoth-runtime/home/thoth-loop/review-artifacts/loop-task-284b34e3-8cef-4235-a167-732e2ce26737/loop-phase-2b580dfc-5056-42ab-8e2e-73f4213cc9cb/state_contract_probe.cpp`.
+   The sealed `review_start` and `review_result` receipts have identical tree, Git status/diff hashes, HEAD,
+   changed-file count and changed-line count, proving Review did not change the throwaway workspace. A live
+   foreground-agent probe found zero leaked phase agent IDs.
+7. Ignored evidence is under
+   `.dev/ui-review-captures/loop-background-approval-20260716T094404Z/`. The machine-readable acceptance report is
+   `final-acceptance-report.json`; `prng-websocket-summary.json`, `daemon-final-prng.json`, the before/resolved
+   screenshots and `prng-review-g4-completed-history.png` preserve the ordered stream, visibility boundary and
+   inspected UI state. Both new throwaway acceptance tasks were explicitly stopped; no `running`, `queued` or
+   `awaiting_provider` task remained, and legacy port `6767` was not inspected or touched.
+
+Boundary:
+
+1. This verifies the reviewed internal Loop phase permission/stream defect and Background Tasks UI recovery. It
+   does not close real browser/device `budget_wait`, pause/resume/stop or daemon restart/reconnect acceptance;
+   `NTH-TD-021` remains the single top next action.

@@ -9,6 +9,7 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
 import {
+  applyLoopTaskDecisionToWorkspaceSecretaryStream,
   applyWorkspaceSecretaryModelToStream,
   dispatchWorkspaceSecretaryAnswer,
   dispatchWorkspaceSecretaryCancel,
@@ -27,6 +28,7 @@ import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/dra
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
+import { buildWorkspaceSecretaryComposerModel } from "@/composer/agent-controls/thoth-mode";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -38,11 +40,13 @@ import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
   deriveWorkspaceSecretaryDraftTitleFromText,
+  isWorkspaceSecretaryBackgroundHandoff,
   isWorkspaceSecretaryModelRunning,
   resolveWorkspaceSecretaryTurnInFlight,
   resolveWorkspaceSecretaryDraftTitleFromModel,
   shouldAllowEmptyDraftText,
   shouldApplyWorkspaceSecretaryModelUpdateForDraft,
+  shouldApplyLoopTaskDecisionUpdateForDraft,
   shouldApplyWorkspaceSecretarySnapshotForDraft,
   shouldHydrateWorkspaceSecretarySnapshotForDraft,
   shouldKeepWorkspaceSecretaryAuthorityTurnRunning,
@@ -60,14 +64,8 @@ import {
 import type { StreamItem, UserMessageImageAttachment } from "@/types/stream";
 import type {
   ThothCleanUiModel,
-  ThothComposerModel,
   WorkspaceSecretaryTurnActionPayload,
 } from "@thoth/protocol/workspace-secretary/rpc-schemas";
-import type {
-  ThothRuntimeClarifyStrength,
-  ThothRuntimeLoopStrength,
-  ThothRuntimeMode,
-} from "@thoth/protocol/thoth-runtime-contract";
 import {
   COMPACT_FORM_FACTOR_WIDTH,
   MAX_CONTENT_WIDTH,
@@ -91,44 +89,6 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
 function createWorkspaceSecretaryTopicId(): string {
   const randomId = globalThis.crypto?.randomUUID?.();
   return `topic-${randomId ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-}
-
-function buildWorkspaceSecretaryComposerModel(config: {
-  workspaceSecretary?: {
-    mode?: string;
-    clarifyStrength?: string;
-    loopStrength?: string;
-  };
-}): ThothComposerModel {
-  const rawMode = config.workspaceSecretary?.mode;
-  const mode: ThothRuntimeMode = rawMode === "loop" ? "loop" : "quick";
-  const rawClarify = config.workspaceSecretary?.clarifyStrength;
-  const clarifyStrength: Exclude<ThothRuntimeClarifyStrength, "deep"> =
-    rawClarify === "none" ||
-    rawClarify === "auto" ||
-    rawClarify === "light" ||
-    rawClarify === "dive"
-      ? rawClarify
-      : "balanced";
-  const loopStrength = resolveWorkspaceSecretaryLoopStrength(
-    config.workspaceSecretary?.loopStrength,
-  );
-  return {
-    mode,
-    clarifyStrength,
-    loop: mode === "loop" ? loopStrength : null,
-    authorityLabel: "真实 provider",
-    authorityReady: true,
-  };
-}
-
-function resolveWorkspaceSecretaryLoopStrength(value: unknown): ThothRuntimeLoopStrength {
-  return value === "one_plan_one_do" ||
-    value === "light" ||
-    value === "balanced" ||
-    value === "run_until_stopped"
-    ? value
-    : "one_plan_one_do";
 }
 
 function buildWorkspaceSecretaryDraftAgent(input: {
@@ -481,8 +441,8 @@ export function WorkspaceDraftAgentTab({
     throw new Error("Workspace draft composer state is required");
   }
   const workspaceSecretaryComposer = useMemo(
-    () => buildWorkspaceSecretaryComposerModel(daemonConfig ?? {}),
-    [daemonConfig],
+    () => buildWorkspaceSecretaryComposerModel(daemonConfig?.workspaceSecretary),
+    [daemonConfig?.workspaceSecretary],
   );
   const workspaceSecretaryProvider = daemonConfig?.workspaceSecretary?.providerSession;
   const secretaryProvider =
@@ -499,6 +459,7 @@ export function WorkspaceDraftAgentTab({
   const [secretaryApprovalMode, setSecretaryApprovalMode] = useState<"quick" | "loop">(
     workspaceSecretaryComposer.mode,
   );
+  const secretaryModelRef = useRef<ThothCleanUiModel | null>(null);
   const boundSecretaryTopicId = secretaryTopicId?.trim() || null;
   const secretaryTopicIdRef = useRef<string | null>(boundSecretaryTopicId);
   const secretaryStreamItems =
@@ -528,6 +489,7 @@ export function WorkspaceDraftAgentTab({
   const secretaryAuthorityTurnRunning = shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
     secretaryTurnInFlight,
     streamItems: [...secretaryStreamItems, ...secretaryStreamHead],
+    backgroundHandoff: isWorkspaceSecretaryBackgroundHandoff(secretaryModelRef.current),
   });
   const shouldHydrateSecretarySnapshot = shouldHydrateWorkspaceSecretarySnapshotForDraft({
     secretaryTopicId: boundSecretaryTopicId,
@@ -566,7 +528,6 @@ export function WorkspaceDraftAgentTab({
     }),
     [serverId, setAgentStreamHead, setAgentStreamTail],
   );
-  const secretaryModelRef = useRef<ThothCleanUiModel | null>(null);
   const [secretaryTimelineAgentId, setSecretaryTimelineAgentId] = useState<string | null>(null);
   const [secretaryTimelineHydrationGeneration, setSecretaryTimelineHydrationGeneration] =
     useState(0);
@@ -582,7 +543,11 @@ export function WorkspaceDraftAgentTab({
     secretaryModelRef.current = null;
     setSecretaryTimelineAgentId(null);
     setSecretaryApprovalMode(workspaceSecretaryComposer.mode);
-  }, [boundSecretaryTopicId, workspaceSecretaryComposer.mode]);
+  }, [boundSecretaryTopicId]);
+  // Composer mode belongs to the next send; it must not discard this topic's durable handoff state.
+  useEffect(() => {
+    setSecretaryApprovalMode(workspaceSecretaryComposer.mode);
+  }, [workspaceSecretaryComposer.mode]);
   const secretarySnapshotHydratedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!shouldHydrateSecretarySnapshot) {
@@ -704,6 +669,32 @@ export function WorkspaceDraftAgentTab({
     rememberSecretaryTimelineModel,
     tabId,
   ]);
+  useEffect(() => {
+    if (!client || !draftWorkingDirectory) {
+      return;
+    }
+    return client.on("background_task.update", (message) => {
+      if (message.type !== "background_task.update") {
+        return;
+      }
+      const task = message.payload.task;
+      if (
+        !shouldApplyLoopTaskDecisionUpdateForDraft({
+          secretaryTopicId: secretaryTopicIdRef.current,
+          draftWorkspacePath: draftWorkingDirectory,
+          taskSourceTopicId: task.sourceTopicId,
+          taskWorkspacePath: task.workspacePath,
+        })
+      ) {
+        return;
+      }
+      applyLoopTaskDecisionToWorkspaceSecretaryStream({
+        agentId: tabId,
+        task,
+        stream: getSecretaryStreamWriter(),
+      });
+    });
+  }, [client, draftWorkingDirectory, getSecretaryStreamWriter, tabId]);
   const secretaryTimelineHydratedRef = useRef<string | null>(null);
   useEffect(() => {
     const timelineAgentId = secretaryTimelineAgentId;

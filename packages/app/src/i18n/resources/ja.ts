@@ -168,6 +168,11 @@ export const ja: TranslationResources = {
       mode: "権限モードを変更",
     },
     runtime: {
+      thoth: {
+        switch: "Thoth モードを有効にする",
+        tooltip:
+          "有効にすると Thoth の Clarify と Loop を使います。無効では Provider に直接送信します。",
+      },
       clarify: {
         tooltip: "Clarify",
         selectWithValue: "Clarify: {{value}}",

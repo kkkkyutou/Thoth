@@ -58,6 +58,46 @@ function goalsCard(): ThothApprovalGoalCardModel {
 }
 
 describe("SecretaryApprovalCard", () => {
+  it("uses the card turn controls when the live composer has hot-switched", () => {
+    const { rerender } = render(
+      <SecretaryApprovalCard
+        card={{
+          ...goalsCard(),
+          turnControls: {
+            mode: "loop",
+            clarifyStrength: "balanced",
+            loop: "one_plan_one_do",
+          },
+        }}
+        kind="goal"
+        approvalMode="quick"
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("secretary-goal-accept-loop").textContent).toContain("确认注册");
+    expect(screen.queryByTestId("secretary-goal-accept-quick")).toBeNull();
+
+    rerender(
+      <SecretaryApprovalCard
+        card={{
+          ...goalsCard(),
+          turnControls: {
+            mode: "quick",
+            clarifyStrength: "balanced",
+            loop: null,
+          },
+        }}
+        kind="goal"
+        approvalMode="loop"
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("secretary-goal-accept-quick").textContent).toContain("前台执行");
+    expect(screen.queryByTestId("secretary-goal-accept-loop")).toBeNull();
+  });
+
   it("only exposes background registration for a Loop Goals Card", async () => {
     const onSubmit = vi.fn();
     render(

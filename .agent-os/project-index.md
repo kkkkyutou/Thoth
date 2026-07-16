@@ -5,9 +5,9 @@
 1. Objective: `NTH-OBJ-001`
 2. Top next action: `NTH-TD-021`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
-4. Active blockers: None for the current top next action. `NTH-EV-031` now records the native-Codex five-journey transport run, including Loop+Light and all-goals-to-`done`; remaining promotion is real browser/device evidence for control actions, restart/reconnect and detailed phase recovery.
+4. Active blockers: None for the current top next action. `NTH-EV-031` records the native-Codex five-journey transport run, and `NTH-EV-036` now verifies viewed internal Loop phase permission/stream recovery in a real Chromium/Codex Review. Remaining promotion is real browser/device evidence for budget/control actions and daemon restart/reconnect restoration.
 5. Current branch: `agent/dev/mvp`
-6. Current implementation state: promoted TypeScript product substrate with provider-backed Codex dynamicTools as the verified execution path. `NTH-CD-047` adds daemon-owned SQLite append-only Loop authority, Task Memory, sealed evidence, budget envelopes, durable leases and independent audit sessions on top of the Task/Goals/PlanExec/Review chain. The native-Codex fixture suite now passes all five scripted user journeys, including Loop+Single all-goals completion and Loop+Light failed-Review retry; this verifies real app-server transport without asking the provider to invent behavior. Browser/device recovery, control actions and restart restoration remain open evidence under `NTH-TD-021`.
+6. Current implementation state: promoted TypeScript product substrate with provider-backed Codex dynamicTools as the verified execution path. `NTH-CD-047` adds daemon-owned SQLite append-only Loop authority, Task Memory, sealed evidence, budget envelopes, durable leases and independent audit sessions on top of the Task/Goals/PlanExec/Review chain. `NTH-CD-050` / `NTH-CD-051` keep live Agent Harness tools and prompts semantic: daemon binds attempt identity and resource control, while Review first assesses independently and then gives a Direction Memo plus semantic outcome. The native-Codex fixture suite passes all five scripted user journeys, including Loop+Single all-goals completion and Loop+Light failed-Review retry, without asking the provider to invent behavior. A viewed internal Loop phase now receives a session-scoped live stream without entering the foreground agent directory; `NTH-EV-036` verifies Review Apply request/resolution/tool continuation in a real browser. Browser/device control actions and restart restoration remain open evidence under `NTH-TD-021`.
 
 ## Objective Summary
 
@@ -24,7 +24,7 @@
 
 ## Top Next Action
 
-`NTH-TD-021` `[doing]`: Close the remaining Loop Engineering dogfood evidence: real browser/device `budget_wait`, pause/resume/stop, daemon restart/reconnect and Background Task phase timeline recovery, while retaining the passing native-Codex five-journey transport suite.
+`NTH-TD-021` `[doing]`: Close the remaining Loop Engineering dogfood evidence: real browser/device `budget_wait`, pause/resume/stop and daemon restart/reconnect restoration, while retaining the passing native-Codex five-journey transport suite and scoped Background phase live stream verified by `NTH-EV-036`.
 
 ## Active Blockers
 

@@ -73,6 +73,14 @@ export const ThothComposerModelSchema = z
   })
   .strict();
 
+export const SecretaryTurnControlsSchema = z
+  .object({
+    mode: ThothRuntimeModeSchema,
+    clarifyStrength: ThothRuntimeClarifyStrengthSchema.exclude(["deep"]),
+    loop: ThothRuntimeLoopStrengthSchema.nullable(),
+  })
+  .strict();
+
 export const WorkspaceSecretaryProviderBridgeSchema = z.enum([
   "native_output_schema",
   "runtime_tool",
@@ -169,6 +177,9 @@ export const ThothTaskCardModelSchema = z
     constraints: StringListSchema,
     acceptance: StringListSchema,
     provenanceSummary: NonEmptyStringSchema,
+    // Frozen from the composer when the user sent the turn that produced this authority flow.
+    // Current controls may hot-switch independently and apply only to a later user send.
+    turnControls: SecretaryTurnControlsSchema.optional(),
     submitted: z.boolean(),
     submittedSummary: NonEmptyStringSchema.optional(),
   })
@@ -201,6 +212,7 @@ export const ThothGoalCardModelSchema = z
     summary: NonEmptyStringSchema,
     pyramid: z.array(ThothPyramidPlanStageSchema).min(1),
     provenanceSummary: NonEmptyStringSchema,
+    turnControls: SecretaryTurnControlsSchema.optional(),
     submitted: z.boolean(),
     submittedSummary: NonEmptyStringSchema.optional(),
   })
@@ -215,6 +227,7 @@ export const ThothGoalsCardModelSchema = z
     goalsCountRationale: z.string().optional(),
     goals: z.array(ClarifyLinearGoalContractSchema).min(1),
     provenanceSummary: NonEmptyStringSchema,
+    turnControls: SecretaryTurnControlsSchema.optional(),
     submitted: z.boolean(),
     submittedSummary: NonEmptyStringSchema.optional(),
   })
@@ -252,12 +265,38 @@ export const RegisteredTaskModelSchema = z
   })
   .strict();
 
+export const LoopUserDecisionSchema = z
+  .object({
+    id: NonEmptyStringSchema,
+    title: NonEmptyStringSchema,
+    question: NonEmptyStringSchema,
+    options: z
+      .array(
+        z
+          .object({
+            id: NonEmptyStringSchema,
+            label: NonEmptyStringSchema,
+            description: z.string().optional(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .max(4),
+    notePlaceholder: z.string().optional(),
+    status: z.enum(["pending", "submitted", "canceled"]),
+    createdAt: NonEmptyStringSchema,
+    submittedAt: NonEmptyStringSchema.optional(),
+    answer: z.string().optional(),
+  })
+  .strict();
+
 export const SecretaryMessageTurnSchema = z
   .object({
     id: NonEmptyStringSchema,
     kind: z.literal("message"),
     speaker: z.enum(["user", "secretary"]),
     text: NonEmptyStringSchema,
+    turnControls: SecretaryTurnControlsSchema.optional(),
     // The client-generated id is the only safe bridge between the durable user turn and the
     // provider timeline. It is optional so existing persisted topics remain readable.
     messageId: NonEmptyStringSchema.optional(),
@@ -296,12 +335,22 @@ export const SecretaryRegisteredTaskTurnSchema = z
   })
   .strict();
 
+export const SecretaryLoopDecisionTurnSchema = z
+  .object({
+    id: NonEmptyStringSchema,
+    kind: z.literal("loop_decision"),
+    taskId: NonEmptyStringSchema,
+    decision: LoopUserDecisionSchema,
+  })
+  .strict();
+
 export const SecretaryTurnSchema = z.discriminatedUnion("kind", [
   SecretaryMessageTurnSchema,
   SecretaryClarifyCardTurnSchema,
   SecretaryTaskCardTurnSchema,
   SecretaryGoalCardTurnSchema,
   SecretaryRegisteredTaskTurnSchema,
+  SecretaryLoopDecisionTurnSchema,
 ]);
 
 export const WorkspaceSecretaryModelSchema = z
@@ -311,6 +360,10 @@ export const WorkspaceSecretaryModelSchema = z
     topics: z.array(SecretaryTopicModelSchema).min(1),
     activeTopicId: NonEmptyStringSchema,
     status: SecretaryRuntimeStatusModelSchema,
+    // A Loop Goals Card can hand the approved work to the durable background
+    // scheduler while the provider's original tool turn is still unwinding.
+    // This is a UI lifecycle signal, not provider-specific execution state.
+    foregroundTurnState: z.enum(["background_handoff"]).optional(),
     turns: z.array(SecretaryTurnSchema),
     // Internal projection reference only. The UI uses this to hydrate the real provider
     // timeline into the virtual Workspace Secretary tab after reconnect/cancel.
@@ -364,8 +417,11 @@ export const BackgroundTaskModelSchema = z
       "registered_pending",
       "queued",
       "running",
+      "awaiting_provider",
+      "awaiting_user_decision",
       "paused",
       "budget_wait",
+      "evidence_capture_failed",
       "evidence_invalid",
       "workspace_changed_concurrently",
       "blocked",
@@ -375,6 +431,7 @@ export const BackgroundTaskModelSchema = z
     ]),
     summary: NonEmptyStringSchema,
     workspaceName: NonEmptyStringSchema.optional(),
+    workspacePath: NonEmptyStringSchema.optional(),
     sourceTopicId: NonEmptyStringSchema.optional(),
     detailLabel: NonEmptyStringSchema.optional(),
   })
@@ -384,8 +441,11 @@ export const LoopPhaseKindSchema = z.enum(["planexec", "review"]);
 export const LoopTaskStatusSchema = z.enum([
   "queued",
   "running",
+  "awaiting_provider",
+  "awaiting_user_decision",
   "paused",
   "budget_wait",
+  "evidence_capture_failed",
   "evidence_invalid",
   "workspace_changed_concurrently",
   "blocked",
@@ -397,6 +457,7 @@ export const LoopGoalStatusSchema = z.enum([
   "queued",
   "running_planexec",
   "running_review",
+  "awaiting_user_decision",
   "passed",
   "blocked",
   "paused",
@@ -406,6 +467,7 @@ export const LoopGoalStatusSchema = z.enum([
 export const LoopPhaseStatusSchema = z.enum([
   "queued",
   "running",
+  "awaiting_provider",
   "completed",
   "failed",
   "blocked",
@@ -467,6 +529,8 @@ export const LoopEvidenceRefSchema = z
       "review_result",
     ]),
     createdAt: NonEmptyStringSchema,
+    coverage: z.enum(["complete", "bounded"]).optional(),
+    scannedEntries: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -566,15 +630,35 @@ export const LoopDeferredGoalReplanProposalSchema = z
 
 export const LoopReviewVerdictSchema = z
   .object({
-    outcome: z.enum(["pass", "fail", "blocked"]),
+    outcome: z.enum([
+      "pass",
+      "continue",
+      "reframe_current_goal",
+      "replan_unstarted_goals",
+      "return_to_user_decision",
+      "real_blocker",
+      "fail",
+      "blocked",
+    ]),
     round: z.number().int().positive(),
     summary: NonEmptyStringSchema,
-    acceptanceMatrix: z.array(LoopReviewAcceptanceMatrixEntrySchema).min(1),
+    acceptanceMatrix: z.array(LoopReviewAcceptanceMatrixEntrySchema).default([]),
     failedAcceptance: z.array(NonEmptyStringSchema).default([]),
     failureRootCause: z.string().optional(),
     nextRoundGuidance: z.string().optional(),
     antiRepeatStrategy: z.array(NonEmptyStringSchema).default([]),
-    evidenceSummary: NonEmptyStringSchema,
+    evidenceSummary: z.string().default(""),
+    directionMemo: z
+      .object({
+        conclusion: NonEmptyStringSchema,
+        reality: z.array(NonEmptyStringSchema).min(1),
+        diagnosis: NonEmptyStringSchema,
+        abandon: z.array(NonEmptyStringSchema).default([]),
+        reframe: NonEmptyStringSchema,
+        nextDirection: NonEmptyStringSchema,
+      })
+      .strict()
+      .optional(),
     evidenceRef: LoopEvidenceRefSchema.optional(),
     deferredGoalReplanProposal: LoopDeferredGoalReplanProposalSchema.optional(),
     createdAt: NonEmptyStringSchema,
@@ -605,9 +689,14 @@ export const LoopPhaseRecordSchema = z
     round: z.number().int().positive(),
     agentId: NonEmptyStringSchema.optional(),
     phaseRunId: NonEmptyStringSchema.optional(),
+    attemptId: NonEmptyStringSchema.optional(),
+    executionGeneration: z.number().int().positive().optional(),
+    protocolRepairAttempted: z.boolean().optional(),
     startedAt: NonEmptyStringSchema.optional(),
     attemptStartedAt: NonEmptyStringSchema.optional(),
     completedAt: NonEmptyStringSchema.optional(),
+    lastActivityAt: NonEmptyStringSchema.optional(),
+    interruptedReason: z.string().optional(),
     canceledReason: z.string().optional(),
     providerExitStatus: z
       .enum(["completed", "failed", "canceled", "timeout", "blocked"])
@@ -642,6 +731,7 @@ export const LoopTaskModelSchema = z
     workspaceName: NonEmptyStringSchema,
     workspacePath: NonEmptyStringSchema,
     sourceTopicId: NonEmptyStringSchema,
+    sourceGoalsCardId: NonEmptyStringSchema.optional(),
     status: LoopTaskStatusSchema,
     summary: NonEmptyStringSchema,
     loopStrength: ThothRuntimeLoopStrengthSchema,
@@ -658,6 +748,7 @@ export const LoopTaskModelSchema = z
     replanHistory: z.array(LoopReplanRecordSchema).default([]),
     currentGoalId: NonEmptyStringSchema.nullable(),
     currentPhase: LoopPhaseKindSchema.nullable(),
+    pendingUserDecision: LoopUserDecisionSchema.optional(),
     /**
      * Durable scheduler intent. `pause_after_phase` never cancels a provider
      * run; it becomes `paused` only once the active PlanExec or Review settles.
@@ -846,6 +937,8 @@ export const BackgroundTaskInspectRequestSchema = z
     type: z.literal("background_task.inspect.request"),
     requestId: NonEmptyStringSchema,
     taskId: NonEmptyStringSchema,
+    workspaceId: NonEmptyStringSchema.optional(),
+    workspacePath: NonEmptyStringSchema.optional(),
   })
   .strict();
 
@@ -855,6 +948,25 @@ export const BackgroundTaskActionRequestSchema = z
     requestId: NonEmptyStringSchema,
     taskId: NonEmptyStringSchema,
     action: BackgroundTaskActionSchema,
+    workspaceId: NonEmptyStringSchema.optional(),
+    workspacePath: NonEmptyStringSchema.optional(),
+    expectedAuthorityRevision: z.number().int().nonnegative().optional(),
+    commandId: NonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const BackgroundTaskDecisionRequestSchema = z
+  .object({
+    type: z.literal("background_task.decision.request"),
+    requestId: NonEmptyStringSchema,
+    taskId: NonEmptyStringSchema,
+    decisionId: NonEmptyStringSchema,
+    choiceId: NonEmptyStringSchema,
+    note: z.string().optional(),
+    workspaceId: NonEmptyStringSchema.optional(),
+    workspacePath: NonEmptyStringSchema.optional(),
+    expectedAuthorityRevision: z.number().int().nonnegative().optional(),
+    commandId: NonEmptyStringSchema.optional(),
   })
   .strict();
 
@@ -940,6 +1052,19 @@ export const BackgroundTaskActionResponseSchema = z
   })
   .strict();
 
+export const BackgroundTaskDecisionResponseSchema = z
+  .object({
+    type: z.literal("background_task.decision.response"),
+    payload: z
+      .object({
+        requestId: NonEmptyStringSchema,
+        task: LoopTaskModelSchema.nullable(),
+        error: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const WorkspaceSecretaryModelUpdateSchema = z
   .object({
     type: z.literal("workspace_secretary.model.update"),
@@ -979,6 +1104,7 @@ export type SecretaryTopicModel = z.infer<typeof SecretaryTopicModelSchema>;
 export type SecretaryRuntimeStatusKind = z.infer<typeof SecretaryRuntimeStatusKindSchema>;
 export type SecretaryRuntimeStatusModel = z.infer<typeof SecretaryRuntimeStatusModelSchema>;
 export type ThothComposerModel = z.infer<typeof ThothComposerModelSchema>;
+export type SecretaryTurnControls = z.infer<typeof SecretaryTurnControlsSchema>;
 export type WorkspaceSecretaryProviderBridge = z.infer<
   typeof WorkspaceSecretaryProviderBridgeSchema
 >;
@@ -1014,6 +1140,7 @@ export type LoopPhaseKind = z.infer<typeof LoopPhaseKindSchema>;
 export type LoopTaskStatus = z.infer<typeof LoopTaskStatusSchema>;
 export type LoopGoalStatus = z.infer<typeof LoopGoalStatusSchema>;
 export type LoopPhaseStatus = z.infer<typeof LoopPhaseStatusSchema>;
+export type LoopUserDecision = z.infer<typeof LoopUserDecisionSchema>;
 export type LoopBudget = z.infer<typeof LoopBudgetSchema>;
 export type LoopDeferredGoalReplanProposal = z.infer<typeof LoopDeferredGoalReplanProposalSchema>;
 export type LoopBudgetEnvelope = z.infer<typeof LoopBudgetEnvelopeSchema>;
@@ -1052,6 +1179,7 @@ export type WorkspaceSecretaryTopicCreateRequest = z.infer<
 export type BackgroundTaskListRequest = z.infer<typeof BackgroundTaskListRequestSchema>;
 export type BackgroundTaskInspectRequest = z.infer<typeof BackgroundTaskInspectRequestSchema>;
 export type BackgroundTaskActionRequest = z.infer<typeof BackgroundTaskActionRequestSchema>;
+export type BackgroundTaskDecisionRequest = z.infer<typeof BackgroundTaskDecisionRequestSchema>;
 export type WorkspaceSecretaryResponsePayload = z.infer<
   typeof WorkspaceSecretaryResponsePayloadSchema
 >;
@@ -1072,4 +1200,5 @@ export type WorkspaceSecretaryModelUpdate = z.infer<typeof WorkspaceSecretaryMod
 export type BackgroundTaskListResponse = z.infer<typeof BackgroundTaskListResponseSchema>;
 export type BackgroundTaskInspectResponse = z.infer<typeof BackgroundTaskInspectResponseSchema>;
 export type BackgroundTaskActionResponse = z.infer<typeof BackgroundTaskActionResponseSchema>;
+export type BackgroundTaskDecisionResponse = z.infer<typeof BackgroundTaskDecisionResponseSchema>;
 export type BackgroundTaskUpdate = z.infer<typeof BackgroundTaskUpdateSchema>;

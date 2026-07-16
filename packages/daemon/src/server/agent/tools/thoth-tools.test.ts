@@ -14,6 +14,10 @@ import {
   listPendingRuntimeAuthorityDecisions,
   resetRuntimeAuthorityDecisionsForTest,
 } from "../runtime-tool-decisions.js";
+import {
+  beginWorkspaceSecretaryTurnPolicy,
+  resetWorkspaceSecretaryTurnPoliciesForTest,
+} from "./workspace-secretary-turn-policy.js";
 import { createThothToolCatalog } from "./thoth-tools.js";
 
 async function flushToolStart(): Promise<void> {
@@ -29,6 +33,7 @@ function createCatalog(
     loopPhase?: "planexec" | "review";
     loopTaskService?: ThothLoopTaskService;
     callerAvailableAfterCatalogCreation?: boolean;
+    workspaceSecretaryTurnPolicy?: "raw_provider" | "thoth_clarify";
   } = {},
 ) {
   const timeline: AgentTimelineItem[] = [];
@@ -108,6 +113,11 @@ function createCatalog(
     ...(input.loopTaskService ? { loopTaskService: input.loopTaskService } : {}),
   });
   callerRegistered = true;
+  beginWorkspaceSecretaryTurnPolicy({
+    agentId: "agent-1",
+    generation: "test-generation",
+    kind: input.workspaceSecretaryTurnPolicy ?? "thoth_clarify",
+  });
   return { appendTimelineItem, timeline, catalog };
 }
 
@@ -251,9 +261,53 @@ async function submitAnsweredClarifyCard(
 
 afterEach(() => {
   resetRuntimeAuthorityDecisionsForTest();
+  resetWorkspaceSecretaryTurnPoliciesForTest();
 });
 
 describe("Thoth runtime authority tools", () => {
+  it("rejects remembered authority tools during a raw provider turn", async () => {
+    const { catalog, timeline } = createCatalog({ workspaceSecretaryTurnPolicy: "raw_provider" });
+
+    await expect(
+      catalog.executeTool(
+        "thoth_submit_clarify_card",
+        {
+          title: "This must not create a card",
+          why_now: "The raw provider turn must remain raw.",
+          public_badge_summary: "This call is intentionally rejected.",
+          frontier_ledger: {
+            clarify_strength: "light",
+            grounded_user_decisions: [],
+            remaining_material_user_owned_assumptions: ["A user decision"],
+            agent_owned_assumptions: [],
+            discoverable_assumptions: [],
+            why_this_round: "Fence test.",
+            convergence_state: "not_converged",
+          },
+          questions: [
+            {
+              id: "q1",
+              question: "Should not be visible.",
+              choices: [{ id: "a", label: "A", description: "Rejected before parsing authority." }],
+            },
+          ],
+        },
+        {
+          providerToolCall: {
+            provider: "codex",
+            threadId: "thread-raw",
+            turnId: "turn-raw",
+            callId: "call-raw",
+            toolName: "thoth_submit_clarify_card",
+          },
+        },
+      ),
+    ).rejects.toThrow("disabled for this raw provider turn");
+
+    expect(listPendingRuntimeAuthorityDecisions()).toEqual([]);
+    expect(timeline).toEqual([]);
+  });
+
   it("registers Clarify tools from launch config before the caller agent is registered", () => {
     const agentManager = {
       appendTimelineItem: vi.fn(async () => undefined),
@@ -748,8 +802,6 @@ describe("Thoth runtime authority tools", () => {
     await planExecCatalog.executeTool(
       "thoth_loop_submit_planexec_result",
       {
-        goal_id: "goal-1",
-        round: 1,
         plan_summary: "Execute the current goal only.",
         execution_summary: "Completed the current goal.",
         evidence: ["Focused check passed."],
@@ -760,11 +812,8 @@ describe("Thoth runtime authority tools", () => {
     await reviewCatalog.executeTool(
       "thoth_loop_submit_review_verdict",
       {
-        goal_id: "goal-1",
-        round: 1,
         outcome: "pass",
         summary: "Current goal is accepted.",
-        acceptance_matrix: [{ acceptance: "Focused check", status: "met", evidence: "green run" }],
         evidence_summary: "Focused check produced the expected proof.",
       },
       {
@@ -778,11 +827,15 @@ describe("Thoth runtime authority tools", () => {
 
     expect(resolvePlanExecResult).toHaveBeenCalledWith(
       "agent-1",
-      expect.objectContaining({ result_tool_call_id: "provider-tool-call-1" }),
+      expect.objectContaining({ plan_summary: "Execute the current goal only." }),
+      "turn-loop",
+      "provider-tool-call-1",
     );
     expect(resolveReviewVerdict).toHaveBeenCalledWith(
       "agent-1",
-      expect.objectContaining({ result_tool_call_id: "provider-tool-call-2" }),
+      expect.objectContaining({ outcome: "pass" }),
+      "turn-loop",
+      "provider-tool-call-2",
     );
   });
 
@@ -800,6 +853,7 @@ describe("Thoth runtime authority tools", () => {
     expect(planExecCatalog.getTool("thoth_loop_submit_review_verdict")).toBeUndefined();
     expect(planExecCatalog.getTool("thoth_loop_report_blocked")).toBeDefined();
     expect(reviewCatalog.getTool("thoth_loop_submit_planexec_result")).toBeUndefined();
+    expect(reviewCatalog.getTool("thoth_loop_submit_review_independent_assessment")).toBeDefined();
     expect(reviewCatalog.getTool("thoth_loop_submit_review_verdict")).toBeDefined();
     expect(reviewCatalog.getTool("thoth_loop_report_blocked")).toBeDefined();
   });

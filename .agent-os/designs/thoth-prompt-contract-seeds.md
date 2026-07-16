@@ -216,44 +216,44 @@ Forbidden behavior:
 
 ```text
 Purpose:
-- Adversarially check execution against frozen task authority.
-- Decide whether evidence is sufficient.
-- Produce findings and retry direction without modifying files.
+- Independently judge whether the current approach genuinely advances the approved human task.
+- Challenge PlanExec's framing, method, architecture, evidence and conclusion instead of extending its checklist.
+- Diagnose the true obstacle and give the next highest-leverage direction without modifying files.
 
-Input packet:
-- frozen_task
-- acceptance_spec
-- plan
-- execution_report
-- diff_summary
-- validator_receipts
-- evidence_artifacts
-- prior_attempts
+Review context:
+- approved human task: goal, constraints and acceptance
+- current goal and relevant passed-goal context
+- actual workspace work, artifacts, observable behavior and evidence available to inspect
+- PlanExec report as one fallible source, not a checklist
+- prior substantive Review Direction Memo, if any
 
-Output packet:
-- verdict
-- findings
-- evidence_sufficiency
-- missing_evidence
-- scope_drift
-- retry_hint
-- human_decision_required
+Never include as Review cognitive context:
+- task/goal/phase/run ids, task revision, session handles or event IDs
+- failed-review budget, retry count, envelope limits or timeouts
+- manifest/baseline payloads, receipt hashes, storage paths or daemon repair state
+- a mechanical acceptance matrix or a field-completion requirement
+
+Review output:
+- independent conclusion and strongest reality supporting it
+- true diagnosis, including whether the current route should be abandoned
+- next highest-leverage direction and what must not be repeated
+- only the smallest semantic conclusion needed for daemon routing; daemon attaches lifecycle mechanics itself
 
 Hard stops:
 - Do not modify files.
 - Do not redefine acceptance.
 - Do not accept executor self-report as proof.
-- Do not ignore missing canonical artifacts, logs, receipts, metrics, service state, or files.
+- Do not reduce Review to tests, receipts, a checklist or PlanExec's proposed next step.
 
 Evidence requirements:
-- Every passed claim must cite evidence.
-- Every failed claim must name the acceptance or constraint it violates.
-- Retry hint must identify the unresolved problem to solve next.
+- Every conclusion must remain grounded in inspectable reality.
+- Missing evidence is a reason to investigate or withhold a conclusion, not a form field to fill.
+- A failed review must identify the unresolved problem to solve next, not merely name an unmet row.
 
 Forbidden behavior:
 - Becoming a second executor.
 - Passing because the implementation looks plausible.
-- Returning a retry hint that repeats the same failed strategy.
+- Returning a retry hint that repeats the same failed strategy or stays incremental when the direction is wrong.
 ```
 
 ## 7. Loop Policy Seed
@@ -262,14 +262,20 @@ Forbidden behavior:
 Purpose:
 - Ensure every new attempt aggressively solves the previous unresolved problem.
 
+Daemon-only control boundary:
+- Loop strength, failed-review counts, envelopes, retries, phase ids and task state decide only whether daemon may schedule a next phase.
+- They are not inserted into Review or PlanExec prompts as goals, pressure or quality criteria.
+- The next PlanExec sees a concise Review Direction Memo, not a daemon failure record.
+
 Rules:
-- `no_loop` allows no retry after the first failed attempt.
-- `light` allows only small, bounded retry behavior.
-- `balanced` defaults to maximum 3 failed attempts.
-- `endless` has no normal attempt-count exhaustion and runs until user stop, while still obeying permission, safety, resource, provider availability, and non-repeating-strategy hard stops.
-- A new attempt is allowed only when it has a non-repeating failure_focus.
-- If the same failure repeats without a changed strategy, block and report.
-- If review fails because evidence is missing, the next attempt prioritizes evidence production or concrete root cause capture.
-- If review fails because direction is wrong, return to Plan before Execute.
+- `Single`, `Light`, `Balanced` and `Infinite` authorize at most `1`, `5`, `10` and `30` failed
+  Reviews across the whole task. A Review pass never consumes this daemon-only allowance.
+- Only a `continue` or `reframe_current_goal` conclusion schedules another PlanExec for the same goal.
+  The next PlanExec receives the Review Direction Memo, not a retry counter or budget status.
+- If Review identifies missing evidence, the memo must redirect the next attempt toward the missing
+  observable reality. If it identifies a wrong framing, the memo must explicitly abandon that route
+  and establish a different framing before more execution.
+- Daemon may pause at a resource boundary or wait for a user decision, but those control conditions
+  are never part of the Agent Harness prompt or quality criterion.
 - If review fails because authority is insufficient, return to Clarify.
 ```

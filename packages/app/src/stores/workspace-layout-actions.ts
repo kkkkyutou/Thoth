@@ -204,6 +204,7 @@ export interface WorkspaceTabSnapshot {
   activeAgentIds: Iterable<string>;
   autoOpenAgentIds: Iterable<string>;
   knownAgentIds: Iterable<string>;
+  archivedAgentIds?: Iterable<string>;
   restorableAgentIds?: Iterable<string>;
   knownTerminalIds?: Iterable<string>;
   standaloneTerminalIds: Iterable<string>;
@@ -1741,13 +1742,31 @@ export function reconcileWorkspaceTabs(
   let reconciledFocusedTabId = originalFocusedTabId;
   const pinnedAgentIds = new Set(state.pinnedAgentIds ?? []);
   const hiddenAgentIds = new Set(state.hiddenAgentIds ?? []);
-  const stateRetainedAgentIds = new Set(state.retainedAgentIds ?? []);
   const activeAgentIds = normalizeStringSet(snapshot.activeAgentIds);
   const autoOpenAgentIds = normalizeStringSet(snapshot.autoOpenAgentIds);
   const knownAgentIds = normalizeStringSet(snapshot.knownAgentIds);
+  const archivedAgentIds = snapshot.archivedAgentIds
+    ? normalizeStringSet(snapshot.archivedAgentIds)
+    : new Set<string>();
   const restorableAgentIds = snapshot.restorableAgentIds
     ? normalizeStringSet(snapshot.restorableAgentIds)
     : new Set<string>();
+  // A retained id is a short-lived bridge while a just-restored history entry
+  // reaches the agent detail cache. It is not durable authority to keep a tab
+  // alive forever. Once the active directory has hydrated, the daemon must at
+  // least still know the agent, and an archive record always wins over a pin.
+  const stateRetainedAgentIds = new Set(
+    [...(state.retainedAgentIds ?? [])].filter(
+      (agentId) =>
+        !archivedAgentIds.has(agentId) &&
+        (activeAgentIds.has(agentId) ||
+          restorableAgentIds.has(agentId) ||
+          knownAgentIds.has(agentId)),
+    ),
+  );
+  const pinnableAgentIds = new Set(
+    [...knownAgentIds].filter((agentId) => !archivedAgentIds.has(agentId)),
+  );
   const standaloneTerminalIds = normalizeStringSet(snapshot.standaloneTerminalIds);
   const knownTerminalIds = snapshot.knownTerminalIds
     ? normalizeStringSet(snapshot.knownTerminalIds)
@@ -1756,13 +1775,13 @@ export function reconcileWorkspaceTabs(
     baseAgentIds: activeAgentIds,
     pinnedAgentIds,
     hiddenAgentIds,
-    knownAgentIds,
+    knownAgentIds: pinnableAgentIds,
   });
   const autoOpenSet = applyPinnedAndHidden({
     baseAgentIds: autoOpenAgentIds,
     pinnedAgentIds,
     hiddenAgentIds,
-    knownAgentIds,
+    knownAgentIds: pinnableAgentIds,
   });
   const retainedAgentIds = new Set([
     ...visibleAgentIds,

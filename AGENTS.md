@@ -48,14 +48,15 @@
    - Branch: `archive/main-20260627`
 8. `.agent-os/upstreams/` 是 ignored local raw cache，不是项目 authority，不得 stage/commit。
 9. `.dev/` 是 ignored local toolchain/artifact area，不得 stage/commit。
-10. Thoth direct daemon 默认监听 `127.0.0.1:6688`。
-11. 本机 Paseo/legacy daemon 的 `127.0.0.1:6767` 是保留并行服务端口；Thoth 不得自动探测、复用、停止或重启它。
-12. 当前人工 Web 审核入口是 `http://127.0.0.1:8082/`，公网映射是 `http://180.76.242.105:8148/`。
-13. 当前 relay test endpoint 是 `relay.test.thoth.seeles.ai`，部署 authority 是独立仓库 `SeeleAI/Thoth-Relay`。
+10. `.agent-os/paper-notes/` 是 ignored local paper research material，用于未发表的 Thoth 论文构思；它不是 canonical project authority，不得 stage/commit，且不得把其中内容当作已验证产品事实。
+11. Thoth direct daemon 默认监听 `127.0.0.1:6688`。
+12. 本机 Paseo/legacy daemon 的 `127.0.0.1:6767` 是保留并行服务端口；Thoth 不得自动探测、复用、停止或重启它。
+13. 当前人工 Web 审核入口是 `http://127.0.0.1:8082/`，公网映射是 `http://180.76.242.105:8148/`。
+14. 当前 relay test endpoint 是 `relay.test.thoth.seeles.ai`，部署 authority 是独立仓库 `SeeleAI/Thoth-Relay`。
 
 ## 4. Authority And Docs Split
 
-`.agent-os/` 是项目 authority 和证据账本：
+`.agent-os/` 是项目 authority 和证据账本；唯一的局部例外是 ignored 的 `.agent-os/paper-notes/`，它只存放本机论文研究素材，不能覆盖、补充或替代下列 canonical authority：
 
 1. `project-index.md`: 当前真相、唯一 top next action、阻塞和恢复入口。
 2. `requirements.md`: 用户锁定目标、硬约束、验收标准、非目标。
@@ -101,7 +102,7 @@ Root workspaces 必须保持 `["packages/*"]`，正式 package 只能是以下 1
 9. `packages/tui` 必须使用 OpenTUI；不得引入 Textual 或归档 plugin TUI。
 10. Voice、speech、dictation、audio 不是当前 MVP 产品能力；不得新增权限、依赖、UI 或 runtime 能力。
 11. Multica 源码禁止 copy 到本仓库。Multica 只能作为设计和工程治理参考。
-12. 不得 stage/commit `.agent-os/upstreams/`、`.agent-os/artifacts/`、`.dev/`、`packages/app/android/`、`packages/app/ios/`、`packages/desktop/release/`。
+12. 不得 stage/commit `.agent-os/upstreams/`、`.agent-os/artifacts/`、`.agent-os/paper-notes/`、`.dev/`、`packages/app/android/`、`packages/app/ios/`、`packages/desktop/release/`。
 13. Thoth I 的 dev UI 必须复用当前可发布完整版 UI 的真实体验；不得创建单独的 mock/debug-only/agent-facing UI 作为主要审核入口。
 14. `localhost:6767` / `127.0.0.1:6767` 只能出现在测试 fixture、历史说明或“禁止碰 Paseo/legacy daemon”的守卫中，不能作为 Thoth runtime fallback。
 15. Relay pairing token 是自动配对凭证，不是用户手动登录 token；不得写进 URL query、日志、文档示例或 final 报告。
