@@ -3267,3 +3267,22 @@ build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --c
 - The tracked authority update marks `NTH-TD-007` and `NTH-MS-006` verified and restores `NTH-TD-021` as the one
   top next action. Its docs-only branch push must still pass the same workflow before handoff; no additional
   product or release-code change is included in that confirmation run.
+
+## 2026-07-17 [Installed flow, branding and build-ID updater pre-release]
+
+- Worked on: `NTH-TD-016`, `NTH-TD-007`, `NTH-CD-057`. Ordinary Agent composer turns now freeze Thoth controls
+  per send and bind Clarify/Quick to the visible provider agent; daemon workspace identity overrides remote client
+  cwd; internal agents remain limited to post-registration Loop phases.
+- Replaced startup and native icon assets with transparent Thoth artwork and added corner/legacy-mark checks.
+  Replaced the desktop `electron-updater`/rollout implementation with fixed-tag commit identity, streamed
+  size/SHA-256 verification and native install strategies; added the equivalent signed-APK Android path and
+  `MVP-UPDATE.json` generation.
+- Local verification passed full App `325` files / `2728` tests and daemon `229` files / `3166` tests before the
+  final review fixes; final protocol `343`, desktop `171`, focused App `49`, foundation, daemon/web builds, release
+  contract, brand contract and diff checks passed. A signed `sh.thoth` APK and Linux AppImage were built; the APK
+  has Signature v2, update-install permission and no microphone/overlay permission, while `app.asar` contains both
+  runtime skills and no legacy Paseo mark.
+- Review caught and fixed Linux DEB/AppImage asset selection, cross-filesystem AppImage replacement and Android
+  updater leakage into the Web bundle. Exported Chromium startup shows the new Thoth mark. The old Metro update
+  E2E remains a recorded `page.goto` timeout and is not acceptance evidence. Remote workflow/Release replacement
+  is still pending and no new public Release success is claimed by this entry.

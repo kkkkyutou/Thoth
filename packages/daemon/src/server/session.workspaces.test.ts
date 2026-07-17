@@ -697,7 +697,7 @@ test("client heartbeat clears attention for the focused terminal", async () => {
   });
 });
 
-test("create_agent_request keeps child agent cwd while reusing its canonical parent workspace", async () => {
+test("create_agent_request uses the daemon workspace cwd when workspaceId is provided", async () => {
   const workdir = mkdtempSync(path.join(tmpdir(), "thoth-create-agent-cwd-"));
   try {
     const parent = path.join(workdir, "parent");
@@ -810,11 +810,12 @@ test("create_agent_request keeps child agent cwd while reusing its canonical par
       type: "create_agent_request",
       requestId: "req-create-child",
       config: { provider: "codex", cwd: child },
+      workspaceId: "ws-parent",
       attachments: [],
     });
 
     const [createdAgent] = agentManager.listAgents();
-    expect(createdAgent?.cwd).toBe(child);
+    expect(createdAgent?.cwd).toBe(parent);
     await expect(
       session.buildProjectPlacementForWorkspaceId(createdAgent!.workspaceId!),
     ).resolves.toMatchObject({
@@ -823,7 +824,7 @@ test("create_agent_request keeps child agent cwd while reusing its canonical par
     });
     expect(findByType(emitted, "status")?.payload).toMatchObject({
       status: "agent_created",
-      agent: { cwd: child },
+      agent: { cwd: parent },
     });
   } finally {
     rmSync(workdir, { recursive: true, force: true });

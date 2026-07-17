@@ -10,6 +10,8 @@
   ],
   "type": "module",
   "scripts": {
+    "generate:brand-assets": "node scripts/generate-brand-assets.mjs",
+    "check:brand-assets": "node scripts/check-brand-assets.mjs",
     "check:mvp-release-contract": "node scripts/mvp-release-contract.mjs",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

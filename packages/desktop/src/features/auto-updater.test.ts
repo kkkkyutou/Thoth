@@ -1,201 +1,71 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { UUID } from "builder-util-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   app: {
-    getPath: vi.fn(),
+    getPath: vi.fn(() => "/tmp"),
+    isPackaged: true,
   },
+  BrowserWindow: { getAllWindows: vi.fn(() => []) },
+  shell: { openPath: vi.fn() },
 }));
 
-vi.mock("electron-updater", () => ({
-  default: {
-    autoUpdater: {},
-  },
-}));
+import { downloadedAssetMatches, resolveUpdateDownloadDestination } from "./auto-updater.js";
 
-import {
-  bucketFromStagingUserId,
-  resolveStagingUserId,
-  rolloutManifestSchema,
-  shouldAdmitToRollout,
-  shouldAutoInstallOnQuit,
-} from "./auto-updater";
+const appImageAsset = {
+  platform: "linux" as const,
+  arch: "x64" as const,
+  installStrategy: "appimage_replace" as const,
+  name: "Thoth-x86_64.AppImage",
+  url: "https://example.test/Thoth-x86_64.AppImage",
+  size: 123,
+  sha256: "a".repeat(64),
+};
 
-describe("shouldAutoInstallOnQuit", () => {
-  it("auto-installs on quit everywhere except Linux AppImage", () => {
-    expect(shouldAutoInstallOnQuit({ platform: "linux", isAppImage: true })).toBe(false);
-    expect(shouldAutoInstallOnQuit({ platform: "linux", isAppImage: false })).toBe(true);
-    expect(shouldAutoInstallOnQuit({ platform: "darwin", isAppImage: false })).toBe(true);
-    expect(shouldAutoInstallOnQuit({ platform: "win32", isAppImage: false })).toBe(true);
-  });
-});
-
-describe("shouldAdmitToRollout", () => {
-  it("admits beta, missing rollout hours, zero-hour rollout, and missing release date", () => {
+describe("MVP build updater", () => {
+  it("downloads an AppImage beside the running binary for atomic replacement", () => {
     expect(
-      shouldAdmitToRollout({
-        channel: "beta",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-28T01:00:00.000Z"),
-        bucket: 0.99,
+      resolveUpdateDownloadDestination({
+        asset: appImageAsset,
+        commit: "b".repeat(40),
+        tempPath: "/tmp",
+        runningAppImage: "/opt/Thoth.AppImage",
       }),
-    ).toBe(true);
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: undefined,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-28T01:00:00.000Z"),
-        bucket: 0.99,
-      }),
-    ).toBe(true);
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 0,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-28T01:00:00.000Z"),
-        bucket: 0.99,
-      }),
-    ).toBe(true);
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: undefined,
-        now: Date.parse("2026-04-28T01:00:00.000Z"),
-        bucket: 0.99,
-      }),
-    ).toBe(true);
+    ).toBe(`/opt/Thoth.AppImage.download-${"b".repeat(40)}`);
   });
 
-  it("blocks future releases and respects the linear threshold mid-rollout", () => {
+  it("uses the system temp directory for installers that do not replace themselves", () => {
     expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T02:00:00.000Z",
-        now: Date.parse("2026-04-28T01:00:00.000Z"),
-        bucket: 0,
+      resolveUpdateDownloadDestination({
+        asset: { ...appImageAsset, installStrategy: "system_package", name: "Thoth.deb" },
+        commit: "c".repeat(40),
+        tempPath: "/var/tmp",
+        runningAppImage: "/opt/Thoth.AppImage",
+      }),
+    ).toBe(path.join("/var/tmp", `${"c".repeat(40)}-Thoth.deb`));
+  });
+
+  it("requires both exact byte size and SHA-256 before installation", () => {
+    expect(
+      downloadedAssetMatches({
+        downloadedBytes: 123,
+        actualHash: "a".repeat(64),
+        asset: appImageAsset,
+      }),
+    ).toBe(true);
+    expect(
+      downloadedAssetMatches({
+        downloadedBytes: 122,
+        actualHash: "a".repeat(64),
+        asset: appImageAsset,
       }),
     ).toBe(false);
     expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-28T12:00:00.000Z"),
-        bucket: 0.49,
-      }),
-    ).toBe(true);
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-28T12:00:00.000Z"),
-        bucket: 0.51,
+      downloadedAssetMatches({
+        downloadedBytes: 123,
+        actualHash: "d".repeat(64),
+        asset: appImageAsset,
       }),
     ).toBe(false);
-  });
-
-  it("blocks the bucket-zero client at exact release time, admits as soon as time advances", () => {
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-28T00:00:00.000Z"),
-        bucket: 0,
-      }),
-    ).toBe(false);
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-28T00:00:00.001Z"),
-        bucket: 0,
-      }),
-    ).toBe(true);
-  });
-
-  it("admits the highest-bucket client at and past the rollout end", () => {
-    const maxBucket = (0x100000000 - 1) / 0x100000000;
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2026-04-29T00:00:00.000Z"),
-        bucket: maxBucket,
-      }),
-    ).toBe(true);
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "2026-04-28T00:00:00.000Z",
-        now: Date.parse("2027-04-28T00:00:00.000Z"),
-        bucket: maxBucket,
-      }),
-    ).toBe(true);
-  });
-
-  it("admits when releaseDate is unparseable", () => {
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: 24,
-        releaseDate: "not a date",
-        now: Date.parse("2026-04-28T12:00:00.000Z"),
-        bucket: 0.99,
-      }),
-    ).toBe(true);
-  });
-
-  it("treats garbage manifest rollout fields as missing and admits", () => {
-    const parsed = rolloutManifestSchema.parse({
-      rolloutHours: "not a number",
-      releaseDate: 12345,
-    });
-
-    expect(
-      shouldAdmitToRollout({
-        channel: "stable",
-        rolloutHours: parsed.rolloutHours,
-        releaseDate: parsed.releaseDate,
-        now: Date.parse("2026-04-28T12:00:00.000Z"),
-        bucket: 0.99,
-      }),
-    ).toBe(true);
-  });
-
-  it("maps the maximum 32-bit slot to a bucket strictly less than 1", () => {
-    const allOnes = "ffffffff-ffff-ffff-ffff-ffffffffffff";
-    const allZeros = "00000000-0000-0000-0000-000000000000";
-    expect(bucketFromStagingUserId(allOnes)).toBeLessThan(1);
-    expect(bucketFromStagingUserId(allOnes)).toBeGreaterThan(0.999);
-    expect(bucketFromStagingUserId(allZeros)).toBe(0);
-  });
-
-  it("creates and then reuses the on-disk staging user id", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "thoth-updater-id-"));
-    const filePath = path.join(tempDir, ".updaterId");
-
-    try {
-      const first = await resolveStagingUserId(filePath);
-      const stored = (await readFile(filePath, "utf8")).trim();
-      const second = await resolveStagingUserId(filePath);
-
-      expect(UUID.check(stored)).toBeTruthy();
-      expect(second).toBe(first);
-    } finally {
-      await rm(tempDir, { force: true, recursive: true });
-    }
   });
 });

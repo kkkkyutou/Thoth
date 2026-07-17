@@ -14,7 +14,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "npm --prefix ../.. run build:web && npm --prefix ../.. run build:cli && npm run build:main && electron-builder --config electron-builder.yml",
-    "build:mvp": "npm --prefix ../.. run build:web && npm --prefix ../.. run build:cli && npm run build:main && electron-builder --config electron-builder.mvp.yml",
+    "build:mvp": "node scripts/write-build-identity.mjs && npm --prefix ../.. run build:web && npm --prefix ../.. run build:cli && npm run build:main && electron-builder --config electron-builder.mvp.yml",
     "build:linux-appimage": "npm --prefix ../.. run build:web && npm --prefix ../.. run build:cli && npm run build:main && electron-builder --config electron-builder.yml --linux AppImage",
     "build:main": "tsc -p tsconfig.json",
     "dev": "./scripts/dev.sh",
@@ -26,7 +26,6 @@
     "@thoth/cli": "0.0.0-mvp-beta",
     "@thoth/daemon": "0.0.0-mvp-beta",
     "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2",
     "ws": "^8.14.2",
     "zod": "^4.4.3"
   },

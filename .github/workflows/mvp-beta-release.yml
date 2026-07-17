@@ -32,6 +32,7 @@ jobs:
       - run: npm ci
       - run: npm run setup:electron
       - run: npm run check:mvp-release-contract
+      - run: npm run check:brand-assets
       - run: npm run check:foundation
       - run: npm run build:release-runtime
       - run: npm --workspace=@thoth/app run test -- --project unit
@@ -372,6 +373,7 @@ jobs:
           node scripts/stamp-mvp-update-manifests.mjs "$release_date" release-files/beta-mac.yml release-files/beta-linux.yml release-files/beta.yml
 
           printf 'tag=%s\ncommit=%s\nworkflow=%s\n' "$THOTH_MVP_TAG" "$GITHUB_SHA" "$GITHUB_RUN_ID" > release-files/BUILD-SOURCE.txt
+          node scripts/build-mvp-update-manifest.mjs release-files "$GITHUB_SHA" "$GITHUB_RUN_ID"
           (
             cd release-files
             sha256sum -- * > SHA256SUMS
@@ -393,6 +395,8 @@ jobs:
           test -f "release-files/beta-mac.yml"
           test -f "release-files/beta-linux.yml"
           test -f "release-files/beta.yml"
+          test -f "release-files/MVP-UPDATE.json"
+          node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync("release-files/MVP-UPDATE.json","utf8")); if(value.commit!==process.env.GITHUB_SHA||value.tag!==process.env.THOTH_MVP_TAG||value.assets.length<7) process.exit(1)'
           test -f "release-files/Thoth-$THOTH_MVP_VERSION-android.apk"
           test -f "release-files/thoth-server-cli-$THOTH_MVP_VERSION.tgz"
 

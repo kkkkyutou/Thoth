@@ -64,7 +64,7 @@ describe("desktop app updater — check", () => {
     await updater.checkForUpdates({ releaseChannel: "stable", intent: "automatic", silent: true });
 
     expect(updater.getSnapshot()).toMatchObject({
-      status: "pending",
+      status: "available",
       lastCheckedAt: null,
     });
   });
@@ -114,15 +114,15 @@ describe("desktop app updater — check", () => {
     });
   });
 
-  it("reports 'pending' when the check resolves with an update that is not yet downloaded", async () => {
+  it("makes a detected build immediately available for the one-click install flow", async () => {
     const { updater, port } = createUpdater();
     port.nextCheckResult(buildFakeCheckResult({ hasUpdate: true, readyToInstall: false }));
 
     await updater.checkForUpdates({ releaseChannel: "stable" });
 
     expect(updater.getSnapshot()).toMatchObject({
-      status: "pending",
-      availableUpdate: null,
+      status: "available",
+      availableUpdate: { hasUpdate: true },
     });
   });
 

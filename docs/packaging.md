@@ -13,7 +13,8 @@ The fixed MVP version is `0.0.0-mvp-beta`. The `release/mvp-actions` workflow bu
 - Linux x64 AppImage, DEB, RPM and tar.gz packages
 - one universal signed Android Release APK
 - `thoth-server-cli-0.0.0-mvp-beta.tgz`
-- Electron updater manifests and `SHA256SUMS`
+- legacy Electron updater manifests for already-published clients, build-source metadata,
+  `MVP-UPDATE.json` and `SHA256SUMS`
 
 Run the local release-contract check before packaging:
 
@@ -106,6 +107,11 @@ The Release APK contract is:
 - no `android.permission.SYSTEM_ALERT_WINDOW`
 - no Expo development launcher or EAS OTA project binding
 
+The APK embeds the build commit and consumes the fixed-tag `MVP-UPDATE.json`. Its update action
+downloads the universal APK, reports byte progress, verifies the declared size and SHA-256, then
+opens the Android package installer through a content URI. `REQUEST_INSTALL_PACKAGES` is required
+for this flow; Android's per-source permission and final install confirmation remain system-owned.
+
 ## iOS
 
 iOS local build requires macOS with Xcode. Linux cannot produce a real iOS build.
@@ -186,6 +192,15 @@ notarization disabled; Windows disables certificate auto-discovery; Linux builds
 desktop artifacts may therefore trigger Gatekeeper or SmartScreen warnings. Signing and
 notarization can be added in a later release decision without changing the current package version
 contract.
+
+Every native MVP desktop build runs `write-build-identity.mjs` before packaging. The resulting
+`resources/build-identity.json` contains the workflow commit. Desktop update checks always fetch the
+fixed `v0.0.0-mvp-beta` `MVP-UPDATE.json` with cache busting and compare commits rather than
+versions. A user check that finds a different commit immediately downloads the platform asset,
+reports progress, verifies byte size and SHA-256, stops the bundled daemon, and enters the native
+install strategy: NSIS on Windows, DMG on macOS, atomic AppImage replacement, or the system package
+installer for DEB/RPM. New clients do not consume `latest*.yml`; those files remain Release assets
+only for migration compatibility with older published clients.
 
 Current verified local artifact:
 

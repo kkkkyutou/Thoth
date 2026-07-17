@@ -8,9 +8,22 @@ export interface DesktopAppUpdateCheckResult {
   readyToInstall: boolean;
   currentVersion: string | null;
   latestVersion: string | null;
+  currentBuildId: string | null;
+  latestBuildId: string | null;
   body: string | null;
   date: string | null;
   errorMessage: string | null;
+}
+
+export interface DesktopAppUpdateProgress {
+  phase: "checking" | "downloading" | "verifying" | "installing" | "complete" | "error";
+  currentBuildId: string | null;
+  latestBuildId: string | null;
+  downloadedBytes: number;
+  totalBytes: number;
+  percent: number;
+  bytesPerSecond: number;
+  error: string | null;
 }
 
 export interface DesktopAppUpdateInstallResult {
@@ -120,6 +133,8 @@ export async function checkDesktopAppUpdate({
     readyToInstall: result.readyToInstall === true,
     currentVersion: toStringOrNull(result.currentVersion),
     latestVersion: toStringOrNull(result.latestVersion),
+    currentBuildId: toStringOrNull(result.currentBuildId),
+    latestBuildId: toStringOrNull(result.latestBuildId),
     body: toStringOrNull(result.body),
     date: toStringOrNull(result.date),
     errorMessage: toStringOrNull(result.errorMessage),

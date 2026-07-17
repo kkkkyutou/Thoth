@@ -3,6 +3,7 @@ import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
   Pressable,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -77,6 +78,7 @@ import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
+import { runAndroidMvpUpdate, type AndroidMvpUpdateProgress } from "@/mobile/android-mvp-updater";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/disabled-voice-context";
@@ -523,6 +525,7 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
             <Text style={styles.aboutValue}>{appVersionText}</Text>
           </View>
           {isDesktopApp ? <DesktopAppUpdateRow /> : null}
+          {Platform.OS === "android" ? <AndroidAppUpdateRow /> : null}
         </View>
       </SettingsSection>
       <ConnectedHostsSection clientVersion={appVersion} />
@@ -615,23 +618,8 @@ function HostVersionRow({
   );
 }
 
-function getUpdateButtonLabel(
-  t: TFunction,
-  isInstalling: boolean,
-  latestVersion: string | null | undefined,
-): string {
-  if (isInstalling) return t("settings.about.updates.installing");
-  if (latestVersion) {
-    return t("settings.about.updates.updateTo", {
-      version: formatVersionWithPrefix(latestVersion),
-    });
-  }
-  return t("settings.about.updates.update");
-}
-
 function DesktopAppUpdateRow() {
   const { t } = useTranslation();
-  const { settings, updateSettings } = useSettings();
   const {
     isDesktopApp,
     statusText,
@@ -641,6 +629,7 @@ function DesktopAppUpdateRow() {
     isInstalling,
     checkForUpdates,
     installUpdate,
+    progress,
   } = useDesktopAppUpdater();
 
   useFocusEffect(
@@ -657,49 +646,11 @@ function DesktopAppUpdateRow() {
     if (!isDesktopApp) {
       return;
     }
-    void checkForUpdates();
-  }, [checkForUpdates, isDesktopApp]);
-
-  const handleReleaseChannelChange = useCallback(
-    (releaseChannel: EffectiveSettings["releaseChannel"]) => {
-      void updateSettings({ releaseChannel });
-    },
-    [updateSettings],
-  );
-  const releaseChannelOptions = useMemo(
-    () => [
-      { value: "stable" as const, label: t("settings.about.releaseChannel.stable") },
-      { value: "beta" as const, label: t("settings.about.releaseChannel.beta") },
-    ],
-    [t],
-  );
-
-  const handleInstallUpdate = useCallback(() => {
-    if (!isDesktopApp) {
-      return;
-    }
-
-    void confirmDialog({
-      title: t("settings.about.updates.installTitle"),
-      message: t("settings.about.updates.installMessage"),
-      confirmLabel: t("settings.about.updates.installConfirm"),
-      cancelLabel: t("common.actions.cancel"),
-    })
-      .then((confirmed) => {
-        if (!confirmed) {
-          return;
-        }
-        void installUpdate();
-        return;
-      })
-      .catch((error) => {
-        console.error("[Settings] Failed to open app update confirmation", error);
-        Alert.alert(
-          t("settings.about.updates.alertTitle"),
-          t("settings.about.updates.alertMessage"),
-        );
-      });
-  }, [installUpdate, isDesktopApp, t]);
+    void checkForUpdates().then((result) => {
+      if (result?.hasUpdate) return installUpdate();
+      return null;
+    });
+  }, [checkForUpdates, installUpdate, isDesktopApp]);
 
   if (!isDesktopApp) {
     return null;
@@ -707,20 +658,6 @@ function DesktopAppUpdateRow() {
 
   return (
     <>
-      <View style={ROW_WITH_BORDER_STYLE}>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.about.releaseChannel.label")}</Text>
-          <Text style={settingsStyles.rowHint}>
-            {t("settings.about.releaseChannel.description")}
-          </Text>
-        </View>
-        <SegmentedControl
-          size="sm"
-          value={settings.releaseChannel}
-          onValueChange={handleReleaseChannelChange}
-          options={releaseChannelOptions}
-        />
-      </View>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.about.updates.label")}</Text>
@@ -733,6 +670,11 @@ function DesktopAppUpdateRow() {
             </Text>
           ) : null}
           {errorMessage ? <Text style={styles.aboutErrorText}>{errorMessage}</Text> : null}
+          {progress && progress.phase !== "checking" ? (
+            <Text style={settingsStyles.rowHint}>
+              {`${progress.phase} ${progress.percent.toFixed(0)}% (${Math.round(progress.downloadedBytes / 1024 / 1024)} / ${Math.round(progress.totalBytes / 1024 / 1024)} MB)`}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.aboutUpdateActions}>
           <Button
@@ -743,17 +685,42 @@ function DesktopAppUpdateRow() {
           >
             {isChecking ? t("settings.about.updates.checking") : t("settings.about.updates.check")}
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onPress={handleInstallUpdate}
-            disabled={isChecking || isInstalling || !availableUpdate}
-          >
-            {getUpdateButtonLabel(t, isInstalling, availableUpdate?.latestVersion)}
-          </Button>
         </View>
       </View>
     </>
+  );
+}
+
+function AndroidAppUpdateRow() {
+  const { t } = useTranslation();
+  const [progress, setProgress] = useState<AndroidMvpUpdateProgress | null>(null);
+  const running =
+    progress?.phase === "checking" ||
+    progress?.phase === "downloading" ||
+    progress?.phase === "verifying" ||
+    progress?.phase === "installing";
+  const handleUpdate = useCallback(() => {
+    void runAndroidMvpUpdate(setProgress).catch(() => undefined);
+  }, []);
+  const status = progress
+    ? progress.phase === "error"
+      ? progress.error
+      : progress.phase === "up-to-date"
+        ? t("desktop.updates.status.upToDate")
+        : `${progress.phase} ${progress.percent.toFixed(0)}% (${Math.round(progress.downloadedBytes / 1024 / 1024)} / ${Math.round(progress.totalBytes / 1024 / 1024)} MB)`
+    : t("desktop.updates.status.idle");
+  return (
+    <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.about.updates.label")}</Text>
+        <Text style={progress?.phase === "error" ? styles.aboutErrorText : settingsStyles.rowHint}>
+          {status}
+        </Text>
+      </View>
+      <Button variant="outline" size="sm" onPress={handleUpdate} disabled={running}>
+        {running ? t("settings.about.updates.checking") : t("settings.about.updates.check")}
+      </Button>
+    </View>
   );
 }
 

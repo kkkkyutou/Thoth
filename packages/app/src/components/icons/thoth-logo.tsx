@@ -8,7 +8,7 @@ interface ThothLogoProps {
 }
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const THOTH_BRAND_MARK = require("../../../assets/icons/arcade-inventory/brand/brand-mark.png");
+const THOTH_BRAND_MARK = require("../../../assets/images/thoth-brand-mark.png");
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 export function ThothLogo({ size = 64, color, style }: ThothLogoProps) {

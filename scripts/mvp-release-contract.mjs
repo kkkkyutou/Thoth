@@ -133,6 +133,16 @@ export function runMvpReleaseContract({ writeMode = false } = {}) {
   if (!workflowText.includes(`THOTH_MVP_TAG: ${MVP_TAG}`)) {
     failures.push("MVP workflow tag does not match the package version");
   }
+  if (!workflowText.includes("build-mvp-update-manifest.mjs")) {
+    failures.push("MVP workflow must generate the fixed-tag build update manifest");
+  }
+  if (!workflowText.includes('test -f "release-files/MVP-UPDATE.json"')) {
+    failures.push("MVP workflow must verify MVP-UPDATE.json before publishing");
+  }
+  const desktopManifest = readJson("packages/desktop/package.json");
+  if (desktopManifest.dependencies?.["electron-updater"]) {
+    failures.push("Desktop MVP must not depend on the legacy electron-updater path");
+  }
 
   const rootScripts = manifests.find(({ relativePath }) => relativePath === "package.json")?.value
     .scripts;

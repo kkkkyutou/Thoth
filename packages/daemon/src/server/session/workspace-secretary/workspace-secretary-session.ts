@@ -19,7 +19,10 @@ import {
 } from "../../agent/runtime-tool-decisions.js";
 import { resolveCreateAgentTitles } from "../../agent/create-agent-title.js";
 import { prepareProviderRuntimeSession } from "../../agent/provider-runtime-session.js";
-import { withThothRuntimeTools } from "../../agent/thoth-runtime-tools-config.js";
+import {
+  readThothRuntimeToolsConfig,
+  withThothRuntimeTools,
+} from "../../agent/thoth-runtime-tools-config.js";
 import {
   beginWorkspaceSecretaryTurnPolicy,
   bindWorkspaceSecretaryProviderTurn,
@@ -1914,6 +1917,14 @@ export class WorkspaceSecretarySession {
       state.model.secretary.status = createStatusModel("loading");
       persistTopicSnapshot(this.options.daemonConfigStore, state);
 
+      const foregroundAgentId = request.uiAgentId
+        ? await this.prepareForegroundAgentForThoth({
+            state,
+            topicId: state.model.secretary.activeTopicId,
+            agentId: request.uiAgentId,
+          })
+        : undefined;
+
       await this.startProviderTurnInBackground({
         state,
         provider: provider.config,
@@ -1924,6 +1935,7 @@ export class WorkspaceSecretarySession {
         images: request.images,
         attachments: request.attachments,
         uiAgentId: request.uiAgentId,
+        reuseAgentId: foregroundAgentId,
       });
       this.emitModelUpdate(state, "provider_turn_started");
       return state;
@@ -2794,7 +2806,9 @@ export class WorkspaceSecretarySession {
       state: input.state,
       agentId,
       topicId,
-      uiAgentId: input.uiAgentId,
+      // A reused foreground agent already broadcasts its own stream. Mirroring it back onto the
+      // same id duplicates timeline rows after refresh and can reorder the original user turn.
+      uiAgentId: input.uiAgentId === agentId ? undefined : input.uiAgentId,
       events,
       structured: input.runtime !== null,
       authorityContinuation: input.authorityContinuation,
@@ -3499,6 +3513,63 @@ export class WorkspaceSecretarySession {
     return agent.id;
   }
 
+  private async prepareForegroundAgentForThoth(input: {
+    state: WorkspaceSecretaryState;
+    topicId: string;
+    agentId: string;
+  }): Promise<string | undefined> {
+    let agent = this.options.agentManager.getAgent(input.agentId);
+    if (!agent && this.options.agentStorage && this.options.logger) {
+      agent = await ensureAgentLoaded(input.agentId, {
+        agentManager: this.options.agentManager,
+        agentStorage: this.options.agentStorage,
+        logger: this.options.logger,
+      });
+    }
+    // Draft Workspace Secretary surfaces use a virtual UI id. Only reuse the id when it resolves
+    // to a real foreground provider agent; otherwise retain the existing internal topic session.
+    if (!agent || agent.id !== input.agentId) {
+      return undefined;
+    }
+    if (!this.options.agentManager.hasRunnableSession(agent.id)) {
+      throw new Error(`Foreground agent session is not available: ${input.agentId}`);
+    }
+    const capabilities = this.options.agentManager.getProviderCapabilities(agent.provider);
+    if (capabilities?.supportsNativeThothTools !== true) {
+      throw new Error(
+        `Provider '${agent.provider}' does not support the Thoth Clarify runtime tool contract.`,
+      );
+    }
+
+    const runtimeSession = prepareProviderRuntimeSession({
+      provider: agent.provider,
+      thothHome: this.options.daemonConfigStore.getThothHome(),
+      sessionId: input.topicId,
+    });
+    const currentRuntime = readThothRuntimeToolsConfig(agent.config);
+    if (currentRuntime?.scope !== "clarify" || currentRuntime.sessionHome !== runtimeSession.home) {
+      agent = await this.options.agentManager.reloadAgentSession(
+        agent.id,
+        withThothRuntimeTools(agent.config, {
+          enabled: true,
+          scope: "clarify",
+          ...(runtimeSession.home ? { sessionHome: runtimeSession.home } : {}),
+        }),
+      );
+    }
+
+    const key = workspaceSecretaryTopicAgentKey(input.topicId, {
+      provider: agent.provider,
+      ...(agent.config.model ? { model: agent.config.model } : {}),
+      ...(agent.config.modeId ? { modeId: agent.config.modeId } : {}),
+      ...(agent.config.thinkingOptionId ? { thinkingOptionId: agent.config.thinkingOptionId } : {}),
+      ...(agent.config.featureValues ? { featureValues: agent.config.featureValues } : {}),
+    });
+    input.state.topicAgents.set(key, agent.id);
+    persistTopicSnapshot(this.options.daemonConfigStore, input.state);
+    return agent.id;
+  }
+
   private async refreshRuntimeStatus(state: WorkspaceSecretaryState): Promise<void> {
     const provider = await this.resolveProviderRuntime();
     const runtime = provider.runtime;
@@ -3546,10 +3617,14 @@ export class WorkspaceSecretarySession {
   }> {
     const workspaces = await this.options.host.listWorkspaces();
     const requestedWorkspacePath = request?.workspacePath;
+    const workspaceById = request?.workspaceId
+      ? workspaces.find((workspace) => workspace.workspaceId === request.workspaceId)
+      : null;
+    if (request?.workspaceId && !workspaceById) {
+      throw new Error(`Workspace not found: ${request.workspaceId}`);
+    }
     const requestedWorkspace =
-      (request?.workspaceId
-        ? workspaces.find((workspace) => workspace.workspaceId === request.workspaceId)
-        : null) ??
+      workspaceById ??
       (requestedWorkspacePath
         ? workspaces.find((workspace) => resolve(workspace.cwd) === resolve(requestedWorkspacePath))
         : null);

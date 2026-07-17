@@ -704,3 +704,26 @@ Whenever a package, generated asset, native tool or workflow argument enters a r
 assumption of pre-existing `dist`/postinstall state and run it after clean `npm ci` on every supported OS. Keep
 failed run IDs and logs, add a deterministic contract assertion for each repaired cause, and do not mutate the
 public Release until all native and smoke jobs are green.
+
+## 2026-07-17 Android-only modules can break the desktop Web renderer
+
+What failed:
+
+The first Playwright desktop-update run loaded a blank renderer and reported `Cannot use 'import.meta' outside a
+module`. The settings screen statically imported the Android updater, so Web Metro also bundled the native APK
+hashing path and its `@noble/hashes` module even though the Android row was hidden at runtime. A runtime
+`Platform.OS` check did not provide a build boundary.
+
+What changed:
+
+The updater now has a `.web.ts` platform implementation with no Android/native imports. The real Android module
+remains selected by native resolution. Web export, related UI unit tests and an exported-bundle Chromium startup
+then loaded the Thoth splash without the module error. The repository's old Metro Playwright update suite still
+timed out in `page.goto` before reaching its assertions, so that runner result is retained as infrastructure
+failure rather than claimed product acceptance.
+
+Conclusion:
+
+Platform-conditional rendering is not dependency isolation. Native update, filesystem, intent and crypto code
+must be split at module resolution boundaries before it is imported by a shared screen. For startup regressions,
+inspect browser `pageerror` before treating missing UI as a selector or timing problem.

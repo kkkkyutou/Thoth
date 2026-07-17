@@ -39,6 +39,8 @@ function buildCheckResult(
     readyToInstall: false,
     currentVersion: null,
     latestVersion: null,
+    currentBuildId: null,
+    latestBuildId: null,
     body: null,
     date: null,
     errorMessage: null,

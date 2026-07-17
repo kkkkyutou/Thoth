@@ -19,6 +19,8 @@ asarUnpack:
 extraResources:
   - from: ../app/dist
     to: app-dist
+  - from: .build-identity.json
+    to: build-identity.json
 publish:
   provider: github
   owner: SeeleAI
@@ -26,7 +28,7 @@ publish:
 mac:
   artifactName: "Thoth-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools
-  icon: assets/icon.icns
+  icon: assets/icon.png
   hardenedRuntime: true
   notarize: true
   entitlements: build/entitlements.mac.plist
@@ -60,7 +62,7 @@ appImage:
   artifactName: "Thoth-${arch}.${ext}"
 win:
   artifactName: "Thoth-Setup-${version}-${arch}.${ext}"
-  icon: assets/icon.ico
+  icon: assets/icon.png
   extraResources:
     - from: bin/thoth.cmd
       to: bin/thoth.cmd

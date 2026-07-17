@@ -239,12 +239,9 @@ export function createDesktopAppUpdater(deps: DesktopAppUpdaterDeps): DesktopApp
       let nextStatus: DesktopAppUpdateStatus;
       let nextAvailable: DesktopAppUpdateCheckResult | null;
 
-      if (result.readyToInstall) {
+      if (result.readyToInstall || result.hasUpdate) {
         nextStatus = "available";
         nextAvailable = result;
-      } else if (result.hasUpdate) {
-        nextStatus = "pending";
-        nextAvailable = null;
       } else {
         nextStatus = "up-to-date";
         nextAvailable = null;

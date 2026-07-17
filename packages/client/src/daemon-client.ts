@@ -268,6 +268,7 @@ export interface SendMessageOptions {
   messageId?: string;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: SendAgentMessageRequest["attachments"];
+  thoth?: SendAgentMessageRequest["thoth"];
 }
 
 type AgentConfigOverrides = Partial<Omit<AgentSessionConfig, "provider" | "cwd">>;
@@ -2722,6 +2723,7 @@ export class DaemonClient {
       ...(messageId ? { messageId } : {}),
       ...(options?.images ? { images: options.images } : {}),
       ...(options?.attachments ? { attachments: options.attachments } : {}),
+      ...(options?.thoth ? { thoth: options.thoth } : {}),
     });
     const payload = await this.sendRequest({
       requestId,

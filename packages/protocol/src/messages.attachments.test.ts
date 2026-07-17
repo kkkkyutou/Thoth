@@ -7,6 +7,26 @@ import {
 } from "./messages.js";
 
 describe("shared messages attachments", () => {
+  it("keeps an optional provider-neutral Thoth turn snapshot", () => {
+    const parsed = SendAgentMessageRequestSchema.parse({
+      type: "send_agent_message_request",
+      requestId: "req-thoth-turn",
+      agentId: "agent-1",
+      text: "Help me shape this task",
+      thoth: {
+        enabled: true,
+        executionMode: "loop",
+        clarifyStrength: "dive",
+      },
+    });
+
+    expect(parsed.thoth).toEqual({
+      enabled: true,
+      executionMode: "loop",
+      clarifyStrength: "dive",
+    });
+  });
+
   it("keeps valid review attachments", () => {
     const parsed = SendAgentMessageRequestSchema.parse({
       type: "send_agent_message_request",

@@ -1167,6 +1167,13 @@ export const SendAgentMessageRequestSchema = z.object({
   messageId: z.string().optional(), // Client-provided ID for deduplication
   images: z.array(ImageAttachmentSchema).optional(),
   attachments: AgentAttachmentsSchema,
+  thoth: z
+    .object({
+      enabled: z.boolean(),
+      executionMode: z.enum(["quick", "loop"]),
+      clarifyStrength: z.enum(["light", "balanced", "dive"]),
+    })
+    .optional(),
 });
 
 export const WaitForFinishRequestSchema = z.object({

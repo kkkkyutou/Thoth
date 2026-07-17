@@ -74,7 +74,7 @@ export default {
     },
     android: {
       adaptiveIcon: {
-        backgroundColor: "#000000",
+        backgroundColor: "#f7f5ee",
         foregroundImage: "./assets/images/android-icon-foreground.png",
       },
       edgeToEdgeEnabled: true,
@@ -82,7 +82,11 @@ export default {
       softwareKeyboardLayoutMode: "resize",
       // Allow HTTP connections for local network hosts (required for release builds)
       usesCleartextTraffic: true,
-      permissions: ["CAMERA", "android.permission.CAMERA"],
+      permissions: [
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+      ],
       blockedPermissions: [
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW",
@@ -144,6 +148,7 @@ export default {
     },
     extra: {
       router: {},
+      buildCommit: process.env.GITHUB_SHA ?? process.env.THOTH_BUILD_COMMIT ?? "development",
     },
   },
 };

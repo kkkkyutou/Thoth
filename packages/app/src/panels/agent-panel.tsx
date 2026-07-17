@@ -1338,12 +1338,23 @@ const AgentStreamSection = memo(function AgentStreamSection({
       await dispatchWorkspaceSecretaryAnswer({
         client,
         agentId: agent.id,
+        ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
+        workspacePath: agent.cwd,
+        topicId: agent.id,
         cardId,
         answer,
         stream,
       });
     },
-    [agent.id, client, serverId, setAgentStreamHead, setAgentStreamTail],
+    [
+      agent.cwd,
+      agent.id,
+      agent.workspaceId,
+      client,
+      serverId,
+      setAgentStreamHead,
+      setAgentStreamTail,
+    ],
   );
 
   return (
@@ -1570,6 +1581,7 @@ function ActiveAgentComposer({
       <Composer
         agentId={agentId}
         serverId={serverId}
+        workspaceId={workspaceId}
         externalKeyboardShift
         isPaneFocused={isPaneFocused}
         value={agentInputDraft.text}

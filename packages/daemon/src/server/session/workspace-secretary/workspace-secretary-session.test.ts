@@ -247,6 +247,7 @@ function createSession(input?: {
   hasRunnableSession?: (agentId: string) => boolean;
   nativeThothToolProviders?: readonly string[];
   loopTaskService?: ThothLoopTaskService | null;
+  foregroundAgentId?: string;
 }) {
   const emitted: SessionOutboundMessage[] = [];
   const runPrompts: unknown[] = [];
@@ -258,6 +259,7 @@ function createSession(input?: {
   const appendedTimelineItems: Array<{ agentId: string; item: unknown }> = [];
   const permissionResponses: Array<{ agentId: string; requestId: string; response: unknown }> = [];
   const canceledAgentIds: string[] = [];
+  const reloadedAgentConfigs: AgentSessionConfig[] = [];
   const ownsThothHome = !input?.thothHome;
   const thothHome = input?.thothHome ?? mkdtempSync(join(tmpdir(), "thoth-workspace-secretary-"));
   const streamRuns = [...(input?.streamRuns ?? [])];
@@ -338,12 +340,25 @@ function createSession(input?: {
         },
       });
     },
-    getAgent: () =>
+    getAgent: (agentId: string) =>
       ({
-        id: "agent-workspace-secretary",
+        id: input?.foregroundAgentId === agentId ? agentId : "agent-workspace-secretary",
+        provider: configuredProvider,
+        config: { provider: configuredProvider, cwd: workspace.cwd },
+        internal: input?.foregroundAgentId === agentId ? false : true,
         persistence: { provider: configuredProvider, sessionId: "provider-session-1" },
         labels: { topicId: "topic-main" },
       }) as ManagedAgent,
+    reloadAgentSession: async (agentId: string, config: AgentSessionConfig) => {
+      reloadedAgentConfigs.push(config);
+      return {
+        id: agentId,
+        provider: configuredProvider,
+        config,
+        internal: false,
+        persistence: { provider: configuredProvider, sessionId: "provider-session-1" },
+      } as ManagedAgent;
+    },
     listInternalAgentsByLabels: (labels: Record<string, string>) =>
       labels.surface === "workspace-secretary" && labels.topicId === "topic-main"
         ? [
@@ -390,6 +405,7 @@ function createSession(input?: {
     appendedTimelineItems,
     permissionResponses,
     canceledAgentIds,
+    reloadedAgentConfigs,
     thothHome,
     getConfig: () => config,
     cleanup: () => {
@@ -775,6 +791,45 @@ describe("WorkspaceSecretarySession runtime tool bridge", () => {
       expect(String(runPrompts[0])).toContain("workspace_secretary_runtime_context");
       expect(runPrompts[1]).toBe("当前工作区是 git 吗？");
       expect(String(runPrompts[2])).toContain("workspace_secretary_runtime_context");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reuses a real foreground provider session for a Thoth turn without mirroring it", async () => {
+    const { session, runAgentIds, createdAgentConfigs, reloadedAgentConfigs, emitted, cleanup } =
+      createSession({ foregroundAgentId: "foreground-agent-1" });
+    try {
+      await session.handleSendRequest({
+        requestId: "send-foreground-thoth",
+        workspaceId: workspace.workspaceId,
+        workspacePath: workspace.cwd,
+        topicId: "foreground-agent-1",
+        uiAgentId: "foreground-agent-1",
+        messageId: "foreground-message-1",
+        text: "Help me clarify this task",
+        composer: {
+          mode: "quick",
+          clarifyStrength: "light",
+          loop: null,
+          authorityLabel: "真实 provider",
+          authorityReady: true,
+        },
+      });
+      await flushBackgroundTurns();
+
+      expect(createdAgentConfigs).toHaveLength(0);
+      expect(reloadedAgentConfigs).toHaveLength(1);
+      expect(reloadedAgentConfigs[0]).toMatchObject({
+        extra: { thothRuntimeTools: { enabled: true, scope: "clarify" } },
+      });
+      expect(runAgentIds).toEqual(["foreground-agent-1"]);
+      expect(
+        emitted.filter(
+          (message) =>
+            message.type === "agent_stream" && message.payload.agentId === "foreground-agent-1",
+        ),
+      ).toHaveLength(0);
     } finally {
       cleanup();
     }

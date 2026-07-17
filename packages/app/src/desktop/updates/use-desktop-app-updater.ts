@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   checkDesktopAppUpdate,
   formatVersionWithPrefix,
@@ -7,7 +7,9 @@ import {
   type DesktopAppUpdateCheckResult,
   type DesktopAppUpdateCheckIntent,
   type DesktopAppUpdateInstallResult,
+  type DesktopAppUpdateProgress,
 } from "@/desktop/updates/desktop-updates";
+import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { useDesktopIpcErrorReporter } from "@/desktop/hooks/desktop-ipc-error";
 import {
@@ -29,6 +31,7 @@ export interface UseDesktopAppUpdaterReturn {
   lastCheckedAt: number | null;
   isChecking: boolean;
   isInstalling: boolean;
+  progress: DesktopAppUpdateProgress | null;
   checkForUpdates: (options?: {
     intent?: DesktopAppUpdateCheckIntent;
     silent?: boolean;
@@ -41,6 +44,7 @@ export function useDesktopAppUpdater(): UseDesktopAppUpdaterReturn {
   const { settings: desktopSettings } = useDesktopSettings();
   const releaseChannel = desktopSettings.releaseChannel;
   const reportError = useDesktopIpcErrorReporter();
+  const [progress, setProgress] = useState<DesktopAppUpdateProgress | null>(null);
 
   const updater = useMemo(
     () =>
@@ -90,6 +94,22 @@ export function useDesktopAppUpdater(): UseDesktopAppUpdaterReturn {
   }, [checkForUpdates, isDesktopApp]);
 
   useEffect(() => {
+    if (!isDesktopApp) return undefined;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listenToDesktopEvent<DesktopAppUpdateProgress>("app-update-progress", (next) => {
+      if (!disposed) setProgress(next);
+    }).then((cleanup) => {
+      if (disposed) cleanup();
+      else unlisten = cleanup;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [isDesktopApp]);
+
+  useEffect(() => {
     if (!isDesktopApp || snapshot.status !== "pending") {
       return undefined;
     }
@@ -119,6 +139,7 @@ export function useDesktopAppUpdater(): UseDesktopAppUpdaterReturn {
     lastCheckedAt: snapshot.lastCheckedAt,
     isChecking: snapshot.isChecking,
     isInstalling: snapshot.isInstalling,
+    progress,
     checkForUpdates,
     installUpdate,
   };

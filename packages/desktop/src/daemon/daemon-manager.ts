@@ -14,8 +14,10 @@ import {
   writeAttachmentBytes,
 } from "../features/attachments.js";
 import {
+  cancelAppUpdate,
   checkForAppUpdate,
   downloadAndInstallUpdate,
+  getAppUpdateSnapshot,
   type AppUpdateCheckIntent,
   type AppReleaseChannel,
 } from "../features/auto-updater.js";
@@ -616,6 +618,20 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
         intent: parseAppUpdateCheckIntent(args),
       });
     },
+    app_update_start: async (args) => {
+      const currentVersion = resolveDesktopAppVersion();
+      const releaseChannel = await resolveRequestedReleaseChannel(args);
+      const check = await checkForAppUpdate({
+        currentVersion,
+        releaseChannel,
+        intent: "manual",
+      });
+      if (!check.hasUpdate) return check;
+      return downloadAndInstallUpdate({ currentVersion, releaseChannel }, async () => {
+        await stopDesktopDaemon("app_update");
+      });
+    },
+    app_update_snapshot: () => getAppUpdateSnapshot(),
     install_app_update: async (args) => {
       const currentVersion = resolveDesktopAppVersion();
       return downloadAndInstallUpdate(
@@ -624,6 +640,10 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
           await stopDesktopDaemon("app_update");
         },
       );
+    },
+    app_update_cancel: () => {
+      cancelAppUpdate();
+      return { canceled: true };
     },
     get_local_daemon_version: () => getLocalDaemonVersion(),
     install_cli: () => installCli(),

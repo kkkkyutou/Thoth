@@ -21,6 +21,10 @@ The agent must wait for explicit user authorization before any of the following:
 - EAS cloud build
 - App Store or Play Store submission
 
+The user renewed the same narrow authorization on `2026-07-17` for the install-flow, branding and
+build-ID updater repair on `release/mvp-actions`, including its branch push and replace-in-place MVP
+Release run. This does not expand the authorization to `main`, npm, stores or hosted infrastructure.
+
 ## MVP Beta Authority
 
 - Version: `0.0.0-mvp-beta`
@@ -40,6 +44,24 @@ MVP Release intact. Historical releases such as `thoth-plugin-final-archive` are
 
 Until the user chooses a new version, updates replace this same Release and tag. They do not create
 additional MVP beta releases.
+
+## MVP Build-ID Updates
+
+`MVP-UPDATE.json` is the update authority for newly packaged desktop and Android clients. It records
+the fixed tag/version, source commit, workflow run, publication time and each preferred native
+installer's platform, architecture, strategy, byte size, SHA-256 and fixed Release URL. Clients use
+their bundled commit as identity; equal semver with a different commit is an update.
+
+One click on Check for updates authorizes check, download, verification and handoff to the platform
+installer. Windows runs the NSIS installer, macOS opens the unsigned beta DMG, AppImage performs an
+atomic replacement and restart, DEB/RPM opens the system installer, and Android opens the package
+installer after APK verification. Operating-system permission and install confirmations are not
+bypassed.
+
+The previously published build contains the former `electron-updater` implementation. A remote
+manifest cannot replace code that is already installed, and the fixed semver prevents that legacy
+client from reliably selecting this replacement. Users must manually install one build produced by
+this change. All subsequent fixed-tag beta replacements can then use the commit-based updater.
 
 ## Artifact Policy
 

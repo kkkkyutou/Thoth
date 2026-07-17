@@ -2662,6 +2662,15 @@ export class Session {
     let createdWorktreeForCleanup: CreateThothWorktreeWorkflowResult | null = null;
     let createdAgentId: string | null = null;
     try {
+      const requestedWorkspace = msg.workspaceId
+        ? await this.workspaceRegistry.get(msg.workspaceId)
+        : null;
+      if (msg.workspaceId && (!requestedWorkspace || requestedWorkspace.archivedAt)) {
+        throw new Error(`Workspace not found: ${msg.workspaceId}`);
+      }
+      const authorityConfig = requestedWorkspace
+        ? { ...config, cwd: requestedWorkspace.cwd }
+        : config;
       const trimmedPrompt = initialPrompt?.trim();
       const { provisionalTitle } = resolveCreateAgentTitles({
         configTitle: config.title,
@@ -2674,15 +2683,15 @@ export class Session {
       };
       const workspacePromptTitle = resolveFirstAgentPromptTitle(firstAgentContext);
       const createdWorktree = await this.createAgentLifecycleDispatch.createWorktreeForRequest({
-        cwd: config.cwd,
+        cwd: authorityConfig.cwd,
         target: worktree,
         firstAgentContext,
         hasLegacyGitOptions: Boolean(git),
       });
       createdWorktreeForCleanup = createdWorktree;
       const createAgentConfig: AgentSessionConfig = createdWorktree
-        ? { ...config, cwd: createdWorktree.worktree.worktreePath }
-        : config;
+        ? { ...authorityConfig, cwd: createdWorktree.worktree.worktreePath }
+        : authorityConfig;
       const workspaceId = await this.workspaceProvisioning.resolveOrCreateWorkspaceIdForCreateAgent(
         {
           createdWorktree,

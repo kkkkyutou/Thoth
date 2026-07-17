@@ -1,198 +1,344 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import { app } from "electron";
-import { UUID } from "builder-util-runtime";
-import electronUpdater from "electron-updater";
+import { spawn } from "node:child_process";
+import { app, BrowserWindow, shell } from "electron";
 import {
-  createAppUpdateService,
-  type AppUpdateCheckResult,
-  type AppUpdateInstallResult,
-  type AppUpdateRuntime,
-  type AppUpdateRuntimeConfiguration,
-  type RuntimeUpdateCheckResult,
-  type RuntimeUpdateInfo,
-} from "./app-update-service.js";
-import {
-  bucketFromStagingUserId,
-  rolloutManifestSchema,
-  shouldAdmitAppUpdate,
-  type AppReleaseChannel,
-  type AppUpdateCheckIntent,
-} from "./app-update-rollout.js";
+  MvpUpdateManifestSchema,
+  selectMvpUpdateAsset,
+  type MvpUpdateAsset,
+  type MvpUpdateManifest,
+} from "@thoth/protocol/mvp-update";
 
-const { autoUpdater } = electronUpdater;
+export type AppReleaseChannel = "stable" | "beta";
+export type AppUpdateCheckIntent = "automatic" | "manual";
 
-export {
-  bucketFromStagingUserId,
-  rolloutManifestSchema,
-  shouldAdmitAppUpdate,
-  type AppReleaseChannel,
-  type AppUpdateCheckIntent,
-  type AppUpdateCheckResult,
-  type AppUpdateInstallResult,
-};
-
-let cachedStagingUserIdPromise: Promise<string> | null = null;
-
-export function shouldAdmitToRollout(args: {
-  channel: AppReleaseChannel;
-  rolloutHours: number | undefined;
-  releaseDate: string | undefined;
-  now: number;
-  bucket: number;
-}): boolean {
-  return shouldAdmitAppUpdate({ ...args, intent: "automatic" });
+export interface AppUpdateCheckResult {
+  hasUpdate: boolean;
+  readyToInstall: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  currentBuildId: string | null;
+  latestBuildId: string | null;
+  body: string | null;
+  date: string | null;
+  errorMessage: string | null;
 }
 
-export async function resolveStagingUserId(filePath: string): Promise<string> {
+export interface AppUpdateInstallResult {
+  installed: boolean;
+  version: string | null;
+  message: string;
+}
+
+export interface AppUpdateProgress {
+  phase: "checking" | "downloading" | "verifying" | "installing" | "complete" | "error";
+  currentBuildId: string | null;
+  latestBuildId: string | null;
+  downloadedBytes: number;
+  totalBytes: number;
+  percent: number;
+  bytesPerSecond: number;
+  error: string | null;
+}
+
+const MANIFEST_URL =
+  "https://github.com/SeeleAI/Thoth/releases/download/v0.0.0-mvp-beta/MVP-UPDATE.json";
+let cachedManifest: MvpUpdateManifest | null = null;
+let cachedAsset: MvpUpdateAsset | null = null;
+let activeAbortController: AbortController | null = null;
+let currentProgress: AppUpdateProgress | null = null;
+
+function emitProgress(progress: AppUpdateProgress): void {
+  currentProgress = progress;
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("thoth:event:app-update-progress", progress);
+  }
+}
+
+async function readCurrentBuildId(): Promise<string | null> {
+  if (!app.isPackaged) return "development";
   try {
-    const id = (await readFile(filePath, "utf8")).trim();
-    if (UUID.check(id)) {
-      return id;
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn(`[auto-updater] Couldn't read staging user ID, creating a blank one: ${error}`);
-    }
+    const parsed = JSON.parse(
+      await readFile(path.join(process.resourcesPath, "build-identity.json"), "utf8"),
+    ) as { commit?: unknown };
+    return typeof parsed.commit === "string" && parsed.commit.trim() ? parsed.commit.trim() : null;
+  } catch {
+    return null;
   }
-
-  const id = UUID.v5(randomBytes(4096), UUID.OID);
-
-  try {
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, id);
-  } catch (error) {
-    console.warn(`[auto-updater] Couldn't write out staging user ID: ${error}`);
-  }
-
-  return id;
 }
 
-export function getStagingUserId(): Promise<string> {
-  if (cachedStagingUserIdPromise == null) {
-    cachedStagingUserIdPromise = resolveStagingUserId(
-      path.join(app.getPath("userData"), ".updaterId"),
-    );
-  }
-  return cachedStagingUserIdPromise;
+function chooseAsset(manifest: MvpUpdateManifest): MvpUpdateAsset | null {
+  const platform = process.platform;
+  if (platform !== "darwin" && platform !== "win32" && platform !== "linux") return null;
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  return selectMvpUpdateAsset({
+    manifest,
+    platform,
+    arch,
+    preferAppImage: platform === "linux" && Boolean(process.env.APPIMAGE),
+  });
 }
 
-// AppImages have no install step. electron-updater "installs" by unlinking the
-// running file and mv-ing the downloaded one into place; on app quit it does this
-// via a *blocking* execFileSync(newAppImage, { APPIMAGE_EXIT_AFTER_INSTALL: "true" }).
-// That env var is only honored by AppImageLauncher, so without it the freshly
-// launched process boots the full app and never exits — the quit hangs forever,
-// with the old binary already deleted. We therefore install AppImages only on
-// explicit quitAndInstall (the "Update now" button), which takes the non-blocking
-// spawn path. Every other target keeps auto-install-on-quit, which works there.
-export function shouldAutoInstallOnQuit(input: {
-  platform: NodeJS.Platform;
-  isAppImage: boolean;
+async function fetchManifest(): Promise<MvpUpdateManifest> {
+  const response = await fetch(`${MANIFEST_URL}?build-check=${Date.now()}`, {
+    cache: "no-store",
+    headers: { "cache-control": "no-cache" },
+  });
+  if (!response.ok) throw new Error(`Update manifest request failed: HTTP ${response.status}`);
+  return MvpUpdateManifestSchema.parse(await response.json());
+}
+
+export function resolveUpdateDownloadDestination(input: {
+  asset: MvpUpdateAsset;
+  commit: string;
+  tempPath: string;
+  runningAppImage?: string;
+}): string {
+  if (input.asset.installStrategy === "appimage_replace" && input.runningAppImage) {
+    return `${input.runningAppImage}.download-${input.commit}`;
+  }
+  return path.join(input.tempPath, `${input.commit}-${input.asset.name}`);
+}
+
+export function downloadedAssetMatches(input: {
+  downloadedBytes: number;
+  actualHash: string;
+  asset: MvpUpdateAsset;
 }): boolean {
-  return !(input.platform === "linux" && input.isAppImage);
+  return input.downloadedBytes === input.asset.size && input.actualHash === input.asset.sha256;
 }
-
-class ElectronAppUpdateRuntime implements AppUpdateRuntime {
-  private configured = false;
-
-  configure(input: AppUpdateRuntimeConfiguration): void {
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoRunAppAfterInstall = true;
-    autoUpdater.autoInstallOnAppQuit = shouldAutoInstallOnQuit({
-      platform: process.platform,
-      isAppImage: Boolean(process.env.APPIMAGE),
-    });
-    autoUpdater.allowPrerelease = input.releaseChannel === "beta";
-    autoUpdater.channel = input.releaseChannel === "beta" ? "beta" : "latest";
-    autoUpdater.allowDowngrade = false;
-    autoUpdater.isUserWithinRollout = async (info) => {
-      try {
-        return await input.shouldAdmitUpdate(info as RuntimeUpdateInfo);
-      } catch {
-        return true;
-      }
-    };
-
-    if (this.configured) return;
-    this.configured = true;
-
-    autoUpdater.on("update-available", (info) => {
-      input.onUpdateAvailable(info as RuntimeUpdateInfo);
-    });
-    autoUpdater.on("update-downloaded", (info) => {
-      input.onUpdateDownloaded(info as RuntimeUpdateInfo);
-    });
-    autoUpdater.on("update-not-available", () => {
-      input.onUpdateNotAvailable();
-    });
-    autoUpdater.on("error", (error) => {
-      input.onError(error);
-    });
-  }
-
-  async checkForUpdates(): Promise<RuntimeUpdateCheckResult | null> {
-    const result = await autoUpdater.checkForUpdates();
-    if (!result) return null;
-    return {
-      isUpdateAvailable: result.isUpdateAvailable,
-      updateInfo: result.updateInfo as RuntimeUpdateInfo,
-    };
-  }
-
-  downloadUpdate(): Promise<unknown> {
-    return autoUpdater.downloadUpdate();
-  }
-
-  quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void {
-    autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
-  }
-}
-
-const appUpdateService = createAppUpdateService({
-  runtime: new ElectronAppUpdateRuntime(),
-  isPackaged: () => app.isPackaged,
-  now: () => Date.now(),
-  bucket: async () => bucketFromStagingUserId(await getStagingUserId()),
-  reportCheckError: (error) => {
-    console.error("[auto-updater] Failed to check for updates:", error);
-  },
-  reportRuntimeError: (error) => {
-    console.error("[auto-updater] Updater event failed:", error);
-  },
-  reportInstallError: (message) => {
-    console.error("[auto-updater] Failed to download/install update:", message);
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 export async function checkForAppUpdate({
   currentVersion,
-  releaseChannel,
-  intent,
 }: {
   currentVersion: string;
   releaseChannel: AppReleaseChannel;
   intent: AppUpdateCheckIntent;
 }): Promise<AppUpdateCheckResult> {
-  return appUpdateService.checkForAppUpdate({ currentVersion, releaseChannel, intent });
+  const currentBuildId = await readCurrentBuildId();
+  emitProgress({
+    phase: "checking",
+    currentBuildId,
+    latestBuildId: null,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    percent: 0,
+    bytesPerSecond: 0,
+    error: null,
+  });
+  if (!app.isPackaged) {
+    return {
+      hasUpdate: false,
+      readyToInstall: false,
+      currentVersion,
+      latestVersion: currentVersion,
+      currentBuildId,
+      latestBuildId: null,
+      body: null,
+      date: null,
+      errorMessage: null,
+    };
+  }
+  try {
+    cachedManifest = await fetchManifest();
+    cachedAsset = chooseAsset(cachedManifest);
+    if (!cachedAsset)
+      throw new Error(`No MVP update asset for ${process.platform}/${process.arch}`);
+    const hasUpdate = currentBuildId !== cachedManifest.commit;
+    return {
+      hasUpdate,
+      readyToInstall: false,
+      currentVersion,
+      latestVersion: cachedManifest.version,
+      currentBuildId,
+      latestBuildId: cachedManifest.commit,
+      body: null,
+      date: cachedManifest.publishedAt,
+      errorMessage: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitProgress({
+      phase: "error",
+      currentBuildId,
+      latestBuildId: null,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      percent: 0,
+      bytesPerSecond: 0,
+      error: message,
+    });
+    return {
+      hasUpdate: false,
+      readyToInstall: false,
+      currentVersion,
+      latestVersion: currentVersion,
+      currentBuildId,
+      latestBuildId: null,
+      body: null,
+      date: null,
+      errorMessage: message,
+    };
+  }
+}
+
+async function downloadAndVerify(
+  asset: MvpUpdateAsset,
+  manifest: MvpUpdateManifest,
+): Promise<string> {
+  const destination = resolveUpdateDownloadDestination({
+    asset,
+    commit: manifest.commit,
+    tempPath: app.getPath("temp"),
+    ...(process.env.APPIMAGE ? { runningAppImage: process.env.APPIMAGE } : {}),
+  });
+  await rm(destination, { force: true });
+  const controller = new AbortController();
+  activeAbortController = controller;
+  const response = await fetch(`${asset.url}?build=${manifest.commit}`, {
+    cache: "no-store",
+    signal: controller.signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`Update download failed: HTTP ${response.status}`);
+  }
+  const file = await open(destination, "w");
+  const hash = createHash("sha256");
+  const reader = response.body.getReader();
+  const startedAt = Date.now();
+  const currentBuildId = await readCurrentBuildId();
+  let downloadedBytes = 0;
+  let downloadError: unknown = null;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      await file.write(value);
+      hash.update(value);
+      downloadedBytes += value.byteLength;
+      const elapsedSeconds = Math.max(0.1, (Date.now() - startedAt) / 1000);
+      emitProgress({
+        phase: "downloading",
+        currentBuildId,
+        latestBuildId: manifest.commit,
+        downloadedBytes,
+        totalBytes: asset.size,
+        percent: Math.min(100, (downloadedBytes / asset.size) * 100),
+        bytesPerSecond: downloadedBytes / elapsedSeconds,
+        error: null,
+      });
+    }
+  } catch (error) {
+    downloadError = error;
+  } finally {
+    await file.close();
+    activeAbortController = null;
+  }
+  if (downloadError) {
+    await rm(destination, { force: true });
+    throw downloadError;
+  }
+  emitProgress({
+    phase: "verifying",
+    currentBuildId,
+    latestBuildId: manifest.commit,
+    downloadedBytes,
+    totalBytes: asset.size,
+    percent: 100,
+    bytesPerSecond: 0,
+    error: null,
+  });
+  const actualHash = hash.digest("hex");
+  if (!downloadedAssetMatches({ downloadedBytes, actualHash, asset })) {
+    await rm(destination, { force: true });
+    throw new Error("Downloaded update failed size or SHA-256 verification.");
+  }
+  return destination;
+}
+
+async function installDownloaded(asset: MvpUpdateAsset, file: string): Promise<void> {
+  if (asset.installStrategy === "open_dmg" || asset.installStrategy === "system_package") {
+    const error = await shell.openPath(file);
+    if (error) throw new Error(error);
+    app.quit();
+    return;
+  }
+  if (asset.installStrategy === "nsis") {
+    spawn(file, ["/S"], { detached: true, stdio: "ignore" }).unref();
+    app.quit();
+    return;
+  }
+  if (asset.installStrategy === "appimage_replace") {
+    const target = process.env.APPIMAGE;
+    if (!target) throw new Error("The running AppImage path is unavailable.");
+    const backup = `${target}.previous`;
+    await chmod(file, 0o755);
+    await rm(backup, { force: true });
+    await rename(target, backup);
+    try {
+      await rename(file, target);
+    } catch (error) {
+      await rename(backup, target).catch(() => undefined);
+      throw error;
+    }
+    spawn(target, [], { detached: true, stdio: "ignore" }).unref();
+    app.quit();
+    return;
+  }
+  throw new Error(`Unsupported desktop install strategy: ${asset.installStrategy}`);
 }
 
 export async function downloadAndInstallUpdate(
-  {
-    currentVersion,
-    releaseChannel,
-  }: {
-    currentVersion: string;
-    releaseChannel: AppReleaseChannel;
-  },
+  { currentVersion }: { currentVersion: string; releaseChannel: AppReleaseChannel },
   onBeforeQuit?: () => Promise<void>,
 ): Promise<AppUpdateInstallResult> {
-  return appUpdateService.downloadAndInstallUpdate(
-    { currentVersion, releaseChannel },
-    onBeforeQuit,
-  );
+  try {
+    if (!cachedManifest || !cachedAsset) {
+      const result = await checkForAppUpdate({
+        currentVersion,
+        releaseChannel: "beta",
+        intent: "manual",
+      });
+      if (!result.hasUpdate || !cachedManifest || !cachedAsset) {
+        return { installed: false, version: currentVersion, message: "No newer MVP build found." };
+      }
+    }
+    const file = await downloadAndVerify(cachedAsset, cachedManifest);
+    emitProgress({
+      phase: "installing",
+      currentBuildId: await readCurrentBuildId(),
+      latestBuildId: cachedManifest.commit,
+      downloadedBytes: cachedAsset.size,
+      totalBytes: cachedAsset.size,
+      percent: 100,
+      bytesPerSecond: 0,
+      error: null,
+    });
+    if (onBeforeQuit) await onBeforeQuit();
+    await installDownloaded(cachedAsset, file);
+    return { installed: true, version: cachedManifest.version, message: "Installing update." };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitProgress({
+      phase: "error",
+      currentBuildId: await readCurrentBuildId(),
+      latestBuildId: cachedManifest?.commit ?? null,
+      downloadedBytes: 0,
+      totalBytes: cachedAsset?.size ?? 0,
+      percent: 0,
+      bytesPerSecond: 0,
+      error: message,
+    });
+    return { installed: false, version: currentVersion, message: `Update failed: ${message}` };
+  }
+}
+
+export function cancelAppUpdate(): void {
+  activeAbortController?.abort();
+  activeAbortController = null;
+}
+
+export function getAppUpdateSnapshot(): AppUpdateProgress | null {
+  return currentProgress ? { ...currentProgress } : null;
 }
