@@ -134,6 +134,17 @@ export function runMvpReleaseContract({ writeMode = false } = {}) {
     failures.push("MVP workflow tag does not match the package version");
   }
 
+  const rootScripts = manifests.find(({ relativePath }) => relativePath === "package.json")?.value
+    .scripts;
+  for (const scriptName of ["build:client", "build:app-deps", "build:foundation"]) {
+    const script = rootScripts?.[scriptName];
+    const protocolIndex = script?.indexOf("build:protocol") ?? -1;
+    const relayIndex = script?.indexOf("build:relay") ?? -1;
+    if (protocolIndex < 0 || relayIndex < 0 || protocolIndex > relayIndex) {
+      failures.push(`${scriptName} must build @thoth/protocol before @thoth/relay`);
+    }
+  }
+
   if (failures.length > 0) {
     throw new Error(failures.join("\n"));
   }
