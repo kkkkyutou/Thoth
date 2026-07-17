@@ -47,7 +47,7 @@ const aliasPlugin = {
     }));
     build.onResolve({ filter: /^@server\// }, async (args) => ({
       path: await resolveTsPath(
-        path.join(repoRoot, "packages/server/src", args.path.slice("@server/".length)),
+        path.join(repoRoot, "packages/daemon/src", args.path.slice("@server/".length)),
       ),
     }));
   },
@@ -93,5 +93,11 @@ export const terminalEmulatorWebViewHtml = ${JSON.stringify(html)};
 `;
 
 await fs.writeFile(output, contents);
-await execFileAsync("oxfmt", [output], { cwd: repoRoot });
+await execFileAsync(
+  process.execPath,
+  [path.join(repoRoot, "node_modules/oxfmt/bin/oxfmt"), output],
+  {
+    cwd: repoRoot,
+  },
+);
 console.log(`Wrote ${path.relative(repoRoot, output)} (${html.length} bytes)`);

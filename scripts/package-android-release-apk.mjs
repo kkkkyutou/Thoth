@@ -66,6 +66,7 @@ if (
   run("node", ["scripts/setup-android-toolchain.mjs"]);
 }
 
+run("npm", ["run", "build:highlight"]);
 run("npm", ["run", "build:client"]);
 run("npx", ["expo", "prebuild", "--platform", "android", "--clean", "--non-interactive"], appRoot);
 run("bash", ["-lc", "./gradlew :app:assembleRelease --no-daemon"], join(appRoot, "android"));

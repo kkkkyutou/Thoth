@@ -109,18 +109,18 @@ jobs:
         shell: pwsh
         run: |
           $prefix = Join-Path $env:RUNNER_TEMP "thoth-cli"
-          $home = Join-Path $env:RUNNER_TEMP "thoth-home"
+          $thothHome = Join-Path $env:RUNNER_TEMP "thoth-home"
           npm install --global --prefix $prefix ./server-cli/thoth-server-cli-0.0.0-mvp-beta.tgz
           $cli = Join-Path $prefix "thoth.cmd"
           (& $cli --version) | Select-String -SimpleMatch $env:THOTH_MVP_VERSION
           $skills = Join-Path $prefix "node_modules/@thoth/cli/node_modules/@thoth/drivers/dist/runtime-skills"
           if (-not (Test-Path (Join-Path $skills "thoth-clarify/SKILL.md"))) { throw "Clarify runtime skill missing" }
           if (-not (Test-Path (Join-Path $skills "thoth-loop/SKILL.md"))) { throw "Loop runtime skill missing" }
-          & $cli daemon start --home $home --listen 127.0.0.1:16689 --no-web-ui
+          & $cli daemon start --home $thothHome --listen 127.0.0.1:16689 --no-web-ui
           $statusPath = Join-Path $env:RUNNER_TEMP "status.json"
           $ready = $false
           for ($attempt = 1; $attempt -le 30; $attempt++) {
-            & $cli daemon status --home $home --json 2>$null | Out-File -Encoding utf8 $statusPath
+            & $cli daemon status --home $thothHome --json 2>$null | Out-File -Encoding utf8 $statusPath
             if ((Get-Content $statusPath -Raw) -match '"localDaemon":\s*"running"') {
               $ready = $true
               break
@@ -130,7 +130,7 @@ jobs:
           if (-not $ready) { throw "Thoth daemon did not become ready within 30 seconds" }
           Get-Content $statusPath | Select-String -SimpleMatch '"localDaemon": "running"'
           Get-Content $statusPath | Select-String -SimpleMatch 'relay.test.thoth.seeles.ai:443'
-          & $cli daemon stop --home $home --force --json
+          & $cli daemon stop --home $thothHome --force --json
 
   desktop-macos:
     needs: preflight

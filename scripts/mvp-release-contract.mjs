@@ -144,6 +144,25 @@ export function runMvpReleaseContract({ writeMode = false } = {}) {
       failures.push(`${scriptName} must build @thoth/protocol before @thoth/relay`);
     }
   }
+  const daemonBuild = rootScripts?.["build:daemon"] ?? "";
+  const daemonBuildSequence = [
+    "build:highlight",
+    "build:protocol",
+    "build:relay",
+    "--workspace=@thoth/client",
+    "--workspace=@thoth/drivers",
+    "--workspace=@thoth/tui",
+    "--workspace=@thoth/daemon",
+  ];
+  let previousDaemonBuildIndex = -1;
+  for (const requiredStep of daemonBuildSequence) {
+    const currentIndex = daemonBuild.indexOf(requiredStep);
+    if (currentIndex <= previousDaemonBuildIndex) {
+      failures.push(`build:daemon must build runtime dependencies in order before ${requiredStep}`);
+      break;
+    }
+    previousDaemonBuildIndex = currentIndex;
+  }
   if (rootScripts?.["setup:electron"] !== "node node_modules/electron/install.js") {
     failures.push("setup:electron must explicitly install the platform Electron binary");
   }
@@ -152,6 +171,32 @@ export function runMvpReleaseContract({ writeMode = false } = {}) {
     failures.push(
       `MVP workflow must initialize Electron in preflight and three desktop jobs, got ${electronSetupSteps.length}`,
     );
+  }
+  if (workflowText.includes("$home =") || !workflowText.includes("$thothHome =")) {
+    failures.push(
+      "Windows server CLI smoke must not overwrite PowerShell's read-only HOME variable",
+    );
+  }
+
+  const terminalWebViewBuild = readFileSync(
+    join(repoRoot, "packages/app/scripts/build-terminal-webview-html.mjs"),
+    "utf8",
+  );
+  if (!/execFileAsync\(\s*process\.execPath/.test(terminalWebViewBuild)) {
+    failures.push("Terminal WebView build must launch oxfmt through Node on every host platform");
+  }
+  if (terminalWebViewBuild.includes("packages/server/src")) {
+    failures.push("Terminal WebView aliases must not refer to the removed packages/server path");
+  }
+
+  const androidReleaseBuild = readFileSync(
+    join(repoRoot, "scripts/package-android-release-apk.mjs"),
+    "utf8",
+  );
+  const androidHighlightIndex = androidReleaseBuild.indexOf('["run", "build:highlight"]');
+  const androidClientIndex = androidReleaseBuild.indexOf('["run", "build:client"]');
+  if (androidHighlightIndex < 0 || androidClientIndex <= androidHighlightIndex) {
+    failures.push("Android release packaging must build highlight before the client graph");
   }
 
   if (failures.length > 0) {

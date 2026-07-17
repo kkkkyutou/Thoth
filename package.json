@@ -21,7 +21,7 @@
     "build:protocol": "npm run build --workspace=@thoth/protocol",
     "build:drivers": "npm run build:protocol && npm run build --workspace=@thoth/drivers",
     "build:client": "npm run build:protocol && npm run build:relay && npm run build --workspace=@thoth/client",
-    "build:daemon": "npm run build:client && npm run build --workspace=@thoth/daemon",
+    "build:daemon": "npm run build:highlight && npm run build:protocol && npm run build:relay && npm run build --workspace=@thoth/client && npm run build --workspace=@thoth/drivers && npm run build --workspace=@thoth/tui && npm run build --workspace=@thoth/daemon",
     "build:cli": "npm run build:daemon && npm run build --workspace=@thoth/cli",
     "cli": "node packages/cli/bin/thoth",
     "build:release-runtime": "npm --prefix packages/app/highlight run build && npm run build --workspace=@thoth/protocol && npm run build --workspace=@thoth/relay && npm run build --workspace=@thoth/client && npm run build --workspace=@thoth/drivers && npm run build --workspace=@thoth/tui && npm run build --workspace=@thoth/daemon && npm run build --workspace=@thoth/cli",
