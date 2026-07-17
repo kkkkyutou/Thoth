@@ -2300,3 +2300,43 @@ Evidence recorded on `2026-07-17`:
 Release:
 
 <https://github.com/SeeleAI/Thoth/releases/tag/v0.0.0-mvp-beta>
+
+### `NTH-EV-038` Installed Flow, Branding And Build-ID Update Release
+
+Status: `verified` for packaging, native build and public Release replacement; installed real-provider Relay
+Clarify/Loop behavior remains open under `NTH-TD-016`.
+
+Evidence recorded on `2026-07-17`:
+
+1. Commit `3ff79cad96b7717c37ac8257e05788e20ec1feb3` implements per-send Thoth binding to the visible
+   provider agent, daemon-owned remote workspace cwd, transparent rounded platform assets, Android/Web module
+   isolation and fixed-tag commit-based update clients. Local full App tests passed `2728`, daemon tests passed
+   `3166`, final protocol tests passed `343`, desktop tests passed `171`, and focused update settings tests passed
+   `49`; foundation, daemon/web builds, release/brand contracts and diff checks passed.
+2. Local native review built a dedicated-key signed `sh.thoth` APK and Linux AppImage. It caught and repaired two
+   release-only Linux defects before push: non-AppImage installations selecting the AppImage asset, and
+   AppImage replacement attempting a cross-filesystem rename from the system temporary directory. An exported
+   Chromium startup screenshot shows the transparent Thoth mark rather than the Paseo mark.
+3. GitHub Actions run `29571377829` completed successfully at the same commit. Clean preflight, real Relay,
+   server CLI plus Linux/macOS/Windows install smokes, macOS arm64/x64, Windows arm64/x64, Linux x64 and signed
+   universal Android all passed before publish.
+4. Public prerelease `355615612` has tag target `3ff79cad96b7717c37ac8257e05788e20ec1feb3`, is not a draft,
+   and contains `28` assets. The repository still contains exactly the current MVP prerelease and
+   `thoth-plugin-final-archive`; remote `main` remains `e74c6e0de8a110d5e07249880d0e4e4f0ceab691`.
+5. Public `MVP-UPDATE.json` identifies workflow `29571377829`, the exact release commit and seven preferred update
+   assets. `BUILD-SOURCE.txt` agrees. The manifest and source receipt are included in public `SHA256SUMS`.
+6. Re-downloaded public assets matched `SHA256SUMS`: Android APK
+   `8a563923c77db896a767396aa6f8a91502b12a40d40577580dd718d7f8435d74`, AppImage
+   `cbbca01c88d082c0f9786bf55842ce5ed222f4721930afa527fe6ad3871a91e8`, and server CLI tgz
+   `698b4e3961b9106a9784464f81fa1e3cb39f103431c01fef470aeb0f58ef6dc0`.
+7. The downloaded APK is `sh.thoth` `0.0.0-mvp-beta`, verifies with APK Signature v2, requests
+   `REQUEST_INSTALL_PACKAGES`, and requests neither `RECORD_AUDIO` nor `SYSTEM_ALERT_WINDOW`. The downloaded
+   AppImage embeds the exact commit in `build-identity.json`; its `app.asar` contains Clarify/Loop `SKILL.md`, the
+   build-ID updater and no legacy Paseo brand-mark path.
+8. Migration boundary: already-installed old clients still contain the legacy updater and need one manual install
+   of this replacement. No claim is made that remote metadata can retrofit that old binary. After this install,
+   later fixed-semver replacements are selected by commit and verified by size/SHA-256.
+
+Release:
+
+<https://github.com/SeeleAI/Thoth/releases/tag/v0.0.0-mvp-beta>

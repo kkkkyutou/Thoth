@@ -3286,3 +3286,16 @@ build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --c
   updater leakage into the Web bundle. Exported Chromium startup shows the new Thoth mark. The old Metro update
   E2E remains a recorded `page.goto` timeout and is not acceptance evidence. Remote workflow/Release replacement
   is still pending and no new public Release success is claimed by this entry.
+
+## 2026-07-17 [Installed flow replacement Release acceptance]
+
+- GitHub Actions run `29571377829` passed all jobs and replaced the sole `v0.0.0-mvp-beta` prerelease at commit
+  `3ff79cad`. Real Relay, three-OS server CLI smokes, macOS arm64/x64, Windows arm64/x64, Linux x64, signed Android
+  and publish all completed successfully. Remote `main` and `thoth-plugin-final-archive` remained unchanged.
+- The public Release contains `28` assets, including commit-authoritative `MVP-UPDATE.json`, `BUILD-SOURCE.txt`
+  and `SHA256SUMS`. Re-downloaded AppImage, APK and CLI tgz matched public checksums. APK package/signature/update
+  permission/forbidden-permission checks passed; extracted AppImage has the exact build commit, both runtime
+  skills, the new updater and no old Paseo mark.
+- `NTH-EV-038` records packaging and public Release verification. `NTH-TD-016` remains doing because a real
+  installed Relay client still needs to exercise provider-backed Clarify/Loop from this replacement build. The
+  legacy installed updater requires one manual migration install; no false in-place upgrade claim is made.
