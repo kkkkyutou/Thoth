@@ -2258,3 +2258,45 @@ Boundary:
 1. This verifies the reviewed internal Loop phase permission/stream defect and Background Tasks UI recovery. It
    does not close real browser/device `budget_wait`, pause/resume/stop or daemon restart/reconnect acceptance;
    `NTH-TD-021` remains the single top next action.
+
+### `NTH-EV-037` MVP Beta Cross-Platform GitHub Release
+
+Status: `verified`
+
+Evidence recorded on `2026-07-17`:
+
+1. The development line `agent/dev/mvp` was guarded-pushed to
+   `dd3a768a17832cb4926cdb3a6f8d9c1e77139909`; the dedicated release line reached
+   `aada0ca3c970f62c9ade2b7b289e5cb1b579901a`. Remote `main` remained exactly
+   `e74c6e0de8a110d5e07249880d0e4e4f0ceab691` throughout the release operation.
+2. GitHub Actions run `29551530114` completed successfully. Its preflight passed clean `npm ci`, explicit
+   Electron setup, release contract, foundation, full release-runtime build, App, daemon, desktop and CLI tests,
+   web export, diff hygiene and secret/protected-path checks. Native jobs passed macOS arm64/x64, Windows
+   arm64/x64, Linux x64, universal Android, real Relay v3 and server CLI install/daemon smokes on Linux, macOS
+   and Windows.
+3. The workflow published public prerelease `v0.0.0-mvp-beta` as Release `355463767`, with tag target
+   `aada0ca3c970f62c9ade2b7b289e5cb1b579901a`. The exact 27-asset manifest contains updater metadata,
+   `BUILD-SOURCE.txt`, `SHA256SUMS`, macOS DMG/ZIP, Windows NSIS/ZIP, Linux AppImage/DEB/RPM/tar.gz, the signed
+   Android APK and the server CLI tgz. The only other Release remains `thoth-plugin-final-archive`.
+4. Selected assets were downloaded again from the public Release rather than reused from local or Actions
+   output. `Thoth-x86_64.AppImage` is `139663376` bytes with SHA-256
+   `b3c2032d8aaed314def22602b2bb770d9d4aec1e18062a62a94fd2a84c4c7262`; after extraction it passed the
+   packaged desktop smoke for cold CLI daemon start, desktop-managed daemon, bundled CLI status and PTY terminal
+   create/send/capture/kill.
+5. The downloaded `Thoth-0.0.0-mvp-beta-android.apk` is `151915238` bytes with SHA-256
+   `9852f1c5d3ab6132609c451df1ca390f08dd45f399ed277b84ccd38027e45d30`. It is package `sh.thoth`, version
+   `0.0.0-mvp-beta`, contains arm64-v8a/armeabi-v7a/x86/x86_64, verifies with APK Signature v2 and the dedicated
+   Thoth MVP Beta certificate, and requests neither `RECORD_AUDIO` nor `SYSTEM_ALERT_WINDOW`.
+6. The downloaded `thoth-server-cli-0.0.0-mvp-beta.tgz` is `1415642` bytes with SHA-256
+   `8ac62bc6c61f716fc5e7303193244c2ec4959a46eec5b7f5355abf9fb1922836`. Both the downloaded file and the exact
+   GitHub URL installed globally into isolated prefixes, reported version `0.0.0-mvp-beta`, contained both
+   runtime `SKILL.md` files, and started/statused/stopped an isolated daemon through lifecycle RPC. npm registry
+   lookup returned `E404` for `@thoth/cli@0.0.0-mvp-beta`, confirming this flow did not publish the package.
+7. Failed precursor runs were retained as evidence rather than hidden: `29547536716` exposed cold protocol/Relay
+   order, `29547906169` exposed skipped Electron postinstall, `29548363865` exposed daemon/highlight cold builds
+   and Windows shell differences, and `29549799359` exposed npm/PowerShell short-option rewriting. The successful
+   workflow now locks each correction in `scripts/mvp-release-contract.mjs`.
+
+Release:
+
+<https://github.com/SeeleAI/Thoth/releases/tag/v0.0.0-mvp-beta>

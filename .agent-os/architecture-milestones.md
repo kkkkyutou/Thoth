@@ -106,18 +106,22 @@ Acceptance:
 
 ### `NTH-MS-006` Release And Packaging Pipeline
 
-State: `backlog`
+State: `verified`
 
-Goal: Add a Paseo-like release and packaging pipeline after the runnable surfaces exist.
+Goal: Maintain the decision-locked `v0.0.0-mvp-beta` GitHub Release pipeline without merging or modifying `main`.
 
 Acceptance:
 
-1. Release package workflows are triggered by version/platform tags or manual GitHub Actions dispatch, not ordinary branch pushes.
-2. Desktop packaging builds macOS, Linux and Windows installers through Electron Builder or an equivalent desktop packager.
-3. Android APK builds run through Expo/EAS or an equivalent mobile build service and upload installable APK artifacts to GitHub Releases.
-4. Web/app and relay deployment workflows are explicit and separately triggerable.
-5. iOS distribution is handled through TestFlight/App Store/EAS submit or another Apple-approved path, not by assuming a GitHub Release IPA can be self-installed by normal users.
-6. Required signing, notarization, Expo, Apple, Cloudflare and GitHub secrets are documented before enabling publish-by-tag.
+1. Pushes to the dedicated `release/mvp-actions` branch build all artifacts and replace only the fixed MVP prerelease after every required build and smoke passes.
+2. Native Electron Builder jobs produce macOS arm64/x64 DMG and ZIP, Windows arm64/x64 NSIS and ZIP, and Linux x64 AppImage, DEB, RPM and tar.gz artifacts.
+3. A universal `sh.thoth` Android Release APK is signed by the dedicated ignored MVP key and checked for package identity, version, signature and forbidden permissions.
+4. A GitHub-hosted server CLI tgz installs on Linux, macOS and Windows, carries runtime skills and starts/stops its daemon without publishing any `@thoth/*` package to npm.
+5. Release publication preserves checksums, updater manifests, source commit identity, the historical archive release and the starting `main` SHA; only the publish job receives `contents: write`.
+6. Production web/Relay deploy, EAS cloud build, commercial desktop signing/notarization, app-store submission and iOS distribution remain separate decisions.
+
+Current result:
+
+Verified by `NTH-EV-037`. GitHub Actions run `29551530114` passed every preflight, native build, CLI smoke and live Relay job before publishing the public prerelease, and selected downloaded assets passed independent secondary verification.
 
 ### `NTH-MS-007` Upstream Implementation Seed Import
 

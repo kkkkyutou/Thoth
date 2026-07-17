@@ -672,3 +672,35 @@ Retry condition:
 Whenever Relay connection sequencing changes, run the hosted encrypted E2E repeatedly. Acceptance requires a
 pre-armed control listener, pre-armed payload listeners, listener/timeout cleanup, real Relay v3 token auth and
 successful decryption in both directions. A single HTTP 200 or one lucky WebSocket run is insufficient.
+
+## `NTH-EXP-026` Release Builds Must Prove Cold Graphs And Native Shell Semantics
+
+Observed on `2026-07-17`:
+
+1. The first release run built `@thoth/relay` before `@thoth/protocol`; local residual `dist` directories had
+   hidden that dependency order. The next run then found that root `.npmrc` deliberately disables lifecycle
+   scripts, so Electron existed as a package but its platform binary had never been installed.
+2. Once preflight passed, clean native jobs exposed more implicit state: daemon compilation needed drivers and
+   nested highlight output; Android Metro needed highlight output; the terminal WebView spawned an npm `.cmd`
+   shim as if it were a POSIX executable; and PowerShell's case-insensitive `$home` collided with read-only
+   `$HOME`.
+3. After those fixes, Windows still rewrote electron-builder short options such as
+   `-c.publish.channel=beta` into a separate `-c` plus a fake config filename. The equivalent long
+   `--config.publish.channel=beta` form parsed consistently on POSIX and Windows.
+4. Each failure appeared only after a previous layer became green. Treating the first failure as the whole
+   release problem would have produced a locally convincing but non-portable pipeline.
+
+Conclusion:
+
+A monorepo release entry must build its complete dependency graph from a clean checkout and must not depend on
+npm lifecycle side effects. Cross-platform workflow commands are product code: Node should launch JS CLIs by
+their actual entrypoint, PowerShell variables must respect case-insensitive built-ins, and CLI options should use
+forms that survive npm plus the native shell. Release contracts should lock the build order and command shape,
+while native runners remain the authority for behavior that Linux cannot simulate.
+
+Retry condition:
+
+Whenever a package, generated asset, native tool or workflow argument enters a release path, delete the
+assumption of pre-existing `dist`/postinstall state and run it after clean `npm ci` on every supported OS. Keep
+failed run IDs and logs, add a deterministic contract assertion for each repaired cause, and do not mutate the
+public Release until all native and smoke jobs are green.

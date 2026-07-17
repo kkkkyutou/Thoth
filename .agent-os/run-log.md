@@ -3243,3 +3243,27 @@ build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --c
   Royalvice repo-local authentication, guarded branch pushes, all native Actions jobs, downloaded-asset
   revalidation and proof that `main`/archive releases stayed unchanged remain required before `NTH-TD-007` can
   become verified.
+
+## 2026-07-17 [MVP beta remote release and downloaded-asset acceptance]
+
+- Worked on: `NTH-TD-007`, `NTH-MS-006`, `NTH-EV-037`, `NTH-EXP-026`. Authenticated as Royalvice through the
+  ignored repo-local gh config, set the four Android signing Secrets without exposing values, guarded-pushed
+  `agent/dev/mvp` to `dd3a768a` and created/pushed the dedicated `release/mvp-actions` line. Remote `main` stayed
+  at `e74c6e0d` and the archive Release remained untouched.
+- Iterated native GitHub Actions with retained failure evidence: run `29547536716` found protocol/Relay cold
+  order; `29547906169` found missing explicit Electron initialization; `29548363865` found daemon/drivers/highlight,
+  Android/highlight, Windows `oxfmt` and PowerShell `$HOME` issues; `29549799359` passed every job except Windows
+  because npm/PowerShell rewrote electron-builder short config flags. Build-order and cross-platform command
+  contracts now reject regressions for each cause.
+- Run `29551530114` passed preflight, real Relay, server CLI plus three native CLI smokes, macOS arm64/x64,
+  Windows arm64/x64, Linux x64 and signed universal Android. Publish created public prerelease Release
+  `355463767`, tag target `aada0ca3`, with an exact 27-asset manifest and checksums. The repository has only this
+  MVP prerelease plus `thoth-plugin-final-archive`.
+- Re-downloaded the public AppImage, APK and CLI tgz through the Release endpoint and matched all three against
+  `SHA256SUMS`. Extracted AppImage passed managed-daemon, bundled-CLI and terminal smoke. APK verified as
+  `sh.thoth`, `0.0.0-mvp-beta`, four ABI, Signature v2 and no microphone/overlay permission. The tgz and exact
+  GitHub URL both installed globally in isolated prefixes; version, runtime skills and daemon lifecycle passed,
+  while npm registry lookup returned `E404` as intended.
+- The tracked authority update marks `NTH-TD-007` and `NTH-MS-006` verified and restores `NTH-TD-021` as the one
+  top next action. Its docs-only branch push must still pass the same workflow before handoff; no additional
+  product or release-code change is included in that confirmation run.

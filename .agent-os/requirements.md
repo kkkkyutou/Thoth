@@ -39,6 +39,7 @@
 10. `NTH-AC-010`: Root plus all 10 packages have local `AGENTS.md` files, and every `CLAUDE.md` is a symlink to the matching `AGENTS.md`.
 11. `NTH-AC-011`: Once the Thoth I dev entry exists, human review enters the same UI component tree, routes, composer controls, task cards, stream states and report surfaces that a releasable build uses; debug overlays or logs may exist only as non-primary developer aids.
 12. `NTH-AC-012`: Runtime isolation smoke proves Paseo/legacy remains on `127.0.0.1:6767`, Thoth runs on `127.0.0.1:6688`, the real web UI responds on `8082 -> 8148`, the test relay health endpoint responds, Linux AppImage packaged smoke passes with an isolated managed daemon, Android Debug APK has package id `sh.thoth.debug` without `RECORD_AUDIO`, and Codex provider smoke passes through Thoth paths.
+13. `NTH-AC-013`: The authorized `v0.0.0-mvp-beta` GitHub Actions flow leaves `main` unchanged, publishes exactly one current MVP prerelease with native macOS/Windows/Linux, signed Android and server CLI assets, preserves the historical archive release, does not publish npm packages and passes independent downloaded-asset verification.
 
 ## Hard Constraints
 
@@ -74,7 +75,7 @@
 3. Porting archived plugin commands.
 4. Preserving old 0.4.x changelog as the active product history.
 5. Maintaining the archived Python package for compatibility.
-6. Creating GitHub Actions, pushing commits, publishing packages, uploading releases, running EAS cloud builds or producing a real iOS build on Linux.
+6. Publishing npm packages, running EAS cloud builds, app-store submission, production web/Relay deployment or producing a real iOS build on Linux. The narrowly authorized GitHub Actions and Release exception is defined by `NTH-CD-056`.
 7. Building a second development-only product surface that behaves differently from the releasable Thoth UI.
 8. Deploying production relay `relay.thoth.seeles.ai` or production app `app.thoth.seeles.ai`.
 9. Using Code4Agent as the current relay deployment authority after the independent `SeeleAI/Thoth-Relay` decision.

@@ -11,29 +11,24 @@
 
 ## Ready
 
-1. `NTH-TD-007` `[doing]`: Ship the fixed `v0.0.0-mvp-beta` cross-platform GitHub Release pipeline.
-   - Scope: commit and guarded-push `agent/dev/mvp`; build macOS, Windows, Linux, Android and server CLI artifacts from `release/mvp-actions`; preserve a single replace-in-place MVP prerelease; keep packages private and avoid npm publication; use the real test Relay and Royalvice repo-local GitHub credentials; leave `main` unchanged.
-   - Progress: package versions and exact internal semver are aligned; server CLI bundling, native desktop matrix, dedicated Android release signing, Relay v3 live smoke and guarded publish workflow are implemented locally. Foundation, App, daemon, desktop and CLI gates pass; the final CLI tgz, signed Android APK and Linux AppImage/tar.gz have local receipts, and the Linux unpacked app passes the packaged daemon/CLI/terminal smoke. Native macOS/Windows jobs, Linux DEB/RPM completion and remote Actions/Release verification remain before this item can become verified.
-   - Acceptance: both branches point to the intended commits; the final Actions run is green; the public prerelease contains the exact asset manifest and checksums; downloaded APK, CLI tgz and Linux artifacts pass secondary verification; archive release and `main` are unchanged; worktree is clean.
-   - Related: `NTH-MS-006`, `NTH-REQ-010`, `NTH-CD-011`, `NTH-CD-056`
-2. `NTH-TD-021` `[doing]`: Harden Loop background into Loop Engineering authority.
+1. `NTH-TD-021` `[doing]`: Harden Loop background into Loop Engineering authority.
    - Goal: Promote the verified Codex Loop path into a replayable SQLite authority/event ledger with Task Memory, sealed evidence, independent audits and budget envelopes, then close the remaining restart/control/browser recovery evidence.
    - Constraints: Do not reintroduce fake running/review/evidence; captures stay outside the git repo under `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/`; local Paseo/legacy `127.0.0.1:6767` remains untouched.
    - Progress: SQLite event/projection/CAS/lease persistence, Task Memory, baseline and phase evidence manifests, budget wait, phase isolation and scoped Codex dynamicTools are implemented. The scripted native-Codex flow suite passed all five journeys on `2026-07-11`: Quick direct, Quick Clarify foreground, cancel/recover/resume, Loop+Single all-goals pass and Loop+Light fail/retry/pass. The fixture gives literal tool payloads to each independent phase session so it does not evaluate provider creativity. On `2026-07-14`, idempotent registration, native-provider turn fencing, scheduler re-entry after PlanExec, no-terminal-timeout waiting, foreground background-handoff and full deterministic UT-01..UT-05 regression coverage were repaired. Review runs independent assessment before receiving PlanExec's semantic account; live phase tools now carry semantic task truth only, while attempt/generation/call ids and resource accounting remain daemon-only. Review workspace mutation/evidence manifests are audit and UI material under the locked Provider Trust policy, not automatic lifecycle blockers. On `2026-07-16`, `NTH-EV-035` repaired false foreground spinner after background handoff, isolated writable provider-session config, reclassified provider startup failures as resumable interruptions and live-resumed an affected task through G1 Review pass into G2 without consuming failed-Review budget. `NTH-EV-036` then added per-WebSocket scoped observation for viewed internal Loop phases and verified in a real Chromium/Codex Review that `Apply file changes` approval resolved in `242ms`, `apply_patch` completed and later reasoning streamed without refresh, while the internal agent remained absent from the foreground agent list and Review workspace receipts stayed unchanged.
    - Acceptance: Remaining verification must still add real browser/device evidence for `budget_wait`, pause/resume/stop and daemon restart/reconnect, including Background Task detail and phase AgentTimeline restoration. Deterministic unit coverage exists for those state transitions; they are not yet claimed as full browser/provider acceptance.
    - Depends on: `NTH-TD-019`
    - Related: `NTH-CD-045`, `NTH-CD-047`, `NTH-CD-055`, `NTH-EV-030`, `NTH-EV-031`, `NTH-EV-035`, `NTH-EV-036`
-3. `NTH-TD-022` `[doing]`: Refactor Loop Agent Harness context and Review semantics around `NTH-CD-050`.
+2. `NTH-TD-022` `[doing]`: Refactor Loop Agent Harness context and Review semantics around `NTH-CD-050`.
    - Goal: Remove daemon recovery/accounting fields from Clarify, PlanExec, Review and audit cognitive context/tool obligations; replace mechanical Review verdict/checklist framing with an independent Review Direction Memo and minimal semantic lifecycle conclusion.
    - Constraints: Preserve daemon-owned durability, evidence, permission, budget and recovery behavior; do not turn daemon into an LLM or weaken user contract/provenance authority; do not fake semantic routing with local heuristics.
    - Progress: `thoth.loop`, live PlanExec/Review/blocked tool schemas, Codex dynamic-tool schemas, task-service hidden binding, deterministic five-journey contracts and Loop golden eval now remove phase/round/id/budget/checklist obligations from Agent Harness input. Review is two-stage and stale independent assessment callbacks are fenced by provider-native turn identity. Remaining: extend the independent quality judge with a non-local corrective Review holdout and gather browser/device control/recovery evidence under the new Provider Trust semantics.
    - Acceptance: update `thoth.loop` Skill, runtime tool contracts, context-pack builders, golden data and independent judges; prove Review can reject a locally plausible PlanExec path, identify a non-incremental root correction and give actionable next direction without seeing phase/round/budget/manifest/receipt mechanics.
    - Depends on: `NTH-CD-050`, `NTH-TD-021`
-4. `NTH-TD-002` `[ready]`: Umbrella MVP implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing archived plugin runtime compatibility.
+3. `NTH-TD-002` `[ready]`: Umbrella MVP implementation slice for explicit task mode, provider-backed Router, Clarify, authority store and task lifecycle without reintroducing archived plugin runtime compatibility.
    - Scope: include a stable Thoth I human dogfood entry whose development build uses the same UI/UX as the releasable product UI; agents validate code through standard repository tests and gates.
    - Operational decomposition: execute `NTH-TD-015` through `NTH-TD-020` in order instead of treating this as one large loop.
    - Related: `NTH-MS-002`, `NTH-MS-003`, `NTH-REQ-001`, `NTH-REQ-002`, `NTH-REQ-017`
-5. `NTH-TD-010` `[ready]`: Run remaining dependency and compile triage on the non-foundation promoted source substrate.
+4. `NTH-TD-010` `[ready]`: Run remaining dependency and compile triage on the non-foundation promoted source substrate.
    - Scope: resolve package-lock/dependency inconsistencies, remove or quarantine remaining broad-source voice references, decide first buildable package order, and record exact compile blockers without claiming runtime readiness.
    - Related: `NTH-MS-008`, `NTH-REQ-011`, `NTH-REQ-015`
 
@@ -94,6 +89,10 @@ None.
    - Scope: Clarify -> Task Card -> Goals Card -> durable background Loop task -> Background Tasks list/detail -> linear goal PlanExec/Review sessions -> failed-Review budget handling -> embedded phase AgentTimeline.
    - Related: `NTH-MS-016`, `NTH-MS-017`, `NTH-CD-045`
    - Verification: See `NTH-EV-030`. Local `8082` and public `8148` real Codex Loop+Single paths passed the main chain; Loop+Light, restart recovery and full all-goals-to-`done` hardening continue under `NTH-TD-021`.
+6. `NTH-TD-007` `[verified]`: Ship the fixed `v0.0.0-mvp-beta` cross-platform GitHub Release pipeline.
+   - Scope: guarded-push `agent/dev/mvp`; build macOS, Windows, Linux, Android and server CLI artifacts from `release/mvp-actions`; preserve one replace-in-place MVP prerelease; keep packages private and avoid npm publication; use the real test Relay and Royalvice repo-local GitHub credentials; leave `main` unchanged.
+   - Related: `NTH-MS-006`, `NTH-REQ-010`, `NTH-CD-011`, `NTH-CD-056`
+   - Verification: See `NTH-EV-037`. GitHub Actions run `29551530114` passed every native and smoke job, published the public prerelease, and the downloaded AppImage, APK and CLI tgz passed independent checksum and runtime/package verification.
 
 ## Abandoned
 

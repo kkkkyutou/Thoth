@@ -38,7 +38,7 @@
 ## 3. Current Truth
 
 1. 项目名：Thoth。
-2. 当前分支：`agent/dev/mvp`。
+2. 分支角色：开发线是 `agent/dev/mvp`；当前 checkout 与 MVP 自动发布线是 `release/mvp-actions`；`main` 不参与本轮合并或发布改动。
 3. 技术方向：TypeScript / Node，npm workspaces，`packages/` monorepo。
 4. Node/npm：Node `24.14.0`，npm `11.9.0`。
 5. License：`AGPL-3.0-or-later`。

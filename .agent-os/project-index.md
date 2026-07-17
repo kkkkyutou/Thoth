@@ -3,11 +3,11 @@
 ## Current Truth
 
 1. Objective: `NTH-OBJ-001`
-2. Top next action: `NTH-TD-007`
+2. Top next action: `NTH-TD-021`
 3. Active workstreams: `NTH-WS-001`, `NTH-WS-002`, `NTH-WS-003`, `NTH-WS-004`, `NTH-WS-005`, `NTH-WS-006`
 4. Active blockers: None for the current top next action. `NTH-EV-031` records the native-Codex five-journey transport run, and `NTH-EV-036` now verifies viewed internal Loop phase permission/stream recovery in a real Chromium/Codex Review. Remaining promotion is real browser/device evidence for budget/control actions and daemon restart/reconnect restoration.
 5. Current branch: `release/mvp-actions`
-6. Current implementation state: promoted TypeScript product substrate with provider-backed Codex dynamicTools as the verified execution path. `NTH-CD-047` adds daemon-owned SQLite append-only Loop authority, Task Memory, sealed evidence, budget envelopes, durable leases and independent audit sessions on top of the Task/Goals/PlanExec/Review chain. `NTH-CD-050` / `NTH-CD-051` keep live Agent Harness tools and prompts semantic: daemon binds attempt identity and resource control, while Review first assesses independently and then gives a Direction Memo plus semantic outcome. The native-Codex fixture suite passes all five scripted user journeys, including Loop+Single all-goals completion and Loop+Light failed-Review retry, without asking the provider to invent behavior. A viewed internal Loop phase now receives a session-scoped live stream without entering the foreground agent directory; `NTH-EV-036` verifies Review Apply request/resolution/tool continuation in a real browser. Browser/device control actions and restart restoration remain open evidence under `NTH-TD-021`.
+6. Current implementation state: promoted TypeScript product substrate with provider-backed Codex dynamicTools as the verified execution path. `NTH-CD-047` adds daemon-owned SQLite append-only Loop authority, Task Memory, sealed evidence, budget envelopes, durable leases and independent audit sessions on top of the Task/Goals/PlanExec/Review chain. `NTH-CD-050` / `NTH-CD-051` keep live Agent Harness tools and prompts semantic: daemon binds attempt identity and resource control, while Review first assesses independently and then gives a Direction Memo plus semantic outcome. The native-Codex fixture suite passes all five scripted user journeys, including Loop+Single all-goals completion and Loop+Light failed-Review retry, without asking the provider to invent behavior. A viewed internal Loop phase now receives a session-scoped live stream without entering the foreground agent directory; `NTH-EV-036` verifies Review Apply request/resolution/tool continuation in a real browser. `NTH-EV-037` verifies the public `v0.0.0-mvp-beta` prerelease, native macOS/Windows/Linux and Android builds, GitHub-hosted server CLI and real Relay gate. Browser/device control actions and restart restoration remain open evidence under `NTH-TD-021`.
 
 ## Objective Summary
 
@@ -19,16 +19,16 @@
 2. `NTH-WS-002` `[active]`: Establish the TypeScript / Node monorepo skeleton.
 3. `NTH-WS-003` `[active]`: Design the clarify-to-task and aggressive loop runtime before implementation.
 4. `NTH-WS-004` `[active]`: Keep harness, relay, mobile, desktop, TUI and ACP references current enough for implementation.
-5. `NTH-WS-005` `[active]`: Maintain packaging and release infrastructure without publishing.
+5. `NTH-WS-005` `[active]`: Maintain packaging and the narrowly authorized MVP release infrastructure.
 6. `NTH-WS-006` `[active]`: Preserve upstream provenance while converting imported material into Thoth formal source.
 
 ## Top Next Action
 
-`NTH-TD-007` `[doing]`: Complete the authorized `v0.0.0-mvp-beta` release: pass local gates, guarded-push `agent/dev/mvp`, push `release/mvp-actions`, drive every native GitHub Actions job green, replace the single MVP prerelease and independently verify downloaded artifacts while leaving `main` and historical releases unchanged.
+`NTH-TD-021` `[doing]`: Close the remaining real browser/device evidence for Loop `budget_wait`, pause/resume/stop and daemon restart/reconnect restoration, including Background Task detail and phase AgentTimeline recovery.
 
 ## Active Blockers
 
-None. The current release work requires Royalvice repo-local GitHub authentication before remote branch, secret and Actions operations; this is an expected interactive authorization step rather than a product implementation blocker.
+None.
 
 ## Recent Important Changes
 
@@ -91,6 +91,8 @@ None. The current release work requires Royalvice repo-local GitHub authenticati
 57. `NTH-CD-043`: Loop-2 Clarify bridge is now Codex app-server `dynamicTools` / `item/tool/call` with semantic Thoth tools, persisted pending authority decisions and AgentTimeline cards. `submit_clarify_packet`, native `outputSchema` packet and assistant markdown JSON are legacy/internal compatibility only, not Loop-2 acceptance paths; Loop-2 stops honestly at `registered_pending`.
 58. `NTH-CD-044`: Loop-2 Quick+Clarify acceptance now requires intelligent AgentTimeline badge summaries from `public_badge_summary`, model `frontier_ledger`, Task convergence review, pending user-decision lifecycle without premature completed/idle footer, `balanced` 5-10 card soft range and `dive` 10-20 card soft range; `NTH-EV-029` is reopened until this strengthened contract is revalidated on real Codex `8082` / `8148`.
 59. `NTH-CD-045`: Loop background mode is now a real durable task path after Task Card + Goals Card approval, with linear goals, PlanExec/Review phase sessions, failed-Review budgets, worktree locking, Background Tasks detail and embedded AgentTimeline. Old `registered_pending` is legacy-only, not the main Loop background path.
+60. `NTH-CD-056`: The current release is fixed at `v0.0.0-mvp-beta`; `agent/dev/mvp` remains separate from `main`, while `release/mvp-actions` owns the replace-in-place cross-platform GitHub prerelease flow without npm publication.
+61. `NTH-EV-037`: GitHub Actions run `29551530114` passed preflight, native desktop, signed Android, server CLI, three-OS CLI install and live Relay jobs before publishing the public prerelease. Re-downloaded AppImage, APK and CLI assets passed checksums and independent runtime/package verification.
 
 ## Read Next
 
