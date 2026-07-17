@@ -67,6 +67,7 @@
     "check:foundation": "npm run validate:repo && npm run format:check && npm run lint:foundation && npm run build:foundation && npm run typecheck:foundation && npm run test:foundation",
     "doctor:android": "node scripts/doctor-android.mjs",
     "setup:android-toolchain": "node scripts/setup-android-toolchain.mjs",
+    "setup:electron": "node node_modules/electron/install.js",
     "package:android:debug-apk": "node scripts/package-android-debug-apk.mjs",
     "package:android:release-apk": "node scripts/package-android-release-apk.mjs",
     "package:server-cli": "node scripts/package-server-cli.mjs",

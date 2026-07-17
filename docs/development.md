@@ -17,6 +17,9 @@ npm install
 ```
 
 Root `.npmrc` intentionally sets `ignore-scripts=true`, `audit=false` and `fund=false`.
+Desktop tests and packaging therefore initialize the platform Electron binary explicitly with
+`npm run setup:electron`; do not weaken the repository-wide install policy to restore dependency
+postinstall hooks.
 This keeps first-day installs deterministic and prevents optional native lifecycle scripts from
 blocking normal development setup. Native/toolchain work must be done through explicit root
 scripts such as `package:android:debug-apk`, not through package install side effects.

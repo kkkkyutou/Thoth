@@ -23,8 +23,6 @@ env:
 jobs:
   preflight:
     runs-on: ubuntu-22.04
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,6 +30,7 @@ jobs:
           node-version: 24.14.0
           cache: npm
       - run: npm ci
+      - run: npm run setup:electron
       - run: npm run check:mvp-release-contract
       - run: npm run check:foundation
       - run: npm run build:release-runtime
@@ -151,6 +150,7 @@ jobs:
           node-version: 24.14.0
           cache: npm
       - run: npm ci
+      - run: npm run setup:electron
       - name: Build unsigned macOS MVP
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -179,6 +179,7 @@ jobs:
           node-version: 24.14.0
           cache: npm
       - run: npm ci
+      - run: npm run setup:electron
       - run: sudo apt-get update && sudo apt-get install -y libfuse2 rpm xvfb
       - name: Build Linux MVP
         env:
@@ -209,6 +210,7 @@ jobs:
           node-version: 24.14.0
           cache: npm
       - run: npm ci
+      - run: npm run setup:electron
       - name: Build unsigned Windows MVP
         shell: pwsh
         env:

@@ -144,6 +144,15 @@ export function runMvpReleaseContract({ writeMode = false } = {}) {
       failures.push(`${scriptName} must build @thoth/protocol before @thoth/relay`);
     }
   }
+  if (rootScripts?.["setup:electron"] !== "node node_modules/electron/install.js") {
+    failures.push("setup:electron must explicitly install the platform Electron binary");
+  }
+  const electronSetupSteps = workflowText.match(/- run: npm run setup:electron/gu) ?? [];
+  if (electronSetupSteps.length !== 4) {
+    failures.push(
+      `MVP workflow must initialize Electron in preflight and three desktop jobs, got ${electronSetupSteps.length}`,
+    );
+  }
 
   if (failures.length > 0) {
     throw new Error(failures.join("\n"));
