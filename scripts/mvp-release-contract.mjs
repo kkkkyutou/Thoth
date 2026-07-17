@@ -177,6 +177,13 @@ export function runMvpReleaseContract({ writeMode = false } = {}) {
       "Windows server CLI smoke must not overwrite PowerShell's read-only HOME variable",
     );
   }
+  if (
+    workflowText.includes("-c.publish.") ||
+    (workflowText.match(/--config\.publish\.releaseType=prerelease/gu) ?? []).length !== 3 ||
+    (workflowText.match(/--config\.publish\.channel=beta/gu) ?? []).length !== 3
+  ) {
+    failures.push("Desktop release jobs must use cross-platform long publish config arguments");
+  }
 
   const terminalWebViewBuild = readFileSync(
     join(repoRoot, "packages/app/scripts/build-terminal-webview-html.mjs"),

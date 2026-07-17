@@ -156,7 +156,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           THOTH_DESKTOP_SMOKE: "1"
           EP_GH_IGNORE_TIME: "true"
-        run: npm --workspace=@thoth/desktop run build:mvp -- --publish never --mac dmg zip --${{ matrix.arch }} -c.publish.releaseType=prerelease -c.publish.channel=beta
+        run: npm --workspace=@thoth/desktop run build:mvp -- --publish never --mac dmg zip --${{ matrix.arch }} --config.publish.releaseType=prerelease --config.publish.channel=beta
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-macos-${{ matrix.arch }}
@@ -186,7 +186,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           THOTH_DESKTOP_SMOKE: "1"
           EP_GH_IGNORE_TIME: "true"
-        run: xvfb-run -a npm --workspace=@thoth/desktop run build:mvp -- --publish never --linux AppImage deb rpm tar.gz --x64 -c.publish.releaseType=prerelease -c.publish.channel=beta
+        run: xvfb-run -a npm --workspace=@thoth/desktop run build:mvp -- --publish never --linux AppImage deb rpm tar.gz --x64 --config.publish.releaseType=prerelease --config.publish.channel=beta
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux
@@ -217,7 +217,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           THOTH_DESKTOP_SMOKE: "1"
           EP_GH_IGNORE_TIME: "true"
-        run: npm --workspace=@thoth/desktop run build:mvp -- --publish never --win nsis zip --x64 --arm64 -c.publish.releaseType=prerelease -c.publish.channel=beta
+        run: npm --workspace=@thoth/desktop run build:mvp -- --publish never --win nsis zip --x64 --arm64 --config.publish.releaseType=prerelease --config.publish.channel=beta
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-windows
