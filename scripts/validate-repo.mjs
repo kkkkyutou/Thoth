@@ -208,8 +208,9 @@ function checkRemovedForegroundExecutionPath() {
     .split("\n")
     .filter(Boolean)
     .filter((path) => !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path));
-  const migrationOnlyFiles = new Set([
+  const auditOnlyFiles = new Set([
     "packages/daemon/src/server/persisted-config.ts",
+    "scripts/smoke-packaged-appimage-thoth-flow.mjs",
     "scripts/validate-repo.mjs",
   ]);
   const forbidden = [
@@ -225,7 +226,7 @@ function checkRemovedForegroundExecutionPath() {
     /surface:\s*["']workspace-secretary["']/,
   ];
   for (const path of tracked) {
-    if (migrationOnlyFiles.has(path)) continue;
+    if (auditOnlyFiles.has(path)) continue;
     const absolutePath = join(root, path);
     if (!fileExists(absolutePath) || statSync(absolutePath).size > 1024 * 1024) continue;
     const content = readFileSync(absolutePath, "utf8");
