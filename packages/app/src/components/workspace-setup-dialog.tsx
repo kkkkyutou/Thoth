@@ -21,7 +21,6 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import type { CreateAgentRequestOptions, DaemonClient } from "@thoth/client/internal/daemon-client";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
-import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import type { MessagePayload } from "@/composer/types";
@@ -112,7 +111,6 @@ function buildCreateAgentOptions({
   text,
   attachments,
   encodedImages,
-  workspaceDirectory,
   workspaceId,
   provider,
 }: {
@@ -125,13 +123,11 @@ function buildCreateAgentOptions({
   text: string;
   attachments: NonNullable<CreateAgentRequestOptions["attachments"]>;
   encodedImages: NonNullable<CreateAgentRequestOptions["images"]> | null;
-  workspaceDirectory: string;
   workspaceId: string;
   provider: CreateAgentRequestOptions["provider"];
 }): CreateAgentRequestOptions {
   return {
     provider,
-    cwd: workspaceDirectory,
     workspaceId,
     ...(composerState.modeOptions.length > 0 && composerState.selectedMode !== ""
       ? { modeId: composerState.selectedMode }
@@ -301,17 +297,12 @@ export function WorkspaceSetupDialog() {
 
         const wirePayload = splitComposerAttachmentsForSubmit(attachments);
         const encodedImages = await encodeImages(wirePayload.images);
-        const workspaceDirectory = requireWorkspaceDirectory({
-          workspaceId: ensuredWorkspace.id,
-          workspaceDirectory: ensuredWorkspace.workspaceDirectory,
-        });
         const agent = await connectedClient.createAgent(
           buildCreateAgentOptions({
             composerState,
             text,
             attachments: wirePayload.attachments,
             encodedImages: encodedImages ?? null,
-            workspaceDirectory,
             workspaceId: ensuredWorkspace.id,
             provider: composerState.selectedProvider,
           }),

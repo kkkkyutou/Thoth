@@ -33,6 +33,7 @@ import {
   type ImportProviderSessionInput,
   type ListImportableSessionsOptions,
   type ProviderCatalog,
+  type ProviderControlLaunchContext,
 } from "../agent-sdk-types.js";
 import {
   THOTH_RUNTIME_TOOL_NAMES,
@@ -1107,43 +1108,7 @@ const clarifyProvenanceJsonSchema = {
   },
 };
 
-const pyramidSubgoalJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["id", "title", "goal", "acceptance"],
-  properties: {
-    id: { type: "string", minLength: 1 },
-    title: { type: "string", minLength: 1 },
-    goal: { type: "string", minLength: 1 },
-    acceptance: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
-  },
-};
-
-const pyramidStageJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["id", "title", "goal", "acceptance", "subgoals"],
-  properties: {
-    id: { type: "string", minLength: 1 },
-    title: { type: "string", minLength: 1 },
-    goal: { type: "string", minLength: 1 },
-    acceptance: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
-    subgoals: { type: "array", items: pyramidSubgoalJsonSchema },
-  },
-};
-
-const pyramidPlanJsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["title", "summary", "pyramid"],
-  properties: {
-    title: { type: "string", minLength: 1 },
-    summary: { type: "string", minLength: 1 },
-    pyramid: { type: "array", minItems: 1, items: pyramidStageJsonSchema },
-  },
-};
-
-const pyramidProvenanceJsonSchema = {
+const goalsProvenanceJsonSchema = {
   type: "object",
   additionalProperties: false,
   required: ["clarify_transcript_verbatim", "approved_ceo_task_card_verbatim"],
@@ -1271,13 +1236,13 @@ const THOTH_CLARIFY_DYNAMIC_TOOL_SPECS: Record<ThothClarifyRuntimeToolName, Code
         required: ["goals_card", "provenance"],
         properties: {
           goals_card: goalsCardJsonSchema,
-          provenance: pyramidProvenanceJsonSchema,
+          provenance: goalsProvenanceJsonSchema,
         },
       },
     },
     thoth_report_blocked: {
       name: "thoth_report_blocked",
-      description: "Report a real blocker for the structured Workspace Secretary flow.",
+      description: "Report a real blocker for the current Agent-scoped Thoth flow.",
       inputSchema: {
         type: "object",
         additionalProperties: false,
@@ -1444,20 +1409,6 @@ const THOTH_LOOP_DYNAMIC_TOOL_SPECS: Record<ThothLoopRuntimeToolName, CodexDynam
 
 const THOTH_DYNAMIC_TOOL_SPECS: Record<ThothRuntimeToolName, CodexDynamicToolSpec> = {
   ...THOTH_CLARIFY_DYNAMIC_TOOL_SPECS,
-  thoth_submit_pyramid_plan: {
-    name: "thoth_submit_pyramid_plan",
-    description:
-      "Legacy compatibility only. New Workspace Secretary sessions must use thoth_submit_goals_card.",
-    inputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["pyramid_plan", "provenance"],
-      properties: {
-        pyramid_plan: pyramidPlanJsonSchema,
-        provenance: pyramidProvenanceJsonSchema,
-      },
-    },
-  },
   ...THOTH_LOOP_DYNAMIC_TOOL_SPECS,
 };
 
@@ -5857,6 +5808,7 @@ export class CodexAppServerAgentSession implements AgentSession {
           callId: parsed.callId,
           toolName: parsed.tool,
           namespace: parsed.namespace ?? null,
+          isActiveProviderTurn: parsed.turnId === this.currentTurnId,
         },
       });
       return {
@@ -5881,6 +5833,7 @@ export class CodexAppServerAgentSession implements AgentSession {
 
 export class CodexAppServerAgentClient implements AgentClient {
   readonly provider = CODEX_PROVIDER;
+  readonly runtimeSessionProvider = CODEX_PROVIDER;
   readonly capabilities = CODEX_APP_SERVER_CAPABILITIES;
   private goalsEnabledPromise: Promise<boolean> | null = null;
   private autoReviewEnabledPromise: Promise<boolean> | null = null;
@@ -6104,14 +6057,16 @@ export class CodexAppServerAgentClient implements AgentClient {
     });
   }
 
-  async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
-    const models = await this.fetchModelsFromAppServer();
+  async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
+    const models = await this.fetchModelsFromAppServer(options.launchContext?.env);
     return { models, modes: CODEX_MODES };
   }
 
-  private async fetchModelsFromAppServer(): Promise<AgentModelDefinition[]> {
+  private async fetchModelsFromAppServer(
+    launchEnv?: Record<string, string>,
+  ): Promise<AgentModelDefinition[]> {
     // Codex model/list is global to the app server in this flow; cwd/force are intentionally ignored.
-    const child = await this.spawnAppServer();
+    const child = await this.spawnAppServer(launchEnv);
     const client = new CodexAppServerClient(child, this.logger);
 
     try {
@@ -6140,11 +6095,14 @@ export class CodexAppServerAgentClient implements AgentClient {
     }
   }
 
-  async archiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+  async archiveNativeSession(
+    handle: AgentPersistenceHandle,
+    launchContext?: ProviderControlLaunchContext,
+  ): Promise<void> {
     const threadId = handle.nativeHandle ?? handle.sessionId;
     if (!threadId) return;
 
-    const child = await this.spawnAppServer();
+    const child = await this.spawnAppServer(launchContext?.env);
     const client = new CodexAppServerClient(child, this.logger);
 
     try {
@@ -6156,11 +6114,14 @@ export class CodexAppServerAgentClient implements AgentClient {
     }
   }
 
-  async unarchiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
+  async unarchiveNativeSession(
+    handle: AgentPersistenceHandle,
+    launchContext?: ProviderControlLaunchContext,
+  ): Promise<void> {
     const threadId = handle.nativeHandle ?? handle.sessionId;
     if (!threadId) return;
 
-    const child = await this.spawnAppServer();
+    const child = await this.spawnAppServer(launchContext?.env);
     const client = new CodexAppServerClient(child, this.logger);
 
     try {

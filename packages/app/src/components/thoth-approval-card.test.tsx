@@ -4,8 +4,8 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThothApprovalGoalCardModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
-import { SecretaryApprovalCard } from "./secretary-approval-card";
+import type { ThothApprovalGoalCardModel } from "@thoth/protocol/thoth/rpc-schemas";
+import { ThothApprovalCard } from "./thoth-approval-card";
 
 const { theme } = vi.hoisted(() => ({
   theme: {
@@ -57,10 +57,10 @@ function goalsCard(): ThothApprovalGoalCardModel {
   };
 }
 
-describe("SecretaryApprovalCard", () => {
+describe("ThothApprovalCard", () => {
   it("uses the card turn controls when the live composer has hot-switched", () => {
     const { rerender } = render(
-      <SecretaryApprovalCard
+      <ThothApprovalCard
         card={{
           ...goalsCard(),
           turnControls: {
@@ -75,11 +75,11 @@ describe("SecretaryApprovalCard", () => {
       />,
     );
 
-    expect(screen.getByTestId("secretary-goal-accept-loop").textContent).toContain("确认注册");
-    expect(screen.queryByTestId("secretary-goal-accept-quick")).toBeNull();
+    expect(screen.getByTestId("thoth-goal-accept-loop").textContent).toContain("确认注册");
+    expect(screen.queryByTestId("thoth-goal-accept-quick")).toBeNull();
 
     rerender(
-      <SecretaryApprovalCard
+      <ThothApprovalCard
         card={{
           ...goalsCard(),
           turnControls: {
@@ -94,25 +94,20 @@ describe("SecretaryApprovalCard", () => {
       />,
     );
 
-    expect(screen.getByTestId("secretary-goal-accept-quick").textContent).toContain("前台执行");
-    expect(screen.queryByTestId("secretary-goal-accept-loop")).toBeNull();
+    expect(screen.getByTestId("thoth-goal-accept-quick").textContent).toContain("前台执行");
+    expect(screen.queryByTestId("thoth-goal-accept-loop")).toBeNull();
   });
 
   it("only exposes background registration for a Loop Goals Card", async () => {
     const onSubmit = vi.fn();
     render(
-      <SecretaryApprovalCard
-        card={goalsCard()}
-        kind="goal"
-        approvalMode="loop"
-        onSubmit={onSubmit}
-      />,
+      <ThothApprovalCard card={goalsCard()} kind="goal" approvalMode="loop" onSubmit={onSubmit} />,
     );
 
-    expect(screen.getByTestId("secretary-goal-accept-loop").textContent).toContain("确认注册");
-    expect(screen.queryByTestId("secretary-goal-accept-quick")).toBeNull();
+    expect(screen.getByTestId("thoth-goal-accept-loop").textContent).toContain("确认注册");
+    expect(screen.queryByTestId("thoth-goal-accept-quick")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("secretary-goal-accept-loop"));
+    fireEvent.click(screen.getByTestId("thoth-goal-accept-loop"));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ intent: "accept_loop", card_id: "goals-card-1" }),
@@ -122,18 +117,13 @@ describe("SecretaryApprovalCard", () => {
   it("only exposes foreground execution for a Quick Goals Card", async () => {
     const onSubmit = vi.fn();
     render(
-      <SecretaryApprovalCard
-        card={goalsCard()}
-        kind="goal"
-        approvalMode="quick"
-        onSubmit={onSubmit}
-      />,
+      <ThothApprovalCard card={goalsCard()} kind="goal" approvalMode="quick" onSubmit={onSubmit} />,
     );
 
-    expect(screen.getByTestId("secretary-goal-accept-quick").textContent).toContain("前台执行");
-    expect(screen.queryByTestId("secretary-goal-accept-loop")).toBeNull();
+    expect(screen.getByTestId("thoth-goal-accept-quick").textContent).toContain("前台执行");
+    expect(screen.queryByTestId("thoth-goal-accept-loop")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("secretary-goal-accept-quick"));
+    fireEvent.click(screen.getByTestId("thoth-goal-accept-quick"));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ intent: "accept_quick", card_id: "goals-card-1" }),

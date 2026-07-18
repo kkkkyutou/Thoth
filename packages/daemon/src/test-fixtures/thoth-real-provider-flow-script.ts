@@ -336,7 +336,7 @@ export function buildRealProviderFixturePrompt(input: {
     "This is a deterministic provider transport test, not an implementation request.",
     "Act only as the prescribed fixture actor. Do not inspect files, write files, call shell commands, fetch network data, or make independent decisions.",
     "Preserve every literal JSON argument exactly. Do not add fields and do not substitute values.",
-    "For the Workspace Secretary session, make one call, wait for its user result, then perform the next numbered call.",
+    "For the visible Agent Clarify turn, make one call, wait for its user result, then perform the next numbered call.",
     ...clarifySteps.map(
       (payload, index) => `${index + 1}. ${literalCall("thoth_submit_clarify_card", payload)}`,
     ),
@@ -353,7 +353,7 @@ export function buildRealProviderFixturePrompt(input: {
     );
   } else {
     lines.push(
-      "After the Goals Card is accepted for Loop, stop the Secretary session. The independent background phase actors below will continue.",
+      "After the Goals Card is accepted for Loop, stop the visible foreground turn. The independent background phase actors below will continue.",
       backgroundPhaseScript(input.script),
     );
   }

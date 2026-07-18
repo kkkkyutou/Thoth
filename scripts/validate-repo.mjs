@@ -203,6 +203,41 @@ function checkSecrets() {
   ok("secret-like scan passed");
 }
 
+function checkRemovedForegroundExecutionPath() {
+  const tracked = git(["ls-files", "packages", "scripts"])
+    .split("\n")
+    .filter(Boolean)
+    .filter((path) => !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path));
+  const migrationOnlyFiles = new Set([
+    "packages/daemon/src/server/persisted-config.ts",
+    "scripts/validate-repo.mjs",
+  ]);
+  const forbidden = [
+    /workspace_secretary\./,
+    /workspace_secretary_runtime_context/,
+    /WorkspaceSecretarySession/,
+    /ThothCleanUiModel/,
+    /prepareForegroundAgentForThoth/,
+    /emitMirroredAgentStream/,
+    /\btopicAgents\b/,
+    /\bproviderSession\b/,
+    /(?:fetch|send|answer|cancel|create)WorkspaceSecretary/,
+    /surface:\s*["']workspace-secretary["']/,
+  ];
+  for (const path of tracked) {
+    if (migrationOnlyFiles.has(path)) continue;
+    const absolutePath = join(root, path);
+    if (!fileExists(absolutePath) || statSync(absolutePath).size > 1024 * 1024) continue;
+    const content = readFileSync(absolutePath, "utf8");
+    for (const pattern of forbidden) {
+      if (pattern.test(content)) {
+        fail(`removed foreground execution path found in ${path}: ${pattern.source}`);
+      }
+    }
+  }
+  ok("removed foreground execution path is absent from product source");
+}
+
 checkPackageBoundary();
 checkPackageMetadata();
 checkAgentDocs();
@@ -211,6 +246,7 @@ checkInstallPolicy();
 checkTrackedPaths();
 checkPackageConfigVoiceResidue();
 checkSecrets();
+checkRemovedForegroundExecutionPath();
 
 if (process.exitCode) {
   process.exit(process.exitCode);

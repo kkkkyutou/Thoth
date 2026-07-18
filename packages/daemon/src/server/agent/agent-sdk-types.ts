@@ -6,7 +6,7 @@ import type {
   ThothApprovalGoalCardModel,
   ThothClarifyCardModel,
   ThothTaskCardModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 import type { ThothToolCatalog } from "./tools/types.js";
 
 export type { AgentProviderNotice };
@@ -665,18 +665,24 @@ export interface AgentSession {
   } | null;
 }
 
-export type FetchCatalogOptions =
+export interface ProviderControlLaunchContext {
+  env?: Record<string, string>;
+}
+
+export type FetchCatalogOptions = (
   | {
       scope: "global";
       force: boolean;
-      timeoutMs?: number;
     }
   | {
       scope: "workspace";
       cwd: string;
       force: boolean;
-      timeoutMs?: number;
-    };
+    }
+) & {
+  timeoutMs?: number;
+  launchContext?: ProviderControlLaunchContext;
+};
 
 export interface ProviderCatalog {
   models: AgentModelDefinition[];
@@ -693,6 +699,8 @@ export interface AgentResumeSessionOptions {
 
 export interface AgentClient {
   readonly provider: AgentProvider;
+  /** Provider adapter identity used only for process-home isolation. */
+  readonly runtimeSessionProvider?: AgentProvider;
   readonly capabilities: AgentCapabilityFlags;
   createSession(
     config: AgentSessionConfig,
@@ -714,8 +722,14 @@ export interface AgentClient {
   fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog>;
   resolveCreateConfig?(input: ResolveAgentCreateConfigInput): ResolveAgentCreateConfigResult;
   isCreateConfigUnattended?(input: AgentCreateConfigUnattendedInput): boolean;
-  listCommands?(config: AgentSessionConfig): Promise<AgentSlashCommand[]>;
-  listFeatures?(config: AgentSessionConfig): Promise<AgentFeature[]>;
+  listCommands?(
+    config: AgentSessionConfig,
+    launchContext?: ProviderControlLaunchContext,
+  ): Promise<AgentSlashCommand[]>;
+  listFeatures?(
+    config: AgentSessionConfig,
+    launchContext?: ProviderControlLaunchContext,
+  ): Promise<AgentFeature[]>;
   listImportableSessions?(
     options?: ListImportableSessionsOptions,
   ): Promise<ImportableProviderSession[]>;
@@ -733,12 +747,18 @@ export interface AgentClient {
    * Archive a persisted session in the native provider (best-effort).
    * Called when Thoth archives an agent so the provider's own UI reflects the same state.
    */
-  archiveNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
+  archiveNativeSession?(
+    handle: AgentPersistenceHandle,
+    launchContext?: ProviderControlLaunchContext,
+  ): Promise<void>;
   /**
    * Unarchive a persisted session in the native provider.
    * Called before Thoth clears its archived flag so provider resume can succeed.
    */
-  unarchiveNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
+  unarchiveNativeSession?(
+    handle: AgentPersistenceHandle,
+    launchContext?: ProviderControlLaunchContext,
+  ): Promise<void>;
   /**
    * Release any provider-owned resources held by this client (background
    * processes, sockets, cached subprocesses, etc.). Called when the daemon

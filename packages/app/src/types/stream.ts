@@ -6,7 +6,7 @@ import type {
   ThothApprovalGoalCardModel,
   ThothClarifyCardModel,
   ThothTaskCardModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";

@@ -4,7 +4,7 @@ import type {
   ThothApprovalGoalCardModel,
   ThothClarifyCardModel,
   ThothTaskCardModel,
-} from "./workspace-secretary/rpc-schemas.js";
+} from "./thoth/rpc-schemas.js";
 
 export type AgentProvider = string;
 

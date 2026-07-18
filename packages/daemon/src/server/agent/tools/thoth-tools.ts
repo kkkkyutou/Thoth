@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import path from "node:path";
 import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
@@ -62,7 +61,6 @@ import {
   ThothSubmitClarifyConvergenceAuditInputSchema,
   ThothSubmitContractPreservationAuditInputSchema,
   ThothSubmitGoalsCardInputSchema,
-  ThothSubmitPyramidPlanInputSchema,
   ThothSubmitTaskCardInputSchema,
   ThothLoopPlanExecResultInputSchema,
   ThothLoopReportBlockedInputSchema,
@@ -80,7 +78,6 @@ import {
   type ThothSubmitClarifyConvergenceAuditInput,
   type ThothSubmitContractPreservationAuditInput,
   type ThothSubmitGoalsCardInput,
-  type ThothSubmitPyramidPlanInput,
   type ThothSubmitTaskCardInput,
 } from "@thoth/protocol/thoth-runtime-contract";
 import {
@@ -94,8 +91,8 @@ import type {
   ThothApprovalGoalCardModel,
   ThothGoalsCardModel,
   ThothTaskCardModel,
-  WorkspaceSecretaryTurnActionPayload,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+  ThothCardAnswerPayload,
+} from "@thoth/protocol/thoth/rpc-schemas";
 import type { ThothLoopTaskService } from "../../thoth-loop/task-service.js";
 import { sendPromptToAgent, setupFinishNotification } from "../agent-prompt.js";
 import { respondToAgentPermission } from "../permission-response.js";
@@ -104,12 +101,13 @@ import {
   readThothRuntimeToolsConfig,
   withThothRuntimeTools,
 } from "../thoth-runtime-tools-config.js";
+import { createRuntimeAuthorityDecision } from "../runtime-tool-decisions.js";
 import {
-  configureRuntimeAuthorityDecisionPersistence,
-  createRuntimeAuthorityDecision,
-  listRuntimeAuthorityDecisionRecords,
-} from "../runtime-tool-decisions.js";
-import { assertWorkspaceSecretaryAuthorityTurn } from "./workspace-secretary-turn-policy.js";
+  assertForegroundAuthorityTurn,
+  getActiveForegroundAuthorityTurnId,
+} from "./foreground-turn-fence.js";
+import { getForegroundAuthorityStore } from "../foreground-authority-runtime.js";
+import type { ForegroundAuthorityStore } from "../foreground-authority-store.js";
 import {
   archiveAgentCommand,
   cancelAgentRunCommand,
@@ -281,7 +279,7 @@ function resolveRuntimeToolCallContext(context: ThothToolExecutionContext): {
   };
 }
 
-function summarizeRuntimeAuthorityAnswer(answer: WorkspaceSecretaryTurnActionPayload): string {
+function summarizeRuntimeAuthorityAnswer(answer: ThothCardAnswerPayload): string {
   switch (answer.intent) {
     case "accept_quick":
       return "accepted_quick";
@@ -294,18 +292,18 @@ function summarizeRuntimeAuthorityAnswer(answer: WorkspaceSecretaryTurnActionPay
     case "stop":
       return "paused_clarify_questions";
     case "recommend":
-      return "user asked secretary to recommend";
+      return "user asked Thoth to recommend";
     case "decide":
-      return "user authorized secretary to decide";
+      return "user authorized Thoth to decide";
     default:
       return answer.raw_answer;
   }
 }
 
 function runtimeToolResultText(input: {
-  answer: WorkspaceSecretaryTurnActionPayload;
+  answer: ThothCardAnswerPayload;
   submittedSummary: string;
-  cardKind: "clarify_card" | "task_card" | "goals_card" | "pyramid_plan_card" | "blocked_card";
+  cardKind: "clarify_card" | "task_card" | "goals_card" | "blocked_card";
   clarifyConverged?: boolean;
 }): string {
   const answerSummary = summarizeRuntimeAuthorityAnswer(input.answer);
@@ -355,7 +353,7 @@ function runtimeToolResultText(input: {
       "User approved this card for Loop registration.",
       `Visible answer summary: ${input.submittedSummary}`,
       "The task has been registered and handed to the Thoth background Loop scheduler.",
-      "Do not continue foreground execution for this task in the Workspace Secretary session.",
+      "Do not continue foreground execution for this task in the visible Agent session.",
     ].join("\n");
   }
   if (input.answer.intent === "annotate") {
@@ -393,25 +391,34 @@ function runtimeToolResultText(input: {
   ].join("\n");
 }
 
-function clarifyDecisionRecordsForTopic(topicId: string | null) {
-  if (!topicId) {
+function clarifyDecisionRecordsForAgent(
+  store: ForegroundAuthorityStore | null,
+  agentId: string | null,
+) {
+  if (!store || !agentId) {
     return [];
   }
-  return listRuntimeAuthorityDecisionRecords().filter(
-    (record) => record.topicId === topicId && record.cardKind === "clarify_card",
-  );
+  return store.listCardsForAgent(agentId).filter((record) => record.kind === "clarify_card");
 }
 
-function countAnsweredClarifyCardsForTopic(topicId: string | null): number {
-  return clarifyDecisionRecordsForTopic(topicId).filter((record) => record.status === "answered")
-    .length;
+function countAnsweredClarifyCardsForAgent(
+  store: ForegroundAuthorityStore | null,
+  agentId: string | null,
+): number {
+  return clarifyDecisionRecordsForAgent(store, agentId).filter(
+    (record) => record.status === "answered",
+  ).length;
 }
 
-function latestClarifyLedgerForTopic(topicId: string | null): ClarifyFrontierLedger | null {
+function latestClarifyLedgerForAgent(
+  store: ForegroundAuthorityStore | null,
+  agentId: string | null,
+): ClarifyFrontierLedger | null {
   return (
-    clarifyDecisionRecordsForTopic(topicId)
-      .filter((record) => record.frontierLedger)
-      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]?.frontierLedger ?? null
+    clarifyDecisionRecordsForAgent(store, agentId)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .map((record) => (record.card as ThothClarifyCardModel).frontierLedger)
+      .find((ledger): ledger is ClarifyFrontierLedger => Boolean(ledger)) ?? null
   );
 }
 
@@ -661,6 +668,9 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     logger,
   } = options;
   const childLogger = logger.child({ module: "agent", component: "thoth-tool-catalog" });
+  const foregroundAuthorityStore = options.thothHome
+    ? getForegroundAuthorityStore({ thothHome: options.thothHome, logger })
+    : null;
   const waitTracker = new WaitForAgentTracker(logger);
   const callerContext = callerAgentId ? (resolveCallerContext?.(callerAgentId) ?? null) : null;
   // AgentManager builds the native dynamic-tool catalog before it registers the
@@ -686,12 +696,6 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       : runtimeTools?.scope === "loop_review"
         ? "review"
         : null;
-  if (options.thothHome) {
-    configureRuntimeAuthorityDecisionPersistence({
-      filePath: path.join(options.thothHome, "runtime-authority-decisions.json"),
-    });
-  }
-
   const parseToolInput = async (tool: ThothToolDefinition, input: unknown): Promise<unknown> => {
     const inputSchema = tool.inputSchema;
     if (!inputSchema) {
@@ -737,7 +741,7 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
         throw new Error(`Thoth tool not found: ${name}`);
       }
       if (runtimeTools?.scope === "clarify" && callerAgentId) {
-        assertWorkspaceSecretaryAuthorityTurn({ agentId: callerAgentId, context });
+        assertForegroundAuthorityTurn({ agentId: callerAgentId, context });
       }
       return tool.handler(await parseToolInput(tool, input), context);
     },
@@ -1028,11 +1032,6 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     };
   };
 
-  const resolveRuntimeAuthorityTopicId = (): string | null => {
-    const caller = resolveCallerAgent();
-    return typeof caller?.labels?.topicId === "string" ? caller.labels.topicId : null;
-  };
-
   const appendRuntimeAuthorityToolCall = async (input: {
     callId: string;
     safeName: string;
@@ -1076,7 +1075,6 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
       | { kind: "clarify_card"; card: ThothClarifyCardModel }
       | { kind: "task_card"; card: ThothTaskCardModel }
       | { kind: "goals_card"; card: ThothApprovalGoalCardModel }
-      | { kind: "pyramid_plan_card"; card: ThothApprovalGoalCardModel }
       | { kind: "blocked_card"; title: string; reason: string };
     appendOpenCard: () => Promise<void>;
     appendSubmittedCard?: (summary: string) => Promise<void>;
@@ -1084,23 +1082,28 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     if (!callerAgentId) {
       throw new Error("Thoth runtime authority tools require an agent-scoped caller");
     }
+    if (!foregroundAuthorityStore) {
+      throw new Error("Thoth foreground authority is unavailable for this provider session");
+    }
     const call = resolveRuntimeToolCallContext(input.context);
-    const topicId = resolveRuntimeAuthorityTopicId();
+    const foregroundTurnId = getActiveForegroundAuthorityTurnId(callerAgentId);
+    if (!foregroundTurnId) {
+      throw new Error("No active Agent-scoped Thoth turn owns this authority card");
+    }
     const { record, waitForAnswer } = createRuntimeAuthorityDecision({
+      store: foregroundAuthorityStore,
       provider: call.provider,
       agentId: callerAgentId,
-      topicId,
       threadId: call.threadId,
-      turnId: call.turnId,
+      providerTurnId: call.turnId,
       callId: call.callId,
       toolName: call.toolName,
-      phase: topicId ? "workspace_secretary" : null,
       card: input.card,
       redactedRawInputHash: sha256Digest(
         JSON.stringify({
           toolName: call.toolName,
           cardKind: input.card.kind,
-          topicId,
+          foregroundTurnId,
         }),
       ),
       ...(input.publicBadgeSummary ? { publicBadgeSummary: input.publicBadgeSummary } : {}),
@@ -1241,8 +1244,8 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           .strict(),
       },
       async (input: ThothSubmitClarifyCardInput, context) => {
-        const topicId = resolveRuntimeAuthorityTopicId();
-        const roundIndex = countAnsweredClarifyCardsForTopic(topicId) + 1;
+        const roundIndex =
+          countAnsweredClarifyCardsForAgent(foregroundAuthorityStore, callerAgentId ?? null) + 1;
         const frontierLedgerRef = `${input.frontier_ledger.clarify_strength}:frontier:${roundIndex}`;
         const card: ThothClarifyCardModel = {
           id: `clarify-card-${randomUUID()}`,
@@ -1322,9 +1325,14 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           .strict(),
       },
       async (input: ThothSubmitTaskCardInput, context) => {
-        const topicId = resolveRuntimeAuthorityTopicId();
-        const clarifyCount = countAnsweredClarifyCardsForTopic(topicId);
-        const latestLedger = latestClarifyLedgerForTopic(topicId);
+        const clarifyCount = countAnsweredClarifyCardsForAgent(
+          foregroundAuthorityStore,
+          callerAgentId ?? null,
+        );
+        const latestLedger = latestClarifyLedgerForAgent(
+          foregroundAuthorityStore,
+          callerAgentId ?? null,
+        );
         const reviewStrength = input.convergence_review.frontier_ledger.clarify_strength;
         if (latestLedger && latestLedger.clarify_strength !== reviewStrength) {
           throw new Error(
@@ -1395,6 +1403,8 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           constraints: input.task_card.constraints,
           acceptance: input.task_card.acceptance,
           provenanceSummary: "基于完整 Clarify 原文记录整理",
+          turnControls:
+            foregroundAuthorityStore?.getActiveTurn(callerAgentId ?? "")?.controls ?? undefined,
           submitted: false,
         };
         return waitForRuntimeAuthorityAnswer({
@@ -1456,6 +1466,8 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
           goalsCountRationale: input.goals_card.goals_count_rationale,
           goals: input.goals_card.goals,
           provenanceSummary: "受 Clarify 原文和已确认 CEO Task Card 约束",
+          turnControls:
+            foregroundAuthorityStore?.getActiveTurn(callerAgentId ?? "")?.controls ?? undefined,
           submitted: false,
         };
         return waitForRuntimeAuthorityAnswer({
@@ -1482,60 +1494,11 @@ export function createThothToolCatalog(options: ThothToolHostDependencies): Thot
     );
 
     registerTool(
-      "thoth_submit_pyramid_plan",
-      {
-        title: "Submit Thoth Pyramid Plan card",
-        description:
-          "Submit the second approval card as a pyramid-shaped target breakdown, not implementation steps, commands, or file paths.",
-        inputSchema: ThothSubmitPyramidPlanInputSchema,
-        outputSchema: z
-          .object({
-            ok: z.boolean(),
-            status: z.enum(["answered"]),
-            authorityDecisionId: z.string(),
-            cardId: z.string(),
-          })
-          .strict(),
-      },
-      async (input: ThothSubmitPyramidPlanInput, context) => {
-        const card: ThothApprovalGoalCardModel = {
-          id: `pyramid-plan-card-${randomUUID()}`,
-          roundLabel: "Pyramid Plan",
-          title: input.pyramid_plan.title,
-          summary: input.pyramid_plan.summary,
-          pyramid: input.pyramid_plan.pyramid,
-          provenanceSummary: "受 Clarify 原文和已确认 CEO Task Card 约束",
-          submitted: false,
-        };
-        return waitForRuntimeAuthorityAnswer({
-          context,
-          safeName: "pyramid_approval",
-          label: "Pyramid Plan",
-          pendingText: "等待用户确认目标分拆。",
-          card: { kind: "pyramid_plan_card", card },
-          appendOpenCard: async () => {
-            if (callerAgentId) {
-              await agentManager.appendTimelineItem(callerAgentId, { type: "goal_card", card });
-            }
-          },
-          appendSubmittedCard: async (summary) => {
-            if (callerAgentId) {
-              await agentManager.appendTimelineItem(callerAgentId, {
-                type: "goal_card",
-                card: { ...card, submitted: true, submittedSummary: summary },
-              });
-            }
-          },
-        });
-      },
-    );
-
-    registerTool(
       "thoth_report_blocked",
       {
         title: "Report Thoth blocked state",
         description:
-          "Report that the structured Workspace Secretary flow is blocked by a real user decision or external condition.",
+          "Report that the structured Thoth turn is blocked by a real user decision or external condition.",
         inputSchema: ThothReportBlockedInputSchema,
         outputSchema: z.object({ ok: z.boolean(), status: z.literal("blocked") }).strict(),
       },

@@ -56,7 +56,7 @@ function storedAgent(agentId: string): StoredAgentRecord {
     cwd: process.cwd(),
     createdAt: "2026-07-12T00:00:00.000Z",
     updatedAt: "2026-07-12T00:00:00.000Z",
-    labels: { surface: "workspace-secretary-provider", topicId: "topic-1" },
+    labels: { surface: "thoth-loop", phase: "review" },
     lastStatus: "idle",
     config: null,
     persistence: { provider: "codex", sessionId: "archived-thread" },

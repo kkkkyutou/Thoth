@@ -22,11 +22,8 @@ import type {
   LoopTaskModel,
   ThothGoalsCardModel,
   ThothTaskCardModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
-import {
-  BackgroundTaskModelSchema,
-  LoopTaskModelSchema,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
+import { BackgroundTaskModelSchema, LoopTaskModelSchema } from "@thoth/protocol/thoth/rpc-schemas";
 import {
   getAgentStreamEventTurnId,
   getAgentStreamEventProviderTurnId,
@@ -66,7 +63,7 @@ interface ProviderSessionConfig {
 export interface RegisterLoopTaskInput {
   workspaceName: string;
   workspacePath: string;
-  sourceTopicId: string;
+  sourceAgentId: string;
   taskCard: ThothTaskCardModel;
   goalsCard: ThothGoalsCardModel;
   clarifyTranscript: string;
@@ -232,7 +229,7 @@ function toBackgroundTaskModel(task: LoopTaskModel): BackgroundTaskModel {
       : task.summary,
     workspaceName: task.workspaceName,
     workspacePath: task.workspacePath,
-    sourceTopicId: task.sourceTopicId,
+    sourceAgentId: task.sourceAgentId,
     detailLabel: [
       phaseLabelText,
       currentGoal ? `Goal ${currentGoal.order}: ${currentGoal.title}` : null,
@@ -367,7 +364,7 @@ export class ThothLoopTaskService {
 
   findBySourceBinding(input: {
     workspacePath: string;
-    sourceTopicId: string;
+    sourceAgentId: string;
     sourceGoalsCardId: string;
   }): LoopTaskModel | null {
     const workspacePath = resolve(input.workspacePath);
@@ -375,7 +372,7 @@ export class ThothLoopTaskService {
       Array.from(this.tasks.values()).find(
         (task) =>
           resolve(task.workspacePath) === workspacePath &&
-          task.sourceTopicId === input.sourceTopicId &&
+          task.sourceAgentId === input.sourceAgentId &&
           task.sourceGoalsCardId === input.sourceGoalsCardId,
       ) ?? null
     );
@@ -397,7 +394,9 @@ export class ThothLoopTaskService {
       return false;
     }
     prepareLoopRuntimeSession({
-      provider: phaseOwner.task.providerSession.provider,
+      provider: this.options.agentManager.getProviderRuntimeSessionProvider(
+        phaseOwner.task.providerBinding.provider,
+      ),
       thothHome: this.options.thothHome,
       sessionId: loopPhaseSessionId({
         taskId: phaseOwner.task.id,
@@ -416,7 +415,7 @@ export class ThothLoopTaskService {
 
     const { task, goal, phase } = phaseOwner;
     const recovered = recoverProviderPhaseRecord({
-      provider: task.providerSession.provider,
+      provider: task.providerBinding.provider,
       thothHome: this.options.thothHome,
       agentId,
       task,
@@ -459,7 +458,7 @@ export class ThothLoopTaskService {
       title: input.taskCard.title,
       workspaceName: input.workspaceName,
       workspacePath: input.workspacePath,
-      sourceTopicId: input.sourceTopicId,
+      sourceAgentId: input.sourceAgentId,
       sourceGoalsCardId: input.goalsCard.id,
       status: "queued",
       summary: "已注册后台 Loop，等待当前 worktree 执行锁。",
@@ -491,16 +490,16 @@ export class ThothLoopTaskService {
       taskCard: input.taskCard,
       goalsCard: input.goalsCard,
       clarifyTranscript: input.clarifyTranscript,
-      providerSession: input.provider,
+      providerBinding: input.provider,
       createdAt: now,
       updatedAt: now,
     });
-    const registrationKey = `${resolve(input.workspacePath)}:${input.sourceTopicId}:${input.goalsCard.id}`;
+    const registrationKey = `${resolve(input.workspacePath)}:${input.sourceAgentId}:${input.goalsCard.id}`;
     const registration = this.authorityStore.registerTask(task, registrationKey, {
       kind: "task_registered",
-      correlationId: input.sourceTopicId,
+      correlationId: input.sourceAgentId,
       payload: {
-        sourceTopicId: input.sourceTopicId,
+        sourceAgentId: input.sourceAgentId,
         sourceGoalsCardId: input.goalsCard.id,
         loopStrength: input.loopStrength,
       },
@@ -1130,7 +1129,7 @@ export class ThothLoopTaskService {
           }
         }
         this.tasks.set(task.id, task);
-        this.providerByTask.set(task.id, task.providerSession);
+        this.providerByTask.set(task.id, task.providerBinding);
         if (migrateLegacyBaselineFailure) {
           task.status = "evidence_capture_failed";
           task.currentPhase = null;
@@ -1509,7 +1508,7 @@ export class ThothLoopTaskService {
   }
 
   private async runTask(task: LoopTaskModel): Promise<void> {
-    const provider = this.providerByTask.get(task.id) ?? task.providerSession;
+    const provider = this.providerByTask.get(task.id) ?? task.providerBinding;
     if (!provider) {
       task.status = "blocked";
       task.summary = "缺少 provider session 配置，无法启动后台 Loop。";
@@ -2487,7 +2486,7 @@ export class ThothLoopTaskService {
       round: goal.round,
     });
     const runtimeSession = prepareLoopRuntimeSession({
-      provider: provider.provider,
+      provider: this.options.agentManager.getProviderRuntimeSessionProvider(provider.provider),
       thothHome: this.options.thothHome,
       sessionId,
     });
@@ -2539,7 +2538,7 @@ export class ThothLoopTaskService {
       round: goal.round,
     });
     const runtimeSession = prepareLoopRuntimeSession({
-      provider: provider.provider,
+      provider: this.options.agentManager.getProviderRuntimeSessionProvider(provider.provider),
       thothHome: this.options.thothHome,
       sessionId,
     });
@@ -2702,7 +2701,7 @@ export class ThothLoopTaskService {
     goal: LoopGoalRecord;
     proposal: LoopDeferredGoalReplanProposal;
   }): Promise<ContractPreservationAudit> {
-    const provider = input.task.providerSession;
+    const provider = input.task.providerBinding;
     if (
       this.options.agentManager.getProviderCapabilities(provider.provider)
         ?.supportsNativeThothTools !== true
@@ -2710,7 +2709,7 @@ export class ThothLoopTaskService {
       throw new Error("Automatic replan audit requires provider runtime-tool support.");
     }
     const auditRuntimeSession = prepareProviderRuntimeSession({
-      provider: provider.provider,
+      provider: this.options.agentManager.getProviderRuntimeSessionProvider(provider.provider),
       thothHome: this.options.thothHome,
       sessionId: `loop-${input.task.id}-${input.goal.id}-contract-audit-${randomUUID()}`,
     });

@@ -17,6 +17,7 @@ describe("shared messages attachments", () => {
         enabled: true,
         executionMode: "loop",
         clarifyStrength: "dive",
+        loopStrength: "balanced",
       },
     });
 
@@ -24,6 +25,7 @@ describe("shared messages attachments", () => {
       enabled: true,
       executionMode: "loop",
       clarifyStrength: "dive",
+      loopStrength: "balanced",
     });
   });
 

@@ -727,3 +727,36 @@ Conclusion:
 Platform-conditional rendering is not dependency isolation. Native update, filesystem, intent and crypto code
 must be split at module resolution boundaries before it is imported by a shared screen. For startup regressions,
 inspect browser `pageerror` before treating missing UI as a selector or timing problem.
+
+## `NTH-EXP-027` Acceptance Journeys Must Be Stable While Environments Are Replaceable
+
+Observed on `2026-07-18`:
+
+The installed-flow checks had accumulated the same Card polling, hot-switch and Loop assertions in daemon tests,
+packaged scripts, browser automation and real-provider fixtures. Repeating the behavior did not add confidence;
+it created drift, long feedback cycles and opportunities for a Web-only path to look like product acceptance.
+
+Conclusion:
+
+Keep one semantic product Journey over public APIs. The Journey owns user actions and authority assertions;
+environment adapters own AppImage/container/Relay lifecycle; provider adapters own harness transport only. A
+deterministic external harness should execute the complete Journey on every package build, while real Codex and
+UI/Relay/control extensions reuse the same Journey at promotion gates. Provider fixtures may prescribe tool
+actions but must never write daemon authority directly.
+
+Retry condition:
+
+When a new surface or provider needs acceptance, first implement the smallest environment or provider adapter.
+Do not duplicate Clarify, Card, Quick or Loop orchestration. If the common Journey cannot express a required
+behavior, extend its public action vocabulary and run every existing adapter against that extension.
+
+UI acceptance must still cross the renderer boundary at promotion time. API journeys can prove authority and
+provider behavior while missing projection identity errors or omitted presentation fields. Use deliberately
+different IDs for nested form models and outer authority records, and assert that frozen per-turn controls reach
+the rendered Task/Goals action rather than allowing the UI to read mutable global mode.
+
+An eval must validate product authority, not one checkout layout. Runtime skills may resolve from tracked `src`
+during development or copied `dist` inside a package; both must satisfy the same content and session-mount
+contract, while global installation remains forbidden. Likewise, a Review semantic failure exists only after a
+valid Review verdict. Permission denial, provider crash, timeout, transport loss and runtime-tool failure are
+operational exits and cannot consume failed-Review budget or synthesize `continue`/`reframe`.

@@ -50,6 +50,8 @@ import {
 } from "@/stores/workspace-draft-submission-store";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { buildThothTurnSnapshot } from "@/composer/agent-controls/thoth-mode";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { generateMessageId } from "@/types/stream";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -69,7 +71,11 @@ import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import type { MessagePayload } from "@/composer/types";
-import type { AgentAttachment, GitHubSearchItem } from "@thoth/protocol/messages";
+import type {
+  AgentAttachment,
+  GitHubSearchItem,
+  ThothTurnSnapshot,
+} from "@thoth/protocol/messages";
 import type { CreateThothWorktreeInput } from "@thoth/client/internal/daemon-client";
 import type { AgentProvider } from "@thoth/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
@@ -804,6 +810,7 @@ interface SubmitDraftInput {
   text: string;
   attachments: ComposerAttachment[];
   provider: AgentProvider;
+  thoth: ThothTurnSnapshot;
   composerState: NewWorkspaceComposerState;
 }
 
@@ -914,6 +921,7 @@ interface CreateChatAgentInput {
     composerStateRequired: string;
     selectModel: string;
   };
+  thoth: ThothTurnSnapshot;
 }
 
 function buildWorkspaceDraftSetupFromComposer(input: {
@@ -1004,6 +1012,7 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     text,
     attachments,
     provider,
+    thoth: input.thoth,
     composerState,
   });
 }
@@ -1120,6 +1129,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     text,
     attachments,
     provider,
+    thoth,
     composerState,
     initialSetup,
   } = input;
@@ -1153,6 +1163,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     attachments,
     cwd: submission.cwd,
     provider: submission.provider,
+    thoth,
     clientMessageId,
     timestamp,
     ...(submission.modeId ? { modeId: submission.modeId } : {}),
@@ -1733,6 +1744,7 @@ export function NewWorkspaceScreen({
   const workspace = createdWorkspace;
   const isPending = isNewWorkspacePending({ pendingAction, isDraftHandoffActive });
   const client = useHostRuntimeClient(selectedServerId);
+  const { config: daemonConfig } = useDaemonConfig(selectedServerId);
   const isConnected = useHostRuntimeIsConnected(selectedServerId);
   const {
     selectedProject,
@@ -2134,6 +2146,7 @@ export function NewWorkspaceScreen({
           serverId: selectedServerId,
           draftKey,
           draftId,
+          thoth: buildThothTurnSnapshot(daemonConfig?.thoth),
           labels: {
             composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
             selectModel: t("newWorkspace.errors.selectModel"),
@@ -2146,7 +2159,17 @@ export function NewWorkspaceScreen({
         toast.error(message);
       }
     },
-    [composerState, draftId, draftKey, ensureWorkspace, forkDraftSetup, selectedServerId, t, toast],
+    [
+      composerState,
+      daemonConfig?.thoth,
+      draftId,
+      draftKey,
+      ensureWorkspace,
+      forkDraftSetup,
+      selectedServerId,
+      t,
+      toast,
+    ],
   );
 
   const renderPickerOption = useCallback(

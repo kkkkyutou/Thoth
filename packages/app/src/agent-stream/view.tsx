@@ -41,7 +41,7 @@ import {
   type InlinePathTarget,
 } from "@/components/message";
 import { PlanCard } from "@/components/plan-card";
-import { hasPendingAuthorityDecisionStreamItem, type StreamItem } from "@/types/stream";
+import { generateMessageId, type StreamItem } from "@/types/stream";
 import type { PendingPermission } from "@/types/shared";
 import type {
   AgentCapabilityFlags,
@@ -54,11 +54,11 @@ import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import type { ToastApi } from "@/components/toast-host";
 import type { DaemonClient } from "@thoth/client/internal/daemon-client";
-import type { WorkspaceSecretaryTurnActionPayload } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { ThothCardAnswerPayload } from "@thoth/protocol/thoth/rpc-schemas";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ClarifyDecisionCard } from "@/components/clarify-decision-card";
-import { SecretaryApprovalCard } from "@/components/secretary-approval-card";
+import { ThothApprovalCard } from "@/components/thoth-approval-card";
 import { RegisteredTaskCard } from "@/components/registered-task-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
@@ -101,6 +101,11 @@ import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { toErrorMessage } from "@/utils/error-messages";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
+import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import {
+  resolveForegroundAgentStatus,
+  shouldShowForegroundTurnSpinner,
+} from "@/agent-thoth/foreground-state";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -240,10 +245,7 @@ export interface AgentStreamViewProps {
   toast?: ToastApi | null;
   approvalMode?: "quick" | "loop";
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
-  onSubmitClarifyAnswer?: (
-    cardId: string,
-    answer: WorkspaceSecretaryTurnActionPayload,
-  ) => Promise<void> | void;
+  onSubmitClarifyAnswer?: (cardId: string, answer: ThothCardAnswerPayload) => Promise<void> | void;
 }
 
 const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
@@ -350,12 +352,44 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const resolvedServerId = serverId ?? agent.serverId ?? "";
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
+    const agentThothState = useSessionStore(
+      (state) => state.sessions[resolvedServerId]?.agentThothStates.get(agentId) ?? null,
+    );
+    const setAgentThothStates = useSessionStore((state) => state.setAgentThothStates);
+    const isHostConnected = useHostRuntimeIsConnected(resolvedServerId);
     const streamHead = useSessionStore((state) =>
       state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId),
     );
     const supportsAgentForkContext = useSessionStore(
       (state) => state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContext === true,
     );
+
+    useEffect(() => {
+      if (!client || !isHostConnected || !agentId) {
+        return;
+      }
+      let canceled = false;
+      void client
+        .getAgentThothState(agentId)
+        .then((payload) => {
+          if (canceled || payload.error) {
+            return;
+          }
+          setAgentThothStates(resolvedServerId, (previous) => {
+            const current = previous.get(agentId);
+            if (current && current.revision >= payload.state.revision) {
+              return previous;
+            }
+            const next = new Map(previous);
+            next.set(agentId, payload.state);
+            return next;
+          });
+        })
+        .catch(() => undefined);
+      return () => {
+        canceled = true;
+      };
+    }, [agentId, client, isHostConnected, resolvedServerId, setAgentThothStates]);
 
     const workspaceRoot = agent.cwd?.trim() || "";
     const { requestDirectoryListing } = useFileExplorerActions({
@@ -445,7 +479,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     });
 
     const handleSubmitClarifyAnswer = useStableEvent(
-      async (cardId: string, answer: WorkspaceSecretaryTurnActionPayload) => {
+      async (cardId: string, answer: ThothCardAnswerPayload) => {
         try {
           if (onSubmitClarifyAnswer) {
             await onSubmitClarifyAnswer(cardId, answer);
@@ -454,7 +488,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           if (!client) {
             throw new Error(t("workspace.terminal.hostDisconnected"));
           }
-          await client.answerWorkspaceSecretaryClarify({ cardId, answer });
+          const authority = await client.getAgentThothState(agentId);
+          if (authority.error) {
+            throw new Error(authority.error);
+          }
+          if (authority.state.pendingCard?.card.id !== cardId) {
+            throw new Error("This card is no longer the active Thoth decision.");
+          }
+          const result = await client.answerAgentThothCard({
+            agentId,
+            cardId,
+            answer,
+            expectedRevision: authority.state.revision,
+            commandId: `card_${generateMessageId()}`,
+          });
+          if (result.error || result.conflict || !result.accepted) {
+            throw new Error(result.error ?? "The Thoth decision changed on another client.");
+          }
         } catch (error) {
           toast?.error(toErrorMessage(error));
         }
@@ -544,14 +594,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }
     const effectiveStreamItems = isActive ? streamItems : frozenStreamItemsRef.current;
     const effectiveStreamHead = isActive ? streamHead : frozenStreamHeadRef.current;
-    const hasPendingAuthorityDecision = useMemo(
-      () =>
-        hasPendingAuthorityDecisionStreamItem(effectiveStreamItems) ||
-        hasPendingAuthorityDecisionStreamItem(effectiveStreamHead ?? EMPTY_STREAM_HEAD),
-      [effectiveStreamHead, effectiveStreamItems],
-    );
-    const effectiveAgentStatus =
-      hasPendingAuthorityDecision && agent.status !== "running" ? "running" : agent.status;
+    const effectiveAgentStatus = resolveForegroundAgentStatus(agent.status, agentThothState);
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
@@ -751,7 +794,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             );
           case "task_card":
             return (
-              <SecretaryApprovalCard
+              <ThothApprovalCard
                 card={item.card}
                 kind="task"
                 approvalMode={approvalMode}
@@ -760,7 +803,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             );
           case "goal_card":
             return (
-              <SecretaryApprovalCard
+              <ThothApprovalCard
                 card={item.card}
                 kind="goal"
                 approvalMode={approvalMode}
@@ -839,7 +882,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [pendingPermissions, agentId],
     );
 
-    const showRunningTurnFooter = effectiveAgentStatus === "running";
+    const showRunningTurnFooter = shouldShowForegroundTurnSpinner(
+      agentThothState,
+      effectiveAgentStatus,
+    );
     const pendingPermissionsNode = useMemo(
       () =>
         renderPendingPermissionsNode({

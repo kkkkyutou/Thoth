@@ -144,6 +144,26 @@ export function runMvpReleaseContract({ writeMode = false } = {}) {
     failures.push("Desktop MVP must not depend on the legacy electron-updater path");
   }
 
+  const hermeticBuildScripts = new Map([
+    ["packages/app/highlight/package.json", "build"],
+    ["packages/app/package.json", "build:web"],
+    ["packages/cli/package.json", "build"],
+    ["packages/client/package.json", "build"],
+    ["packages/daemon/package.json", "build"],
+    ["packages/desktop/package.json", "build:main"],
+    ["packages/drivers/package.json", "build"],
+    ["packages/protocol/package.json", "build"],
+    ["packages/relay/package.json", "build"],
+    ["packages/tui/package.json", "build"],
+  ]);
+  for (const [manifestPath, scriptName] of hermeticBuildScripts) {
+    const manifest = manifests.find(({ relativePath }) => relativePath === manifestPath)?.value;
+    const script = manifest?.scripts?.[scriptName] ?? "";
+    if (!script.startsWith("npm run clean && ")) {
+      failures.push(`${manifestPath}:${scriptName} must clean stale outputs before compilation`);
+    }
+  }
+
   const rootScripts = manifests.find(({ relativePath }) => relativePath === "package.json")?.value
     .scripts;
   for (const scriptName of ["build:client", "build:app-deps", "build:foundation"]) {

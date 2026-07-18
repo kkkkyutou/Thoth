@@ -130,83 +130,15 @@ function parseSentFrame(
     .parse(JSON.parse(assertStr(data))).message;
 }
 
-function createWorkspaceSecretaryModelForClientTest() {
-  const provider = {
-    configured: true,
-    ready: true,
-    state: "ready",
-    bridge: "native_output_schema",
-    provider: "codex",
-    model: "gpt-5.1",
-    safeLabel: "codex / gpt-5.1",
-    detail: "使用原生 outputSchema。",
-  };
+function createAgentThothStateForClientTest() {
   return {
-    authority: {
-      source: "provider_backed_clean_ui_model",
-      schemaVerified: true,
-      label: "Provider-backed Workspace Secretary clean UI model",
-    },
-    activeView: "workspace-secretary",
-    secretary: {
-      workspaceName: "Thoth workspace",
-      workspacePath: "/workspace/thoth",
-      topics: [
-        { id: "topic-main", title: "当前秘书话题", status: "current", updatedLabel: "刚刚" },
-      ],
-      activeTopicId: "topic-main",
-      status: {
-        kind: "loading",
-        title: "秘书正在等待真实 provider",
-        detail: "这轮回复会在真实 provider 结果通过校验后写入历史。",
-      },
-      turns: [{ id: "user-1", kind: "message", speaker: "user", text: "hi" }],
-      composer: {
-        mode: "quick",
-        clarifyStrength: "balanced",
-        loop: null,
-        authorityLabel: "codex / gpt-5.1",
-        authorityReady: true,
-      },
-      provider,
-      liveEvents: [
-        {
-          id: "event-draft",
-          kind: "secretary_reply_delta",
-          title: "秘书正在起草回复",
-          detail: "我在，继续说你想推进的事。",
-          status: "running",
-        },
-      ],
-    },
-    settings: {
-      runtime: [
-        {
-          id: "workspace-secretary-provider",
-          title: "Workspace Secretary provider",
-          value: "codex / gpt-5.1",
-        },
-      ],
-      relay: {
-        endpoint: "relay.test.thoth.seeles.ai",
-        healthUrl: "https://relay.test.thoth.seeles.ai/health",
-        status: "healthy",
-        safeSummary: "真实测试服务健康，未显示 token 或配对凭证",
-        checkedAtLabel: "2026-07-05T00:00:00Z",
-      },
-      requiredRuntime: [
-        {
-          id: "clarify-secretary",
-          title: "Clarify secretary",
-          value: "必需，不能关闭",
-          locked: true,
-        },
-      ],
-      workspaceSecretaryProvider: provider,
-    },
-    backgroundTasks: {
-      tasks: [{ id: "empty", title: "还没有后台任务", status: "empty", summary: "等待确认" }],
-    },
+    agentId: "agent-1",
+    revision: 3,
+    lifecycle: "idle" as const,
+    turn: null,
+    pendingCard: null,
+    backgroundTaskId: null,
+    error: null,
   };
 }
 
@@ -649,8 +581,7 @@ test("defaults session RPC waiters to sixty seconds", async () => {
   await expect(responsePromise).rejects.toThrow("Timeout waiting for message (60000ms)");
 });
 
-test("lets Workspace Secretary provider turns outlive the default session RPC timeout", async () => {
-  useHeartbeatClock();
+test("requests Agent-scoped Thoth authority state", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
 
@@ -667,145 +598,101 @@ test("lets Workspace Secretary provider turns outlive the default session RPC ti
   mock.triggerOpen();
   await connectPromise;
 
-  const responsePromise = client.sendWorkspaceSecretaryMessage({
-    requestId: "req-secretary-hi",
-    workspaceId: "workspace-1",
-    workspacePath: "/workspace/thoth",
-    topicId: "topic-main",
-    text: "hi",
-    composer: {
-      mode: "quick",
-      clarifyStrength: "balanced",
-      loop: null,
-      authorityLabel: "codex / gpt-5.5",
-      authorityReady: true,
-    },
-  });
-  let settled = false;
-  void responsePromise.then(
-    () => {
-      settled = true;
-      return undefined;
-    },
-    () => {
-      settled = true;
-      return undefined;
-    },
-  );
-
-  expect(parseSentFrame(mock.sent[0])).toMatchObject({
-    type: "workspace_secretary.send.request",
-    requestId: "req-secretary-hi",
-    workspaceId: "workspace-1",
-    workspacePath: "/workspace/thoth",
-    topicId: "topic-main",
-    text: "hi",
-  });
-
-  await vi.advanceTimersByTimeAsync(60_000);
-  expect(settled).toBe(false);
-
-  await vi.advanceTimersByTimeAsync(240_000);
-  await expect(responsePromise).rejects.toThrow("Timeout waiting for message (300000ms)");
-});
-
-test("requests a Workspace Secretary snapshot for a specific topic", async () => {
-  const logger = createMockLogger();
-  const mock = createMockTransport();
-
-  const client = new DaemonClient({
-    url: "ws://test",
-    clientId: "clsk_unit_test",
-    logger,
-    reconnect: { enabled: false },
-    transportFactory: () => mock.transport,
-  });
-  clients.push(client);
-
-  const connectPromise = client.connect();
-  mock.triggerOpen();
-  await connectPromise;
-
-  const responsePromise = client.fetchWorkspaceSecretarySnapshot({
-    workspaceId: "workspace-1",
-    topicId: "topic-renderer",
-  });
+  const responsePromise = client.getAgentThothState("agent-1", "req-thoth-state");
   const sent = parseSentFrame(mock.sent[0]);
 
-  expect(sent).toMatchObject({
-    type: "workspace_secretary.snapshot.request",
-    workspaceId: "workspace-1",
-    topicId: "topic-renderer",
+  expect(sent).toEqual({
+    type: "agent.thoth.state.request",
+    requestId: "req-thoth-state",
+    agentId: "agent-1",
   });
 
   mock.triggerMessage(
     wrapSessionMessage({
-      type: "workspace_secretary.snapshot.response",
+      type: "agent.thoth.state.response",
       payload: {
-        requestId: String(sent.requestId),
-        model: createWorkspaceSecretaryModelForClientTest(),
+        requestId: "req-thoth-state",
+        state: createAgentThothStateForClientTest(),
         error: null,
       },
     }),
   );
 
   await expect(responsePromise).resolves.toMatchObject({
-    model: expect.objectContaining({ activeView: "workspace-secretary" }),
-  });
-});
-
-test("cancels a Workspace Secretary provider turn through the dedicated RPC", async () => {
-  const logger = createMockLogger();
-  const mock = createMockTransport();
-
-  const client = new DaemonClient({
-    url: "ws://test",
-    clientId: "clsk_unit_test",
-    logger,
-    reconnect: { enabled: false },
-    transportFactory: () => mock.transport,
-  });
-  clients.push(client);
-
-  const connectPromise = client.connect();
-  mock.triggerOpen();
-  await connectPromise;
-
-  const responsePromise = client.cancelWorkspaceSecretaryTurn({
-    requestId: "req-secretary-cancel",
-    workspaceId: "workspace-1",
-    workspacePath: "/workspace/thoth",
-    topicId: "topic-main",
-    uiAgentId: "draft-tab-1",
-  });
-
-  expect(parseSentFrame(mock.sent[0])).toMatchObject({
-    type: "workspace_secretary.cancel.request",
-    requestId: "req-secretary-cancel",
-    workspaceId: "workspace-1",
-    workspacePath: "/workspace/thoth",
-    topicId: "topic-main",
-    uiAgentId: "draft-tab-1",
-  });
-
-  mock.triggerMessage(
-    wrapSessionMessage({
-      type: "workspace_secretary.cancel.response",
-      payload: {
-        requestId: "req-secretary-cancel",
-        model: createWorkspaceSecretaryModelForClientTest(),
-        error: null,
-      },
-    }),
-  );
-
-  await expect(responsePromise).resolves.toMatchObject({
-    requestId: "req-secretary-cancel",
+    requestId: "req-thoth-state",
+    state: { agentId: "agent-1", revision: 3, lifecycle: "idle" },
     error: null,
   });
 });
 
-test("subscribes to Workspace Secretary clean model updates", async () => {
+test("answers an Agent-scoped Thoth card with CAS and command idempotency", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const responsePromise = client.answerAgentThothCard({
+    requestId: "req-thoth-answer",
+    agentId: "agent-1",
+    cardId: "task-card-1",
+    expectedRevision: 3,
+    commandId: "command-1",
+    answer: {
+      intent: "accept_quick",
+      card_id: "task-card-1",
+      title: "确认任务",
+      raw_answer: "确认并前台执行",
+    },
+  });
+
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "agent.thoth.card.answer.request",
+    requestId: "req-thoth-answer",
+    agentId: "agent-1",
+    cardId: "task-card-1",
+    expectedRevision: 3,
+    commandId: "command-1",
+    answer: {
+      intent: "accept_quick",
+      card_id: "task-card-1",
+      title: "确认任务",
+      raw_answer: "确认并前台执行",
+    },
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.thoth.card.answer.response",
+      payload: {
+        requestId: "req-thoth-answer",
+        accepted: true,
+        conflict: false,
+        state: createAgentThothStateForClientTest(),
+        error: null,
+      },
+    }),
+  );
+
+  await expect(responsePromise).resolves.toMatchObject({
+    requestId: "req-thoth-answer",
+    accepted: true,
+    conflict: false,
+    error: null,
+  });
+});
+
+test("subscribes to Agent-scoped Thoth authority updates", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
 
@@ -824,19 +711,19 @@ test("subscribes to Workspace Secretary clean model updates", async () => {
 
   const updates: unknown[] = [];
   const events: string[] = [];
-  client.subscribeWorkspaceSecretaryModelUpdates((payload) => updates.push(payload));
+  client.subscribeAgentThothStateUpdates((payload) => updates.push(payload));
   client.subscribe((event) => {
-    if (event.type === "workspace_secretary_model_update") {
+    if (event.type === "agent_thoth_state_update") {
       events.push(event.payload.reason ?? "unknown");
     }
   });
 
   mock.triggerMessage(
     wrapSessionMessage({
-      type: "workspace_secretary.model.update",
+      type: "agent.thoth.state.update",
       payload: {
-        model: createWorkspaceSecretaryModelForClientTest(),
-        reason: "provider_reply_delta",
+        state: createAgentThothStateForClientTest(),
+        reason: "turn_started",
       },
     }),
   );
@@ -844,11 +731,11 @@ test("subscribes to Workspace Secretary clean model updates", async () => {
   expect(updates).toHaveLength(1);
   const update = updates[0] as {
     reason?: string;
-    model: { secretary: { liveEvents?: Array<{ kind: string }> } };
+    state: { agentId: string; revision: number };
   };
-  expect(update.reason).toBe("provider_reply_delta");
-  expect(update.model.secretary.liveEvents?.[0]?.kind).toBe("secretary_reply_delta");
-  expect(events).toEqual(["provider_reply_delta"]);
+  expect(update.reason).toBe("turn_started");
+  expect(update.state).toMatchObject({ agentId: "agent-1", revision: 3 });
+  expect(events).toEqual(["turn_started"]);
 });
 
 test("honors explicit fetchAgent timeout below the session RPC default", async () => {
@@ -1902,7 +1789,7 @@ test("normalizes workspace_setup_progress into a workspace-scoped daemon event",
   });
 });
 
-test("sends create_agent_request with string workspace ids", async () => {
+test("sends a workspace-scoped create_agent_request without client cwd", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
 
@@ -1921,9 +1808,8 @@ test("sends create_agent_request with string workspace ids", async () => {
 
   const createPromise = client.createAgent({
     provider: "codex",
-    cwd: "/tmp/project/.thoth/worktrees/feature-a",
     workspaceId: "ws-feature-a",
-    title: "Compat agent",
+    title: "Remote agent",
     modeId: "default",
   });
 
@@ -1933,6 +1819,7 @@ test("sends create_agent_request with string workspace ids", async () => {
     expect.objectContaining({
       type: "create_agent_request",
       workspaceId: "ws-feature-a",
+      config: expect.not.objectContaining({ cwd: expect.anything() }),
     }),
   );
 
@@ -1942,12 +1829,100 @@ test("sends create_agent_request with string workspace ids", async () => {
       payload: {
         status: "agent_create_failed",
         requestId: request.requestId,
-        error: "compat test sentinel",
+        error: "remote test sentinel",
       },
     }),
   );
 
-  await expect(createPromise).rejects.toThrow("compat test sentinel");
+  await expect(createPromise).rejects.toThrow("remote test sentinel");
+});
+
+test("surfaces a daemon cancel failure instead of leaving the request pending", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const cancelPromise = client.cancelAgent("agent-recovered");
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toMatchObject({
+    type: "cancel_agent_request",
+    agentId: "agent-recovered",
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "cancel_agent_response",
+      payload: {
+        requestId: request.requestId,
+        agentId: "agent-recovered",
+        agent: null,
+        error: "provider session could not be restored",
+      },
+    }),
+  );
+
+  await expect(cancelPromise).rejects.toThrow("provider session could not be restored");
+});
+
+test("serializes the frozen Thoth snapshot on create_agent_request", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const createPromise = client.createAgent({
+    provider: "codex",
+    cwd: "/tmp/project",
+    initialPrompt: "run the loop",
+    thoth: {
+      enabled: true,
+      executionMode: "loop",
+      clarifyStrength: "balanced",
+      loopStrength: "light",
+    },
+  });
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toMatchObject({
+    type: "create_agent_request",
+    thoth: {
+      enabled: true,
+      executionMode: "loop",
+      clarifyStrength: "balanced",
+      loopStrength: "light",
+    },
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "status",
+      payload: {
+        status: "agent_create_failed",
+        requestId: request.requestId,
+        error: "snapshot test sentinel",
+      },
+    }),
+  );
+  await expect(createPromise).rejects.toThrow("snapshot test sentinel");
 });
 
 test("sends worktree target and autoArchive in create_agent_request", async () => {

@@ -2,7 +2,7 @@ import type {
   LoopGoalRecord,
   LoopPhaseRecord,
   LoopTaskModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 
 import type { StoredAgentRecord } from "./agent-storage.js";
 import type { AgentProvider } from "./agent-sdk-types.js";

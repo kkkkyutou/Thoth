@@ -697,7 +697,7 @@ test("client heartbeat clears attention for the focused terminal", async () => {
   });
 });
 
-test("create_agent_request uses the daemon workspace cwd when workspaceId is provided", async () => {
+test("create_agent_request resolves cwd from daemon workspace authority", async () => {
   const workdir = mkdtempSync(path.join(tmpdir(), "thoth-create-agent-cwd-"));
   try {
     const parent = path.join(workdir, "parent");
@@ -809,7 +809,7 @@ test("create_agent_request uses the daemon workspace cwd when workspaceId is pro
     await session.handleMessage({
       type: "create_agent_request",
       requestId: "req-create-child",
-      config: { provider: "codex", cwd: child },
+      config: { provider: "codex" },
       workspaceId: "ws-parent",
       attachments: [],
     });

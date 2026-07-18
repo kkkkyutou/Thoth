@@ -14,7 +14,6 @@ import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
-import { dispatchWorkspaceSecretaryAnswer, type AgentStreamWriter } from "@/composer/actions";
 import { AgentModeControl } from "@/composer/agent-controls/mode-control";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { getProviderIcon } from "@/components/provider-icons";
@@ -72,8 +71,8 @@ import type { Theme } from "@/styles/theme";
 import { useArchiveSubagent, useDetachSubagent, useSubagentsForParent } from "@/subagents";
 import { SubagentsTrack } from "@/subagents/track";
 import type { PendingPermission } from "@/types/shared";
-import type { StreamItem } from "@/types/stream";
-import type { WorkspaceSecretaryTurnActionPayload } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import { generateMessageId, type StreamItem } from "@/types/stream";
+import type { ThothCardAnswerPayload } from "@thoth/protocol/thoth/rpc-schemas";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -356,19 +355,6 @@ function DraftPanel() {
   } = usePaneContext();
   const { isInteractive } = usePaneFocus();
   invariant(target.kind === "draft", "DraftPanel requires draft target");
-  const workspacePersistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
-  const resolveLatestDraftTarget = useCallback(() => {
-    if (!workspacePersistenceKey) {
-      return target;
-    }
-    const latestTarget =
-      useWorkspaceLayoutStore
-        .getState()
-        .getWorkspaceTabs(workspacePersistenceKey)
-        .find((tab) => tab.tabId === tabId)?.target ?? target;
-    return latestTarget.kind === "draft" ? latestTarget : target;
-  }, [tabId, target, workspacePersistenceKey]);
-
   const handleCreated = useCallback(
     (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
       const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
@@ -383,44 +369,6 @@ function DraftPanel() {
     [retargetCurrentTab, serverId],
   );
 
-  const handleDraftTitleChange = useCallback(
-    (title: string | null) => {
-      const normalizedTitle = title?.trim() || null;
-      const latestTarget = resolveLatestDraftTarget();
-      if ((latestTarget.title ?? null) === normalizedTitle) {
-        return;
-      }
-      retargetCurrentTab({
-        kind: "draft",
-        draftId: latestTarget.draftId,
-        ...(latestTarget.setup ? { setup: latestTarget.setup } : {}),
-        ...(normalizedTitle ? { title: normalizedTitle } : {}),
-        ...(latestTarget.secretaryTopicId
-          ? { secretaryTopicId: latestTarget.secretaryTopicId }
-          : {}),
-      });
-    },
-    [resolveLatestDraftTarget, retargetCurrentTab],
-  );
-
-  const handleDraftSecretaryTopicChange = useCallback(
-    (topicId: string) => {
-      const normalizedTopicId = topicId.trim();
-      const latestTarget = resolveLatestDraftTarget();
-      if (!normalizedTopicId || latestTarget.secretaryTopicId === normalizedTopicId) {
-        return;
-      }
-      retargetCurrentTab({
-        kind: "draft",
-        draftId: latestTarget.draftId,
-        ...(latestTarget.setup ? { setup: latestTarget.setup } : {}),
-        ...(latestTarget.title ? { title: latestTarget.title } : {}),
-        secretaryTopicId: normalizedTopicId,
-      });
-    },
-    [resolveLatestDraftTarget, retargetCurrentTab],
-  );
-
   return (
     <WorkspaceDraftAgentTab
       key={`${serverId}:${tabId}:${target.draftId}`}
@@ -432,9 +380,6 @@ function DraftPanel() {
       isPaneFocused={isInteractive}
       onOpenWorkspaceFile={openFileInWorkspace}
       onCreated={handleCreated}
-      onDraftTitleChange={handleDraftTitleChange}
-      secretaryTopicId={target.secretaryTopicId ?? null}
-      onDraftSecretaryTopicChange={handleDraftSecretaryTopicChange}
       onOpenImportSheet={openImportSheet}
     />
   );
@@ -479,7 +424,7 @@ export function useDraftPanelDescriptor(
 
   return buildDraftPanelDescriptor({
     ...createDescriptorState,
-    title: target.title ?? null,
+    title: null,
     icon: SquarePen,
   });
 }
@@ -1325,36 +1270,29 @@ const AgentStreamSection = memo(function AgentStreamSection({
     return new Map(pendingPermissionList.map((permission) => [permission.key, permission]));
   }, [pendingPermissionList]);
   const handleSubmitClarifyAnswer = useCallback(
-    async (cardId: string, answer: WorkspaceSecretaryTurnActionPayload) => {
+    async (cardId: string, answer: ThothCardAnswerPayload) => {
       if (!client) {
         throw new Error("Thoth host disconnected");
       }
-      const stream: AgentStreamWriter = {
-        getTail: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamTail?.get(id),
-        getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
-        setHead: (updater) => setAgentStreamHead(serverId, updater),
-        setTail: (updater) => setAgentStreamTail(serverId, updater),
-      };
-      await dispatchWorkspaceSecretaryAnswer({
-        client,
+      const authority = await client.getAgentThothState(agent.id);
+      if (authority.error) {
+        throw new Error(authority.error);
+      }
+      if (authority.state.pendingCard?.card.id !== cardId) {
+        throw new Error("This card is no longer the active Thoth decision.");
+      }
+      const result = await client.answerAgentThothCard({
         agentId: agent.id,
-        ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
-        workspacePath: agent.cwd,
-        topicId: agent.id,
         cardId,
         answer,
-        stream,
+        expectedRevision: authority.state.revision,
+        commandId: `card_${generateMessageId()}`,
       });
+      if (result.error || result.conflict || !result.accepted) {
+        throw new Error(result.error ?? "The Thoth decision changed on another client.");
+      }
     },
-    [
-      agent.cwd,
-      agent.id,
-      agent.workspaceId,
-      client,
-      serverId,
-      setAgentStreamHead,
-      setAgentStreamTail,
-    ],
+    [agent.id, client],
   );
 
   return (

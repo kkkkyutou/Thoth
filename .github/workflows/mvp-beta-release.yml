@@ -37,6 +37,7 @@ jobs:
       - run: npm run build:release-runtime
       - run: npm --workspace=@thoth/app run test -- --project unit
       - run: npm --workspace=@thoth/daemon run test:unit
+      - run: npm run test:thoth-foreground
       - run: npm --workspace=@thoth/desktop run test
       - run: npm --workspace=@thoth/cli run test
       - run: npm run build:web
@@ -188,6 +189,8 @@ jobs:
           THOTH_DESKTOP_SMOKE: "1"
           EP_GH_IGNORE_TIME: "true"
         run: xvfb-run -a npm --workspace=@thoth/desktop run build:mvp -- --publish never --linux AppImage deb rpm tar.gz --x64 --config.publish.releaseType=prerelease --config.publish.channel=beta
+      - name: Run packaged Clarify and Loop flow
+        run: npm run smoke:packaged:appimage-thoth -- --appimage packages/desktop/release/Thoth-x86_64.AppImage
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-linux

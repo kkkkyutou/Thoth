@@ -1,4 +1,12 @@
-import { copyFileSync, existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -70,4 +78,9 @@ export const codexRuntimeSessionAdapter: ProviderRuntimeSessionAdapter = {
     return { home, env: codexRuntimeSessionEnvironment(home) };
   },
   environment: codexRuntimeSessionEnvironment,
+  dispose(session) {
+    if (session.home) {
+      rmSync(session.home, { recursive: true, force: true });
+    }
+  },
 };

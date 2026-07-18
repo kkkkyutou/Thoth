@@ -533,6 +533,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setHasHydratedAgents = useSessionStore((state) => state.setHasHydratedAgents);
   const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
   const setAgents = useSessionStore((state) => state.setAgents);
+  const setAgentThothStates = useSessionStore((state) => state.setAgentThothStates);
   const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
   const setEmptyProjects = useSessionStore((state) => state.setEmptyProjects);
   const addEmptyProject = useSessionStore((state) => state.addEmptyProject);
@@ -1303,6 +1304,18 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       applyAgentUpdatePayload(update);
     });
 
+    const unsubAgentThothState = client.subscribeAgentThothStateUpdates(({ state }) => {
+      setAgentThothStates(serverId, (previous) => {
+        const current = previous.get(state.agentId);
+        if (current && current.revision >= state.revision) {
+          return previous;
+        }
+        const next = new Map(previous);
+        next.set(state.agentId, state);
+        return next;
+      });
+    });
+
     const agentStreamReducerQueue = createSessionAgentStreamReducerQueue({
       serverId,
       setAgentStreamState,
@@ -1696,6 +1709,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         return next;
       });
       clearAgentStreamHead(serverId, agentId);
+      setAgentThothStates(serverId, (prev) => {
+        if (!prev.has(agentId)) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.delete(agentId);
+        return next;
+      });
       setAgentTimelineCursor(serverId, (prev) => {
         if (!prev.has(agentId)) {
           return prev;
@@ -1776,6 +1797,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     return () => {
       unsubAgentUpdate();
+      unsubAgentThothState();
       unsubAgentStream();
       unsubAgentTimeline();
       unsubWorkspaceUpdate();
@@ -1810,6 +1832,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     setAgentTimelineCursor,
     setInitializingAgents,
     setAgents,
+    setAgentThothStates,
     setWorkspaces,
     mergeWorkspaces,
     removeWorkspace,

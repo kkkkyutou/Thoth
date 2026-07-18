@@ -71,7 +71,7 @@ describe("thoth.clarify harness", () => {
     expect(report.passed, JSON.stringify(report.results, null, 2)).toBe(true);
     expect(report.results.map((scenario) => scenario.id)).toEqual(
       expect.arrayContaining([
-        "skill-created-by-standard-skill-create",
+        "packaged-runtime-skill-authority",
         "skill-not-global-installed",
         "session-scoped-skill-visible",
         "bare-provider-skill-invisible",

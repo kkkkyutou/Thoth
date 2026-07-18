@@ -34,270 +34,93 @@ npm run typecheck:protocol
 npm run typecheck:client
 ```
 
-## Deterministic Thoth Flow Fixtures
+## Fast Thoth Product API Acceptance
 
-The five deterministic Workspace Secretary / Loop journeys live in:
-
-- `packages/daemon/src/test-fixtures/thoth-flow-contract.ts`
-- `packages/daemon/src/server/thoth-flow-fixtures.test.ts`
-
-Run them with:
+The smallest non-negotiable product acceptance is one public-API journey against the daemon bundled
+inside the final AppImage:
 
 ```bash
-npm --workspace=@thoth/daemon run test:unit -- src/server/thoth-flow-fixtures.test.ts
+npm run accept:thoth:api -- --appimage packages/desktop/release/Thoth-x86_64.AppImage
 ```
 
-These are flow tests, not provider-intelligence tests. The fixture provider emits predeclared
-assistant timeline items, authority cards, PlanExec results, and Review verdicts. It does not call
-Codex, write workspace files, decide which tool to call, generate a plan, or judge implementation
-quality. Assertions cover authority ownership, card lifecycle, topic recovery, foreground handoff,
-durable Loop registration, linear goal sequencing, retry context, and failed-Review budgets.
+The journey is intentionally a single behavior chain rather than a list of implementation tests:
 
-The contract currently covers:
+```text
+raw -> Quick Clarify -> raw -> Loop -> Review fail -> retry -> pass -> done
+```
 
-1. Quick + Direct native passthrough.
-2. Quick + Clarify to Task/Goals approval, then a same-agent/session foreground Plan+Exec user turn that executes every approved goal.
-3. Quick + Clarify pause, workspace/topic recovery, resume, and foreground execution.
-4. Clarify + Loop registration with two linear goals that both pass Review.
-5. Clarify + Loop failed Review retry, repair context injection, progression after pass, and the
-   Light failed-Review budget exhaustion boundary.
+It proves that one visible Agent keeps the same provider session while Thoth is hot-switched, Agent
+Cards use the public CAS authority API, Quick completes in the foreground, Loop registration ends the
+foreground lifecycle at `background_handoff`, and independent PlanExec/Review sessions consume one
+failed-Review retry before the task reaches `done`. The packaged smoke also inspects `app.asar`, mounts
+the packaged Clarify/Loop skills, and uses the daemon managed by the AppImage rather than repository
+daemon code.
 
-## Scripted Real-Provider Flow Fixtures
-
-The companion real Codex suite uses the same five journeys but makes no claim about provider
-intelligence. Its actor script supplies every card argument, PlanExec result, Review verdict, user
-answer and marker up front; the live Codex session must only execute those literal actions through
-the real app-server dynamicTools bridge.
-
-- Contract: `packages/daemon/src/test-fixtures/thoth-real-provider-flow-script.ts`
-- E2E: `packages/daemon/src/server/daemon-e2e/thoth-flow-fixtures.real.e2e.test.ts`
-
-Run only this suite with:
+The default external scripted harness controls only provider transport actions. It must call the real
+runtime tools and cannot write daemon state directly. This keeps the result deterministic and normally
+under one minute. The same `ThothApiJourney` can run against real Codex without changing product steps:
 
 ```bash
-npm run test:thoth-flow:real
+npm run accept:thoth:api -- \
+  --real-codex \
+  --quick-prompt-file .dev/acceptance/quick.txt \
+  --loop-prompt-file .dev/acceptance/loop.txt
 ```
 
-It requires the `codex` executable and its native logged-in auth file at `$CODEX_HOME/auth.json`
-(or `~/.codex/auth.json`). It does not use OpenRouter, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, or a
-custom provider. The suite creates throwaway `/tmp` workspaces and proves real Codex session
-creation, dynamic tool calls, blocking user decisions, same-turn tool-result resume, Loop phase
-sessions, linear goal progression, Review retry context and real phase timelines. It never asks
-Codex to invent valuable questions, choose a plan, implement a feature, or judge code quality.
-Missing native Codex login skips this opt-in suite; a skipped run is not real-provider acceptance.
+`scripts/acceptance/thoth-api-journey.mjs` owns product actions and assertions. Environment launchers
+own only process/container/Relay setup, while provider fixtures own only harness transport. Optional
+Pause/Resume/Stop, restart, UI and Relay checks compose after `runCore()`; they must not duplicate the
+Clarify/Quick/Loop chain. A stale or previously published AppImage can validate itself but does not
+validate newer source changes, so rebuild the AppImage before using this command as release evidence.
 
-Do not make either fixture suite depend on free-form provider text or an LLM's choice of questions,
-tools, plans, or verdicts.
+## Source-Level Product API Checks
 
-Do not run broad daemon/app/desktop/CLI suites by default. They are expected to remain partially broken until their dedicated migration milestones.
+Use the public Create/Send/Card/Background Task API suite while changing the foreground coordinator or authority
+store:
 
-## Runtime Isolation Smoke
+```bash
+npm run test:thoth-foreground
+```
 
-When touching daemon, CLI host resolution, app host bootstrap, desktop daemon lifecycle, relay pairing or packaging paths, run:
+The suite covers raw passthrough, same-session hot switching, Agent-scoped Card authority, cancellation,
+restart/recovery and Loop registration. It is a fast source check, not packaged acceptance.
+
+Provider transport fixtures live outside the Journey and may prescribe semantic tool calls. They must still use
+the real provider adapter and runtime-tool handlers; they may not insert Cards, tasks, phases or verdicts into
+authority storage.
+
+## Acceptance Layers
+
+Use the cheapest layer that can disprove the current change, then promote the same Journey:
+
+1. `Source API`: public daemon/client API with an in-process provider adapter.
+2. `Packaged API`: AppImage-managed daemon with the external scripted harness. This is the default product gate.
+3. `Real provider`: the same packaged Journey with real Codex dynamic tools.
+4. `Environment extensions`: UI, Relay, Pause/Resume/Stop and daemon/app restart composed around `runCore()`.
+5. `Release`: clean native jobs and a repeat run against assets downloaded from the public Release.
+
+Claude Code, OpenCode and ACP must use the same Journey through their adapter capability contracts. Until an
+adapter supports session-scoped skills, semantic tools, turn identity and continuation, Thoth-on acceptance must
+report honest unsupported rather than use a provider-specific fallback.
+
+## Runtime Isolation
+
+When touching daemon, CLI host resolution, app host bootstrap, desktop daemon lifecycle, Relay pairing or
+packaging paths, also run:
 
 ```bash
 npm run smoke:isolation
 ```
 
-The smoke must prove the reserved local legacy daemon remains on `127.0.0.1:6767` and the Thoth daemon is on `127.0.0.1:6688`. A passing foundation gate does not replace this isolation smoke for runtime endpoint changes.
+This smoke proves the reserved legacy service remains on `127.0.0.1:6767` while Thoth uses its own runtime. It
+must never probe, stop, reuse or restart the legacy daemon.
 
-## Loop-2 Runtime Tool Bridge Real-Provider Runbook
+## Release Gates
 
-Use this opt-in runbook when validating Workspace Secretary Loop-2 against the real Codex provider and
-the public web test app. It is not part of `check:foundation`.
-
-1. Build and serve the current web export, keep Thoth daemon on `127.0.0.1:6688`, and confirm
-   `http://127.0.0.1:8082/` plus `http://180.76.242.105:8148/` return 200. Do not touch
-   `127.0.0.1:6767`.
-2. Create a throwaway git workspace under `/tmp`, register it through the daemon, open the public app
-   from `/open-project`, enter that workspace and click `New Agent`.
-3. Quick+none smoke:
-   - Set `Provider=Codex`, `Mode=Quick`, `Clarify=None`.
-   - Send `hi`.
-   - Verify ordinary provider/AgentTimeline streaming, no Clarify card, no packet/schema/skill/tool
-     internals and no Thoth semantic runtime tools.
-4. Quick+Balanced / Quick+Dive strength smoke:
-   - Set `Provider=Codex`, `Mode=Quick`.
-   - Run all four prompt/strength combinations when closing Loop-2 evidence:
-     - `Clarify=Balanced`, prompt `实现一个高性能快速排序`.
-     - `Clarify=Dive`, prompt `实现一个高性能快速排序`.
-     - `Clarify=Balanced`, prompt `帮我实现一个实时 PathTracing 系统`.
-     - `Clarify=Dive`, prompt `帮我实现一个实时 PathTracing 系统`.
-   - Verify the Codex app-server path uses `dynamicTools` / `item/tool/call`, not assistant JSON,
-     native `outputSchema` packets or `submit_clarify_packet`.
-   - Verify the Clarify tool badge label is user-facing, for example `需求拆解`, and the badge body is
-     the model-submitted `public_badge_summary`, not `decision_it_changes` or a neutral spinner line.
-   - Verify the visible round labels are `Clarify 1`, `Clarify 2`, ... and each card normally contains
-     3 high-value questions, with 2-4 allowed only when the material frontier justifies it.
-   - Verify `Balanced` normally produces 5-10 Clarify cards and `Dive` normally produces 10-20
-     Clarify cards for nontrivial implementation requests. A Task Card below the soft minimum is
-     acceptable only if daemon/tool evidence records a `below_soft_target_rationale` convergence
-     review grounded in a `ready_for_task` frontier ledger.
-   - For each Clarify card, choose the first option for every question and submit. The card must be
-     atomic, paginated, validated and user-facing; raw packet/schema/skill/MCP/dynamic tool text must
-     not appear.
-   - While a Clarify / Task / Pyramid decision is pending, verify the turn does not render a completed
-     footer, `Worked for ...` footer, idle/ready completion state or spinner-only dead air. The open
-     card is the active pending decision.
-   - After submitting a Clarify card, verify it immediately folds into a readonly submitted summary,
-     the matching Thoth authority tool-call badge completes by call id, and the same topic continues
-     to stream the next provider timeline segment.
-   - Accept the compact Task Card with the first Quick action, accept the Pyramid Plan Card with the
-     first foreground execution action, and verify same-session `quick_exec` shows provider
-     AgentTimeline rows such as Shell/Edit rather than spinner-only output.
-5. Loop+Dive smoke:
-   - Set `Mode=Loop`, `Clarify=Balanced` or `Clarify=Dive` depending on the evidence target.
-   - Use the same first-option Clarify policy.
-   - Accept Task Card and Pyramid Plan Card with the first Loop/register action.
-   - Verify the final state is durable `registered_pending`, with no fake running/review/evidence.
-6. Recovery smoke:
-   - Reopen the workspace and confirm the secretary topic restores cards and execution/registration
-     timeline.
-   - Open the Background Tasks entry and confirm the `registered_pending` list/detail is visible.
-   - Check a mobile viewport or deep link and confirm it restores the registered task rather than
-     falling back to Open Project.
-7. Capture desktop/mobile screenshots, Playwright trace/video, WebSocket/tool-call summary, daemon log
-   snippets, generated files if Quick exec ran, and a JSON report. Open key screenshots with
-   `view_image` before marking acceptance.
-8. Current Loop-2 acceptance evidence lives under
-   `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop2-runtime-tool-bridge/`:
-   - Quick+none: `1783414416734-quick-none-report.json`.
-   - Quick+Dive: `1783416763028-report.json`.
-   - Loop+Dive registered_pending: `1783415185110-report.json`.
-   - Background Tasks recovery: `1783415406577-background-tasks-success-report.json`.
-   - Mobile recovery: `1783416247271-mobile-loop-recovery-success-report.json`.
-   - Independent review: `independent-ui-mental-model-review.md`.
-   - Frontier-ledger repair revalidation:
-     - Local Quick+Balanced sorting: `1783447093160-report.json` (5 Clarify cards,
-       `quicksort.py`, `test_quicksort.py`).
-     - Public Quick+Balanced sorting: `1783447426182-report.json` (5 Clarify cards, C++ source and
-       test files).
-     - Local Quick+Dive sorting: `1783447971613-report.json` (12 Clarify cards, C++ header, tests,
-       benchmark and Makefile).
-     - Local Quick+Balanced PathTracing: `1783449102697-report.json` (5 Clarify cards,
-       `index.html`, `src/main.js`, `src/styles.css`).
-     - Local Loop+Balanced registered_pending: `1783449979213-report.json`.
-   - Remaining regression evidence:
-     - Local Quick+Dive PathTracing `1783449724169-report.json` reached 10 Clarify cards but produced
-       incomplete quick_exec output (`index.html` references missing `src/main.js`).
-     - Mobile screenshot `1783450162819-mobile-registered-pending.png` opens the registered-pending
-       workspace but shows an empty `New Agent` tab instead of restored registered-task history.
-   - Status note: the frontier-ledger repair is partially revalidated, but `NTH-EV-029` must stay
-     reopened until mobile recovery and the complex Dive quick_exec residual are fixed or explicitly
-     descoped.
-
-## Loop Golden Judge
-
-Run this when changing `thoth.loop`, Loop PlanExec/Review schemas, Loop retry behavior or Background
-Loop scheduler semantics:
-
-```bash
-npm run judge:loop:golden
-```
-
-The command builds drivers, runs deterministic positive/negative Loop golden evaluation, then asks an
-independent read-only `codex exec` judge to review the installed `thoth.loop` Skill artifact,
-deterministic eval report and golden scenarios. It must end with `JUDGE_RESULT: PASS`.
-
-The deterministic eval must cover both passing and intentionally failing fixtures for:
-
-- PlanExec staying inside the current goal and not asking new clarification after Task/Goals are
-  frozen.
-- Review binding concrete evidence to each acceptance item instead of only saying tests passed.
-- Review not modifying workspace files.
-- Failed Review carrying failed acceptance, root cause, next-round guidance and anti-repeat strategy.
-- Retry PlanExec addressing previous Review guidance instead of mechanically repeating the failed
-  strategy.
-- Provider/permission failures not consuming failed-review budget.
-- All-goals completion being claimed only after every linear goal passes Review.
-
-Evidence is written under ignored `.agent-os/artifacts/`, not under `docs/`.
-
-## Loop Background Real-Provider Runbook
-
-Use this opt-in runbook when validating `NTH-CD-045` / `NTH-EV-030`. It is not part of
-`check:foundation`, and it must use throwaway `/tmp` workspaces. Do not put screenshots, traces,
-videos or JSON reports under `docs/` or any tracked repo directory; use
-`/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/`.
-
-1. Build and serve the current web export:
-   - `npm run build:web`
-   - serve on local `http://127.0.0.1:8082/`
-   - confirm public `http://180.76.242.105:8148/` maps to the same build
-   - keep Thoth daemon on `127.0.0.1:6688`
-   - do not touch legacy Paseo `127.0.0.1:6767`
-2. Create a throwaway git workspace under `/tmp`, register it through the daemon and open it in the
-   app.
-3. Set `Provider=Codex`, `Mode=Loop`, `Clarify=Balanced` or `Dive`, and choose a Loop strength:
-   - `Single` first, to verify the `maxFailedReviews=1` budget path
-   - `Light` next, to verify retry budget without exhausting immediately
-4. Send a real implementation prompt, for example `实现一个高性能快速排序`.
-5. Complete Clarify by answering every question; accept the Task Card; accept the Goals Card with the
-   Loop/register action.
-6. Verify the secretary timeline does not stop at legacy `registered_pending`. It should hand off to a
-   durable background Loop task.
-7. Open Background Tasks:
-   - the task appears in the list
-   - task detail is clickable
-   - linear goals appear in the Goals Card order
-   - the current goal shows a spinner
-   - inactive queued goals are grey
-   - passed/blocked/stopped goals show stable status
-8. Open the current goal:
-   - PlanExec and Review phase tabs are visible
-   - the active phase defaults selected and shows spinner plus current round
-   - selecting a phase embeds that provider agent's AgentTimeline
-   - Shell/Edit/Read/Write/Search/Fetch/Thinking/permission/error timeline rows stream as they happen
-9. Verify Loop semantics:
-   - Review pass advances to the next goal without consuming failed-review budget
-   - Review fail consumes exactly one failed-review budget and retries the same goal
-   - PlanExec failure/cancel/permission denial does not consume failed-review budget
-   - Single blocks after one failed Review
-   - Light allows up to five failed Reviews
-10. Verify controls:
-    - Pause cancels the current phase and leaves the task paused, not blocked
-    - Resume restarts the current phase
-    - Stop cancels the current phase and enters stopped terminal state
-11. Verify recovery:
-    - reload browser
-    - reconnect websocket
-    - restart daemon only in a controlled local test; running phases must reload as `interrupted`
-      and Resume must restart the current phase
-12. Capture desktop/mobile screenshots, Playwright trace/video, WebSocket/tool-call summary, daemon log
-    excerpts and generated workspace evidence under
-    `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-YYYYMMDD/`.
-13. Open key screenshots with `view_image` before marking acceptance:
-    - Loop controls and selected strength
-    - Goals Card
-    - Background Tasks list
-    - task detail with goals
-    - current goal spinner
-    - PlanExec phase timeline
-    - Review phase timeline
-    - pause/resume/stop states
-    - recovery after refresh/reconnect
-
-Current `NTH-EV-030` acceptance evidence:
-
-- Local `8082` Loop+Single / Clarify Balanced report:
-  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-22-03-920Z/1783563943719-report.json`.
-- Public `8148` Loop+Single / Clarify Balanced report:
-  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783564545908-report.json`.
-- Post-run task/timeline summary:
-  `/mnt/cfs/5vr0p6/yzy/thoth/.dev/ui-review-captures/loop-background-2026-07-09T02-32-23-648Z/1783565728941-post-run-summary.json`.
-- Key screenshots inspected with `view_image`:
-  `1783564538646-background-task-list-detail.png`,
-  `1783564545842-background-task-planexec-timeline.png`,
-  `1783564677308-background-task-planexec-timeline-live.png`,
-  `1783564802354-background-task-planexec-timeline-wheel-bottom.png`, and
-  `1783564867436-background-task-planexec-timeline-all-scroll-bottom.png` under the public evidence
-  directory above.
-- Scope note: this evidence verifies the first real Codex Loop+Single local/public path, including
-  dynamicTools, Task/Goals approvals, durable background task registration, Background Tasks detail,
-  linear goal advancement, independent Review, Single failed-review budget behavior and phase
-  AgentTimeline events. Later `NTH-TD-021` code hardening and `npm run judge:loop:golden` promoted
-  the deterministic `thoth.loop` quality gate, but Loop+Light, complete all-goals-to-`done` and
-  restart recovery still need real-provider hardening evidence.
+The fast Journey is necessary but does not replace broad promotion evidence. Before replacing the MVP Release,
+run the affected package suites, `npm run check:foundation`, daemon/web builds, three golden judges, native
+desktop/Android/CLI smokes, real Relay, secret scan and `git diff --check`. The workflow must then repeat the
+packaged Journey before publishing and rerun it against the downloaded public AppImage.
 
 ## Test Suffixes
 

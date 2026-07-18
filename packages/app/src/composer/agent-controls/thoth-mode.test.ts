@@ -1,35 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildWorkspaceSecretaryComposerModel,
+  buildThothTurnSnapshot,
   isThothModeEnabled,
   resolveThothClarifyStrength,
 } from "./thoth-mode";
 
 describe("Thoth composer mode", () => {
-  it("uses raw provider Quick + Direct when the explicit switch is off", () => {
-    expect(
-      buildWorkspaceSecretaryComposerModel({
-        enabled: false,
-        mode: "loop",
-        clarifyStrength: "dive",
-        loopStrength: "run_until_stopped",
-      }),
-    ).toMatchObject({
-      mode: "quick",
-      clarifyStrength: "none",
-      loop: null,
-    });
-  });
-
   it("starts enabled Thoth sessions at Light or stronger, never Direct", () => {
     expect(resolveThothClarifyStrength("none")).toBe("light");
     expect(resolveThothClarifyStrength("auto")).toBe("light");
-    expect(
-      buildWorkspaceSecretaryComposerModel({ enabled: true, clarifyStrength: "none" }),
-    ).toMatchObject({
-      mode: "quick",
+    expect(buildThothTurnSnapshot({ enabled: true, clarifyStrength: "none" })).toEqual({
+      enabled: true,
+      executionMode: "quick",
       clarifyStrength: "light",
-      loop: null,
     });
   });
 
@@ -37,5 +20,36 @@ describe("Thoth composer mode", () => {
     expect(isThothModeEnabled({ mode: "loop", clarifyStrength: "balanced" })).toBe(true);
     expect(isThothModeEnabled({ clarifyStrength: "light" })).toBe(true);
     expect(isThothModeEnabled({})).toBe(false);
+  });
+
+  it("freezes explicit off and complete enabled turn snapshots", () => {
+    expect(buildThothTurnSnapshot({ enabled: false, mode: "loop" })).toEqual({
+      enabled: false,
+    });
+    expect(
+      buildThothTurnSnapshot({
+        enabled: true,
+        mode: "loop",
+        clarifyStrength: "dive",
+        loopStrength: "balanced",
+      }),
+    ).toEqual({
+      enabled: true,
+      executionMode: "loop",
+      clarifyStrength: "dive",
+      loopStrength: "balanced",
+    });
+    expect(
+      buildThothTurnSnapshot({
+        enabled: true,
+        mode: "quick",
+        clarifyStrength: "balanced",
+        loopStrength: "run_until_stopped",
+      }),
+    ).toEqual({
+      enabled: true,
+      executionMode: "quick",
+      clarifyStrength: "balanced",
+    });
   });
 });

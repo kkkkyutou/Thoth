@@ -167,6 +167,7 @@ export interface ThothAgentCreateOptions extends ThothAgentConfigOverrides {
   cwd?: string;
   workspaceId?: string;
   initialPrompt?: string;
+  thoth?: CreateAgentRequestMessage["thoth"];
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
   images?: CreateAgentRequestMessage["images"];

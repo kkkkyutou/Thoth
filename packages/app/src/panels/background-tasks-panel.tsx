@@ -17,7 +17,7 @@ import type {
   LoopPhaseKind,
   LoopPhaseRecord,
   LoopTaskModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 import type { AgentPermissionRequest, AgentProvider } from "@thoth/protocol/agent-types";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";

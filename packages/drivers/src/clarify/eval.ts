@@ -158,13 +158,17 @@ function answerHasAnyChoiceOrNote(answerPacket: ClarifyGoldenScenario["answerPac
 function evaluateSkillArtifactChecks(): ClarifyEvalScenarioResult[] {
   const artifact = loadRuntimeSkillArtifact("thoth.clarify");
   const failures = validateClarifyRuntimeSkillArtifact(artifact);
-  if (!artifact.path.endsWith("packages/drivers/src/runtime-skills/thoth-clarify/SKILL.md")) {
+  if (
+    !/[\\/]packages[\\/]drivers[\\/](?:src|dist)[\\/]runtime-skills[\\/]thoth-clarify[\\/]SKILL\.md$/.test(
+      artifact.path,
+    )
+  ) {
     failures.push(`unexpected skill path: ${artifact.path}`);
   }
   if (artifact.source.includes("allowed-tools:")) {
     failures.push("SKILL.md must not contain Codex-only allowed-tools metadata");
   }
-  return [result("skill-created-by-standard-skill-create", failures)];
+  return [result("packaged-runtime-skill-authority", failures)];
 }
 
 function evaluateMountChecks(): ClarifyEvalScenarioResult[] {

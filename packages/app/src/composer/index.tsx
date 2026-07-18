@@ -54,8 +54,6 @@ import { focusWithRetries } from "@/utils/web-focus";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
-  dispatchWorkspaceSecretaryCancel,
-  dispatchWorkspaceSecretaryMessage,
   editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
@@ -71,10 +69,7 @@ import {
   type QueuedComposerMessage,
 } from "@/composer/actions";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import {
-  buildWorkspaceSecretaryComposerModel,
-  isThothModeEnabled,
-} from "@/composer/agent-controls/thoth-mode";
+import { buildThothTurnSnapshot } from "@/composer/agent-controls/thoth-mode";
 import { useVoiceOptional } from "@/contexts/disabled-voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -122,6 +117,7 @@ import { useGithubSearchQuery } from "@/git/use-github-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
+import { resolveForegroundAgentStatus } from "@/agent-thoth/foreground-state";
 
 type QueuedMessage = QueuedComposerMessage;
 
@@ -208,6 +204,7 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
     const agent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
     return {
       status: agent?.status ?? null,
+      thothState: state.sessions[serverId]?.agentThothStates.get(agentId) ?? null,
       contextWindowMaxTokens: agent?.lastUsage?.contextWindowMaxTokens ?? null,
       contextWindowUsedTokens: agent?.lastUsage?.contextWindowUsedTokens ?? null,
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
@@ -759,9 +756,9 @@ interface ComposerProps {
   submitIcon?: "arrow" | "return";
   /** Externally controlled loading state. When true, disables the submit button. */
   isSubmitLoading?: boolean;
-  /** Optional status override for virtual agent surfaces such as Workspace Secretary draft tabs. */
+  /** Optional status override while a New Agent draft is being materialized. */
   agentStatusOverride?: Agent["status"] | null;
-  /** Optional cancel hook for virtual agent surfaces that cannot use cancelAgent(agentId). */
+  /** Optional cancel hook for a New Agent draft that does not have an agentId yet. */
   onCancelRunningAgent?: () => Promise<void> | void;
   submitBehavior?: "clear" | "preserve-and-lock";
   /** When true, blurs the input immediately when submitting. */
@@ -1025,10 +1022,9 @@ export function Composer({
 
   const { settings: appSettings } = useAppSettings();
   const { config: daemonConfig } = useDaemonConfig(serverId);
-  const thothEnabled = isThothModeEnabled(daemonConfig?.workspaceSecretary);
-  const thothComposer = useMemo(
-    () => buildWorkspaceSecretaryComposerModel(daemonConfig?.workspaceSecretary),
-    [daemonConfig?.workspaceSecretary],
+  const thothTurnSnapshot = useMemo(
+    () => buildThothTurnSnapshot(daemonConfig?.thoth),
+    [daemonConfig?.thoth],
   );
 
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
@@ -1155,7 +1151,6 @@ export function Composer({
   const { pickImages } = useImageAttachmentPicker();
   const { pickFiles } = useFilePicker();
   const agentIdRef = useRef(agentId);
-  const thothTurnActiveRef = useRef(false);
   const sendAgentMessageRef = useRef<
     ((agentId: string, text: string, attachments: ComposerAttachment[]) => Promise<void>) | null
   >(null);
@@ -1227,31 +1222,15 @@ export function Composer({
         setHead: (updater) => setAgentStreamHead(serverId, updater),
         setTail: (updater) => setAgentStreamTail(serverId, updater),
       };
-      if (thothEnabled) {
-        thothTurnActiveRef.current = true;
-        await dispatchWorkspaceSecretaryMessage({
-          client,
-          agentId: targetAgentId,
-          ...(workspaceId ? { workspaceId } : {}),
-          workspacePath: cwd,
-          topicId: targetAgentId,
-          text,
-          attachments: sendAttachments,
-          composer: thothComposer,
-          encodeImages,
-          stream,
-        });
-      } else {
-        thothTurnActiveRef.current = false;
-        await dispatchComposerAgentMessage({
-          client,
-          agentId: targetAgentId,
-          text,
-          attachments: sendAttachments,
-          encodeImages,
-          stream,
-        });
-      }
+      await dispatchComposerAgentMessage({
+        client,
+        agentId: targetAgentId,
+        text,
+        attachments: sendAttachments,
+        encodeImages,
+        stream,
+        thoth: thothTurnSnapshot,
+      });
       onAttentionPromptSend?.();
     };
   }, [
@@ -1262,8 +1241,7 @@ export function Composer({
     setAgentStreamTail,
     setAgentStreamHead,
     t,
-    thothComposer,
-    thothEnabled,
+    thothTurnSnapshot,
     workspaceId,
   ]);
 
@@ -1271,7 +1249,8 @@ export function Composer({
     onSubmitMessageRef.current = onSubmitMessage;
   }, [onSubmitMessage]);
 
-  const effectiveAgentStatus = agentStatusOverride ?? agentState.status;
+  const effectiveAgentStatus =
+    agentStatusOverride ?? resolveForegroundAgentStatus(agentState.status, agentState.thothState);
   const isAgentRunning = effectiveAgentStatus === "running";
   const hasAgent = effectiveAgentStatus !== null;
 
@@ -1505,9 +1484,6 @@ export function Composer({
   useEffect(() => {
     if (!isAgentRunning || !isConnected) {
       setIsCancellingAgent(false);
-      if (!isAgentRunning) {
-        thothTurnActiveRef.current = false;
-      }
     }
   }, [isAgentRunning, isConnected]);
 
@@ -1527,35 +1503,6 @@ export function Composer({
       messageInputRef.current?.focus();
       return;
     }
-    if (thothTurnActiveRef.current && client) {
-      if (!isAgentRunning || isCancellingAgent || !isConnected) return;
-      setIsCancellingAgent(true);
-      setSendError(null);
-      const stream: AgentStreamWriter = {
-        getTail: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamTail?.get(id),
-        getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
-        setHead: (updater) => setAgentStreamHead(serverId, updater),
-        setTail: (updater) => setAgentStreamTail(serverId, updater),
-      };
-      void dispatchWorkspaceSecretaryCancel({
-        client,
-        agentId: agentIdRef.current,
-        ...(workspaceId ? { workspaceId } : {}),
-        workspacePath: cwd,
-        topicId: agentIdRef.current,
-        stream,
-      })
-        .catch((error) => {
-          console.error("[Composer] Failed to cancel Thoth turn:", error);
-          setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
-        })
-        .finally(() => {
-          thothTurnActiveRef.current = false;
-          setIsCancellingAgent(false);
-        });
-      messageInputRef.current?.focus();
-      return;
-    }
     const didCancel = cancelComposerAgent({
       client,
       agentId: agentIdRef.current,
@@ -1566,19 +1513,7 @@ export function Composer({
     if (!didCancel) return;
     setIsCancellingAgent(true);
     messageInputRef.current?.focus();
-  }, [
-    client,
-    cwd,
-    isAgentRunning,
-    isCancellingAgent,
-    isConnected,
-    onCancelRunningAgent,
-    serverId,
-    setAgentStreamHead,
-    setAgentStreamTail,
-    t,
-    workspaceId,
-  ]);
+  }, [client, isAgentRunning, isCancellingAgent, isConnected, onCancelRunningAgent, t]);
 
   const focusMessageInputForKeyboardAction = useCallback(() => {
     focusMessageInputWithPlatformStrategy(messageInputRef);

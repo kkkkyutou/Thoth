@@ -4,7 +4,7 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThothClarifyCardModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { ThothClarifyCardModel } from "@thoth/protocol/thoth/rpc-schemas";
 import { ClarifyDecisionCard } from "./clarify-decision-card";
 
 const { theme } = vi.hoisted(() => ({
@@ -59,7 +59,7 @@ function card(overrides: Partial<ThothClarifyCardModel> = {}): ThothClarifyCardM
     continuesClarify: true,
     submitted: false,
     card: {
-      question_id: "clarify-card-1",
+      question_id: "question-form-1",
       title: "确认方向",
       behavior_tree_node: "delivery-path",
       why_now: "路线会影响验收。",

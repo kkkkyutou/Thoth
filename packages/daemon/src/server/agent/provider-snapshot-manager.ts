@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -13,6 +14,7 @@ import type {
   AgentModelDefinition,
   AgentProvider,
   FetchCatalogOptions,
+  ProviderCatalog,
   ProviderSnapshotEntry,
 } from "./agent-sdk-types.js";
 import type { ManagedAgent } from "./agent-manager.js";
@@ -33,6 +35,11 @@ import {
   formatProviderDiagnosticError,
 } from "./providers/diagnostic-utils.js";
 import type { MutableDaemonConfig } from "../daemon-config-store.js";
+import {
+  disposeProviderRuntimeSession,
+  prepareProviderRuntimeSession,
+  type ProviderRuntimeSession,
+} from "./provider-runtime-session.js";
 
 const DEFAULT_REFRESH_TIMEOUT_MS = 60_000;
 const DEFAULT_DIAGNOSTIC_TIMEOUT_MS = 120_000;
@@ -68,6 +75,7 @@ type ProviderSnapshotChangeListener = (entries: ProviderSnapshotEntry[], cwd: st
 
 export interface ProviderSnapshotManagerOptions {
   logger: Logger;
+  thothHome?: string;
   runtimeSettings?: AgentProviderRuntimeSettingsMap;
   providerOverrides?: Record<string, ProviderOverride>;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
@@ -157,6 +165,7 @@ export class ProviderSnapshotManager {
   private readonly refreshTimeoutMs: number;
   private readonly diagnosticTimeoutMs: number;
   private readonly logger: Logger;
+  private readonly thothHome: string | null;
   private readonly workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
   private readonly managedProcesses?: ManagedProcessRegistry;
   private readonly isDev: boolean;
@@ -169,6 +178,7 @@ export class ProviderSnapshotManager {
 
   constructor(options: ProviderSnapshotManagerOptions) {
     this.logger = options.logger;
+    this.thothHome = options.thothHome?.trim() || null;
     this.workspaceGitService = options.workspaceGitService;
     this.managedProcesses = options.managedProcesses;
     this.isDev = options.isDev === true;
@@ -745,22 +755,38 @@ export class ProviderSnapshotManager {
       }
 
       const client = this.ensureClient(provider, definition);
-      const available = await withTimeout(
-        client.isAvailable(),
-        this.refreshTimeoutMs,
-        `Timed out checking ${definition.label} availability after ${this.refreshTimeoutMs}ms`,
-      );
-      if (!available) {
-        setEntry({ ...base, status: "unavailable", enabled: true });
-        return;
-      }
+      const runtimeSessionProvider = client.runtimeSessionProvider ?? provider;
+      const runtimeSession = this.prepareProbeRuntimeSession(runtimeSessionProvider);
+      let catalog: ProviderCatalog;
+      try {
+        const available = await withTimeout(
+          client.isAvailable(),
+          this.refreshTimeoutMs,
+          `Timed out checking ${definition.label} availability after ${this.refreshTimeoutMs}ms`,
+        );
+        if (!available) {
+          setEntry({ ...base, status: "unavailable", enabled: true });
+          return;
+        }
 
-      const catalogOptions = createFetchCatalogOptions(catalogScope, force);
-      const catalog = await withTimeout(
-        definition.fetchCatalog({ ...catalogOptions, timeoutMs: this.refreshTimeoutMs }, client),
-        this.refreshTimeoutMs,
-        `Timed out refreshing ${definition.label} after ${this.refreshTimeoutMs}ms`,
-      );
+        const catalogOptions = createFetchCatalogOptions(catalogScope, force);
+        catalog = await withTimeout(
+          definition.fetchCatalog(
+            {
+              ...catalogOptions,
+              timeoutMs: this.refreshTimeoutMs,
+              ...(runtimeSession ? { launchContext: { env: runtimeSession.env } } : {}),
+            },
+            client,
+          ),
+          this.refreshTimeoutMs,
+          `Timed out refreshing ${definition.label} after ${this.refreshTimeoutMs}ms`,
+        );
+      } finally {
+        if (runtimeSession) {
+          disposeProviderRuntimeSession(runtimeSessionProvider, runtimeSession);
+        }
+      }
 
       setEntry({
         ...base,
@@ -784,6 +810,17 @@ export class ProviderSnapshotManager {
         );
       }
     }
+  }
+
+  private prepareProbeRuntimeSession(provider: AgentProvider): ProviderRuntimeSession | null {
+    if (!this.thothHome) {
+      return null;
+    }
+    return prepareProviderRuntimeSession({
+      provider,
+      thothHome: this.thothHome,
+      sessionId: `probe-${randomUUID()}`,
+    });
   }
 
   private getProviderLoad(cwdKey: string, provider: AgentProvider): ProviderLoad | undefined {

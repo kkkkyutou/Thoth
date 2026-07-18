@@ -9,6 +9,8 @@ export interface ThothToolExecutionContext {
     callId: string;
     toolName: string;
     namespace?: string | null;
+    /** Adapter-confirmed membership in its currently active provider turn. */
+    isActiveProviderTurn?: boolean;
   };
 }
 

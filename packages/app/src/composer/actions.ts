@@ -1,13 +1,5 @@
-import type { AgentStreamEventPayload, GitHubSearchItem } from "@thoth/protocol/messages";
-import type { AgentProvider } from "@thoth/protocol/agent-types";
-import type {
-  LoopTaskModel,
-  SecretaryTurn,
-  ThothCleanUiModel,
-  ThothComposerModel,
-  WorkspaceSecretaryResponsePayload,
-  WorkspaceSecretaryTurnActionPayload,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { GitHubSearchItem, ThothTurnSnapshot } from "@thoth/protocol/messages";
+import type { LoopTaskModel } from "@thoth/protocol/thoth/rpc-schemas";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -22,7 +14,6 @@ import {
   appendOptimisticUserMessageToStream,
   buildOptimisticUserMessage,
   generateMessageId,
-  hydrateStreamState,
   type StreamItem,
   type UserMessageItem,
 } from "@/types/stream";
@@ -57,6 +48,7 @@ export interface ComposerSendClient {
       messageId: string;
       images: Array<{ data: string; mimeType: string }>;
       attachments: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
+      thoth?: ThothTurnSnapshot;
     },
   ) => Promise<void>;
   uploadFile: (input: { fileName: string; mimeType: string; bytes: Uint8Array }) => Promise<{
@@ -73,34 +65,6 @@ export interface ComposerSendClient {
   }>;
 }
 
-export interface WorkspaceSecretarySendClient {
-  sendWorkspaceSecretaryMessage: (input: {
-    workspaceId?: string;
-    workspacePath?: string;
-    topicId?: string;
-    text: string;
-    composer: ThothComposerModel;
-    uiAgentId?: string;
-    messageId?: string;
-    images?: Array<{ data: string; mimeType: string }>;
-    attachments?: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
-  }) => Promise<WorkspaceSecretaryResponsePayload>;
-  answerWorkspaceSecretaryClarify: (input: {
-    workspaceId?: string;
-    workspacePath?: string;
-    topicId?: string;
-    cardId: string;
-    answer: WorkspaceSecretaryTurnActionPayload;
-    uiAgentId?: string;
-  }) => Promise<WorkspaceSecretaryResponsePayload>;
-  cancelWorkspaceSecretaryTurn: (input: {
-    workspaceId?: string;
-    workspacePath?: string;
-    uiAgentId?: string;
-    topicId?: string;
-  }) => Promise<WorkspaceSecretaryResponsePayload>;
-}
-
 export interface ComposerCancelClient {
   cancelAgent: (agentId: string) => Promise<void> | void;
 }
@@ -110,12 +74,6 @@ export interface AgentStreamWriter {
   getHead: (agentId: string) => StreamItem[] | undefined;
   setHead: (updater: (prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>) => void;
   setTail: (updater: (prev: Map<string, StreamItem[]>) => Map<string, StreamItem[]>) => void;
-}
-
-export interface WorkspaceSecretaryProviderTimelineEntry {
-  provider: AgentProvider;
-  item: Extract<AgentStreamEventPayload, { type: "timeline" }>["item"];
-  timestamp: string;
 }
 
 export interface QueueWriter {
@@ -204,6 +162,7 @@ export interface DispatchComposerAgentMessageInput {
     images: AttachmentMetadata[],
   ) => Promise<Array<{ data: string; mimeType: string }> | undefined>;
   stream: AgentStreamWriter;
+  thoth?: ThothTurnSnapshot;
 }
 
 export async function dispatchComposerAgentMessage(
@@ -224,188 +183,15 @@ export async function dispatchComposerAgentMessage(
     messageId,
     images: imagesData ?? [],
     attachments: wirePayload.attachments,
-  });
-}
-
-export interface DispatchWorkspaceSecretaryMessageInput {
-  client: WorkspaceSecretarySendClient;
-  agentId: string;
-  workspaceId?: string;
-  workspacePath?: string;
-  topicId?: string;
-  text: string;
-  attachments: ComposerAttachment[];
-  composer: ThothComposerModel;
-  encodeImages: (
-    images: AttachmentMetadata[],
-  ) => Promise<Array<{ data: string; mimeType: string }> | undefined>;
-  stream: AgentStreamWriter;
-}
-
-export async function dispatchWorkspaceSecretaryMessage(
-  input: DispatchWorkspaceSecretaryMessageInput,
-): Promise<WorkspaceSecretaryResponsePayload> {
-  const wirePayload = splitComposerAttachmentsForSubmit(input.attachments);
-  const messageId = generateMessageId();
-  const userMessage = buildOptimisticUserMessage({
-    id: messageId,
-    text: input.text,
-    timestamp: new Date(),
-    images: wirePayload.images,
-    attachments: wirePayload.attachments,
-  });
-  appendUserMessageToStream(input.agentId, userMessage, input.stream);
-  const imagesData = await input.encodeImages(wirePayload.images);
-  const payload = await input.client.sendWorkspaceSecretaryMessage({
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
-    ...(input.topicId ? { topicId: input.topicId } : {}),
-    text: input.text,
-    composer: input.composer,
-    uiAgentId: input.agentId,
-    messageId,
-    images: imagesData ?? [],
-    attachments: wirePayload.attachments,
-  });
-  if (payload.model) {
-    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
-  }
-  return payload;
-}
-
-export async function dispatchWorkspaceSecretaryAnswer(input: {
-  client: WorkspaceSecretarySendClient;
-  agentId: string;
-  workspaceId?: string;
-  workspacePath?: string;
-  topicId?: string;
-  cardId: string;
-  answer: WorkspaceSecretaryTurnActionPayload;
-  stream: AgentStreamWriter;
-}): Promise<WorkspaceSecretaryResponsePayload> {
-  const payload = await input.client.answerWorkspaceSecretaryClarify({
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
-    ...(input.topicId ? { topicId: input.topicId } : {}),
-    cardId: input.cardId,
-    answer: input.answer,
-    uiAgentId: input.agentId,
-  });
-  if (payload.model) {
-    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream);
-  }
-  return payload;
-}
-
-export async function dispatchWorkspaceSecretaryCancel(input: {
-  client: WorkspaceSecretarySendClient;
-  agentId: string;
-  workspaceId?: string;
-  workspacePath?: string;
-  topicId?: string;
-  stream: AgentStreamWriter;
-}): Promise<WorkspaceSecretaryResponsePayload> {
-  const payload = await input.client.cancelWorkspaceSecretaryTurn({
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
-    ...(input.topicId ? { topicId: input.topicId } : {}),
-    uiAgentId: input.agentId,
-  });
-  if (payload.model) {
-    applyWorkspaceSecretaryModelToStream(input.agentId, payload.model, input.stream, {
-      settleRunningItems: true,
-    });
-  }
-  return payload;
-}
-
-function settleCanceledWorkspaceSecretaryStreamItem(item: StreamItem): StreamItem {
-  if (item.kind === "thought" && item.status === "loading") {
-    return { ...item, status: "ready" };
-  }
-  if (
-    item.kind === "tool_call" &&
-    item.payload.source === "agent" &&
-    item.payload.data.status === "running"
-  ) {
-    return {
-      ...item,
-      payload: {
-        source: "agent",
-        data: {
-          ...item.payload.data,
-          status: "canceled",
-          error: null,
-        },
-      },
-    };
-  }
-  return item;
-}
-
-export function applyWorkspaceSecretaryModelToStream(
-  agentId: string,
-  model: ThothCleanUiModel,
-  stream: AgentStreamWriter,
-  options?: { settleRunningItems?: boolean },
-): void {
-  const items = model.secretary.turns.flatMap(secretaryTurnToStreamItem);
-  const projectedIds = new Set(items.map((item) => item.id));
-  const headToSettle = options?.settleRunningItems ? (stream.getHead(agentId) ?? []) : [];
-  stream.setTail((prev) => {
-    const next = new Map(prev);
-    const current = next.get(agentId) ?? [];
-    // The clean model owns authority cards and its own durable user/message turns. It must not,
-    // however, erase normal provider text, thoughts or tool receipts that only exist in the
-    // provider timeline. Keep matching projected items in place so their original timestamps and
-    // chronology survive every status/model update.
-    const currentLiveItems = current.filter(
-      (item) => !isWorkspaceSecretaryProjectedItem(item) || projectedIds.has(item.id),
-    );
-    const liveItems = reconcileOptimisticSecretaryUserMessages(currentLiveItems, items);
-    const settledLiveItems = options?.settleRunningItems
-      ? mergeStreamItemsById(
-          liveItems.map(settleCanceledWorkspaceSecretaryStreamItem),
-          headToSettle.map(settleCanceledWorkspaceSecretaryStreamItem),
-        )
-      : liveItems;
-    const reconciled = mergeStreamItemsById(settledLiveItems, items);
-    if (reconciled.length === 0) {
-      next.delete(agentId);
-    } else {
-      next.set(agentId, reconciled);
-    }
-    return next;
-  });
-  stream.setHead((prev) => {
-    const current = prev.get(agentId);
-    if (!current) {
-      return prev;
-    }
-    if (options?.settleRunningItems) {
-      const next = new Map(prev);
-      next.delete(agentId);
-      return next;
-    }
-    const headWithoutOptimisticUser = reconcileOptimisticSecretaryUserMessages(current, items);
-    if (headWithoutOptimisticUser === current) {
-      return prev;
-    }
-    const next = new Map(prev);
-    if (headWithoutOptimisticUser.length === 0) {
-      next.delete(agentId);
-    } else {
-      next.set(agentId, headWithoutOptimisticUser);
-    }
-    return next;
+    ...(input.thoth ? { thoth: input.thoth } : {}),
   });
 }
 
 /**
- * Project a durable task-scoped decision into its originating Secretary topic without granting
- * the topic a second authority write path. The task remains the sole source of decision state.
+ * Project a durable task-scoped decision into its originating Agent timeline without granting
+ * the timeline a second authority write path. The task remains the sole source of decision state.
  */
-export function applyLoopTaskDecisionToWorkspaceSecretaryStream(input: {
+export function applyLoopTaskDecisionToAgentStream(input: {
   agentId: string;
   task: LoopTaskModel;
   stream: AgentStreamWriter;
@@ -435,274 +221,6 @@ export function applyLoopTaskDecisionToWorkspaceSecretaryStream(input: {
     next.set(input.agentId, updated);
     return next;
   });
-}
-
-/**
- * Rebuild the virtual Workspace Secretary timeline from its durable provider agent. The provider
- * records the full Plan+Exec stream; the clean model remains authoritative for cards and literal
- * user text. This is used after reload/reconnect and as a cancellation race barrier.
- */
-export function hydrateWorkspaceSecretaryProviderTimeline(input: {
-  agentId: string;
-  model: ThothCleanUiModel;
-  entries: WorkspaceSecretaryProviderTimelineEntry[];
-  stream: AgentStreamWriter;
-  settleRunningItems?: boolean;
-}): void {
-  const userTurnsByMessageId = new Map<string, Extract<SecretaryTurn, { kind: "message" }>>();
-  const userTurns = input.model.secretary.turns.filter(
-    (turn): turn is Extract<SecretaryTurn, { kind: "message" }> =>
-      turn.kind === "message" && turn.speaker === "user",
-  );
-  for (const turn of input.model.secretary.turns) {
-    if (turn.kind === "message" && turn.speaker === "user" && turn.messageId) {
-      userTurnsByMessageId.set(turn.messageId, turn);
-    }
-  }
-  const consumedUserTurnIds = new Set<string>();
-  const providerEvents: Array<{
-    event: Extract<AgentStreamEventPayload, { type: "timeline" }>;
-    timestamp: Date;
-  }> = [];
-  for (const entry of input.entries) {
-    if (entry.item.type !== "user_message") {
-      providerEvents.push({
-        event: {
-          type: "timeline",
-          provider: entry.provider,
-          item: entry.item,
-        },
-        timestamp: new Date(entry.timestamp),
-      });
-      continue;
-    }
-    const messageId = entry.item.messageId;
-    const matchingInput = extractLegacyWorkspaceSecretaryEnvelopeUserInput(entry.item.text);
-    const resolvedUserTurn =
-      (messageId ? userTurnsByMessageId.get(messageId) : undefined) ??
-      userTurns.find(
-        (turn) =>
-          !consumedUserTurnIds.has(turn.id) &&
-          matchingInput !== null &&
-          matchingInput === turn.text,
-      ) ??
-      userTurns.find(
-        (turn) => !consumedUserTurnIds.has(turn.id) && !messageId && entry.item.text === turn.text,
-      );
-    if (!resolvedUserTurn) {
-      // This is a daemon-authored provider prompt for a card continuation or Quick Plan+Exec.
-      // It is not a user-visible message and must never leak into the virtual secretary tab.
-      continue;
-    }
-    consumedUserTurnIds.add(resolvedUserTurn.id);
-    // Provider-native ids are execution metadata. Replace them with the stable Thoth UI id so
-    // this row reconciles in its original chronology rather than appending the clean user turn
-    // at the tail. New daemon versions write this canonical row directly; this fallback only
-    // supports pre-anchor persisted histories.
-    const resolvedMessageId = resolvedUserTurn.messageId ?? `secretary_user_${resolvedUserTurn.id}`;
-    providerEvents.push({
-      event: {
-        type: "timeline",
-        provider: entry.provider,
-        item: {
-          type: "user_message",
-          text: resolvedUserTurn.text,
-          messageId: resolvedMessageId,
-        },
-      },
-      timestamp: new Date(entry.timestamp),
-    });
-  }
-  const providerItems = hydrateStreamState(providerEvents, { source: "canonical" });
-  const modelItems = input.model.secretary.turns.flatMap(secretaryTurnToStreamItem);
-  const restored = mergeStreamItemsById(providerItems, modelItems);
-  const settled = input.settleRunningItems
-    ? restored.map(settleCanceledWorkspaceSecretaryStreamItem)
-    : restored;
-
-  input.stream.setTail((prev) => {
-    const next = new Map(prev);
-    if (settled.length === 0) {
-      next.delete(input.agentId);
-    } else {
-      next.set(input.agentId, settled);
-    }
-    return next;
-  });
-  input.stream.setHead((prev) => {
-    if (!prev.has(input.agentId)) {
-      return prev;
-    }
-    const next = new Map(prev);
-    next.delete(input.agentId);
-    return next;
-  });
-}
-
-function extractLegacyWorkspaceSecretaryEnvelopeUserInput(text: string): string | null {
-  const candidates = [text];
-  const runtimeContextMarker = "Runtime context follows.\n\n";
-  const markerIndex = text.lastIndexOf(runtimeContextMarker);
-  if (markerIndex >= 0) {
-    candidates.unshift(text.slice(markerIndex + runtimeContextMarker.length));
-  }
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate) as { user_input?: unknown };
-      if (typeof parsed.user_input === "string") {
-        return parsed.user_input;
-      }
-    } catch {
-      // Legacy provider history can contain ordinary user text and non-JSON prompts.
-    }
-  }
-  return null;
-}
-
-function isWorkspaceSecretaryProjectedItem(item: StreamItem): boolean {
-  return (
-    item.kind === "clarify_card" ||
-    item.kind === "task_card" ||
-    item.kind === "goal_card" ||
-    item.kind === "registered_task" ||
-    item.id.startsWith("secretary_message_") ||
-    item.id.startsWith("secretary_user_")
-  );
-}
-
-function reconcileOptimisticSecretaryUserMessages(
-  liveItems: StreamItem[],
-  canonicalItems: StreamItem[],
-): StreamItem[] {
-  // A clean model is authoritative only once it includes the persisted user turn. Match by text so
-  // an error response cannot erase the user's still-optimistic message, and a canonical catch-up
-  // replaces only the matching optimistic message rather than flushing an unrelated queued turn.
-  const canonicalTextCounts = new Map<string, number>();
-  for (const item of canonicalItems) {
-    if (item.kind !== "user_message") {
-      continue;
-    }
-    canonicalTextCounts.set(item.text, (canonicalTextCounts.get(item.text) ?? 0) + 1);
-  }
-  if (canonicalTextCounts.size === 0) {
-    return liveItems;
-  }
-  let changed = false;
-  const next = liveItems.filter((item) => {
-    if (item.kind !== "user_message" || !item.optimistic) {
-      return true;
-    }
-    const remaining = canonicalTextCounts.get(item.text) ?? 0;
-    if (remaining === 0) {
-      return true;
-    }
-    canonicalTextCounts.set(item.text, remaining - 1);
-    changed = true;
-    return false;
-  });
-  return changed ? next : liveItems;
-}
-
-export function removeWorkspaceSecretaryModelItemsFromStream(
-  agentId: string,
-  model: ThothCleanUiModel,
-  stream: AgentStreamWriter,
-): void {
-  const projectedIds = new Set(
-    model.secretary.turns.flatMap(secretaryTurnToStreamItem).map((item) => item.id),
-  );
-  if (projectedIds.size === 0) {
-    return;
-  }
-  stream.setTail((prev) => {
-    const current = prev.get(agentId);
-    if (!current || !current.some((item) => projectedIds.has(item.id))) {
-      return prev;
-    }
-    const next = new Map(prev);
-    const filtered = current.filter((item) => !projectedIds.has(item.id));
-    if (filtered.length === 0) {
-      next.delete(agentId);
-    } else {
-      next.set(agentId, filtered);
-    }
-    return next;
-  });
-}
-
-function secretaryTurnToStreamItem(turn: SecretaryTurn): StreamItem[] {
-  const timestamp = new Date();
-  switch (turn.kind) {
-    case "message":
-      if (turn.speaker === "user") {
-        // Secretary snapshots are the durable source for user turns too. Without this canonical
-        // item, applying the first loading model clears the optimistic head and leaves a blank
-        // timeline until the provider emits its first visible delta.
-        return [
-          {
-            kind: "user_message",
-            id: turn.messageId ?? `secretary_user_${turn.id}`,
-            text: turn.text,
-            timestamp,
-          },
-        ];
-      }
-      return [
-        {
-          kind: "assistant_message",
-          id: `secretary_message_${turn.id}`,
-          messageId: turn.id,
-          text: turn.text,
-          timestamp,
-        },
-      ];
-    case "clarify_card":
-      return [{ kind: "clarify_card", id: `clarify_${turn.card.id}`, timestamp, card: turn.card }];
-    case "task_card":
-      return [{ kind: "task_card", id: `task_card_${turn.card.id}`, timestamp, card: turn.card }];
-    case "goal_card":
-      return [{ kind: "goal_card", id: `goal_card_${turn.card.id}`, timestamp, card: turn.card }];
-    case "registered_task":
-      return [
-        {
-          kind: "registered_task",
-          id: `registered_task_${turn.task.id}`,
-          timestamp,
-          task: turn.task,
-        },
-      ];
-    case "loop_decision":
-      return [
-        {
-          kind: "loop_decision",
-          id: `loop_decision_${turn.taskId}`,
-          timestamp,
-          taskId: turn.taskId,
-          decision: turn.decision,
-        },
-      ];
-    default:
-      return [];
-  }
-}
-
-function mergeStreamItemsById(current: StreamItem[], incoming: StreamItem[]): StreamItem[] {
-  let next = current;
-  for (const item of incoming) {
-    const existingIndex = next.findIndex((entry) => entry.id === item.id);
-    if (existingIndex >= 0) {
-      const updated = [...next];
-      // A clean model does not carry source timestamps. Updating a submitted card or user turn
-      // must retain the provider/live timestamp, otherwise a cancel response makes the whole turn
-      // look like it started "now" and incorrectly renders Worked for 0s.
-      updated[existingIndex] = { ...item, timestamp: next[existingIndex]!.timestamp };
-      next = updated;
-      continue;
-    }
-    next = [...next, item];
-  }
-  return next;
 }
 
 function appendUserMessageToStream(

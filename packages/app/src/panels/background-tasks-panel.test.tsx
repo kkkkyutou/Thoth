@@ -4,10 +4,7 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  BackgroundTaskModel,
-  LoopTaskModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { BackgroundTaskModel, LoopTaskModel } from "@thoth/protocol/thoth/rpc-schemas";
 import {
   BackgroundTasksSurface,
   shouldForwardLoopPhaseTimelineWheel,
@@ -133,7 +130,7 @@ function summary(status: BackgroundTaskModel["status"] = "running"): BackgroundT
     status,
     summary: "Building a verified sortable library.",
     workspaceName: "Loop Workspace",
-    sourceTopicId: "topic-loop",
+    sourceAgentId: "topic-loop",
     detailLabel: status === "running" ? "PlanExec in progress" : status,
   };
 }
@@ -144,7 +141,7 @@ function loopTask(status: LoopTaskModel["status"] = "running"): LoopTaskModel {
     title: "Sortable library",
     workspaceName: "Loop Workspace",
     workspacePath: "/tmp/thoth-loop-workspace",
-    sourceTopicId: "topic-loop",
+    sourceAgentId: "topic-loop",
     status,
     summary: "Building a verified sortable library.",
     loopStrength: "balanced",
@@ -274,7 +271,7 @@ function loopTask(status: LoopTaskModel["status"] = "running"): LoopTaskModel {
       },
     ],
     clarifyTranscript: "Approved context.",
-    providerSession: { provider: "codex" },
+    providerBinding: { provider: "codex" },
     latestVerdictSummary: "Previous review failed once.",
     createdAt: "2026-07-09T00:00:00.000Z",
     updatedAt: "2026-07-09T00:00:01.000Z",

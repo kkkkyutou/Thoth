@@ -16,15 +16,11 @@ export function normalizeWorkspaceTabTarget(
     }
     const setup = normalizeWorkspaceDraftTabSetup(value.setup);
     const title = trimOptionalString(typeof value.title === "string" ? value.title : null);
-    const secretaryTopicId = trimOptionalString(
-      typeof value.secretaryTopicId === "string" ? value.secretaryTopicId : null,
-    );
     return {
       kind: "draft",
       draftId,
       ...(setup ? { setup } : {}),
       ...(title ? { title } : {}),
-      ...(secretaryTopicId ? { secretaryTopicId } : {}),
     };
   }
   if (value.kind === "agent") {
@@ -84,8 +80,7 @@ export function workspaceTabTargetsEqual(
     return (
       left.draftId === right.draftId &&
       workspaceDraftTabSetupsEqual(left.setup, right.setup) &&
-      (left.title ?? null) === (right.title ?? null) &&
-      (left.secretaryTopicId ?? null) === (right.secretaryTopicId ?? null)
+      (left.title ?? null) === (right.title ?? null)
     );
   }
   if (left.kind === "agent" && right.kind === "agent") {

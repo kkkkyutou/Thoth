@@ -779,8 +779,6 @@ export const THOTH_CLARIFY_RUNTIME_TOOL_NAMES = [
 
 export const ThothClarifyRuntimeToolNameSchema = z.enum(THOTH_CLARIFY_RUNTIME_TOOL_NAMES);
 
-export const THOTH_LEGACY_CLARIFY_RUNTIME_TOOL_NAMES = ["thoth_submit_pyramid_plan"] as const;
-
 export const THOTH_LOOP_RUNTIME_TOOL_NAMES = [
   "thoth_loop_submit_planexec_result",
   "thoth_loop_submit_review_independent_assessment",
@@ -793,7 +791,6 @@ export const ThothLoopRuntimeToolNameSchema = z.enum(THOTH_LOOP_RUNTIME_TOOL_NAM
 
 export const THOTH_RUNTIME_TOOL_NAMES = [
   ...THOTH_CLARIFY_RUNTIME_TOOL_NAMES,
-  ...THOTH_LEGACY_CLARIFY_RUNTIME_TOOL_NAMES,
   ...THOTH_LOOP_RUNTIME_TOOL_NAMES,
 ] as const;
 
@@ -921,31 +918,6 @@ export const ThothSubmitTaskCardInputSchema = z
   });
 
 export const ThothSubmitClarifyConvergenceAuditInputSchema = ClarifyConvergenceAuditSchema;
-
-export const ThothSubmitPyramidPlanInputSchema = z
-  .object({
-    pyramid_plan: ClarifyGoalCardContractSchema,
-    provenance: ClarifyGoalCardProvenanceSchema,
-  })
-  .strict()
-  .superRefine((input, ctx) => {
-    rejectForbiddenRuntimeToolText(input, ctx, []);
-    const serialized = JSON.stringify(input.pyramid_plan);
-    if (/(^|\s)(npm|pnpm|yarn|python|node|git|pytest|vitest|tsx|bash|sh)\s+/i.test(serialized)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Pyramid Plan Card must not include command-level execution steps",
-        path: ["pyramid_plan"],
-      });
-    }
-    if (/(^|[\s"'`])(?:\.{0,2}\/)?[\w.-]+\/[\w./-]+\.[A-Za-z0-9]{1,8}\b/.test(serialized)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Pyramid Plan Card must not include file-path-level implementation details",
-        path: ["pyramid_plan"],
-      });
-    }
-  });
 
 export const ThothSubmitGoalsCardInputSchema = z
   .object({
@@ -1139,10 +1111,6 @@ export const ThothClarifyRuntimeToolInputSchema = z.discriminatedUnion("tool", [
     input: ThothSubmitGoalsCardInputSchema,
   }),
   z.object({
-    tool: z.literal("thoth_submit_pyramid_plan"),
-    input: ThothSubmitPyramidPlanInputSchema,
-  }),
-  z.object({
     tool: z.literal("thoth_report_blocked"),
     input: ThothReportBlockedInputSchema,
   }),
@@ -1300,7 +1268,6 @@ export type ThothSubmitContractPreservationAuditInput = z.infer<
   typeof ThothSubmitContractPreservationAuditInputSchema
 >;
 export type ThothSubmitGoalsCardInput = z.infer<typeof ThothSubmitGoalsCardInputSchema>;
-export type ThothSubmitPyramidPlanInput = z.infer<typeof ThothSubmitPyramidPlanInputSchema>;
 export type ThothLoopPlanExecResultInput = z.infer<typeof ThothLoopPlanExecResultInputSchema>;
 export type ThothLoopReviewOutcome = z.infer<typeof ThothLoopReviewOutcomeSchema>;
 export type ThothLoopReviewDirectionMemo = z.infer<typeof ThothLoopReviewDirectionMemoSchema>;

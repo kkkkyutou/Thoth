@@ -29,8 +29,8 @@
   },
   "scripts": {
     "clean": "node ../../scripts/clean-package-dist.mjs",
-    "build": "tsc -p tsconfig.json --incremental false",
-    "build:clean": "npm run clean && npm run build",
+    "build": "npm run clean && tsc -p tsconfig.json --incremental false",
+    "build:clean": "npm run build",
     "prepack": "npm run build:clean",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:examples": "tsc -p tsconfig.examples.json --noEmit",

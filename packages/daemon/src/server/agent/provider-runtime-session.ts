@@ -10,6 +10,7 @@ export interface ProviderRuntimeSessionAdapter {
   readonly provider: AgentProvider;
   prepare(input: { thothHome: string; sessionId: string }): ProviderRuntimeSession;
   environment(sessionHome: string | null): Record<string, string>;
+  dispose?(session: ProviderRuntimeSession): void;
 }
 
 function findRuntimeSessionAdapter(provider: AgentProvider): ProviderRuntimeSessionAdapter | null {
@@ -33,4 +34,11 @@ export function providerRuntimeSessionEnvironment(
   sessionHome: string | undefined,
 ): Record<string, string> {
   return findRuntimeSessionAdapter(provider)?.environment(sessionHome ?? null) ?? {};
+}
+
+export function disposeProviderRuntimeSession(
+  provider: AgentProvider,
+  session: ProviderRuntimeSession,
+): void {
+  findRuntimeSessionAdapter(provider)?.dispose?.(session);
 }

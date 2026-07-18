@@ -46,13 +46,13 @@ describe("PersistedConfigSchema daemon append system prompt config", () => {
   });
 });
 
-describe("PersistedConfigSchema Workspace Secretary mode", () => {
+describe("PersistedConfigSchema Thoth preferences", () => {
   test("accepts the explicit Thoth mode switch", () => {
     const parsed = PersistedConfigSchema.parse({
-      workspaceSecretary: { enabled: false },
+      thoth: { enabled: false },
     });
 
-    expect(parsed.workspaceSecretary?.enabled).toBe(false);
+    expect(parsed.thoth?.enabled).toBe(false);
   });
 });
 
@@ -717,188 +717,48 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
     }
   });
 
-  test("round-trips Workspace Secretary per-send controls on authority cards", () => {
-    const home = createTempHome();
-    const turnControls = {
-      mode: "loop" as const,
-      clarifyStrength: "balanced" as const,
-      loop: "light" as const,
-    };
-    const turns = [
-      {
-        id: "turn-hot-switch-user",
-        kind: "message" as const,
-        speaker: "user" as const,
-        text: "按 Loop 注册",
-        turnControls,
-      },
-      {
-        id: "turn-hot-switch-task",
-        kind: "task_card" as const,
-        card: {
-          id: "task-hot-switch",
-          roundLabel: "Task",
-          title: "热切换任务",
-          goal: "按发送时的模式继续审批。",
-          constraints: ["保持同一 provider session。"],
-          acceptance: ["能够注册后台任务。"],
-          provenanceSummary: "完整 Clarify transcript",
-          turnControls,
-          submitted: false,
-        },
-      },
-    ];
-    try {
-      savePersistedConfig(home, {
-        workspaceSecretary: {
-          topicSnapshots: [
-            {
-              workspacePath: "/workspace/thoth",
-              workspaceName: "Thoth",
-              activeTopicId: "topic-hot-switch",
-              topics: [
-                {
-                  id: "topic-hot-switch",
-                  title: "Hot switch",
-                  status: "current",
-                  updatedLabel: "刚刚",
-                },
-              ],
-              turns,
-              topicStates: [
-                {
-                  topicId: "topic-hot-switch",
-                  turns,
-                  currentClarifyState: "C_TASK_CARD",
-                  activeTurnPhase: "approval_task",
-                },
-              ],
-              nextTopicIndex: 2,
-              currentClarifyState: "C_TASK_CARD",
-              activeTurnPhase: "approval_task",
-            },
-          ],
-        },
-      });
-
-      const restored = loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0];
-      expect(restored?.turns).toEqual(turns);
-      expect(restored?.topicStates?.[0]?.turns).toEqual(turns);
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-    }
-  });
-
-  test("round-trips Workspace Secretary per-topic runtime status", () => {
+  test("round-trips only Thoth product preferences", () => {
     const home = createTempHome();
     try {
       savePersistedConfig(home, {
-        workspaceSecretary: {
-          topicSnapshots: [
-            {
-              workspacePath: "/workspace/thoth",
-              workspaceName: "Thoth",
-              activeTopicId: "topic-running",
-              topics: [
-                {
-                  id: "topic-running",
-                  title: "Running topic",
-                  status: "current",
-                  updatedLabel: "刚刚",
-                },
-              ],
-              turns: [],
-              topicStates: [
-                {
-                  topicId: "topic-running",
-                  turns: [],
-                  currentClarifyState: "C_DIRECT",
-                  activeTurnPhase: "clarify",
-                  foregroundTurnState: "background_handoff",
-                  status: {
-                    kind: "loading",
-                    title: "正在处理",
-                    detail: "provider turn 正在运行。",
-                  },
-                },
-              ],
-              nextTopicIndex: 2,
-              currentClarifyState: "C_DIRECT",
-              activeTurnPhase: "clarify",
-            },
-          ],
+        thoth: {
+          enabled: true,
+          mode: "loop",
+          clarifyStrength: "balanced",
+          loopStrength: "light",
+          selectedBackgroundTaskId: "loop-task-1",
         },
       });
 
-      expect(
-        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0],
-      ).toMatchObject({
-        foregroundTurnState: "background_handoff",
-        status: {
-          kind: "loading",
-          title: "正在处理",
-          detail: "provider turn 正在运行。",
-        },
+      expect(loadPersistedConfig(home).thoth).toEqual({
+        enabled: true,
+        mode: "loop",
+        clarifyStrength: "balanced",
+        loopStrength: "light",
+        selectedBackgroundTaskId: "loop-task-1",
       });
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
   });
 
-  test("round-trips Workspace Secretary topic provider agent mappings", () => {
+  test("discards removed Workspace Secretary execution state while loading old config", () => {
     const home = createTempHome();
     try {
-      savePersistedConfig(home, {
-        workspaceSecretary: {
-          topicSnapshots: [
-            {
-              workspacePath: "/workspace/thoth",
-              workspaceName: "Thoth",
-              activeTopicId: "topic-running",
-              topics: [
-                {
-                  id: "topic-running",
-                  title: "Running topic",
-                  status: "current",
-                  updatedLabel: "刚刚",
-                },
-              ],
-              turns: [],
-              topicAgents: [
-                {
-                  agentKey: "topic-running:structured:codex:gpt-5.6",
-                  agentId: "secretary-agent-1",
-                },
-              ],
-              topicStates: [
-                {
-                  topicId: "topic-running",
-                  turns: [],
-                  currentClarifyState: "C_DIRECT",
-                  activeTurnPhase: "clarify",
-                  timelineAgentId: "secretary-agent-1",
-                },
-              ],
-              nextTopicIndex: 2,
-              currentClarifyState: "C_DIRECT",
-              activeTurnPhase: "clarify",
-            },
-          ],
-        },
-      });
+      writeFileSync(
+        path.join(home, "config.json"),
+        JSON.stringify({
+          version: 1,
+          workspaceSecretary: {
+            providerSession: { provider: "codex", model: "old-model" },
+            topicSnapshots: [{ activeTopicId: "old-topic" }],
+          },
+        }),
+      );
 
-      expect(
-        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicAgents,
-      ).toEqual([
-        {
-          agentKey: "topic-running:structured:codex:gpt-5.6",
-          agentId: "secretary-agent-1",
-        },
-      ]);
-      expect(
-        loadPersistedConfig(home).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0]
-          ?.timelineAgentId,
-      ).toBe("secretary-agent-1");
+      const loaded = loadPersistedConfig(home);
+      expect(loaded.thoth).toBeUndefined();
+      expect("workspaceSecretary" in loaded).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

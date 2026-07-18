@@ -1,6 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import type {
   ClarifyConvergenceReview,
   ClarifyDecisionDelta,
@@ -8,44 +5,36 @@ import type {
 } from "@thoth/protocol/thoth-runtime-contract";
 import type {
   RegisteredTaskModel,
-  ThothClarifyCardModel,
   ThothApprovalGoalCardModel,
+  ThothCardAnswerPayload,
+  ThothClarifyCardModel,
   ThothTaskCardModel,
-  WorkspaceSecretaryTurnActionPayload,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
+import type {
+  ForegroundAuthorityCard,
+  ForegroundAuthorityStore,
+} from "./foreground-authority-store.js";
 
-export type RuntimeAuthorityCardKind =
-  | "clarify_card"
-  | "task_card"
-  | "goals_card"
-  | "pyramid_plan_card"
-  | "blocked_card";
+export type RuntimeAuthorityCardKind = "clarify_card" | "task_card" | "goals_card" | "blocked_card";
 
-export type RuntimeAuthorityDecisionStatus =
-  | "pending"
-  | "answered"
-  | "rejected"
-  // Legacy persisted value. New runtime decisions never expire by time.
-  | "expired"
-  | "blocked";
+export type RuntimeAuthorityDecisionStatus = "pending" | "answered" | "rejected" | "blocked";
 
 export type RuntimeAuthorityCard =
   | { kind: "clarify_card"; card: ThothClarifyCardModel }
   | { kind: "task_card"; card: ThothTaskCardModel }
   | { kind: "goals_card"; card: ThothApprovalGoalCardModel }
-  | { kind: "pyramid_plan_card"; card: ThothApprovalGoalCardModel }
   | { kind: "blocked_card"; title: string; reason: string };
 
 export interface RuntimeAuthorityDecisionRecord {
   id: string;
   provider: string;
   agentId: string;
-  topicId: string | null;
+  foregroundTurnId: string;
+  executionGeneration: string;
   threadId: string;
-  turnId: string;
+  providerTurnId: string;
   callId: string;
   toolName: string;
-  phase: string | null;
   cardKind: RuntimeAuthorityCardKind;
   cardId: string;
   status: RuntimeAuthorityDecisionStatus;
@@ -66,140 +55,74 @@ interface PendingRuntimeAuthorityDecision {
 }
 
 export interface RuntimeAuthorityDecisionAnswerResult {
-  answer: WorkspaceSecretaryTurnActionPayload;
+  answer: ThothCardAnswerPayload;
   submittedSummary: string;
   registeredTask?: RegisteredTaskModel;
 }
 
 const pendingByDecisionId = new Map<string, PendingRuntimeAuthorityDecision>();
 const pendingByCardId = new Map<string, PendingRuntimeAuthorityDecision>();
-const recordsByDecisionId = new Map<string, RuntimeAuthorityDecisionRecord>();
-const latestTaskCardByAgent = new Map<string, ThothTaskCardModel>();
-const latestGoalCardByAgent = new Map<string, ThothApprovalGoalCardModel>();
-let persistenceFilePath: string | null = null;
-let loadedPersistenceFilePath: string | null = null;
 
-function persistDecisionRecords(): void {
-  if (!persistenceFilePath) {
-    return;
+function toStoreCard(card: RuntimeAuthorityCard): ForegroundAuthorityCard {
+  if (card.kind === "clarify_card" || card.kind === "task_card") {
+    return card;
   }
-  try {
-    mkdirSync(dirname(persistenceFilePath), { recursive: true });
-    writeFileSync(
-      persistenceFilePath,
-      `${JSON.stringify(
-        {
-          version: 1,
-          records: Array.from(recordsByDecisionId.values()),
-        },
-        null,
-        2,
-      )}\n`,
-      "utf8",
-    );
-  } catch {
-    // Persistence is best-effort evidence. The in-memory pending promise remains authority
-    // for the active provider tool call, so a filesystem write failure must not auto-answer.
+  if (card.kind === "goals_card") {
+    return { kind: "goal_card", card: card.card };
   }
+  throw new Error("Blocked reports do not create user authority cards.");
 }
 
-function loadPersistedDecisionRecords(filePath: string): void {
-  if (loadedPersistenceFilePath === filePath) {
-    return;
+function fromStoreRecord(
+  store: ForegroundAuthorityStore,
+  cardId: string,
+): RuntimeAuthorityDecisionRecord | null {
+  const card = store.getCard(cardId);
+  const turn = card ? store.getTurn(card.turnId) : null;
+  if (!card || !turn) {
+    return null;
   }
-  loadedPersistenceFilePath = filePath;
-  if (!existsSync(filePath)) {
-    return;
-  }
-  try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf8")) as {
-      records?: RuntimeAuthorityDecisionRecord[];
-    };
-    for (const persistedRecord of parsed.records ?? []) {
-      const record = persistedRecord as RuntimeAuthorityDecisionRecord;
-      if (!record?.id || recordsByDecisionId.has(record.id)) {
-        continue;
-      }
-      // An authority card is a durable user decision, not a lease on a provider tool call. The
-      // old in-memory callback is gone after a daemon restart, but the latest unsubmitted card
-      // must remain actionable. Answering it starts a continuation/replacement provider turn.
-      const shouldRestorePending =
-        record.cardKind !== "blocked_card" && record.status !== "answered";
-      const restored = shouldRestorePending
-        ? { ...record, status: "pending" as const, updatedAt: new Date().toISOString() }
-        : record;
-      recordsByDecisionId.set(restored.id, restored);
-      if (restored.status === "pending") {
-        restorePendingDecision(restored);
-      } else {
-        rememberLatestAuthorityCard(restored);
-      }
-    }
-    persistDecisionRecords();
-  } catch {
-    // Corrupt persistence must not create fake decisions or default answers.
-  }
-}
-
-function rememberLatestAuthorityCard(record: RuntimeAuthorityDecisionRecord): void {
-  if (record.authorityCard.kind === "task_card") {
-    latestTaskCardByAgent.set(record.agentId, record.authorityCard.card);
-  }
-  if (
-    record.authorityCard.kind === "goals_card" ||
-    record.authorityCard.kind === "pyramid_plan_card"
-  ) {
-    latestGoalCardByAgent.set(record.agentId, record.authorityCard.card);
-  }
-}
-
-function restorePendingDecision(record: RuntimeAuthorityDecisionRecord): void {
-  if (pendingByDecisionId.has(record.id) || pendingByCardId.has(record.cardId)) {
-    return;
-  }
-  pendingByDecisionId.set(record.id, {
-    record,
-    // The provider process that originally invoked the tool is no longer alive after restart.
-    // The Secretary resumes from durable topic/card state after this no-op resolution instead.
-    resolve: () => undefined,
-    reject: () => undefined,
-  });
-  pendingByCardId.set(record.cardId, pendingByDecisionId.get(record.id)!);
-  rememberLatestAuthorityCard(record);
-}
-
-export function configureRuntimeAuthorityDecisionPersistence(input: {
-  filePath: string | null;
-}): void {
-  persistenceFilePath = input.filePath;
-  if (input.filePath) {
-    loadPersistedDecisionRecords(input.filePath);
-  }
-}
-
-function touchRecord(
-  record: RuntimeAuthorityDecisionRecord,
-  status: RuntimeAuthorityDecisionStatus,
-): RuntimeAuthorityDecisionRecord {
-  const next = {
-    ...record,
-    status,
-    updatedAt: new Date().toISOString(),
+  const authorityCard: RuntimeAuthorityCard =
+    card.kind === "clarify_card"
+      ? { kind: "clarify_card", card: card.card as ThothClarifyCardModel }
+      : card.kind === "task_card"
+        ? { kind: "task_card", card: card.card as ThothTaskCardModel }
+        : { kind: "goals_card", card: card.card as ThothApprovalGoalCardModel };
+  return {
+    id: `runtime-decision-${card.id}`,
+    provider: card.runtime.provider,
+    agentId: card.agentId,
+    foregroundTurnId: card.turnId,
+    executionGeneration: turn.generation,
+    threadId: card.runtime.threadId,
+    providerTurnId: card.runtime.providerTurnId,
+    callId: card.runtime.callId,
+    toolName: card.runtime.toolName,
+    cardKind: authorityCard.kind,
+    cardId: card.id,
+    status:
+      card.status === "pending"
+        ? "pending"
+        : card.status === "answered"
+          ? "answered"
+          : card.status === "blocked"
+            ? "blocked"
+            : "rejected",
+    createdAt: card.createdAt,
+    updatedAt: card.updatedAt,
+    redactedRawInputHash: card.runtime.redactedRawInputHash,
+    authorityCard,
   };
-  recordsByDecisionId.set(record.id, next);
-  persistDecisionRecords();
-  return next;
 }
 
 export function createRuntimeAuthorityDecision(input: {
+  store: ForegroundAuthorityStore;
   provider: string;
   agentId: string;
-  topicId?: string | null;
   threadId: string;
-  turnId: string;
+  providerTurnId: string;
   callId: string;
   toolName: string;
-  phase?: string | null;
   card: RuntimeAuthorityCard;
   redactedRawInputHash: string;
   publicBadgeSummary?: string;
@@ -210,48 +133,42 @@ export function createRuntimeAuthorityDecision(input: {
   record: RuntimeAuthorityDecisionRecord;
   waitForAnswer: Promise<RuntimeAuthorityDecisionAnswerResult>;
 } {
-  const now = new Date().toISOString();
-  const cardId =
-    input.card.kind === "clarify_card" ||
-    input.card.kind === "task_card" ||
-    input.card.kind === "goals_card" ||
-    input.card.kind === "pyramid_plan_card"
-      ? input.card.card.id
-      : `blocked-${randomUUID()}`;
-  const record: RuntimeAuthorityDecisionRecord = {
-    id: `runtime-decision-${randomUUID()}`,
-    provider: input.provider,
+  const turn = input.store.getActiveTurn(input.agentId);
+  if (!turn || turn.kind !== "thoth") {
+    throw new Error("No active Agent-scoped Thoth turn owns this authority card.");
+  }
+  const opened = input.store.openCard({
     agentId: input.agentId,
-    topicId: input.topicId ?? null,
-    threadId: input.threadId,
-    turnId: input.turnId,
-    callId: input.callId,
-    toolName: input.toolName,
-    phase: input.phase ?? null,
+    turnId: turn.id,
+    generation: turn.generation,
+    card: toStoreCard(input.card),
+    runtime: {
+      provider: input.provider,
+      threadId: input.threadId,
+      providerTurnId: input.providerTurnId,
+      callId: input.callId,
+      toolName: input.toolName,
+      redactedRawInputHash: input.redactedRawInputHash,
+    },
+  });
+  const base = fromStoreRecord(input.store, opened.record.id);
+  if (!base) {
+    throw new Error(`Failed to project foreground authority card ${opened.record.id}.`);
+  }
+  const record: RuntimeAuthorityDecisionRecord = {
+    ...base,
     cardKind: input.card.kind,
-    cardId,
-    status: "pending",
-    createdAt: now,
-    updatedAt: now,
-    redactedRawInputHash: input.redactedRawInputHash,
     authorityCard: input.card,
     ...(input.publicBadgeSummary ? { publicBadgeSummary: input.publicBadgeSummary } : {}),
     ...(input.frontierLedger ? { frontierLedger: input.frontierLedger } : {}),
     ...(input.decisionDelta ? { decisionDelta: input.decisionDelta } : {}),
     ...(input.convergenceReview ? { convergenceReview: input.convergenceReview } : {}),
   };
-
-  recordsByDecisionId.set(record.id, record);
-  persistDecisionRecords();
-
   const waitForAnswer = new Promise<RuntimeAuthorityDecisionAnswerResult>((resolve, reject) => {
     const pending = { record, resolve, reject };
     pendingByDecisionId.set(record.id, pending);
     pendingByCardId.set(record.cardId, pending);
   });
-
-  rememberLatestAuthorityCard(record);
-
   return { record, waitForAnswer };
 }
 
@@ -261,45 +178,50 @@ export function getPendingRuntimeAuthorityDecisionByCardId(
   return pendingByCardId.get(cardId)?.record ?? null;
 }
 
-export function getRuntimeAuthorityDecisionRecord(
-  decisionId: string,
-): RuntimeAuthorityDecisionRecord | null {
-  return recordsByDecisionId.get(decisionId) ?? null;
-}
-
 export function listPendingRuntimeAuthorityDecisions(): RuntimeAuthorityDecisionRecord[] {
   return Array.from(pendingByDecisionId.values()).map((pending) => pending.record);
 }
 
-export function listRuntimeAuthorityDecisionRecords(): RuntimeAuthorityDecisionRecord[] {
-  return Array.from(recordsByDecisionId.values());
+export function listRuntimeAuthorityDecisionRecords(
+  store: ForegroundAuthorityStore,
+): RuntimeAuthorityDecisionRecord[] {
+  return store
+    .listAllCards()
+    .flatMap((card) => (fromStoreRecord(store, card.id) ? [fromStoreRecord(store, card.id)!] : []));
 }
 
-export function answerRuntimeAuthorityDecision(input: {
+export function listRuntimeAuthorityDecisionRecordsForAgent(
+  store: ForegroundAuthorityStore,
+  agentId: string,
+): RuntimeAuthorityDecisionRecord[] {
+  return store
+    .listCardsForAgent(agentId)
+    .flatMap((card) => (fromStoreRecord(store, card.id) ? [fromStoreRecord(store, card.id)!] : []));
+}
+
+export function resolveRuntimeAuthorityDecision(input: {
   cardId: string;
-  answer: WorkspaceSecretaryTurnActionPayload;
+  answer: ThothCardAnswerPayload;
   submittedSummary: string;
   registeredTask?: RegisteredTaskModel;
-}): RuntimeAuthorityDecisionRecord | null {
+}): { record: RuntimeAuthorityDecisionRecord | null; live: boolean } {
   const pending = pendingByCardId.get(input.cardId);
   if (!pending) {
-    return null;
+    return { record: null, live: false };
   }
   pendingByDecisionId.delete(pending.record.id);
   pendingByCardId.delete(input.cardId);
-  const answered = touchRecord(pending.record, "answered");
   pending.resolve({
     answer: input.answer,
     submittedSummary: input.submittedSummary,
     ...(input.registeredTask ? { registeredTask: input.registeredTask } : {}),
   });
-  return answered;
+  return { record: { ...pending.record, status: "answered" }, live: true };
 }
 
 export function rejectRuntimeAuthorityDecision(input: {
   cardId: string;
   message: string;
-  status?: Exclude<RuntimeAuthorityDecisionStatus, "pending" | "answered">;
 }): RuntimeAuthorityDecisionRecord | null {
   const pending = pendingByCardId.get(input.cardId);
   if (!pending) {
@@ -307,27 +229,23 @@ export function rejectRuntimeAuthorityDecision(input: {
   }
   pendingByDecisionId.delete(pending.record.id);
   pendingByCardId.delete(input.cardId);
-  const rejected = touchRecord(pending.record, input.status ?? "rejected");
   pending.reject(new Error(input.message));
-  return rejected;
+  return { ...pending.record, status: "rejected" };
 }
 
-export function getLatestRuntimeTaskCardForAgent(agentId: string): ThothTaskCardModel | null {
-  return latestTaskCardByAgent.get(agentId) ?? null;
-}
-
-export function getLatestRuntimePyramidPlanForAgent(
+export function getLatestRuntimeTaskCardForAgent(
+  store: ForegroundAuthorityStore,
   agentId: string,
-): ThothApprovalGoalCardModel | null {
-  return latestGoalCardByAgent.get(agentId) ?? null;
+): ThothTaskCardModel | null {
+  return (
+    (store
+      .listCardsForAgent(agentId)
+      .filter((record) => record.kind === "task_card")
+      .at(-1)?.card as ThothTaskCardModel | undefined) ?? null
+  );
 }
 
 export function resetRuntimeAuthorityDecisionsForTest(): void {
   pendingByDecisionId.clear();
   pendingByCardId.clear();
-  recordsByDecisionId.clear();
-  latestTaskCardByAgent.clear();
-  latestGoalCardByAgent.clear();
-  persistenceFilePath = null;
-  loadedPersistenceFilePath = null;
 }

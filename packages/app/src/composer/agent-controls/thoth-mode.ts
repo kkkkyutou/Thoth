@@ -1,9 +1,8 @@
 import type {
   ThothRuntimeClarifyStrength,
   ThothRuntimeLoopStrength,
-  ThothRuntimeMode,
 } from "@thoth/protocol/thoth-runtime-contract";
-import type { ThothComposerModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { ThothTurnSnapshot } from "@thoth/protocol/messages";
 
 type ThothModeConfig = {
   enabled?: boolean;
@@ -48,26 +47,23 @@ export function resolveThothLoopStrength(value: unknown): ThothRuntimeLoopStreng
     : "one_plan_one_do";
 }
 
-export function buildWorkspaceSecretaryComposerModel(
+export function buildThothTurnSnapshot(
   config: ThothModeConfig | null | undefined,
-): ThothComposerModel {
+): ThothTurnSnapshot {
   if (!isThothModeEnabled(config)) {
-    return {
-      mode: "quick",
-      clarifyStrength: "none",
-      loop: null,
-      authorityLabel: "真实 provider",
-      authorityReady: true,
-    };
+    return { enabled: false };
   }
-
-  const mode: ThothRuntimeMode = config?.mode === "loop" ? "loop" : "quick";
-  const loopStrength = resolveThothLoopStrength(config?.loopStrength);
-  return {
-    mode,
-    clarifyStrength: resolveThothClarifyStrength(config?.clarifyStrength),
-    loop: mode === "loop" ? loopStrength : null,
-    authorityLabel: "真实 provider",
-    authorityReady: true,
-  };
+  const clarifyStrength = resolveThothClarifyStrength(config?.clarifyStrength);
+  return config?.mode === "loop"
+    ? {
+        enabled: true,
+        executionMode: "loop",
+        clarifyStrength,
+        loopStrength: resolveThothLoopStrength(config.loopStrength),
+      }
+    : {
+        enabled: true,
+        executionMode: "quick",
+        clarifyStrength,
+      };
 }

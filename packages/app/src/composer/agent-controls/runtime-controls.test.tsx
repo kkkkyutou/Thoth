@@ -11,7 +11,7 @@ const { patchConfigMock, toastErrorMock, configState, theme } = vi.hoisted(() =>
   toastErrorMock: vi.fn(),
   configState: {
     current: {
-      workspaceSecretary: {
+      thoth: {
         mode: "loop",
         clarifyStrength: "dive",
         loopStrength: "balanced",
@@ -166,7 +166,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   configState.current = {
-    workspaceSecretary: {
+    thoth: {
       mode: "loop",
       clarifyStrength: "dive",
       loopStrength: "balanced",
@@ -196,7 +196,7 @@ describe("RuntimeControls", () => {
   });
 
   it("defaults loop mode to Single when no loop strength is persisted", () => {
-    delete (configState.current.workspaceSecretary as { loopStrength?: string }).loopStrength;
+    delete (configState.current.thoth as { loopStrength?: string }).loopStrength;
 
     render(<RuntimeControls serverId="server-1" />);
 
@@ -205,7 +205,7 @@ describe("RuntimeControls", () => {
   });
 
   it("keeps the animated Dive label in the original menu row", () => {
-    configState.current.workspaceSecretary.clarifyStrength = "light";
+    configState.current.thoth.clarifyStrength = "light";
 
     render(<RuntimeControls serverId="server-1" />);
 
@@ -214,7 +214,7 @@ describe("RuntimeControls", () => {
   });
 
   it("renders Quick as a short selected label without Live detail", () => {
-    configState.current.workspaceSecretary.mode = "quick";
+    configState.current.thoth.mode = "quick";
 
     render(<RuntimeControls serverId="server-1" />);
 
@@ -223,7 +223,7 @@ describe("RuntimeControls", () => {
     expect(screen.getByTestId("thoth-mode-menu-quick").textContent).toContain("Quick (Live)");
   });
 
-  it("patches only typed workspaceSecretary control fields", async () => {
+  it("patches only typed thoth control fields", async () => {
     render(<RuntimeControls serverId="server-1" />);
 
     fireEvent.click(screen.getByTestId("thoth-clarify-menu-light"));
@@ -234,19 +234,19 @@ describe("RuntimeControls", () => {
 
     await waitFor(() => expect(patchConfigMock).toHaveBeenCalledTimes(3));
     expect(patchConfigMock).toHaveBeenNthCalledWith(1, {
-      workspaceSecretary: { clarifyStrength: "light" },
+      thoth: { clarifyStrength: "light" },
     });
     expect(patchConfigMock).toHaveBeenNthCalledWith(2, {
-      workspaceSecretary: { mode: "loop", loopStrength: "one_plan_one_do" },
+      thoth: { mode: "loop", loopStrength: "one_plan_one_do" },
     });
     expect(patchConfigMock).toHaveBeenNthCalledWith(3, {
-      workspaceSecretary: { mode: "quick" },
+      thoth: { mode: "quick" },
     });
   });
 
   it("makes raw provider conversation the explicit off state", async () => {
     configState.current = {
-      workspaceSecretary: {
+      thoth: {
         enabled: false,
         mode: "loop",
         clarifyStrength: "dive",
@@ -264,13 +264,13 @@ describe("RuntimeControls", () => {
 
     await waitFor(() =>
       expect(patchConfigMock).toHaveBeenCalledWith({
-        workspaceSecretary: { enabled: true, clarifyStrength: "dive" },
+        thoth: { enabled: true, clarifyStrength: "dive" },
       }),
     );
   });
 
   it("renders Infinite with the laser label in the menu and chip", () => {
-    configState.current.workspaceSecretary.loopStrength = "run_until_stopped";
+    configState.current.thoth.loopStrength = "run_until_stopped";
 
     render(<RuntimeControls serverId="server-1" />);
 

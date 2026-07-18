@@ -102,6 +102,7 @@ import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
+import { provisionForegroundThothSession } from "./agent/foreground-thoth-session-provisioner.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { SqliteAgentTimelineStore } from "./agent/sqlite-agent-timeline-store.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
@@ -372,18 +373,7 @@ export interface ThothDaemonConfig {
       thinkingOptionId?: string;
     }>;
   };
-  workspaceSecretary?: {
-    providerSession?: {
-      provider: string;
-      model?: string;
-      modeId?: string;
-      thinkingOptionId?: string;
-      featureValues?: Record<string, unknown>;
-    };
-    mode?: "quick" | "loop";
-    clarifyStrength?: "none" | "auto" | "light" | "balanced" | "dive";
-    loopStrength?: "auto" | "one_plan_one_do" | "light" | "balanced" | "run_until_stopped";
-  };
+  thoth?: PersistedConfig["thoth"];
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
@@ -468,7 +458,7 @@ export async function createThothDaemon(
       metadataGeneration: {
         providers: config.metadataGeneration?.providers ?? [],
       },
-      workspaceSecretary: config.workspaceSecretary ?? {},
+      thoth: config.thoth ?? {},
       autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
       enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
       appendSystemPrompt: config.appendSystemPrompt ?? "",
@@ -734,6 +724,7 @@ export async function createThothDaemon(
   const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
   const providerSnapshotManager = new ProviderSnapshotManager({
     logger: providerSnapshotLogger,
+    thothHome: config.thothHome,
     runtimeSettings: config.agentProviderSettings,
     providerOverrides: config.providerOverrides,
     workspaceGitService,
@@ -747,6 +738,7 @@ export async function createThothDaemon(
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
     durableTimelineStore,
+    thothHome: config.thothHome,
     appendSystemPrompt: config.appendSystemPrompt,
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
@@ -1021,6 +1013,17 @@ export async function createThothDaemon(
   const createAgentToolCatalog = (runtime: ThothToolRuntimeContext) =>
     createThothToolCatalog(createAgentToolHostDependencies(runtime));
   agentManager.setThothToolCatalogFactory(createAgentToolCatalog);
+  agentManager.setForegroundThothSessionProvisioner(({ agentId, config: agentConfig }) =>
+    provisionForegroundThothSession({
+      agentId,
+      config: agentConfig,
+      thothHome: config.thothHome,
+      runtimeSessionProvider: agentManager.getProviderRuntimeSessionProvider(agentConfig.provider),
+      supportsNativeThothTools:
+        agentManager.getProviderCapabilities(agentConfig.provider)?.supportsNativeThothTools ===
+        true,
+    }),
+  );
   // Native Thoth runtime tools are provider-session tools, not MCP injection.
   // Whether a specific agent sees them is guarded by AgentSessionConfig.extra;
   // the MCP setting only controls the generic /mcp/agents URL injection below.

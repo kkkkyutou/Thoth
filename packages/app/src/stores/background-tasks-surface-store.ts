@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { LoopPhaseKind } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { LoopPhaseKind } from "@thoth/protocol/thoth/rpc-schemas";
 
 export interface BackgroundTasksSurfaceState {
   open: boolean;

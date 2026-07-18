@@ -3299,3 +3299,33 @@ build:web`, `npm run check:foundation`, `npm run format:check` and `git diff --c
 - `NTH-EV-038` records packaging and public Release verification. `NTH-TD-016` remains doing because a real
   installed Relay client still needs to exercise provider-backed Clarify/Loop from this replacement build. The
   legacy installed updater requires one manual migration install; no false in-place upgrade claim is made.
+
+## 2026-07-18 [Fast packaged Product API Journey]
+
+- Replaced duplicated packaged Card/Loop orchestration with reusable `ThothApiJourney`: one visible Agent runs
+  raw -> Quick Clarify -> raw -> Loop, keeps one provider session, hands Loop to background, consumes exactly one
+  failed Review and reaches done. The Journey depends only on the public client API; AppImage and provider setup
+  remain replaceable adapters.
+- Fixed the Loop scheduler test double for the provider-neutral runtime-session identity contract. Focused daemon
+  typecheck, six provider/Loop files (`283/283`), public foreground API E2E (`5/5`) and diff hygiene passed.
+- Incremental runtime/AppImage packaging took `75.270s`. The rebuilt AppImage passed the scripted external-harness
+  Journey in `14.792s` and the identical real-Codex Journey in `196.341s`; both mounted packaged Clarify/Loop
+  skills, used the bundled daemon and completed fail -> retry -> pass. Probe logs contain no read-only SQLite or
+  catalog/feature/command control-session error.
+- Added `npm run accept:thoth:api` and documented the extension boundary in `docs/testing.md`. Final release work
+  still requires Relay, controls/restart, full gates, branch push, Actions replacement and public-download
+  repetition; no commit, push or Release mutation occurred in this slice.
+- Final installed UI canary found and fixed two renderer-only authority projection defects: Clarify submitted the
+  nested question-form ID instead of the daemon Card ID, and Task/Goals Cards omitted frozen Quick/Loop controls.
+  The ninth fresh AppImage state completed real UI Quick and Loop approval, foreground handoff and a two-goal
+  background task to `done`; evidence remains ignored under `.dev/real-appimage/ui-canary-ninth/`.
+- Final local preflight passed full App (`324` files / `2673` tests), daemon (`230` passed files / `3123` passed
+  tests), foreground public API (`5/5`), desktop (`26` passed files / `171` tests) and CLI (`40/40`) suites, plus
+  release contract, brand contract, foundation, Web/runtime/AppImage builds and diff hygiene. All three
+  independent behavior gates passed: `judge:clarify:golden`, `judge:clarify:user-simulation` and
+  `judge:loop:golden`.
+- The first final judge run exposed two stale or incomplete eval assumptions. Clarify still required the source
+  skill path even when executing from packaged `dist`; the check now accepts only the authoritative packaged
+  `src|dist/runtime-skills` locations. Loop covered PlanExec permission denial but not Review permission denial,
+  provider crashes or timeout. Provider-neutral positive and negative scenarios now prove those operational
+  exits cannot fabricate a Review verdict or consume failed-Review budget.

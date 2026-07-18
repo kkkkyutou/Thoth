@@ -323,6 +323,31 @@ process.stdin.on("data", (chunk) => {
 }
 
 describe("Codex app-server provider", () => {
+  test("uses the control-plane launch environment when fetching the model catalog", async () => {
+    const appServer = createFakeCodexAppServer({
+      "model/list": () => ({ data: [{ id: "gpt-5.4", isDefault: true }] }),
+    });
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    const launchEnvironments: Array<Record<string, string> | undefined> = [];
+    castInternals<{
+      spawnAppServer: (
+        launchEnv?: Record<string, string>,
+      ) => Promise<ChildProcessWithoutNullStreams>;
+    }>(provider).spawnAppServer = async (launchEnv) => {
+      launchEnvironments.push(launchEnv);
+      return appServer.child;
+    };
+
+    const catalog = await provider.fetchCatalog({
+      scope: "global",
+      force: false,
+      launchContext: { env: { CODEX_HOME: "/tmp/thoth-codex-probe" } },
+    });
+
+    expect(catalog.models.map((model) => model.id)).toContain("gpt-5.4");
+    expect(launchEnvironments).toEqual([{ CODEX_HOME: "/tmp/thoth-codex-probe" }]);
+  });
+
   test("getAvailableModes includes auto-review when the Codex version supports it", async () => {
     const session = createSession({}, { autoReviewEnabled: true });
 

@@ -10,7 +10,7 @@ import {
   type LoopWorktreeLease as ProtocolLoopWorktreeLease,
   type TaskMemoryKind as ProtocolTaskMemoryKind,
   type TaskMemoryNodeRef,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 
 interface LegacyTaskFile {
   version?: unknown;
@@ -72,6 +72,23 @@ function sha256(value: string): string {
 
 function parseJson(value: string): unknown {
   return JSON.parse(value) as unknown;
+}
+
+function normalizeLoopProjection(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    ...record,
+    ...(record.sourceAgentId === undefined && typeof record.sourceTopicId === "string"
+      ? { sourceAgentId: record.sourceTopicId }
+      : {}),
+  };
+}
+
+function parseLoopProjection(value: string) {
+  return LoopTaskModelSchema.safeParse(normalizeLoopProjection(parseJson(value)));
 }
 
 /**
@@ -164,7 +181,7 @@ export class LoopAuthorityStore {
       .all() as Array<{ projection_json: string; revision: number }>;
     const tasks: LoopTaskModel[] = [];
     for (const row of rows) {
-      const parsed = LoopTaskModelSchema.safeParse(parseJson(row.projection_json));
+      const parsed = parseLoopProjection(row.projection_json);
       if (!parsed.success) {
         continue;
       }
@@ -185,7 +202,7 @@ export class LoopAuthorityStore {
     if (!row) {
       return null;
     }
-    const parsed = LoopTaskModelSchema.safeParse(parseJson(row.projection_json));
+    const parsed = parseLoopProjection(row.projection_json);
     return parsed.success ? { ...parsed.data, authorityRevision: row.revision } : null;
   }
 
@@ -210,7 +227,7 @@ export class LoopAuthorityStore {
         )
         .get(registrationKey) as { projection_json: string; revision: number } | undefined;
       if (existing) {
-        const parsed = LoopTaskModelSchema.safeParse(parseJson(existing.projection_json));
+        const parsed = parseLoopProjection(existing.projection_json);
         if (!parsed.success) {
           throw new Error(`Loop registration ${registrationKey} points at an invalid projection.`);
         }
@@ -356,7 +373,7 @@ export class LoopAuthorityStore {
       projection_json: string;
     }>;
     return rows.flatMap((row) => {
-      const parsed = LoopTaskModelSchema.safeParse(parseJson(row.projection_json));
+      const parsed = parseLoopProjection(row.projection_json);
       if (!parsed.success) {
         return [];
       }
@@ -463,7 +480,7 @@ export class LoopAuthorityStore {
       .prepare("SELECT revision, projection_json FROM loop_task_events WHERE event_id = ?")
       .get(eventId) as { revision: number; projection_json: string } | undefined;
     if (duplicate) {
-      const parsed = LoopTaskModelSchema.safeParse(parseJson(duplicate.projection_json));
+      const parsed = parseLoopProjection(duplicate.projection_json);
       if (!parsed.success) {
         throw new Error(`Loop authority duplicate event ${eventId} has an invalid projection.`);
       }

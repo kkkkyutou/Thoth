@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Keyboard, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -8,16 +8,6 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import invariant from "tiny-invariant";
 import { Composer } from "@/composer";
-import {
-  applyLoopTaskDecisionToWorkspaceSecretaryStream,
-  applyWorkspaceSecretaryModelToStream,
-  dispatchWorkspaceSecretaryAnswer,
-  dispatchWorkspaceSecretaryCancel,
-  dispatchWorkspaceSecretaryMessage,
-  hydrateWorkspaceSecretaryProviderTimeline,
-  removeWorkspaceSecretaryModelItemsFromStream,
-  type AgentStreamWriter,
-} from "@/composer/actions";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { ComposerImportPill } from "@/composer/draft/import-pill";
 import { AgentStreamView } from "@/agent-stream/view";
@@ -28,32 +18,22 @@ import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/dra
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
-import { buildWorkspaceSecretaryComposerModel } from "@/composer/agent-controls/thoth-mode";
+import { buildThothTurnSnapshot } from "@/composer/agent-controls/thoth-mode";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { usePanelStore } from "@/stores/panel-store";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
-import { useSessionStore, type Agent } from "@/stores/session-store";
+import type { Agent } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { encodeImages } from "@/utils/encode-images";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
-  deriveWorkspaceSecretaryDraftTitleFromText,
-  isWorkspaceSecretaryBackgroundHandoff,
-  isWorkspaceSecretaryModelRunning,
-  resolveWorkspaceSecretaryTurnInFlight,
-  resolveWorkspaceSecretaryDraftTitleFromModel,
   shouldAllowEmptyDraftText,
-  shouldApplyWorkspaceSecretaryModelUpdateForDraft,
-  shouldApplyLoopTaskDecisionUpdateForDraft,
-  shouldApplyWorkspaceSecretarySnapshotForDraft,
-  shouldHydrateWorkspaceSecretarySnapshotForDraft,
-  shouldKeepWorkspaceSecretaryAuthorityTurnRunning,
   validateDraftSubmission,
 } from "@/composer/draft/workspace-tab-core";
-import type { AgentCapabilityFlags, AgentProvider } from "@thoth/protocol/agent-types";
-import type { AgentSnapshotPayload } from "@thoth/protocol/messages";
+import type { AgentCapabilityFlags } from "@thoth/protocol/agent-types";
+import type { AgentSnapshotPayload, ThothTurnSnapshot } from "@thoth/protocol/messages";
 import type { DaemonClient } from "@thoth/client/internal/daemon-client";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import {
@@ -61,11 +41,7 @@ import {
   useWorkspaceAttachmentScopeKey,
   useWorkspaceAttachmentsStore,
 } from "@/attachments/workspace-attachments-store";
-import type { StreamItem, UserMessageImageAttachment } from "@/types/stream";
-import type {
-  ThothCleanUiModel,
-  WorkspaceSecretaryTurnActionPayload,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { UserMessageImageAttachment } from "@/types/stream";
 import {
   COMPACT_FORM_FACTOR_WIDTH,
   MAX_CONTENT_WIDTH,
@@ -76,7 +52,6 @@ import type { WorkspaceDraftTabSetup } from "@/stores/workspace-tabs-store";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const EMPTY_ONLINE_SERVER_IDS: string[] = [];
-const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: false,
@@ -86,58 +61,13 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsToolInvocations: false,
 };
 
-function createWorkspaceSecretaryTopicId(): string {
-  const randomId = globalThis.crypto?.randomUUID?.();
-  return `topic-${randomId ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-}
-
-function buildWorkspaceSecretaryDraftAgent(input: {
-  serverId: string;
-  tabId: string;
-  workspaceDirectory: string;
-  workspaceId: string | null;
-  provider: string;
-  model: string | null;
-  status: Agent["status"];
-}): Agent {
-  const now = new Date();
-  return {
-    serverId: input.serverId,
-    id: input.tabId,
-    provider: input.provider,
-    status: input.status,
-    createdAt: now,
-    updatedAt: now,
-    lastUserMessageAt: now,
-    lastActivityAt: now,
-    capabilities: DRAFT_CAPABILITIES,
-    currentModeId: null,
-    availableModes: [],
-    pendingPermissions: [],
-    persistence: null,
-    runtimeInfo: {
-      provider: input.provider,
-      sessionId: null,
-      model: input.model,
-      modeId: null,
-    },
-    title: "Workspace Secretary",
-    cwd: input.workspaceDirectory,
-    workspaceId: input.workspaceId ?? undefined,
-    model: input.model,
-    features: [],
-    thinkingOptionId: null,
-    parentAgentId: null,
-    labels: {},
-  };
-}
-
 interface AutoSubmitConfig {
   provider: string;
   modeId: string | null;
   model: string | null;
   thinkingOptionId: string | null;
   featureValues: Record<string, unknown>;
+  thoth: ThothTurnSnapshot;
 }
 
 function resolveAutoSubmitConfig(
@@ -147,6 +77,7 @@ function resolveAutoSubmitConfig(
     model?: string | null;
     thinkingOptionId?: string | null;
     featureValues?: Record<string, unknown>;
+    thoth: ThothTurnSnapshot;
   } | null,
 ): AutoSubmitConfig | null {
   if (!pending) return null;
@@ -156,6 +87,7 @@ function resolveAutoSubmitConfig(
     model: pending.model ?? null,
     thinkingOptionId: pending.thinkingOptionId ?? null,
     featureValues: pending.featureValues ?? {},
+    thoth: pending.thoth,
   };
 }
 
@@ -199,6 +131,7 @@ async function submitDraftCreateRequest(input: {
   workspaceDirectory: string | null;
   workspaceId: string | null;
   autoSubmitConfig: AutoSubmitConfig | null;
+  thoth: ThothTurnSnapshot;
   composerState: {
     selectedProvider: string | null;
     selectedMode: string;
@@ -247,16 +180,18 @@ async function submitDraftCreateRequest(input: {
       autoSubmitConfig?.thinkingOptionId ?? (composerState.effectiveThinkingOptionId || undefined),
     featureValues: autoSubmitConfig?.featureValues ?? composerState.featureValues,
   });
+  const { cwd: _daemonOwnedCwd, ...workspaceScopedConfig } = config;
 
   const imagesData = await encodeImages(images);
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
   const result = await client.createAgent({
-    config,
+    config: workspaceScopedConfig,
     workspaceId,
     ...(text ? { initialPrompt: text } : {}),
     clientMessageId: attempt.clientMessageId,
     ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
+    thoth: input.thoth,
   });
 
   return {
@@ -366,9 +301,6 @@ interface WorkspaceDraftAgentTabProps {
   isPaneFocused: boolean;
   onCreated: (snapshot: AgentSnapshotPayload) => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
-  onDraftTitleChange?: (title: string | null) => void;
-  secretaryTopicId?: string | null;
-  onDraftSecretaryTopicChange?: (topicId: string) => void;
   onOpenImportSheet?: () => void;
 }
 
@@ -391,9 +323,6 @@ export function WorkspaceDraftAgentTab({
   isPaneFocused,
   onCreated,
   onOpenWorkspaceFile,
-  onDraftTitleChange,
-  secretaryTopicId = null,
-  onDraftSecretaryTopicChange,
   onOpenImportSheet,
 }: WorkspaceDraftAgentTabProps) {
   const { t } = useTranslation();
@@ -440,322 +369,13 @@ export function WorkspaceDraftAgentTab({
   if (!composerState) {
     throw new Error("Workspace draft composer state is required");
   }
-  const workspaceSecretaryComposer = useMemo(
-    () => buildWorkspaceSecretaryComposerModel(daemonConfig?.workspaceSecretary),
-    [daemonConfig?.workspaceSecretary],
+  const thothTurnSnapshot = useMemo(
+    () => buildThothTurnSnapshot(daemonConfig?.thoth),
+    [daemonConfig?.thoth],
   );
-  const workspaceSecretaryProvider = daemonConfig?.workspaceSecretary?.providerSession;
-  const secretaryProvider =
-    workspaceSecretaryProvider?.provider ?? composerState.selectedProvider ?? "workspace-secretary";
-  const secretaryModel =
-    workspaceSecretaryProvider?.model ?? composerState.effectiveModelId ?? null;
   const clearDraftInput = draftInput.clear;
   const setDraftText = draftInput.setText;
   const setDraftAttachments = draftInput.setAttachments;
-  const [secretarySubmitted, setSecretarySubmitted] = useState(false);
-  const [secretarySubmitting, setSecretarySubmitting] = useState(false);
-  const [secretaryTurnInFlight, setSecretaryTurnInFlight] = useState(false);
-  const [secretaryErrorMessage, setSecretaryErrorMessage] = useState("");
-  const [secretaryApprovalMode, setSecretaryApprovalMode] = useState<"quick" | "loop">(
-    workspaceSecretaryComposer.mode,
-  );
-  const secretaryModelRef = useRef<ThothCleanUiModel | null>(null);
-  const boundSecretaryTopicId = secretaryTopicId?.trim() || null;
-  const secretaryTopicIdRef = useRef<string | null>(boundSecretaryTopicId);
-  const secretaryStreamItems =
-    useSessionStore((state) => state.sessions[serverId]?.agentStreamTail?.get(tabId)) ??
-    EMPTY_STREAM_ITEMS;
-  const secretaryStreamHead =
-    useSessionStore((state) => state.sessions[serverId]?.agentStreamHead?.get(tabId)) ??
-    EMPTY_STREAM_ITEMS;
-  useEffect(() => {
-    secretaryTopicIdRef.current = boundSecretaryTopicId;
-  }, [boundSecretaryTopicId]);
-  const rememberSecretaryTopicId = useCallback(
-    (topicId: string | null | undefined) => {
-      const normalizedTopicId = topicId?.trim() || null;
-      if (
-        !normalizedTopicId ||
-        secretaryTopicIdRef.current === normalizedTopicId ||
-        (secretaryTopicIdRef.current && secretaryTopicIdRef.current !== normalizedTopicId)
-      ) {
-        return;
-      }
-      secretaryTopicIdRef.current = normalizedTopicId;
-      onDraftSecretaryTopicChange?.(normalizedTopicId);
-    },
-    [onDraftSecretaryTopicChange],
-  );
-  const secretaryAuthorityTurnRunning = shouldKeepWorkspaceSecretaryAuthorityTurnRunning({
-    secretaryTurnInFlight,
-    streamItems: [...secretaryStreamItems, ...secretaryStreamHead],
-    backgroundHandoff: isWorkspaceSecretaryBackgroundHandoff(secretaryModelRef.current),
-  });
-  const shouldHydrateSecretarySnapshot = shouldHydrateWorkspaceSecretarySnapshotForDraft({
-    secretaryTopicId: boundSecretaryTopicId,
-  });
-  const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
-  const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
-  const secretaryDraftAgent = useMemo(
-    () =>
-      draftWorkingDirectory
-        ? buildWorkspaceSecretaryDraftAgent({
-            serverId,
-            tabId,
-            workspaceDirectory: draftWorkingDirectory,
-            workspaceId: workspaceFields?.id ?? null,
-            provider: secretaryProvider,
-            model: secretaryModel,
-            status: secretaryAuthorityTurnRunning ? "running" : "idle",
-          })
-        : null,
-    [
-      draftWorkingDirectory,
-      secretaryModel,
-      secretaryProvider,
-      secretaryAuthorityTurnRunning,
-      serverId,
-      tabId,
-      workspaceFields?.id,
-    ],
-  );
-  const getSecretaryStreamWriter = useCallback(
-    (): AgentStreamWriter => ({
-      getTail: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamTail?.get(id),
-      getHead: (id) => useSessionStore.getState().sessions[serverId]?.agentStreamHead?.get(id),
-      setHead: (updater) => setAgentStreamHead(serverId, updater),
-      setTail: (updater) => setAgentStreamTail(serverId, updater),
-    }),
-    [serverId, setAgentStreamHead, setAgentStreamTail],
-  );
-  const [secretaryTimelineAgentId, setSecretaryTimelineAgentId] = useState<string | null>(null);
-  const [secretaryTimelineHydrationGeneration, setSecretaryTimelineHydrationGeneration] =
-    useState(0);
-  const rememberSecretaryTimelineModel = useCallback((model: ThothCleanUiModel) => {
-    secretaryModelRef.current = model;
-    setSecretaryApprovalMode(model.secretary.composer.mode);
-    const nextTimelineAgentId = model.secretary.timelineAgentId?.trim() || null;
-    setSecretaryTimelineAgentId((current) =>
-      current === nextTimelineAgentId ? current : nextTimelineAgentId,
-    );
-  }, []);
-  useEffect(() => {
-    secretaryModelRef.current = null;
-    setSecretaryTimelineAgentId(null);
-    setSecretaryApprovalMode(workspaceSecretaryComposer.mode);
-  }, [boundSecretaryTopicId]);
-  // Composer mode belongs to the next send; it must not discard this topic's durable handoff state.
-  useEffect(() => {
-    setSecretaryApprovalMode(workspaceSecretaryComposer.mode);
-  }, [workspaceSecretaryComposer.mode]);
-  const secretarySnapshotHydratedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!shouldHydrateSecretarySnapshot) {
-      return;
-    }
-    if (!client || !draftWorkingDirectory || !workspaceFields?.id) {
-      return;
-    }
-    const hydrateKey = [
-      serverId,
-      workspaceFields.id,
-      draftWorkingDirectory,
-      tabId,
-      boundSecretaryTopicId ?? "active",
-    ].join(":");
-    if (secretarySnapshotHydratedRef.current === hydrateKey) {
-      return;
-    }
-    secretarySnapshotHydratedRef.current = hydrateKey;
-    let cancelled = false;
-    void client
-      .fetchWorkspaceSecretarySnapshot({
-        workspaceId: workspaceFields.id,
-        workspacePath: draftWorkingDirectory,
-        ...(boundSecretaryTopicId ? { topicId: boundSecretaryTopicId } : {}),
-      })
-      .then((payload) => {
-        if (cancelled) {
-          return;
-        }
-        if (!payload.model) {
-          return;
-        }
-        if (
-          !shouldApplyWorkspaceSecretarySnapshotForDraft({
-            secretaryTopicId: boundSecretaryTopicId,
-            modelActiveTopicId: payload.model.secretary.activeTopicId,
-          })
-        ) {
-          removeWorkspaceSecretaryModelItemsFromStream(
-            tabId,
-            payload.model,
-            getSecretaryStreamWriter(),
-          );
-          return;
-        }
-        rememberSecretaryTopicId(payload.model.secretary.activeTopicId);
-        applyWorkspaceSecretaryModelToStream(tabId, payload.model, getSecretaryStreamWriter());
-        rememberSecretaryTimelineModel(payload.model);
-        setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(payload.model));
-        const restoredTitle = resolveWorkspaceSecretaryDraftTitleFromModel(payload.model);
-        if (restoredTitle) {
-          onDraftTitleChange?.(restoredTitle);
-        }
-        if (payload.model.secretary.turns.length > 0) {
-          setSecretarySubmitted(true);
-        }
-      })
-      .catch((error) => {
-        secretarySnapshotHydratedRef.current = null;
-        console.warn("[WorkspaceSecretary] failed to hydrate snapshot", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    client,
-    draftWorkingDirectory,
-    getSecretaryStreamWriter,
-    onDraftTitleChange,
-    rememberSecretaryTopicId,
-    rememberSecretaryTimelineModel,
-    serverId,
-    shouldHydrateSecretarySnapshot,
-    tabId,
-    boundSecretaryTopicId,
-    workspaceFields?.id,
-  ]);
-  useEffect(() => {
-    if (!client || !draftWorkingDirectory) {
-      return;
-    }
-    return client.subscribeWorkspaceSecretaryModelUpdates((payload) => {
-      if (payload.model.secretary.workspacePath !== draftWorkingDirectory) {
-        return;
-      }
-      if (
-        !shouldApplyWorkspaceSecretaryModelUpdateForDraft({
-          secretaryTopicId: secretaryTopicIdRef.current,
-          modelActiveTopicId: payload.model.secretary.activeTopicId,
-        })
-      ) {
-        return;
-      }
-      rememberSecretaryTopicId(payload.model.secretary.activeTopicId);
-      applyWorkspaceSecretaryModelToStream(tabId, payload.model, getSecretaryStreamWriter());
-      rememberSecretaryTimelineModel(payload.model);
-      setSecretaryTurnInFlight((current) =>
-        resolveWorkspaceSecretaryTurnInFlight({
-          current,
-          model: payload.model,
-          reason: payload.reason,
-        }),
-      );
-      const restoredTitle = resolveWorkspaceSecretaryDraftTitleFromModel(payload.model);
-      if (restoredTitle) {
-        onDraftTitleChange?.(restoredTitle);
-      }
-      if (payload.model.secretary.turns.length > 0) {
-        setSecretarySubmitted(true);
-      }
-    });
-  }, [
-    client,
-    draftWorkingDirectory,
-    getSecretaryStreamWriter,
-    onDraftTitleChange,
-    rememberSecretaryTopicId,
-    rememberSecretaryTimelineModel,
-    tabId,
-  ]);
-  useEffect(() => {
-    if (!client || !draftWorkingDirectory) {
-      return;
-    }
-    return client.on("background_task.update", (message) => {
-      if (message.type !== "background_task.update") {
-        return;
-      }
-      const task = message.payload.task;
-      if (
-        !shouldApplyLoopTaskDecisionUpdateForDraft({
-          secretaryTopicId: secretaryTopicIdRef.current,
-          draftWorkspacePath: draftWorkingDirectory,
-          taskSourceTopicId: task.sourceTopicId,
-          taskWorkspacePath: task.workspacePath,
-        })
-      ) {
-        return;
-      }
-      applyLoopTaskDecisionToWorkspaceSecretaryStream({
-        agentId: tabId,
-        task,
-        stream: getSecretaryStreamWriter(),
-      });
-    });
-  }, [client, draftWorkingDirectory, getSecretaryStreamWriter, tabId]);
-  const secretaryTimelineHydratedRef = useRef<string | null>(null);
-  useEffect(() => {
-    const timelineAgentId = secretaryTimelineAgentId;
-    const model = secretaryModelRef.current;
-    if (!client || !timelineAgentId || !model || !boundSecretaryTopicId) {
-      return;
-    }
-    const hydrateKey = [
-      serverId,
-      tabId,
-      boundSecretaryTopicId,
-      timelineAgentId,
-      secretaryTimelineHydrationGeneration,
-    ].join(":");
-    if (secretaryTimelineHydratedRef.current === hydrateKey) {
-      return;
-    }
-    secretaryTimelineHydratedRef.current = hydrateKey;
-    let cancelled = false;
-    void client
-      .fetchAgentTimeline(timelineAgentId, {
-        direction: "tail",
-        limit: 0,
-        projection: "projected",
-      })
-      .then((payload) => {
-        if (cancelled) {
-          return;
-        }
-        const latestModel = secretaryModelRef.current;
-        if (
-          !latestModel ||
-          latestModel.secretary.activeTopicId !== boundSecretaryTopicId ||
-          latestModel.secretary.timelineAgentId !== timelineAgentId
-        ) {
-          return;
-        }
-        hydrateWorkspaceSecretaryProviderTimeline({
-          agentId: tabId,
-          model: latestModel,
-          entries: payload.entries,
-          stream: getSecretaryStreamWriter(),
-          settleRunningItems: latestModel.secretary.status.kind !== "loading",
-        });
-      })
-      .catch((error) => {
-        secretaryTimelineHydratedRef.current = null;
-        console.warn("[WorkspaceSecretary] failed to hydrate provider timeline", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    boundSecretaryTopicId,
-    client,
-    getSecretaryStreamWriter,
-    secretaryTimelineAgentId,
-    secretaryTimelineHydrationGeneration,
-    serverId,
-    tabId,
-  ]);
   const pendingAutoSubmit = useWorkspaceDraftSubmissionStore((state) => {
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.workspaceId === workspaceId ? pending : null;
@@ -884,6 +504,7 @@ export function WorkspaceDraftAgentTab({
         workspaceDirectory: draftWorkingDirectory,
         workspaceId: workspaceFields?.id ?? null,
         autoSubmitConfig,
+        thoth: autoSubmitConfig?.thoth ?? thothTurnSnapshot,
         composerState,
         hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
         selectModelMessage: t("workspaceSetup.errors.selectModel"),
@@ -895,193 +516,6 @@ export function WorkspaceDraftAgentTab({
       onCreated(result);
     },
   });
-  const handleWorkspaceSecretarySubmit = useCallback(
-    async ({
-      text,
-      attachments,
-    }: {
-      text: string;
-      attachments: Parameters<typeof handleCreateFromInput>[0]["attachments"];
-      cwd: string;
-    }) => {
-      if (secretarySubmitting) {
-        throw new Error(t("composer.errors.alreadyLoading"));
-      }
-      if (!client) {
-        throw new Error(t("workspace.terminal.hostDisconnected"));
-      }
-      if (!draftWorkingDirectory) {
-        throw new Error("Workspace directory is required");
-      }
-      const trimmedPrompt = text.trim();
-      if (!trimmedPrompt && attachments.length === 0) {
-        throw new Error(t("composer.errors.initialPromptRequired"));
-      }
-      const provisionalTitle = deriveWorkspaceSecretaryDraftTitleFromText(trimmedPrompt);
-
-      setSecretaryErrorMessage("");
-      setSecretarySubmitting(true);
-      setSecretarySubmitted(true);
-      setSecretaryTurnInFlight(true);
-      if (provisionalTitle) {
-        onDraftTitleChange?.(provisionalTitle);
-      }
-      void (async () => {
-        try {
-          await composerState.persistFormPreferences();
-          if (isWeb) {
-            (document.activeElement as HTMLElement | null)?.blur?.();
-          }
-          Keyboard.dismiss();
-          const topicId = secretaryTopicIdRef.current ?? createWorkspaceSecretaryTopicId();
-          if (!secretaryTopicIdRef.current) {
-            // Persist the binding before the RPC begins. The daemon creates this topic atomically
-            // with the first user turn, so a reload cannot leave a durable empty topic behind.
-            rememberSecretaryTopicId(topicId);
-          }
-          const response = await dispatchWorkspaceSecretaryMessage({
-            client,
-            agentId: tabId,
-            workspaceId: workspaceFields?.id,
-            workspacePath: draftWorkingDirectory ?? undefined,
-            topicId,
-            text: trimmedPrompt,
-            attachments,
-            composer: workspaceSecretaryComposer,
-            encodeImages,
-            stream: getSecretaryStreamWriter(),
-          });
-          if (response.model) {
-            const responseModel = response.model;
-            rememberSecretaryTimelineModel(responseModel);
-            setSecretaryTurnInFlight((current) =>
-              resolveWorkspaceSecretaryTurnInFlight({ current, model: responseModel }),
-            );
-            const responseTitle = resolveWorkspaceSecretaryDraftTitleFromModel(responseModel);
-            if (responseTitle) {
-              onDraftTitleChange?.(responseTitle);
-            }
-          }
-          const responseError =
-            response.error ??
-            (response.model?.secretary.status.kind === "recoverable_error"
-              ? response.model.secretary.status.detail
-              : null);
-          if (responseError) {
-            setSecretaryErrorMessage(responseError);
-            setSecretaryTurnInFlight(false);
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          setSecretaryErrorMessage(message);
-          setSecretaryTurnInFlight(false);
-        } finally {
-          setSecretarySubmitting(false);
-        }
-      })();
-      clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
-      useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
-    },
-    [
-      clearWorkspaceAttachments,
-      client,
-      composerState,
-      draftAttachmentScopeKey,
-      draftId,
-      draftWorkingDirectory,
-      getSecretaryStreamWriter,
-      onDraftTitleChange,
-      rememberSecretaryTopicId,
-      rememberSecretaryTimelineModel,
-      secretarySubmitting,
-      t,
-      tabId,
-      workspaceFields?.id,
-      workspaceSecretaryComposer,
-    ],
-  );
-  const handleWorkspaceSecretaryAnswer = useCallback(
-    async (cardId: string, answer: WorkspaceSecretaryTurnActionPayload) => {
-      if (!client) {
-        throw new Error(t("workspace.terminal.hostDisconnected"));
-      }
-      setSecretaryErrorMessage("");
-      setSecretaryTurnInFlight(true);
-      try {
-        const response = await dispatchWorkspaceSecretaryAnswer({
-          client,
-          agentId: tabId,
-          workspaceId: workspaceFields?.id,
-          workspacePath: draftWorkingDirectory ?? undefined,
-          topicId: secretaryTopicIdRef.current ?? undefined,
-          cardId,
-          answer,
-          stream: getSecretaryStreamWriter(),
-        });
-        if (response.model) {
-          const responseModel = response.model;
-          rememberSecretaryTimelineModel(responseModel);
-          setSecretaryTurnInFlight((current) =>
-            resolveWorkspaceSecretaryTurnInFlight({ current, model: responseModel }),
-          );
-        }
-        const responseError =
-          response.error ??
-          (response.model?.secretary.status.kind === "recoverable_error"
-            ? response.model.secretary.status.detail
-            : null);
-        setSecretaryErrorMessage(responseError ?? "");
-        if (responseError) {
-          setSecretaryTurnInFlight(false);
-        }
-      } catch (error) {
-        setSecretaryErrorMessage(error instanceof Error ? error.message : String(error));
-        setSecretaryTurnInFlight(false);
-        throw error;
-      }
-    },
-    [
-      client,
-      draftWorkingDirectory,
-      getSecretaryStreamWriter,
-      rememberSecretaryTimelineModel,
-      t,
-      tabId,
-      workspaceFields?.id,
-    ],
-  );
-  const handleWorkspaceSecretaryCancel = useCallback(async () => {
-    if (!client) {
-      throw new Error(t("workspace.terminal.hostDisconnected"));
-    }
-    const response = await dispatchWorkspaceSecretaryCancel({
-      client,
-      agentId: tabId,
-      workspaceId: workspaceFields?.id,
-      workspacePath: draftWorkingDirectory ?? undefined,
-      topicId: secretaryTopicIdRef.current ?? undefined,
-      stream: getSecretaryStreamWriter(),
-    });
-    if (response.model) {
-      rememberSecretaryTimelineModel(response.model);
-      setSecretaryTurnInFlight(isWorkspaceSecretaryModelRunning(response.model));
-    } else {
-      setSecretaryTurnInFlight(false);
-    }
-    // The cancel response and terminal agent_stream may arrive in either order. Re-fetching the
-    // durable provider timeline makes the final virtual-tab projection independent of that race.
-    setSecretaryTimelineHydrationGeneration((generation) => generation + 1);
-    setSecretaryErrorMessage(response.error ?? "");
-  }, [
-    client,
-    draftWorkingDirectory,
-    getSecretaryStreamWriter,
-    rememberSecretaryTimelineModel,
-    t,
-    tabId,
-    workspaceFields?.id,
-  ]);
-
   const isReadyForPendingAutoSubmit = Boolean(
     pendingAutoSubmit &&
     draftInput.isHydrated &&
@@ -1210,8 +644,6 @@ export function WorkspaceDraftAgentTab({
   const composerAgentControls = useMemo(
     () => ({
       ...composerState.agentControls,
-      selectedProvider: secretaryProvider as AgentProvider,
-      selectedModel: secretaryModel ?? composerState.agentControls.selectedModel,
       onSelectProvider: handleProviderSelectWithFocus,
       onSelectMode: handleModeSelectWithFocus,
       onSelectModel: handleModelSelectWithFocus,
@@ -1231,39 +663,12 @@ export function WorkspaceDraftAgentTab({
       handleSetFeatureWithFocus,
       handleDropdownCloseFocus,
       isSubmitting,
-      secretaryModel,
-      secretaryProvider,
     ],
   );
-  const showWorkspaceSecretaryStream =
-    Boolean(secretaryDraftAgent) && (secretarySubmitted || secretaryStreamItems.length > 0);
-  const visibleFormErrorMessage = secretaryErrorMessage || formErrorMessage;
-  const visibleSubmitLoading = isSubmitting;
-  const composerStatusOverride: Agent["status"] = secretaryAuthorityTurnRunning
-    ? "running"
-    : "idle";
   return (
     <FileDropZone style={styles.container}>
       <View style={styles.contentContainer}>
-        {showWorkspaceSecretaryStream && secretaryDraftAgent ? (
-          <View style={styles.streamContainer}>
-            {visibleFormErrorMessage ? (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{visibleFormErrorMessage}</Text>
-              </View>
-            ) : null}
-            <AgentStreamView
-              agentId={tabId}
-              serverId={serverId}
-              agent={secretaryDraftAgent}
-              streamItems={secretaryStreamItems}
-              pendingPermissions={EMPTY_PENDING_PERMISSIONS}
-              approvalMode={secretaryApprovalMode}
-              onOpenWorkspaceFile={onOpenWorkspaceFile}
-              onSubmitClarifyAnswer={handleWorkspaceSecretaryAnswer}
-            />
-          </View>
-        ) : isSubmitting && draftAgent ? (
+        {isSubmitting && draftAgent ? (
           <View style={styles.streamContainer}>
             <AgentStreamView
               agentId={tabId}
@@ -1277,9 +682,9 @@ export function WorkspaceDraftAgentTab({
         ) : (
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
             <View style={styles.configSection}>
-              {visibleFormErrorMessage ? (
+              {formErrorMessage ? (
                 <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{visibleFormErrorMessage}</Text>
+                  <Text style={styles.errorText}>{formErrorMessage}</Text>
                 </View>
               ) : null}
             </View>
@@ -1300,10 +705,9 @@ export function WorkspaceDraftAgentTab({
           serverId={serverId}
           externalKeyboardShift
           isPaneFocused={isPaneFocused}
-          onSubmitMessage={handleWorkspaceSecretarySubmit}
-          isSubmitLoading={visibleSubmitLoading}
-          agentStatusOverride={composerStatusOverride}
-          onCancelRunningAgent={handleWorkspaceSecretaryCancel}
+          onSubmitMessage={handleCreateFromInput}
+          isSubmitLoading={isSubmitting}
+          agentStatusOverride={isSubmitting ? "running" : "idle"}
           blurOnSubmit={true}
           value={draftInput.text}
           onChangeText={draftInput.setText}

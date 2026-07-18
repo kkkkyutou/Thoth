@@ -15,11 +15,11 @@ import type {
   ClarifyQuestionSelectionMode,
 } from "@thoth/protocol/thoth-runtime-contract";
 import type {
-  SecretaryClarifyAnswerPayload,
+  ThothClarifyCardAnswerPayload,
   ThothClarifyCardModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 
-type ClarifyAnswerSubmitter = (payload: SecretaryClarifyAnswerPayload) => void | Promise<void>;
+type ClarifyAnswerSubmitter = (payload: ThothClarifyCardAnswerPayload) => void | Promise<void>;
 
 interface ClarifyDecisionCardProps {
   card: ThothClarifyCardModel;
@@ -49,10 +49,6 @@ function getQuestions(card: ThothClarifyCardModel["card"]): Question[] {
       choices: card.choices,
     },
   ];
-}
-
-function getQuestionCardId(card: ThothClarifyCardModel["card"]): string {
-  return card.question_id;
 }
 
 function toggleMultipleChoice(selection: Set<string>, choiceId: string): Set<string> {
@@ -187,7 +183,7 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
   }, []);
 
   const submit = useCallback(
-    async (intent: SecretaryClarifyAnswerPayload["intent"]) => {
+    async (intent: ThothClarifyCardAnswerPayload["intent"]) => {
       if (!onSubmit || card.submitted || isSubmitting) return;
       const rawAnswer =
         intent === "recommend"
@@ -207,7 +203,7 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
       try {
         await onSubmit({
           intent,
-          question_card_id: getQuestionCardId(card.card),
+          question_card_id: card.id,
           title: card.title,
           answers,
           raw_answer: rawAnswer,
@@ -217,7 +213,7 @@ export function ClarifyDecisionCard({ card, onSubmit }: ClarifyDecisionCardProps
       }
     },
     [
-      card.card,
+      card.id,
       card.submitted,
       card.title,
       choiceNotes,

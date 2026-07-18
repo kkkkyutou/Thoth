@@ -8,132 +8,17 @@ import {
   ThothRuntimeLoopStrengthSchema,
   ThothRuntimeModeSchema,
 } from "../thoth-runtime-contract.js";
-import type { AgentAttachment } from "../messages.js";
-
-export const WORKSPACE_SECRETARY_RELAY_ENDPOINT = "relay.test.thoth.seeles.ai" as const;
-export const WORKSPACE_SECRETARY_RELAY_HEALTH_URL =
-  "https://relay.test.thoth.seeles.ai/health" as const;
 
 const NonEmptyStringSchema = z.string().trim().min(1);
-
-export const ThothMainViewSchema = z.enum(["workspace-secretary", "background-tasks", "settings"]);
-
-export const SecretaryTopicStatusSchema = z.enum(["current", "quiet", "clarifying"]);
-
 const StringListSchema = z.array(NonEmptyStringSchema).min(1);
-const WorkspaceSecretaryImageAttachmentSchema = z
-  .object({
-    data: z.string(),
-    mimeType: z.string(),
-  })
-  .strict();
-const WorkspaceSecretaryAgentAttachmentSchema = z.custom<AgentAttachment>(
-  (value) =>
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    typeof (value as { type?: unknown }).type === "string",
-);
 
-export const SecretaryTopicModelSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    title: NonEmptyStringSchema,
-    status: SecretaryTopicStatusSchema,
-    updatedLabel: NonEmptyStringSchema,
-  })
-  .strict();
-
-export const SecretaryRuntimeStatusKindSchema = z.enum([
-  "ready",
-  "loading",
-  "recoverable_error",
-  "host_unavailable",
-  "provider_required",
-  "provider_unsupported",
-]);
-
-export const SecretaryRuntimeStatusModelSchema = z
-  .object({
-    kind: SecretaryRuntimeStatusKindSchema,
-    title: NonEmptyStringSchema,
-    detail: NonEmptyStringSchema,
-    actionLabel: NonEmptyStringSchema.optional(),
-  })
-  .strict();
-
-export const ThothComposerModelSchema = z
-  .object({
-    mode: ThothRuntimeModeSchema,
-    clarifyStrength: ThothRuntimeClarifyStrengthSchema.exclude(["deep"]),
-    loop: ThothRuntimeLoopStrengthSchema.nullable(),
-    authorityLabel: NonEmptyStringSchema,
-    authorityReady: z.boolean(),
-    disabledReason: NonEmptyStringSchema.optional(),
-  })
-  .strict();
-
-export const SecretaryTurnControlsSchema = z
+export const ThothTurnControlSnapshotSchema = z
   .object({
     mode: ThothRuntimeModeSchema,
     clarifyStrength: ThothRuntimeClarifyStrengthSchema.exclude(["deep"]),
     loop: ThothRuntimeLoopStrengthSchema.nullable(),
   })
   .strict();
-
-export const WorkspaceSecretaryProviderBridgeSchema = z.enum([
-  "native_output_schema",
-  "runtime_tool",
-  "unsupported",
-]);
-
-export const WorkspaceSecretaryProviderRuntimeStateSchema = z.enum([
-  "not_configured",
-  "checking",
-  "ready",
-  "running",
-  "unsupported",
-  "error",
-]);
-
-export const WorkspaceSecretaryProviderRuntimeModelSchema = z
-  .object({
-    configured: z.boolean(),
-    ready: z.boolean(),
-    state: WorkspaceSecretaryProviderRuntimeStateSchema,
-    bridge: WorkspaceSecretaryProviderBridgeSchema.optional(),
-    provider: NonEmptyStringSchema.optional(),
-    model: z.string().optional(),
-    mode: z.string().optional(),
-    safeLabel: NonEmptyStringSchema,
-    detail: NonEmptyStringSchema,
-  })
-  .strict();
-
-export const WorkspaceSecretaryDeprecatedCleanEventSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    kind: z.enum([
-      "provider_turn_started",
-      "provider_tool",
-      "provider_question",
-      "provider_permission",
-      "provider_repair",
-      "secretary_reply_delta",
-      "provider_turn_completed",
-      "provider_error",
-    ]),
-    title: NonEmptyStringSchema,
-    detail: z.string().optional(),
-    status: z.enum(["running", "completed", "blocked", "failed"]).optional(),
-  })
-  .strict();
-
-/**
- * @deprecated Workspace Secretary realtime UI must use AgentTimeline / agent_stream.
- * This schema is accepted only for old payload compatibility.
- */
-export const WorkspaceSecretaryCleanEventSchema = WorkspaceSecretaryDeprecatedCleanEventSchema;
 
 export const ThothClarifyCardModelSchema = z
   .object({
@@ -179,7 +64,7 @@ export const ThothTaskCardModelSchema = z
     provenanceSummary: NonEmptyStringSchema,
     // Frozen from the composer when the user sent the turn that produced this authority flow.
     // Current controls may hot-switch independently and apply only to a later user send.
-    turnControls: SecretaryTurnControlsSchema.optional(),
+    turnControls: ThothTurnControlSnapshotSchema.optional(),
     submitted: z.boolean(),
     submittedSummary: NonEmptyStringSchema.optional(),
   })
@@ -212,7 +97,7 @@ export const ThothGoalCardModelSchema = z
     summary: NonEmptyStringSchema,
     pyramid: z.array(ThothPyramidPlanStageSchema).min(1),
     provenanceSummary: NonEmptyStringSchema,
-    turnControls: SecretaryTurnControlsSchema.optional(),
+    turnControls: ThothTurnControlSnapshotSchema.optional(),
     submitted: z.boolean(),
     submittedSummary: NonEmptyStringSchema.optional(),
   })
@@ -227,7 +112,7 @@ export const ThothGoalsCardModelSchema = z
     goalsCountRationale: z.string().optional(),
     goals: z.array(ClarifyLinearGoalContractSchema).min(1),
     provenanceSummary: NonEmptyStringSchema,
-    turnControls: SecretaryTurnControlsSchema.optional(),
+    turnControls: ThothTurnControlSnapshotSchema.optional(),
     submitted: z.boolean(),
     submittedSummary: NonEmptyStringSchema.optional(),
   })
@@ -255,7 +140,7 @@ export const RegisteredTaskModelSchema = z
     title: NonEmptyStringSchema,
     workspaceName: NonEmptyStringSchema,
     workspacePath: NonEmptyStringSchema,
-    sourceTopicId: NonEmptyStringSchema,
+    sourceAgentId: NonEmptyStringSchema,
     status: RegisteredTaskStatusSchema,
     summary: NonEmptyStringSchema,
     taskCard: ThothTaskCardModelSchema,
@@ -290,124 +175,6 @@ export const LoopUserDecisionSchema = z
   })
   .strict();
 
-export const SecretaryMessageTurnSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    kind: z.literal("message"),
-    speaker: z.enum(["user", "secretary"]),
-    text: NonEmptyStringSchema,
-    turnControls: SecretaryTurnControlsSchema.optional(),
-    // The client-generated id is the only safe bridge between the durable user turn and the
-    // provider timeline. It is optional so existing persisted topics remain readable.
-    messageId: NonEmptyStringSchema.optional(),
-  })
-  .strict();
-
-export const SecretaryClarifyCardTurnSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    kind: z.literal("clarify_card"),
-    card: ThothClarifyCardModelSchema,
-  })
-  .strict();
-
-export const SecretaryTaskCardTurnSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    kind: z.literal("task_card"),
-    card: ThothTaskCardModelSchema,
-  })
-  .strict();
-
-export const SecretaryGoalCardTurnSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    kind: z.literal("goal_card"),
-    card: ThothApprovalGoalCardModelSchema,
-  })
-  .strict();
-
-export const SecretaryRegisteredTaskTurnSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    kind: z.literal("registered_task"),
-    task: RegisteredTaskModelSchema,
-  })
-  .strict();
-
-export const SecretaryLoopDecisionTurnSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    kind: z.literal("loop_decision"),
-    taskId: NonEmptyStringSchema,
-    decision: LoopUserDecisionSchema,
-  })
-  .strict();
-
-export const SecretaryTurnSchema = z.discriminatedUnion("kind", [
-  SecretaryMessageTurnSchema,
-  SecretaryClarifyCardTurnSchema,
-  SecretaryTaskCardTurnSchema,
-  SecretaryGoalCardTurnSchema,
-  SecretaryRegisteredTaskTurnSchema,
-  SecretaryLoopDecisionTurnSchema,
-]);
-
-export const WorkspaceSecretaryModelSchema = z
-  .object({
-    workspaceName: NonEmptyStringSchema,
-    workspacePath: NonEmptyStringSchema,
-    topics: z.array(SecretaryTopicModelSchema).min(1),
-    activeTopicId: NonEmptyStringSchema,
-    status: SecretaryRuntimeStatusModelSchema,
-    // A Loop Goals Card can hand the approved work to the durable background
-    // scheduler while the provider's original tool turn is still unwinding.
-    // This is a UI lifecycle signal, not provider-specific execution state.
-    foregroundTurnState: z.enum(["background_handoff"]).optional(),
-    turns: z.array(SecretaryTurnSchema),
-    // Internal projection reference only. The UI uses this to hydrate the real provider
-    // timeline into the virtual Workspace Secretary tab after reconnect/cancel.
-    timelineAgentId: NonEmptyStringSchema.nullable().optional(),
-    composer: ThothComposerModelSchema,
-    provider: WorkspaceSecretaryProviderRuntimeModelSchema.optional(),
-    deprecatedLiveEvents: z.array(WorkspaceSecretaryDeprecatedCleanEventSchema).optional(),
-    /**
-     * @deprecated Accepted for old clients only. Do not use as a realtime UI source.
-     */
-    liveEvents: z.array(WorkspaceSecretaryDeprecatedCleanEventSchema).optional(),
-  })
-  .strict();
-
-export const RelayServiceStatusSchema = z.enum(["checking", "healthy", "unavailable"]);
-
-export const RelayServiceModelSchema = z
-  .object({
-    endpoint: z.literal(WORKSPACE_SECRETARY_RELAY_ENDPOINT),
-    healthUrl: z.literal(WORKSPACE_SECRETARY_RELAY_HEALTH_URL),
-    status: RelayServiceStatusSchema,
-    safeSummary: NonEmptyStringSchema,
-    checkedAtLabel: NonEmptyStringSchema,
-  })
-  .strict();
-
-export const SettingsCapabilityModelSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    title: NonEmptyStringSchema,
-    value: NonEmptyStringSchema,
-    locked: z.boolean().optional(),
-  })
-  .strict();
-
-export const ThothSettingsModelSchema = z
-  .object({
-    runtime: z.array(SettingsCapabilityModelSchema),
-    relay: RelayServiceModelSchema,
-    requiredRuntime: z.array(SettingsCapabilityModelSchema),
-    workspaceSecretaryProvider: WorkspaceSecretaryProviderRuntimeModelSchema.optional(),
-  })
-  .strict();
-
 export const BackgroundTaskModelSchema = z
   .object({
     id: NonEmptyStringSchema,
@@ -432,7 +199,7 @@ export const BackgroundTaskModelSchema = z
     summary: NonEmptyStringSchema,
     workspaceName: NonEmptyStringSchema.optional(),
     workspacePath: NonEmptyStringSchema.optional(),
-    sourceTopicId: NonEmptyStringSchema.optional(),
+    sourceAgentId: NonEmptyStringSchema.optional(),
     detailLabel: NonEmptyStringSchema.optional(),
   })
   .strict();
@@ -730,7 +497,7 @@ export const LoopTaskModelSchema = z
     title: NonEmptyStringSchema,
     workspaceName: NonEmptyStringSchema,
     workspacePath: NonEmptyStringSchema,
-    sourceTopicId: NonEmptyStringSchema,
+    sourceAgentId: NonEmptyStringSchema,
     sourceGoalsCardId: NonEmptyStringSchema.optional(),
     status: LoopTaskStatusSchema,
     summary: NonEmptyStringSchema,
@@ -763,7 +530,7 @@ export const LoopTaskModelSchema = z
     taskCard: ThothTaskCardModelSchema,
     goalsCard: ThothGoalsCardModelSchema,
     clarifyTranscript: z.string().optional(),
-    providerSession: z
+    providerBinding: z
       .object({
         provider: NonEmptyStringSchema,
         model: z.string().optional(),
@@ -794,24 +561,6 @@ export const BackgroundTasksModelSchema = z
   })
   .strict();
 
-export const ThothCleanUiAuthorityModelSchema = z
-  .object({
-    source: z.enum(["daemon_clean_ui_model", "provider_backed_clean_ui_model"]),
-    schemaVerified: z.literal(true),
-    label: NonEmptyStringSchema,
-  })
-  .strict();
-
-export const ThothCleanUiModelSchema = z
-  .object({
-    authority: ThothCleanUiAuthorityModelSchema,
-    activeView: ThothMainViewSchema,
-    secretary: WorkspaceSecretaryModelSchema,
-    settings: ThothSettingsModelSchema,
-    backgroundTasks: BackgroundTasksModelSchema,
-  })
-  .strict();
-
 export const ClarifyAnswerIntentSchema = z.enum([
   "submit_choices",
   "note_only",
@@ -827,7 +576,7 @@ export const ApprovalActionIntentSchema = z.enum([
   "cancel",
 ]);
 
-export const SecretaryClarifyAnswerPayloadSchema = z
+export const ThothClarifyCardAnswerPayloadSchema = z
   .object({
     intent: ClarifyAnswerIntentSchema,
     question_card_id: NonEmptyStringSchema,
@@ -847,7 +596,7 @@ export const SecretaryClarifyAnswerPayloadSchema = z
   })
   .strict();
 
-export const SecretaryApprovalActionPayloadSchema = z
+export const ThothApprovalCardAnswerPayloadSchema = z
   .object({
     intent: ApprovalActionIntentSchema,
     card_id: NonEmptyStringSchema,
@@ -857,69 +606,91 @@ export const SecretaryApprovalActionPayloadSchema = z
   })
   .strict();
 
-export const WorkspaceSecretaryTurnActionPayloadSchema = z.union([
-  SecretaryClarifyAnswerPayloadSchema,
-  SecretaryApprovalActionPayloadSchema,
+export const ThothCardAnswerPayloadSchema = z.union([
+  ThothClarifyCardAnswerPayloadSchema,
+  ThothApprovalCardAnswerPayloadSchema,
 ]);
 
-export const WorkspaceSecretarySnapshotRequestSchema = z
+export const AgentThothLifecycleSchema = z.enum([
+  "idle",
+  "running",
+  "awaiting_card",
+  "quick_exec",
+  "background_handoff",
+  "interrupted",
+  "done",
+  "canceled",
+  "unsupported",
+]);
+
+export const AgentThothTurnSchema = z
   .object({
-    type: z.literal("workspace_secretary.snapshot.request"),
-    requestId: NonEmptyStringSchema,
-    workspaceId: NonEmptyStringSchema.optional(),
-    workspacePath: NonEmptyStringSchema.optional(),
-    workspaceName: NonEmptyStringSchema.optional(),
-    topicId: NonEmptyStringSchema.optional(),
+    id: NonEmptyStringSchema,
+    agentId: NonEmptyStringSchema,
+    kind: z.enum(["raw", "thoth"]),
+    lifecycle: AgentThothLifecycleSchema,
+    controls: ThothTurnControlSnapshotSchema.optional(),
+    sourceMessageId: NonEmptyStringSchema.optional(),
+    backgroundTaskId: NonEmptyStringSchema.optional(),
+    error: z.string().optional(),
+    startedAt: NonEmptyStringSchema,
+    updatedAt: NonEmptyStringSchema,
   })
   .strict();
 
-export const WorkspaceSecretarySendRequestSchema = z
+export const AgentThothPendingCardSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("clarify_card"),
+      card: ThothClarifyCardModelSchema,
+      createdAt: NonEmptyStringSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("task_card"),
+      card: ThothTaskCardModelSchema,
+      createdAt: NonEmptyStringSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("goal_card"),
+      card: ThothApprovalGoalCardModelSchema,
+      createdAt: NonEmptyStringSchema,
+    })
+    .strict(),
+]);
+
+export const AgentThothStateSchema = z
   .object({
-    type: z.literal("workspace_secretary.send.request"),
-    requestId: NonEmptyStringSchema,
-    workspaceId: NonEmptyStringSchema.optional(),
-    workspacePath: NonEmptyStringSchema.optional(),
-    topicId: NonEmptyStringSchema.optional(),
-    text: NonEmptyStringSchema,
-    uiAgentId: NonEmptyStringSchema.optional(),
-    messageId: NonEmptyStringSchema.optional(),
-    images: z.array(WorkspaceSecretaryImageAttachmentSchema).optional(),
-    attachments: z.array(WorkspaceSecretaryAgentAttachmentSchema).optional(),
-    composer: ThothComposerModelSchema,
+    agentId: NonEmptyStringSchema,
+    revision: z.number().int().nonnegative(),
+    lifecycle: AgentThothLifecycleSchema,
+    turn: AgentThothTurnSchema.nullable(),
+    pendingCard: AgentThothPendingCardSchema.nullable(),
+    backgroundTaskId: NonEmptyStringSchema.nullable(),
+    error: z.string().nullable(),
   })
   .strict();
 
-export const WorkspaceSecretaryAnswerRequestSchema = z
+export const AgentThothStateRequestSchema = z
   .object({
-    type: z.literal("workspace_secretary.answer.request"),
+    type: z.literal("agent.thoth.state.request"),
     requestId: NonEmptyStringSchema,
-    workspaceId: NonEmptyStringSchema.optional(),
-    workspacePath: NonEmptyStringSchema.optional(),
-    topicId: NonEmptyStringSchema.optional(),
+    agentId: NonEmptyStringSchema,
+  })
+  .strict();
+
+export const AgentThothCardAnswerRequestSchema = z
+  .object({
+    type: z.literal("agent.thoth.card.answer.request"),
+    requestId: NonEmptyStringSchema,
+    agentId: NonEmptyStringSchema,
     cardId: NonEmptyStringSchema,
-    uiAgentId: NonEmptyStringSchema.optional(),
-    answer: WorkspaceSecretaryTurnActionPayloadSchema,
-  })
-  .strict();
-
-export const WorkspaceSecretaryCancelRequestSchema = z
-  .object({
-    type: z.literal("workspace_secretary.cancel.request"),
-    requestId: NonEmptyStringSchema,
-    workspaceId: NonEmptyStringSchema.optional(),
-    workspacePath: NonEmptyStringSchema.optional(),
-    uiAgentId: NonEmptyStringSchema.optional(),
-    topicId: NonEmptyStringSchema.optional(),
-  })
-  .strict();
-
-export const WorkspaceSecretaryTopicCreateRequestSchema = z
-  .object({
-    type: z.literal("workspace_secretary.topic.create.request"),
-    requestId: NonEmptyStringSchema,
-    workspaceId: NonEmptyStringSchema.optional(),
-    workspacePath: NonEmptyStringSchema.optional(),
-    workspaceName: NonEmptyStringSchema.optional(),
+    answer: ThothCardAnswerPayloadSchema,
+    expectedRevision: z.number().int().nonnegative(),
+    commandId: NonEmptyStringSchema,
   })
   .strict();
 
@@ -970,46 +741,31 @@ export const BackgroundTaskDecisionRequestSchema = z
   })
   .strict();
 
-export const WorkspaceSecretaryResponsePayloadSchema = z
+export const AgentThothStateResponseSchema = z
   .object({
-    requestId: NonEmptyStringSchema,
-    model: ThothCleanUiModelSchema.nullable(),
-    error: z.string().nullable(),
+    type: z.literal("agent.thoth.state.response"),
+    payload: z
+      .object({
+        requestId: NonEmptyStringSchema,
+        state: AgentThothStateSchema,
+        error: z.string().nullable(),
+      })
+      .strict(),
   })
   .strict();
 
-export const WorkspaceSecretarySnapshotResponseSchema = z
+export const AgentThothCardAnswerResponseSchema = z
   .object({
-    type: z.literal("workspace_secretary.snapshot.response"),
-    payload: WorkspaceSecretaryResponsePayloadSchema,
-  })
-  .strict();
-
-export const WorkspaceSecretarySendResponseSchema = z
-  .object({
-    type: z.literal("workspace_secretary.send.response"),
-    payload: WorkspaceSecretaryResponsePayloadSchema,
-  })
-  .strict();
-
-export const WorkspaceSecretaryAnswerResponseSchema = z
-  .object({
-    type: z.literal("workspace_secretary.answer.response"),
-    payload: WorkspaceSecretaryResponsePayloadSchema,
-  })
-  .strict();
-
-export const WorkspaceSecretaryCancelResponseSchema = z
-  .object({
-    type: z.literal("workspace_secretary.cancel.response"),
-    payload: WorkspaceSecretaryResponsePayloadSchema,
-  })
-  .strict();
-
-export const WorkspaceSecretaryTopicCreateResponseSchema = z
-  .object({
-    type: z.literal("workspace_secretary.topic.create.response"),
-    payload: WorkspaceSecretaryResponsePayloadSchema,
+    type: z.literal("agent.thoth.card.answer.response"),
+    payload: z
+      .object({
+        requestId: NonEmptyStringSchema,
+        accepted: z.boolean(),
+        conflict: z.boolean(),
+        state: AgentThothStateSchema,
+        error: z.string().nullable(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -1065,20 +821,22 @@ export const BackgroundTaskDecisionResponseSchema = z
   })
   .strict();
 
-export const WorkspaceSecretaryModelUpdateSchema = z
+export const AgentThothStateUpdateSchema = z
   .object({
-    type: z.literal("workspace_secretary.model.update"),
+    type: z.literal("agent.thoth.state.update"),
     payload: z
       .object({
-        model: ThothCleanUiModelSchema,
+        state: AgentThothStateSchema,
         reason: z
           .enum([
-            "provider_turn_started",
-            "provider_progress",
-            "provider_reply_delta",
-            "provider_turn_completed",
-            "provider_blocked",
-            "provider_error",
+            "turn_started",
+            "card_opened",
+            "card_answered",
+            "quick_exec_started",
+            "background_handoff",
+            "turn_completed",
+            "turn_interrupted",
+            "turn_canceled",
           ])
           .optional(),
       })
@@ -1098,27 +856,7 @@ export const BackgroundTaskUpdateSchema = z
   })
   .strict();
 
-export type ThothMainView = z.infer<typeof ThothMainViewSchema>;
-export type SecretaryTopicStatus = z.infer<typeof SecretaryTopicStatusSchema>;
-export type SecretaryTopicModel = z.infer<typeof SecretaryTopicModelSchema>;
-export type SecretaryRuntimeStatusKind = z.infer<typeof SecretaryRuntimeStatusKindSchema>;
-export type SecretaryRuntimeStatusModel = z.infer<typeof SecretaryRuntimeStatusModelSchema>;
-export type ThothComposerModel = z.infer<typeof ThothComposerModelSchema>;
-export type SecretaryTurnControls = z.infer<typeof SecretaryTurnControlsSchema>;
-export type WorkspaceSecretaryProviderBridge = z.infer<
-  typeof WorkspaceSecretaryProviderBridgeSchema
->;
-export type WorkspaceSecretaryProviderRuntimeState = z.infer<
-  typeof WorkspaceSecretaryProviderRuntimeStateSchema
->;
-export type WorkspaceSecretaryProviderRuntimeModel = z.infer<
-  typeof WorkspaceSecretaryProviderRuntimeModelSchema
->;
-export type WorkspaceSecretaryDeprecatedCleanEvent = z.infer<
-  typeof WorkspaceSecretaryDeprecatedCleanEventSchema
->;
-/** @deprecated Use AgentTimeline / agent_stream; this type is legacy compatibility only. */
-export type WorkspaceSecretaryCleanEvent = WorkspaceSecretaryDeprecatedCleanEvent;
+export type ThothTurnControlSnapshot = z.infer<typeof ThothTurnControlSnapshotSchema>;
 export type ThothClarifyCardModel = z.infer<typeof ThothClarifyCardModelSchema>;
 export type ThothTaskCardModel = z.infer<typeof ThothTaskCardModelSchema>;
 export type ThothPyramidPlanSubgoal = z.infer<typeof ThothPyramidPlanSubgoalSchema>;
@@ -1128,12 +866,6 @@ export type ThothGoalsCardModel = z.infer<typeof ThothGoalsCardModelSchema>;
 export type ThothApprovalGoalCardModel = z.infer<typeof ThothApprovalGoalCardModelSchema>;
 export type RegisteredTaskStatus = z.infer<typeof RegisteredTaskStatusSchema>;
 export type RegisteredTaskModel = z.infer<typeof RegisteredTaskModelSchema>;
-export type SecretaryTurn = z.infer<typeof SecretaryTurnSchema>;
-export type WorkspaceSecretaryModel = z.infer<typeof WorkspaceSecretaryModelSchema>;
-export type RelayServiceStatus = z.infer<typeof RelayServiceStatusSchema>;
-export type RelayServiceModel = z.infer<typeof RelayServiceModelSchema>;
-export type SettingsCapabilityModel = z.infer<typeof SettingsCapabilityModelSchema>;
-export type ThothSettingsModel = z.infer<typeof ThothSettingsModelSchema>;
 export type BackgroundTaskModel = z.infer<typeof BackgroundTaskModelSchema>;
 export type BackgroundTasksModel = z.infer<typeof BackgroundTasksModelSchema>;
 export type LoopPhaseKind = z.infer<typeof LoopPhaseKindSchema>;
@@ -1158,45 +890,24 @@ export type LoopPhaseRecord = z.infer<typeof LoopPhaseRecordSchema>;
 export type LoopGoalRecord = z.infer<typeof LoopGoalRecordSchema>;
 export type LoopTaskModel = z.infer<typeof LoopTaskModelSchema>;
 export type BackgroundTaskAction = z.infer<typeof BackgroundTaskActionSchema>;
-export type ThothCleanUiAuthorityModel = z.infer<typeof ThothCleanUiAuthorityModelSchema>;
-export type ThothCleanUiModel = z.infer<typeof ThothCleanUiModelSchema>;
 export type ClarifyAnswerIntent = z.infer<typeof ClarifyAnswerIntentSchema>;
 export type ApprovalActionIntent = z.infer<typeof ApprovalActionIntentSchema>;
-export type SecretaryClarifyAnswerPayload = z.infer<typeof SecretaryClarifyAnswerPayloadSchema>;
-export type SecretaryApprovalActionPayload = z.infer<typeof SecretaryApprovalActionPayloadSchema>;
-export type WorkspaceSecretaryTurnActionPayload = z.infer<
-  typeof WorkspaceSecretaryTurnActionPayloadSchema
->;
-export type WorkspaceSecretarySnapshotRequest = z.infer<
-  typeof WorkspaceSecretarySnapshotRequestSchema
->;
-export type WorkspaceSecretarySendRequest = z.infer<typeof WorkspaceSecretarySendRequestSchema>;
-export type WorkspaceSecretaryAnswerRequest = z.infer<typeof WorkspaceSecretaryAnswerRequestSchema>;
-export type WorkspaceSecretaryCancelRequest = z.infer<typeof WorkspaceSecretaryCancelRequestSchema>;
-export type WorkspaceSecretaryTopicCreateRequest = z.infer<
-  typeof WorkspaceSecretaryTopicCreateRequestSchema
->;
+export type ThothClarifyCardAnswerPayload = z.infer<typeof ThothClarifyCardAnswerPayloadSchema>;
+export type ThothApprovalCardAnswerPayload = z.infer<typeof ThothApprovalCardAnswerPayloadSchema>;
+export type ThothCardAnswerPayload = z.infer<typeof ThothCardAnswerPayloadSchema>;
+export type AgentThothLifecycle = z.infer<typeof AgentThothLifecycleSchema>;
+export type AgentThothTurn = z.infer<typeof AgentThothTurnSchema>;
+export type AgentThothPendingCard = z.infer<typeof AgentThothPendingCardSchema>;
+export type AgentThothState = z.infer<typeof AgentThothStateSchema>;
+export type AgentThothStateRequest = z.infer<typeof AgentThothStateRequestSchema>;
+export type AgentThothCardAnswerRequest = z.infer<typeof AgentThothCardAnswerRequestSchema>;
 export type BackgroundTaskListRequest = z.infer<typeof BackgroundTaskListRequestSchema>;
 export type BackgroundTaskInspectRequest = z.infer<typeof BackgroundTaskInspectRequestSchema>;
 export type BackgroundTaskActionRequest = z.infer<typeof BackgroundTaskActionRequestSchema>;
 export type BackgroundTaskDecisionRequest = z.infer<typeof BackgroundTaskDecisionRequestSchema>;
-export type WorkspaceSecretaryResponsePayload = z.infer<
-  typeof WorkspaceSecretaryResponsePayloadSchema
->;
-export type WorkspaceSecretarySnapshotResponse = z.infer<
-  typeof WorkspaceSecretarySnapshotResponseSchema
->;
-export type WorkspaceSecretarySendResponse = z.infer<typeof WorkspaceSecretarySendResponseSchema>;
-export type WorkspaceSecretaryAnswerResponse = z.infer<
-  typeof WorkspaceSecretaryAnswerResponseSchema
->;
-export type WorkspaceSecretaryCancelResponse = z.infer<
-  typeof WorkspaceSecretaryCancelResponseSchema
->;
-export type WorkspaceSecretaryTopicCreateResponse = z.infer<
-  typeof WorkspaceSecretaryTopicCreateResponseSchema
->;
-export type WorkspaceSecretaryModelUpdate = z.infer<typeof WorkspaceSecretaryModelUpdateSchema>;
+export type AgentThothStateResponse = z.infer<typeof AgentThothStateResponseSchema>;
+export type AgentThothCardAnswerResponse = z.infer<typeof AgentThothCardAnswerResponseSchema>;
+export type AgentThothStateUpdate = z.infer<typeof AgentThothStateUpdateSchema>;
 export type BackgroundTaskListResponse = z.infer<typeof BackgroundTaskListResponseSchema>;
 export type BackgroundTaskInspectResponse = z.infer<typeof BackgroundTaskInspectResponseSchema>;
 export type BackgroundTaskActionResponse = z.infer<typeof BackgroundTaskActionResponseSchema>;

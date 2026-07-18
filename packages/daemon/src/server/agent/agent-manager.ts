@@ -62,11 +62,16 @@ import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-
 import { getAgentProviderDefinition } from "@thoth/protocol/provider-manifest";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
-import { providerRuntimeSessionEnvironment } from "./provider-runtime-session.js";
+import {
+  disposeProviderRuntimeSession,
+  prepareProviderRuntimeSession,
+  providerRuntimeSessionEnvironment,
+} from "./provider-runtime-session.js";
 import { stripInternalThothMcpServer, withRuntimeThothMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import { readThothRuntimeToolsConfig } from "./thoth-runtime-tools-config.js";
 import type { ThothToolCatalogFactory } from "./tools/types.js";
+import type { ForegroundThothSessionProvisioner } from "./foreground-thoth-session-provisioner.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
@@ -206,11 +211,13 @@ export interface AgentManagerOptions {
   onAgentAttention?: AgentAttentionCallback;
   onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   durableTimelineStore?: AgentTimelineStore;
+  thothHome?: string;
   terminalManager?: TerminalManager | null;
   mcpBaseUrl?: string;
   mcpAuthToken?: string;
   thothToolsEnabled?: boolean;
   thothToolCatalogFactory?: ThothToolCatalogFactory;
+  foregroundThothSessionProvisioner?: ForegroundThothSessionProvisioner;
   appendSystemPrompt?: string;
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
@@ -373,26 +380,12 @@ interface AgentMetadataPatch {
 
 const SYSTEM_ERROR_PREFIX = "[System Error]";
 
-function isWorkspaceSecretaryTimelineAgent(agent: ManagedAgentBase): boolean {
-  return agent.internal === true && agent.labels.surface === "workspace-secretary";
+function shouldSuppressProviderUserTimelineItem(item: AgentTimelineItem): boolean {
+  return item.type === "user_message" && isSystemInjectedEnvelope(item.text);
 }
 
-function shouldSuppressProviderUserTimelineItem(
-  agent: ManagedAgentBase,
-  item: AgentTimelineItem,
-): boolean {
+function isStableDaemonUserRow(row: AgentTimelineRow): boolean {
   return (
-    item.type === "user_message" &&
-    (isSystemInjectedEnvelope(item.text) || isWorkspaceSecretaryTimelineAgent(agent))
-  );
-}
-
-function isStableWorkspaceSecretaryUserRow(
-  agent: ManagedAgentBase,
-  row: AgentTimelineRow,
-): boolean {
-  return (
-    isWorkspaceSecretaryTimelineAgent(agent) &&
     row.item.type === "user_message" &&
     typeof row.item.messageId === "string" &&
     row.item.messageId.trim().length > 0
@@ -557,6 +550,7 @@ export class AgentManager {
   private readonly idFactory: () => string;
   private readonly registry?: AgentStorage;
   private readonly durableTimelineStore?: AgentTimelineStore;
+  private readonly thothHome: string | null;
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
@@ -564,6 +558,7 @@ export class AgentManager {
   private readonly mcpAuthToken: string | null;
   private thothToolsEnabled = true;
   private thothToolCatalogFactory: ThothToolCatalogFactory | null = null;
+  private foregroundThothSessionProvisioner: ForegroundThothSessionProvisioner | null = null;
   private appendSystemPrompt: string;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
@@ -575,6 +570,7 @@ export class AgentManager {
     this.idFactory = options?.idFactory ?? (() => randomUUID());
     this.registry = options?.registry;
     this.durableTimelineStore = options?.durableTimelineStore;
+    this.thothHome = options.thothHome?.trim() || null;
     this.onAgentAttention = options?.onAgentAttention;
     this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
@@ -605,6 +601,7 @@ export class AgentManager {
   private configureThothTools(options: AgentManagerOptions): void {
     this.thothToolsEnabled = options.thothToolsEnabled ?? true;
     this.thothToolCatalogFactory = options.thothToolCatalogFactory ?? null;
+    this.foregroundThothSessionProvisioner = options.foregroundThothSessionProvisioner ?? null;
   }
 
   registerClient(provider: AgentProvider, client: AgentClient): void {
@@ -649,6 +646,12 @@ export class AgentManager {
 
   setThothToolCatalogFactory(factory: ThothToolCatalogFactory | null): void {
     this.thothToolCatalogFactory = factory;
+  }
+
+  setForegroundThothSessionProvisioner(
+    provisioner: ForegroundThothSessionProvisioner | null,
+  ): void {
+    this.foregroundThothSessionProvisioner = provisioner;
   }
 
   /**
@@ -866,6 +869,10 @@ export class AgentManager {
     return this.clients.get(provider)?.capabilities ?? null;
   }
 
+  getProviderRuntimeSessionProvider(provider: AgentProvider): AgentProvider {
+    return this.clients.get(provider)?.runtimeSessionProvider ?? provider;
+  }
+
   async getProviderAvailability(provider: AgentProvider): Promise<ProviderAvailability> {
     const client = this.clients.get(provider);
     if (!client) {
@@ -907,28 +914,35 @@ export class AgentManager {
       );
     }
 
-    if (client.listCommands) {
-      return await client.listCommands(normalizedConfig);
-    }
+    return await this.withProviderControlLaunchContext(
+      normalizedConfig.provider,
+      async (launchContext) => {
+        if (client.listCommands) {
+          return await client.listCommands(normalizedConfig, launchContext);
+        }
 
-    const session = await client.createSession(normalizedConfig);
-    try {
-      if (!session.listCommands) {
-        throw new Error(
-          `Provider '${normalizedConfig.provider}' does not support listing commands`,
-        );
-      }
-      return await session.listCommands();
-    } finally {
-      try {
-        await session.close();
-      } catch (error) {
-        this.logger.warn(
-          { err: error, provider: normalizedConfig.provider },
-          "Failed to close draft command listing session",
-        );
-      }
-    }
+        const session = await client.createSession(normalizedConfig, launchContext, {
+          persistSession: false,
+        });
+        try {
+          if (!session.listCommands) {
+            throw new Error(
+              `Provider '${normalizedConfig.provider}' does not support listing commands`,
+            );
+          }
+          return await session.listCommands();
+        } finally {
+          try {
+            await session.close();
+          } catch (error) {
+            this.logger.warn(
+              { err: error, provider: normalizedConfig.provider },
+              "Failed to close draft command listing session",
+            );
+          }
+        }
+      },
+    );
   }
 
   async listDraftFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
@@ -944,23 +958,30 @@ export class AgentManager {
       );
     }
 
-    if (client.listFeatures) {
-      return await client.listFeatures(normalizedConfig);
-    }
+    return await this.withProviderControlLaunchContext(
+      normalizedConfig.provider,
+      async (launchContext) => {
+        if (client.listFeatures) {
+          return await client.listFeatures(normalizedConfig, launchContext);
+        }
 
-    const session = await client.createSession(normalizedConfig);
-    try {
-      return session.features ?? [];
-    } finally {
-      try {
-        await session.close();
-      } catch (error) {
-        this.logger.warn(
-          { err: error, provider: normalizedConfig.provider },
-          "Failed to close draft feature listing session",
-        );
-      }
-    }
+        const session = await client.createSession(normalizedConfig, launchContext, {
+          persistSession: false,
+        });
+        try {
+          return session.features ?? [];
+        } finally {
+          try {
+            await session.close();
+          } catch (error) {
+            this.logger.warn(
+              { err: error, provider: normalizedConfig.provider },
+              "Failed to close draft feature listing session",
+            );
+          }
+        }
+      },
+    );
   }
 
   getAgent(id: string): ManagedAgent | null {
@@ -1193,7 +1214,22 @@ export class AgentManager {
       },
       { config: providerLaunchConfig, storedConfig, launchContext },
     );
-    const importedConfig = await this.normalizeConfig(stripInternalThothMcpServer(imported.config));
+    const importedConfig = await this.normalizeConfig(
+      stripInternalThothMcpServer({
+        ...storedConfig,
+        ...imported.config,
+        extra: {
+          ...(storedConfig.extra ?? {}),
+          ...(imported.config.extra ?? {}),
+          // Provisioned runtime tools are a daemon launch contract. Provider import metadata
+          // may omit unknown extra fields, but that must not make the already-mounted thread
+          // look incapable on its first Thoth turn.
+          ...(storedConfig.extra?.thothRuntimeTools
+            ? { thothRuntimeTools: storedConfig.extra.thothRuntimeTools }
+            : {}),
+        },
+      }),
+    );
     const timelineRows = buildImportedTimelineRows(imported.timeline);
     const initialTitle = resolveImportedAgentTitle(importedConfig, timelineRows);
 
@@ -3034,27 +3070,25 @@ export class AgentManager {
 
     if (options?.force) {
       const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
-      // A forced provider history replay must not delete the daemon-owned user anchors that
-      // make Workspace Secretary chronology independent from a provider's native prompt shape.
-      const retainedUserRows = this.timelineStore
-        .getRows(agent.id)
-        .filter((row) => isStableWorkspaceSecretaryUserRow(agent, row));
+      // Provider histories may serialize user prompts differently. Keep the daemon-owned,
+      // message-id-backed user rows as the stable chronology for every visible provider.
+      const retainedUserRows = this.timelineStore.getRows(agent.id).filter(isStableDaemonUserRow);
       let consumedUserAnchors = 0;
       for await (const event of agent.session.streamHistory()) {
         if (event.type === "timeline") {
-          if (event.item.type === "user_message" && isWorkspaceSecretaryTimelineAgent(agent)) {
+          if (event.item.type === "user_message") {
             const anchor = retainedUserRows[consumedUserAnchors];
-            consumedUserAnchors += 1;
             if (anchor) {
+              consumedUserAnchors += 1;
               historyEvents.push({
                 ...event,
                 item: anchor.item,
-                ...(event.timestamp ? {} : { timestamp: anchor.timestamp }),
+                timestamp: anchor.timestamp,
               });
+              continue;
             }
-            continue;
           }
-          if (shouldSuppressProviderUserTimelineItem(agent, event.item)) {
+          if (shouldSuppressProviderUserTimelineItem(event.item)) {
             continue;
           }
           historyEvents.push(event);
@@ -3067,16 +3101,24 @@ export class AgentManager {
       this.timelineStore.initialize(agent.id, { timestamp: new Date().toISOString() });
       agent.historyPrimed = true;
 
-      const replay = [
-        ...retainedUserRows.slice(consumedUserAnchors).map((row) => ({
+      const replay = historyEvents.map((event) => ({
+        event,
+        timestamp: event.timestamp ?? new Date().toISOString(),
+      }));
+      for (const row of retainedUserRows.slice(consumedUserAnchors)) {
+        const anchor = {
           event: { type: "timeline" as const, provider: agent.provider, item: row.item },
           timestamp: row.timestamp,
-        })),
-        ...historyEvents.map((event) => ({
-          event,
-          timestamp: event.timestamp ?? new Date().toISOString(),
-        })),
-      ];
+        };
+        const insertionIndex = replay.findIndex(
+          (candidate) => candidate.timestamp.localeCompare(row.timestamp) > 0,
+        );
+        if (insertionIndex < 0) {
+          replay.push(anchor);
+        } else {
+          replay.splice(insertionIndex, 0, anchor);
+        }
+      }
 
       for (const { event, timestamp } of replay) {
         const row = this.recordTimeline(agent.id, event.item, { timestamp });
@@ -3099,7 +3141,7 @@ export class AgentManager {
         if (event.type !== "timeline") {
           continue;
         }
-        if (shouldSuppressProviderUserTimelineItem(agent, event.item)) {
+        if (shouldSuppressProviderUserTimelineItem(event.item)) {
           continue;
         }
         this.recordTimeline(
@@ -3349,7 +3391,7 @@ export class AgentManager {
   }): Promise<void> {
     const { agent, event, options, flags } = params;
 
-    if (shouldSuppressProviderUserTimelineItem(agent, event.item)) {
+    if (shouldSuppressProviderUserTimelineItem(event.item)) {
       flags.shouldDispatchEvent = false;
       flags.shouldNotifyWaiters = false;
       return;
@@ -3920,7 +3962,10 @@ export class AgentManager {
     config: AgentSessionConfig,
     agentId: string,
   ): Promise<PreparedSessionConfig> {
-    const storedConfig = await this.normalizeConfig(stripInternalThothMcpServer(config));
+    const provisionedConfig = this.foregroundThothSessionProvisioner
+      ? await this.foregroundThothSessionProvisioner({ agentId, config })
+      : config;
+    const storedConfig = await this.normalizeConfig(stripInternalThothMcpServer(provisionedConfig));
     const launchConfig = this.applyDaemonAppendSystemPrompt(
       withRuntimeThothMcpServer({
         config: storedConfig,
@@ -3955,7 +4000,7 @@ export class AgentManager {
       agentId,
       env: {
         ...providerRuntimeSessionEnvironment(
-          launchConfig.provider,
+          client.runtimeSessionProvider ?? launchConfig.provider,
           readThothRuntimeToolsConfig(launchConfig)?.sessionHome,
         ),
         ...env,
@@ -4044,7 +4089,10 @@ export class AgentManager {
     const client = this.clients.get(provider);
     if (!client?.archiveNativeSession) return;
     try {
-      await client.archiveNativeSession(persistence);
+      await client.archiveNativeSession(
+        persistence,
+        this.buildPersistenceControlLaunchContext(provider, persistence),
+      );
     } catch (error) {
       this.logger.warn(
         { error, provider, sessionId: persistence.sessionId },
@@ -4060,7 +4108,45 @@ export class AgentManager {
     if (!persistence) return;
     const client = this.clients.get(provider);
     if (!client?.unarchiveNativeSession) return;
-    await client.unarchiveNativeSession(persistence);
+    await client.unarchiveNativeSession(
+      persistence,
+      this.buildPersistenceControlLaunchContext(provider, persistence),
+    );
+  }
+
+  private async withProviderControlLaunchContext<T>(
+    provider: AgentProvider,
+    run: (launchContext: AgentLaunchContext) => Promise<T>,
+  ): Promise<T> {
+    if (!this.thothHome) {
+      return await run({ env: {} });
+    }
+    const runtimeSessionProvider = this.getProviderRuntimeSessionProvider(provider);
+    const runtimeSession = prepareProviderRuntimeSession({
+      provider: runtimeSessionProvider,
+      thothHome: this.thothHome,
+      sessionId: `control-${randomUUID()}`,
+    });
+    try {
+      return await run({ env: runtimeSession.env });
+    } finally {
+      disposeProviderRuntimeSession(runtimeSessionProvider, runtimeSession);
+    }
+  }
+
+  private buildPersistenceControlLaunchContext(
+    provider: AgentProvider,
+    persistence: AgentPersistenceHandle,
+  ): AgentLaunchContext {
+    const sessionHome = readThothRuntimeToolsConfig({
+      extra: persistence.metadata?.extra,
+    })?.sessionHome;
+    return {
+      env: providerRuntimeSessionEnvironment(
+        this.getProviderRuntimeSessionProvider(provider),
+        sessionHome,
+      ),
+    };
   }
 
   private requireAgent(id: string): LiveManagedAgent {

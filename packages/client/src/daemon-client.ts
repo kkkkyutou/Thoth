@@ -96,15 +96,16 @@ import type {
   AgentSessionConfig,
 } from "@thoth/protocol/agent-types";
 import type {
+  AgentThothCardAnswerResponse,
+  AgentThothStateResponse,
+  AgentThothStateUpdate,
   BackgroundTaskAction,
   BackgroundTaskActionResponse,
   BackgroundTaskDecisionResponse,
   BackgroundTaskInspectResponse,
   BackgroundTaskListResponse,
-  WorkspaceSecretaryTurnActionPayload,
-  ThothComposerModel,
-  WorkspaceSecretarySendRequest,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+  ThothCardAnswerPayload,
+} from "@thoth/protocol/thoth/rpc-schemas";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@thoth/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@thoth/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@thoth/protocol/terminal-subscription-key";
@@ -230,8 +231,8 @@ export type DaemonEvent =
       payload: Extract<SessionOutboundMessage, { type: "providers_snapshot_update" }>["payload"];
     }
   | {
-      type: "workspace_secretary_model_update";
-      payload: WorkspaceSecretaryModelUpdatePayload;
+      type: "agent_thoth_state_update";
+      payload: AgentThothStateUpdate["payload"];
     }
   | { type: "error"; message: string };
 
@@ -274,12 +275,13 @@ export interface SendMessageOptions {
 type AgentConfigOverrides = Partial<Omit<AgentSessionConfig, "provider" | "cwd">>;
 
 export interface CreateAgentRequestOptions extends AgentConfigOverrides {
-  config?: AgentSessionConfig;
+  config?: CreateAgentRequestMessage["config"];
   provider?: AgentProvider;
   cwd?: string;
   env?: CreateAgentRequestMessage["env"];
   workspaceId?: string;
   initialPrompt?: string;
+  thoth?: CreateAgentRequestMessage["thoth"];
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
   images?: CreateAgentRequestMessage["images"];
@@ -340,14 +342,9 @@ type WorkspaceCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "workspace.create.response" }
 >["payload"];
-type WorkspaceSecretaryPayload = Extract<
-  SessionOutboundMessage,
-  { type: "workspace_secretary.snapshot.response" }
->["payload"];
-type WorkspaceSecretaryModelUpdatePayload = Extract<
-  SessionOutboundMessage,
-  { type: "workspace_secretary.model.update" }
->["payload"];
+type AgentThothStatePayload = AgentThothStateResponse["payload"];
+type AgentThothCardAnswerPayload = AgentThothCardAnswerResponse["payload"];
+type AgentThothStateUpdatePayload = AgentThothStateUpdate["payload"];
 type BackgroundTaskListPayload = BackgroundTaskListResponse["payload"];
 type BackgroundTaskInspectPayload = BackgroundTaskInspectResponse["payload"];
 type BackgroundTaskActionPayload = BackgroundTaskActionResponse["payload"];
@@ -854,7 +851,6 @@ function toTimeoutError(error: unknown, label: string, timeoutMs: number): Error
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 1500;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30000;
 const DEFAULT_SESSION_RPC_TIMEOUT_MS = 60_000;
-const WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 const DEFAULT_LIVENESS_TIMEOUT_MS = 5000;
 const LIVENESS_HEARTBEAT_INTERVAL_MS = 10_000;
@@ -2038,136 +2034,43 @@ export class DaemonClient {
     });
   }
 
-  async fetchWorkspaceSecretarySnapshot(
-    input: {
-      workspaceId?: string;
-      workspacePath?: string;
-      workspaceName?: string;
-      topicId?: string;
-    } = {},
-    requestId?: string,
-  ): Promise<WorkspaceSecretaryPayload> {
+  async getAgentThothState(agentId: string, requestId?: string): Promise<AgentThothStatePayload> {
     return this.sendCorrelatedSessionRequest({
       requestId,
       message: {
-        type: "workspace_secretary.snapshot.request",
-        workspaceId: input.workspaceId,
-        workspacePath: input.workspacePath,
-        workspaceName: input.workspaceName,
-        ...(input.topicId ? { topicId: input.topicId } : {}),
+        type: "agent.thoth.state.request",
+        agentId,
       },
-      responseType: "workspace_secretary.snapshot.response",
+      responseType: "agent.thoth.state.response",
     });
   }
 
-  async sendWorkspaceSecretaryMessage(input: {
-    workspaceId?: string;
-    workspacePath?: string;
-    topicId?: string;
-    text: string;
-    composer: ThothComposerModel;
-    uiAgentId?: string;
-    messageId?: string;
-    images?: Array<{ data: string; mimeType: string }>;
-    attachments?: WorkspaceSecretarySendRequest["attachments"];
-    requestId?: string;
-  }): Promise<WorkspaceSecretaryPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: input.requestId,
-      message: {
-        type: "workspace_secretary.send.request",
-        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
-        ...(input.topicId ? { topicId: input.topicId } : {}),
-        text: input.text,
-        ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
-        ...(input.messageId ? { messageId: input.messageId } : {}),
-        ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
-        ...(input.attachments && input.attachments.length > 0
-          ? { attachments: input.attachments }
-          : {}),
-        composer: input.composer,
-      },
-      responseType: "workspace_secretary.send.response",
-      timeout: WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS,
-    });
-  }
-
-  async answerWorkspaceSecretaryClarify(input: {
-    workspaceId?: string;
-    workspacePath?: string;
-    topicId?: string;
+  async answerAgentThothCard(input: {
+    agentId: string;
     cardId: string;
-    answer: WorkspaceSecretaryTurnActionPayload;
-    uiAgentId?: string;
+    answer: ThothCardAnswerPayload;
+    expectedRevision: number;
+    commandId: string;
     requestId?: string;
-  }): Promise<WorkspaceSecretaryPayload> {
+  }): Promise<AgentThothCardAnswerPayload> {
     return this.sendCorrelatedSessionRequest({
       requestId: input.requestId,
       message: {
-        type: "workspace_secretary.answer.request",
-        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
-        ...(input.topicId ? { topicId: input.topicId } : {}),
+        type: "agent.thoth.card.answer.request",
+        agentId: input.agentId,
         cardId: input.cardId,
-        ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
         answer: input.answer,
+        expectedRevision: input.expectedRevision,
+        commandId: input.commandId,
       },
-      responseType: "workspace_secretary.answer.response",
-      timeout: WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS,
+      responseType: "agent.thoth.card.answer.response",
     });
   }
 
-  async cancelWorkspaceSecretaryTurn(
-    input: {
-      workspaceId?: string;
-      workspacePath?: string;
-      uiAgentId?: string;
-      topicId?: string;
-      requestId?: string;
-    } = {},
-  ): Promise<WorkspaceSecretaryPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: input.requestId,
-      message: {
-        type: "workspace_secretary.cancel.request",
-        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-        ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
-        ...(input.uiAgentId ? { uiAgentId: input.uiAgentId } : {}),
-        ...(input.topicId ? { topicId: input.topicId } : {}),
-      },
-      responseType: "workspace_secretary.cancel.response",
-      timeout: WORKSPACE_SECRETARY_PROVIDER_RPC_TIMEOUT_MS,
-    });
-  }
-
-  async createWorkspaceSecretaryTopic(
-    input?:
-      | string
-      | {
-          requestId?: string;
-          workspaceId?: string;
-          workspacePath?: string;
-          workspaceName?: string;
-        },
-  ): Promise<WorkspaceSecretaryPayload> {
-    const request = typeof input === "string" ? { requestId: input } : input;
-    return this.sendCorrelatedSessionRequest({
-      requestId: request?.requestId,
-      message: {
-        type: "workspace_secretary.topic.create.request",
-        ...(request?.workspaceId ? { workspaceId: request.workspaceId } : {}),
-        ...(request?.workspacePath ? { workspacePath: request.workspacePath } : {}),
-        ...(request?.workspaceName ? { workspaceName: request.workspaceName } : {}),
-      },
-      responseType: "workspace_secretary.topic.create.response",
-    });
-  }
-
-  subscribeWorkspaceSecretaryModelUpdates(
-    handler: (payload: WorkspaceSecretaryModelUpdatePayload) => void,
+  subscribeAgentThothStateUpdates(
+    handler: (payload: AgentThothStateUpdatePayload) => void,
   ): () => void {
-    return this.on("workspace_secretary.model.update", (message) => handler(message.payload));
+    return this.on("agent.thoth.state.update", (message) => handler(message.payload));
   }
 
   async listBackgroundTasks(
@@ -2345,6 +2248,7 @@ export class DaemonClient {
       ...(options.env ? { env: options.env } : {}),
       ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
       ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
+      ...(options.thoth ? { thoth: options.thoth } : {}),
       ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
       ...(options.outputSchema ? { outputSchema: options.outputSchema } : {}),
       ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
@@ -2788,7 +2692,7 @@ export class DaemonClient {
       agentId,
       requestId,
     });
-    await this.sendRequest({
+    const payload = await this.sendRequest({
       requestId,
       message,
       options: { skipQueue: true },
@@ -2802,6 +2706,9 @@ export class DaemonClient {
         return msg.payload;
       },
     });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
   }
 
   async setAgentMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {
@@ -5403,9 +5310,9 @@ export class DaemonClient {
           type: "providers_snapshot_update",
           payload: msg.payload,
         };
-      case "workspace_secretary.model.update":
+      case "agent.thoth.state.update":
         return {
-          type: "workspace_secretary_model_update",
+          type: "agent_thoth_state_update",
           payload: msg.payload,
         };
       default:
@@ -5486,7 +5393,9 @@ export class DaemonClient {
   }
 }
 
-function resolveAgentConfig(options: CreateAgentRequestOptions): AgentSessionConfig {
+function resolveAgentConfig(
+  options: CreateAgentRequestOptions,
+): CreateAgentRequestMessage["config"] {
   const {
     config,
     provider,
@@ -5494,6 +5403,7 @@ function resolveAgentConfig(options: CreateAgentRequestOptions): AgentSessionCon
     env: _env,
     workspaceId: _workspaceId,
     initialPrompt: _initialPrompt,
+    thoth: _thoth,
     images: _images,
     git: _git,
     worktreeName: _worktreeName,
@@ -5510,13 +5420,13 @@ function resolveAgentConfig(options: CreateAgentRequestOptions): AgentSessionCon
 
   const merged = config ? { ...baseConfig, ...config } : baseConfig;
 
-  if (!merged.provider || !merged.cwd) {
-    throw new Error("createAgent requires provider and cwd");
+  if (!merged.provider || (!merged.cwd && !options.workspaceId)) {
+    throw new Error("createAgent requires provider and either workspaceId or cwd");
   }
 
   return {
     ...merged,
     provider: merged.provider,
-    cwd: merged.cwd,
+    ...(merged.cwd ? { cwd: merged.cwd } : {}),
   };
 }

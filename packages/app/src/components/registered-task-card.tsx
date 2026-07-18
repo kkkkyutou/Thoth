@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type { RegisteredTaskModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { RegisteredTaskModel } from "@thoth/protocol/thoth/rpc-schemas";
 
 export function RegisteredTaskCard({ task }: { task: RegisteredTaskModel }) {
   return (

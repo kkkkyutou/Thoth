@@ -1,5 +1,6 @@
-import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
@@ -69,6 +70,63 @@ async function withEnv(key: string, value: string, run: () => Promise<void>): Pr
 }
 
 describe("ProviderSnapshotManager public surface", () => {
+  test("uses and disposes a writable provider runtime home for catalog probes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "thoth-provider-probe-"));
+    const sourceHome = join(root, "source-codex-home");
+    const thothHome = join(root, "thoth-home");
+    const previousCodexHome = process.env.CODEX_HOME;
+    let probeHome: string | undefined;
+    try {
+      mkdirSync(sourceHome, { recursive: true });
+      writeFileSync(join(sourceHome, "auth.json"), '{"token":"readonly-source"}\n');
+      writeFileSync(join(sourceHome, "config.toml"), 'model = "source"\n');
+      process.env.CODEX_HOME = sourceHome;
+      const fetchCatalog = vi.fn(async (options: FetchCatalogOptions) => {
+        probeHome = options.launchContext?.env?.CODEX_HOME;
+        expect(probeHome).toBeTruthy();
+        expect(probeHome).not.toBe(sourceHome);
+        writeFileSync(join(probeHome!, "probe.sqlite"), "writable\n");
+        return { models: [] as AgentModelDefinition[], modes: [] as AgentMode[] };
+      });
+      const manager = new ProviderSnapshotManager({
+        logger: createTestLogger(),
+        thothHome,
+        providerOverrides: {
+          claude: { enabled: false },
+          copilot: { enabled: false },
+          opencode: { enabled: false },
+          pi: { enabled: false },
+        },
+        extraClients: {
+          codex: createExtraClient("codex", {
+            isAvailable: vi.fn(async () => true),
+            fetchCatalog,
+          }),
+        },
+      });
+      try {
+        const entry = await manager.getProvider({ provider: "codex", wait: true });
+        expect(entry.status).toBe("ready");
+        expect(fetchCatalog).toHaveBeenCalledTimes(1);
+        expect(probeHome).toBeTruthy();
+        expect(existsSync(probeHome!)).toBe(false);
+        expect(readFileSync(join(sourceHome, "auth.json"), "utf8")).toBe(
+          '{"token":"readonly-source"}\n',
+        );
+        expect(readFileSync(join(sourceHome, "config.toml"), "utf8")).toBe('model = "source"\n');
+      } finally {
+        manager.destroy();
+      }
+    } finally {
+      if (previousCodexHome === undefined) {
+        delete process.env.CODEX_HOME;
+      } else {
+        process.env.CODEX_HOME = previousCodexHome;
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("listRegisteredProviderIds includes the built-in providers", () => {
     const manager = new ProviderSnapshotManager({ logger: createTestLogger() });
     try {

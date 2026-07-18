@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { LoopPhaseRecord } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { LoopPhaseRecord } from "@thoth/protocol/thoth/rpc-schemas";
 
 import type { StoredAgentRecord } from "../agent-storage.js";
 import type {
@@ -76,16 +76,16 @@ function recoverCodexPhaseRecord(input: ProviderPhaseRecoveryInput): StoredAgent
   }
   const title = `${phaseTitle(input.phase.phase)}: ${input.goal.title}`;
   const modeId =
-    input.phase.phase === "review" ? "auto" : (input.task.providerSession.modeId ?? "auto");
+    input.phase.phase === "review" ? "auto" : (input.task.providerBinding.modeId ?? "auto");
   const createdAt = input.phase.startedAt ?? meta.timestamp;
   const updatedAt = input.phase.completedAt ?? input.task.updatedAt;
   const config = withThothRuntimeTools(
     {
       modeId,
-      model: input.task.providerSession.model,
-      thinkingOptionId: input.task.providerSession.thinkingOptionId,
+      model: input.task.providerBinding.model,
+      thinkingOptionId: input.task.providerBinding.thinkingOptionId,
       featureValues: {
-        ...(input.task.providerSession.featureValues ?? {}),
+        ...(input.task.providerBinding.featureValues ?? {}),
         ...(input.phase.phase === "planexec" ? { plan_mode: true } : {}),
       },
     },
@@ -117,8 +117,8 @@ function recoverCodexPhaseRecord(input: ProviderPhaseRecoveryInput): StoredAgent
     runtimeInfo: {
       provider: "codex",
       sessionId: meta.sessionId,
-      model: input.task.providerSession.model ?? null,
-      thinkingOptionId: input.task.providerSession.thinkingOptionId ?? null,
+      model: input.task.providerBinding.model ?? null,
+      thinkingOptionId: input.task.providerBinding.thinkingOptionId ?? null,
       modeId,
     },
     persistence: {

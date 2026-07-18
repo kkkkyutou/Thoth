@@ -10,15 +10,12 @@ import {
   ThothRuntimeLoopStrengthSchema,
   ThothRuntimeModeSchema,
 } from "./thoth-runtime-contract.js";
-import { RegisteredTaskModelSchema } from "./workspace-secretary/rpc-schemas.js";
+import { RegisteredTaskModelSchema } from "./thoth/rpc-schemas.js";
 import {
-  SecretaryTopicModelSchema,
-  SecretaryRuntimeStatusModelSchema,
-  SecretaryTurnSchema,
   ThothClarifyCardModelSchema,
   ThothApprovalGoalCardModelSchema,
   ThothTaskCardModelSchema,
-} from "./workspace-secretary/rpc-schemas.js";
+} from "./thoth/rpc-schemas.js";
 import {
   ChatCreateRequestSchema,
   ChatListRequestSchema,
@@ -68,27 +65,21 @@ import {
   LoopStopResponseSchema,
 } from "@thoth/protocol/loop/rpc-schemas";
 import {
-  WorkspaceSecretarySnapshotRequestSchema,
-  WorkspaceSecretarySendRequestSchema,
-  WorkspaceSecretaryAnswerRequestSchema,
-  WorkspaceSecretaryCancelRequestSchema,
-  WorkspaceSecretaryTopicCreateRequestSchema,
+  AgentThothStateRequestSchema,
+  AgentThothCardAnswerRequestSchema,
   BackgroundTaskListRequestSchema,
   BackgroundTaskInspectRequestSchema,
   BackgroundTaskActionRequestSchema,
   BackgroundTaskDecisionRequestSchema,
-  WorkspaceSecretarySnapshotResponseSchema,
-  WorkspaceSecretarySendResponseSchema,
-  WorkspaceSecretaryAnswerResponseSchema,
-  WorkspaceSecretaryCancelResponseSchema,
-  WorkspaceSecretaryTopicCreateResponseSchema,
-  WorkspaceSecretaryModelUpdateSchema,
+  AgentThothStateResponseSchema,
+  AgentThothCardAnswerResponseSchema,
+  AgentThothStateUpdateSchema,
   BackgroundTaskListResponseSchema,
   BackgroundTaskInspectResponseSchema,
   BackgroundTaskActionResponseSchema,
   BackgroundTaskDecisionResponseSchema,
   BackgroundTaskUpdateSchema,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 import {
   ThothConfigRawSchema,
   ThothLifecycleCommandRawSchema,
@@ -119,6 +110,33 @@ export {
   type ThothScriptEntryRaw,
   type ProjectConfigRpcError,
 };
+
+export const ThothTurnSnapshotSchema = z.union([
+  z.object({ enabled: z.literal(false) }).strict(),
+  z
+    .object({
+      enabled: z.literal(true),
+      executionMode: z.literal("quick"),
+      clarifyStrength: z.enum(["light", "balanced", "dive"]),
+    })
+    .strict(),
+  z
+    .object({
+      enabled: z.literal(true),
+      executionMode: z.literal("loop"),
+      clarifyStrength: z.enum(["light", "balanced", "dive"]),
+      loopStrength: ThothRuntimeLoopStrengthSchema,
+    })
+    .strict(),
+]);
+
+export const ThothTurnAckSchema = z
+  .object({
+    turnKind: z.enum(["raw", "thoth"]),
+    turnId: z.string().min(1),
+    authorityRevision: z.number().int().nonnegative(),
+  })
+  .strict();
 // ---------------------------------------------------------------------------
 // Mutable daemon config schemas (shared between server store and client)
 // ---------------------------------------------------------------------------
@@ -147,70 +165,15 @@ const MutableStructuredGenerationProviderSchema = z
   })
   .passthrough();
 
-const MutableWorkspaceSecretaryProviderSessionSchema = z
-  .object({
-    provider: z.string().min(1),
-    model: z.string().min(1).optional(),
-    modeId: z.string().min(1).optional(),
-    thinkingOptionId: z.string().min(1).optional(),
-    featureValues: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict();
-
-const MutableWorkspaceSecretaryConfigSchema = z
+const MutableThothConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
-    providerSession: MutableWorkspaceSecretaryProviderSessionSchema.optional(),
     mode: ThothRuntimeModeSchema.optional(),
     clarifyStrength: ThothRuntimeClarifyStrengthSchema.exclude(["deep"]).optional(),
     loopStrength: ThothRuntimeLoopStrengthSchema.optional(),
-    registeredTasks: z.array(RegisteredTaskModelSchema).optional(),
     selectedBackgroundTaskId: z.string().min(1).nullable().optional(),
-    topicSnapshots: z
-      .array(
-        z
-          .object({
-            workspacePath: z.string().min(1),
-            workspaceName: z.string().min(1),
-            activeTopicId: z.string().min(1),
-            topics: z.array(SecretaryTopicModelSchema).min(1),
-            turns: z.array(SecretaryTurnSchema),
-            topicStates: z
-              .array(
-                z
-                  .object({
-                    topicId: z.string().min(1),
-                    turns: z.array(SecretaryTurnSchema),
-                    currentClarifyState: z.string().min(1),
-                    activeTurnPhase: z.string().min(1),
-                    foregroundTurnState: z.enum(["background_handoff"]).optional(),
-                    activeTopicProviderBacked: z.boolean().optional(),
-                    timelineAgentId: z.string().min(1).nullable().optional(),
-                    status: SecretaryRuntimeStatusModelSchema.optional(),
-                  })
-                  .strict(),
-              )
-              .optional(),
-            topicAgents: z
-              .array(
-                z
-                  .object({
-                    agentKey: z.string().min(1),
-                    agentId: z.string().min(1),
-                  })
-                  .strict(),
-              )
-              .optional(),
-            nextTopicIndex: z.number().int().min(1),
-            currentClarifyState: z.string().min(1),
-            activeTurnPhase: z.string().min(1),
-            activeTopicProviderBacked: z.boolean().optional(),
-          })
-          .strict(),
-      )
-      .optional(),
   })
-  .passthrough();
+  .strict();
 
 const MutableMetadataGenerationConfigSchema = z
   .object({
@@ -239,13 +202,13 @@ export const MutableDaemonConfigSchema = z
       .passthrough(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
-    workspaceSecretary: MutableWorkspaceSecretaryConfigSchema.default({}),
+    thoth: MutableThothConfigSchema.default({}),
     autoArchiveAfterMerge: z.boolean().default(false),
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
   })
-  .passthrough();
+  .strict();
 
 export const MutableDaemonConfigPatchSchema = z
   .object({
@@ -254,14 +217,14 @@ export const MutableDaemonConfigPatchSchema = z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
       .optional(),
     metadataGeneration: MutableMetadataGenerationConfigSchema.partial().optional(),
-    workspaceSecretary: MutableWorkspaceSecretaryConfigSchema.partial().optional(),
+    thoth: MutableThothConfigSchema.partial().optional(),
     autoArchiveAfterMerge: z.boolean().optional(),
     enableTerminalAgentHooks: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
   })
   .partial()
-  .passthrough();
+  .strict();
 
 export type MutableDaemonConfig = z.infer<typeof MutableDaemonConfigSchema>;
 export type MutableDaemonConfigPatch = z.infer<typeof MutableDaemonConfigPatchSchema>;
@@ -1167,13 +1130,7 @@ export const SendAgentMessageRequestSchema = z.object({
   messageId: z.string().optional(), // Client-provided ID for deduplication
   images: z.array(ImageAttachmentSchema).optional(),
   attachments: AgentAttachmentsSchema,
-  thoth: z
-    .object({
-      enabled: z.boolean(),
-      executionMode: z.enum(["quick", "loop"]),
-      clarifyStrength: z.enum(["light", "balanced", "dive"]),
-    })
-    .optional(),
+  thoth: ThothTurnSnapshotSchema.optional(),
 });
 
 export const WaitForFinishRequestSchema = z.object({
@@ -1289,23 +1246,34 @@ export const CreateAgentWorktreeTargetSchema = z.discriminatedUnion("mode", [
 
 export type CreateAgentWorktreeTarget = z.infer<typeof CreateAgentWorktreeTargetSchema>;
 
-export const CreateAgentRequestMessageSchema = z.object({
-  type: z.literal("create_agent_request"),
-  config: AgentSessionConfigSchema,
-  env: z.record(z.string(), z.string()).optional(),
-  workspaceId: z.string().optional(),
-  worktreeName: z.string().optional(),
-  initialPrompt: z.string().optional(),
-  clientMessageId: z.string().optional(),
-  outputSchema: z.record(z.string(), z.unknown()).optional(),
-  images: z.array(ImageAttachmentSchema).optional(),
-  attachments: AgentAttachmentsSchema,
-  git: GitSetupOptionsSchema.optional(),
-  worktree: CreateAgentWorktreeTargetSchema.optional(),
-  autoArchive: z.boolean().optional(),
-  labels: z.record(z.string(), z.string()).default({}),
-  requestId: z.string(),
-});
+export const CreateAgentRequestMessageSchema = z
+  .object({
+    type: z.literal("create_agent_request"),
+    config: AgentSessionConfigSchema.extend({ cwd: z.string().optional() }),
+    env: z.record(z.string(), z.string()).optional(),
+    workspaceId: z.string().optional(),
+    worktreeName: z.string().optional(),
+    initialPrompt: z.string().optional(),
+    thoth: ThothTurnSnapshotSchema.optional(),
+    clientMessageId: z.string().optional(),
+    outputSchema: z.record(z.string(), z.unknown()).optional(),
+    images: z.array(ImageAttachmentSchema).optional(),
+    attachments: AgentAttachmentsSchema,
+    git: GitSetupOptionsSchema.optional(),
+    worktree: CreateAgentWorktreeTargetSchema.optional(),
+    autoArchive: z.boolean().optional(),
+    labels: z.record(z.string(), z.string()).default({}),
+    requestId: z.string(),
+  })
+  .superRefine((request, ctx) => {
+    if (!request.workspaceId && !request.config.cwd?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["config", "cwd"],
+        message: "create_agent_request requires workspaceId or config.cwd",
+      });
+    }
+  });
 
 export const ListProviderModelsRequestMessageSchema = z.object({
   type: z.literal("list_provider_models_request"),
@@ -2291,11 +2259,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
-  WorkspaceSecretarySnapshotRequestSchema,
-  WorkspaceSecretarySendRequestSchema,
-  WorkspaceSecretaryAnswerRequestSchema,
-  WorkspaceSecretaryCancelRequestSchema,
-  WorkspaceSecretaryTopicCreateRequestSchema,
+  AgentThothStateRequestSchema,
+  AgentThothCardAnswerRequestSchema,
   BackgroundTaskListRequestSchema,
   BackgroundTaskInspectRequestSchema,
   BackgroundTaskActionRequestSchema,
@@ -2546,6 +2511,7 @@ export const AgentCreatedStatusPayloadSchema = z
   .object({
     status: z.literal("agent_created"),
     agent: AgentSnapshotPayloadSchema,
+    turnAck: ThothTurnAckSchema.optional(),
   })
   .extend(AgentStatusWithRequestSchema.shape);
 
@@ -3119,6 +3085,7 @@ export const CancelAgentResponseMessageSchema = z.object({
     requestId: z.string(),
     agentId: z.string(),
     agent: AgentSnapshotPayloadSchema.nullable(),
+    error: z.string().nullable().optional(),
   }),
 });
 
@@ -3168,6 +3135,7 @@ export const SendAgentMessageResponseMessageSchema = z.object({
     agentId: z.string(),
     accepted: z.boolean(),
     error: z.string().nullable(),
+    turnAck: ThothTurnAckSchema.optional(),
   }),
 });
 
@@ -4457,12 +4425,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectResponseSchema,
   LoopLogsResponseSchema,
   LoopStopResponseSchema,
-  WorkspaceSecretarySnapshotResponseSchema,
-  WorkspaceSecretarySendResponseSchema,
-  WorkspaceSecretaryAnswerResponseSchema,
-  WorkspaceSecretaryCancelResponseSchema,
-  WorkspaceSecretaryTopicCreateResponseSchema,
-  WorkspaceSecretaryModelUpdateSchema,
+  AgentThothStateResponseSchema,
+  AgentThothCardAnswerResponseSchema,
+  AgentThothStateUpdateSchema,
   BackgroundTaskListResponseSchema,
   BackgroundTaskInspectResponseSchema,
   BackgroundTaskActionResponseSchema,
@@ -4473,6 +4438,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
+export type ThothTurnSnapshot = z.infer<typeof ThothTurnSnapshotSchema>;
+export type ThothTurnAck = z.infer<typeof ThothTurnAckSchema>;
 
 // Type exports for individual message types
 export type ActivityLogMessage = z.infer<typeof ActivityLogMessageSchema>;

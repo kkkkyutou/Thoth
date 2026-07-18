@@ -11,11 +11,6 @@ import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-co
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 import { TerminalProfileSchema } from "@thoth/protocol/messages";
 import { DEFAULT_DIRECT_DAEMON_ENDPOINT } from "@thoth/protocol/daemon-endpoints";
-import {
-  SecretaryRuntimeStatusModelSchema,
-  SecretaryTopicModelSchema,
-  SecretaryTurnSchema,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -168,73 +163,15 @@ const StructuredGenerationProviderConfigSchema = z
   })
   .strict();
 
-const WorkspaceSecretaryProviderSessionSchema = z
-  .object({
-    provider: z.string().min(1),
-    model: z.string().min(1).optional(),
-    modeId: z.string().min(1).optional(),
-    thinkingOptionId: z.string().min(1).optional(),
-    featureValues: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict();
-
-const WorkspaceSecretaryConfigSchema = z
+const ThothConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
-    providerSession: WorkspaceSecretaryProviderSessionSchema.optional(),
     mode: z.enum(["quick", "loop"]).optional(),
     clarifyStrength: z.enum(["none", "auto", "light", "balanced", "dive"]).optional(),
     loopStrength: z
       .enum(["auto", "one_plan_one_do", "light", "balanced", "run_until_stopped"])
       .optional(),
-    registeredTasks: z.array(z.unknown()).optional(),
     selectedBackgroundTaskId: z.string().min(1).nullable().optional(),
-    topicSnapshots: z
-      .array(
-        z
-          .object({
-            workspacePath: z.string().min(1),
-            workspaceName: z.string().min(1),
-            activeTopicId: z.string().min(1),
-            topics: z.array(SecretaryTopicModelSchema).min(1),
-            turns: z.array(SecretaryTurnSchema),
-            topicStates: z
-              .array(
-                z
-                  .object({
-                    topicId: z.string().min(1),
-                    turns: z.array(SecretaryTurnSchema),
-                    currentClarifyState: z.string().min(1),
-                    activeTurnPhase: z.string().min(1),
-                    foregroundTurnState: z.enum(["background_handoff"]).optional(),
-                    activeTopicProviderBacked: z.boolean().optional(),
-                    timelineAgentId: z.string().min(1).nullable().optional(),
-                    status: SecretaryRuntimeStatusModelSchema.optional(),
-                  })
-                  .strict(),
-              )
-              .optional(),
-            // Workspace Secretary provider agents are daemon-owned and hidden from the normal
-            // Agent surface. Keep their topic mapping so a restarted daemon can resume the
-            // correct provider session instead of silently creating an unrelated turn.
-            topicAgents: z
-              .array(
-                z
-                  .object({
-                    agentKey: z.string().min(1),
-                    agentId: z.string().min(1),
-                  })
-                  .strict(),
-              )
-              .optional(),
-            nextTopicIndex: z.number().int().min(1),
-            currentClarifyState: z.string().min(1),
-            activeTurnPhase: z.string().min(1),
-            activeTopicProviderBacked: z.boolean().optional(),
-          })
-          .strict(),
-      )
-      .optional(),
   })
   .strict();
 
@@ -363,7 +300,7 @@ export const PersistedConfigSchema = z
       .optional(),
 
     providers: ProvidersSchema.optional(),
-    workspaceSecretary: WorkspaceSecretaryConfigSchema.optional(),
+    thoth: ThothConfigSchema.optional(),
     worktrees: WorktreesConfigSchema.optional(),
     agents: z
       .object({
@@ -451,6 +388,15 @@ function stripDeprecatedLocalSpeechConfigFields(parsed: unknown): unknown {
   return root;
 }
 
+function stripRemovedWorkspaceSecretaryConfig(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return parsed;
+  }
+  const root = { ...(parsed as Record<string, unknown>) };
+  delete root.workspaceSecretary;
+  return root;
+}
+
 export function loadPersistedConfig(thothHome: string, logger?: LoggerLike): PersistedConfig {
   const log = getLogger(logger);
   const configPath = getConfigPath(thothHome);
@@ -489,7 +435,9 @@ export function loadPersistedConfig(thothHome: string, logger?: LoggerLike): Per
     });
   }
 
-  const migrated = stripDeprecatedLocalSpeechConfigFields(parsed);
+  const migrated = stripDeprecatedLocalSpeechConfigFields(
+    stripRemovedWorkspaceSecretaryConfig(parsed),
+  );
   const result = PersistedConfigSchema.safeParse(migrated);
   if (!result.success) {
     const issues = result.error.issues

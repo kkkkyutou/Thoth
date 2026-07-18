@@ -2,15 +2,15 @@ import { useCallback, useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type {
-  SecretaryApprovalActionPayload,
+  ThothApprovalCardAnswerPayload,
   ThothApprovalGoalCardModel,
   ThothTaskCardModel,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+} from "@thoth/protocol/thoth/rpc-schemas";
 
 type ApprovalCardModel = ThothTaskCardModel | ThothApprovalGoalCardModel;
-type ApprovalSubmitter = (payload: SecretaryApprovalActionPayload) => void | Promise<void>;
+type ApprovalSubmitter = (payload: ThothApprovalCardAnswerPayload) => void | Promise<void>;
 
-interface SecretaryApprovalCardProps {
+interface ThothApprovalCardProps {
   card: ApprovalCardModel;
   kind: "task" | "goal";
   approvalMode?: "quick" | "loop";
@@ -24,12 +24,7 @@ function cardPressableStyle({
   return [styles.actionButton, (hovered || pressed) && styles.actionButtonHovered];
 }
 
-export function SecretaryApprovalCard({
-  card,
-  kind,
-  approvalMode,
-  onSubmit,
-}: SecretaryApprovalCardProps) {
+export function ThothApprovalCard({ card, kind, approvalMode, onSubmit }: ThothApprovalCardProps) {
   const { theme } = useUnistyles();
   const readonly = card.submitted || !onSubmit;
   const [note, setNote] = useState("");
@@ -42,13 +37,13 @@ export function SecretaryApprovalCard({
       ? {
           intent: "accept_quick" as const,
           label: kind === "task" ? "确认继续" : "前台执行",
-          testId: `secretary-${kind}-accept-quick`,
+          testId: `thoth-${kind}-accept-quick`,
         }
       : effectiveApprovalMode === "loop"
         ? {
             intent: "accept_loop" as const,
             label: kind === "task" ? "确认继续" : "确认注册",
-            testId: `secretary-${kind}-accept-loop`,
+            testId: `thoth-${kind}-accept-loop`,
           }
         : null;
   const noteTrimmed = note.trim();
@@ -56,7 +51,7 @@ export function SecretaryApprovalCard({
   const actionsDisabled = readonly || isSubmitting;
 
   const submit = useCallback(
-    async (intent: SecretaryApprovalActionPayload["intent"]) => {
+    async (intent: ThothApprovalCardAnswerPayload["intent"]) => {
       if (!onSubmit || readonly || isSubmitting) {
         return;
       }
@@ -123,7 +118,7 @@ export function SecretaryApprovalCard({
   }, [card, kind]);
 
   return (
-    <View style={styles.card} testID={`secretary-${kind}-approval-card`}>
+    <View style={styles.card} testID={`thoth-${kind}-approval-card`}>
       <Text style={styles.roundLabel}>{kind === "goal" ? "Goals Card" : card.roundLabel}</Text>
       <Text style={styles.cardTitle}>{title}</Text>
       <Text style={styles.title}>{card.title}</Text>
@@ -144,7 +139,7 @@ export function SecretaryApprovalCard({
       </View>
 
       {readonly ? (
-        <View style={styles.readonly} testID={`secretary-${kind}-readonly`}>
+        <View style={styles.readonly} testID={`thoth-${kind}-readonly`}>
           <Text style={styles.readonlyText}>{card.submittedSummary ?? "已提交"}</Text>
         </View>
       ) : (
@@ -155,7 +150,7 @@ export function SecretaryApprovalCard({
             placeholder="批注修改要求"
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.noteInput}
-            testID={`secretary-${kind}-note`}
+            testID={`thoth-${kind}-note`}
             value={note}
             onChangeText={setNote}
           />
@@ -174,7 +169,7 @@ export function SecretaryApprovalCard({
               disabled={actionsDisabled || noteTrimmed.length === 0}
               onPress={() => void submit("annotate")}
               style={cardPressableStyle}
-              testID={`secretary-${kind}-annotate`}
+              testID={`thoth-${kind}-annotate`}
             >
               <Text style={styles.actionText}>修改</Text>
             </Pressable>
@@ -182,7 +177,7 @@ export function SecretaryApprovalCard({
               disabled={actionsDisabled}
               onPress={() => void submit("cancel")}
               style={cardPressableStyle}
-              testID={`secretary-${kind}-cancel`}
+              testID={`thoth-${kind}-cancel`}
             >
               <Text style={styles.actionText}>取消</Text>
             </Pressable>

@@ -16,10 +16,7 @@ import path from "node:path";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import type { AgentUsage } from "../agent/agent-sdk-types.js";
-import type {
-  LoopEvidenceRef,
-  LoopPhaseKind,
-} from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { LoopEvidenceRef, LoopPhaseKind } from "@thoth/protocol/thoth/rpc-schemas";
 
 export interface CommandReceipt {
   callId: string;

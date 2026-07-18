@@ -185,16 +185,16 @@ export const RuntimeControls = memo(function RuntimeControls({
   const toast = useToast();
   const { config, patchConfig } = useDaemonConfig(serverId);
 
-  const thothEnabled = isThothModeEnabled(config?.workspaceSecretary);
-  const clarify = resolveThothClarifyStrength(config?.workspaceSecretary?.clarifyStrength);
-  const mode = (config?.workspaceSecretary?.mode ?? "quick") as ThothRuntimeMode;
-  const loopStrength = normalizeLoopStrength(config?.workspaceSecretary?.loopStrength);
+  const thothEnabled = isThothModeEnabled(config?.thoth);
+  const clarify = resolveThothClarifyStrength(config?.thoth.clarifyStrength);
+  const mode = (config?.thoth.mode ?? "quick") as ThothRuntimeMode;
+  const loopStrength = normalizeLoopStrength(config?.thoth.loopStrength);
   const controlDisabled = disabled || !serverId;
 
   const persistClarify = useCallback(
     async (clarifyStrength: ClarifyStrength) => {
       try {
-        await patchConfig({ workspaceSecretary: { clarifyStrength } });
+        await patchConfig({ thoth: { clarifyStrength } });
       } catch (error) {
         toast.error(toErrorMessage(error));
       }
@@ -206,12 +206,10 @@ export const RuntimeControls = memo(function RuntimeControls({
     async (enabled: boolean) => {
       try {
         await patchConfig({
-          workspaceSecretary: enabled
+          thoth: enabled
             ? {
                 enabled: true,
-                clarifyStrength: resolveThothClarifyStrength(
-                  config?.workspaceSecretary?.clarifyStrength,
-                ),
+                clarifyStrength: resolveThothClarifyStrength(config?.thoth.clarifyStrength),
               }
             : { enabled: false },
         });
@@ -219,12 +217,12 @@ export const RuntimeControls = memo(function RuntimeControls({
         toast.error(toErrorMessage(error));
       }
     },
-    [config?.workspaceSecretary?.clarifyStrength, patchConfig, toast],
+    [config?.thoth.clarifyStrength, patchConfig, toast],
   );
 
   const persistQuickMode = useCallback(async () => {
     try {
-      await patchConfig({ workspaceSecretary: { mode: "quick" } });
+      await patchConfig({ thoth: { mode: "quick" } });
     } catch (error) {
       toast.error(toErrorMessage(error));
     }
@@ -234,7 +232,7 @@ export const RuntimeControls = memo(function RuntimeControls({
     async (nextLoopStrength: LoopStrength) => {
       try {
         await patchConfig({
-          workspaceSecretary: { mode: "loop", loopStrength: nextLoopStrength },
+          thoth: { mode: "loop", loopStrength: nextLoopStrength },
         });
       } catch (error) {
         toast.error(toErrorMessage(error));

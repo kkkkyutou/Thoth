@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LoopTaskModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type { LoopTaskModel } from "@thoth/protocol/thoth/rpc-schemas";
 import type { AgentStreamEvent } from "../agent/agent-sdk-types.js";
 import type { AgentManager, ManagedAgent } from "../agent/agent-manager.js";
 import { AgentStorage } from "../agent/agent-storage.js";
@@ -53,6 +53,10 @@ class FakeAgentManager {
 
   getProviderCapabilities() {
     return { supportsNativeThothTools: this.supportsNativeThothTools };
+  }
+
+  getProviderRuntimeSessionProvider(provider: string): string {
+    return provider;
   }
 
   markAgentInternal(agentId: string): boolean {
@@ -138,7 +142,7 @@ function baseRegisterInput(workspacePath: string): RegisterLoopTaskInput {
   return {
     workspaceName: "Loop Workspace",
     workspacePath,
-    sourceTopicId: "topic-loop",
+    sourceAgentId: "topic-loop",
     loopStrength: "balanced",
     provider: {
       provider: "codex",

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentManager, ManagedAgent } from "../agent-manager.js";
 import type { AgentStreamEvent, AgentTimelineItem } from "../agent-sdk-types.js";
@@ -10,15 +13,26 @@ import {
 } from "../clarify-audit-broker.js";
 import type { ThothLoopTaskService } from "../../thoth-loop/task-service.js";
 import {
-  answerRuntimeAuthorityDecision,
   listPendingRuntimeAuthorityDecisions,
   resetRuntimeAuthorityDecisionsForTest,
+  resolveRuntimeAuthorityDecision,
 } from "../runtime-tool-decisions.js";
 import {
-  beginWorkspaceSecretaryTurnPolicy,
-  resetWorkspaceSecretaryTurnPoliciesForTest,
-} from "./workspace-secretary-turn-policy.js";
+  beginForegroundTurnFence,
+  bindForegroundProviderTurn,
+  resetForegroundTurnFencesForTest,
+} from "./foreground-turn-fence.js";
 import { createThothToolCatalog } from "./thoth-tools.js";
+import {
+  getForegroundAuthorityStore,
+  resetForegroundAuthorityStoresForTest,
+} from "../foreground-authority-runtime.js";
+import type { ForegroundAuthorityStore } from "../foreground-authority-store.js";
+import type { ThothCardAnswerPayload } from "@thoth/protocol/thoth/rpc-schemas";
+
+const temporaryHomes: string[] = [];
+let currentAuthorityStore: ForegroundAuthorityStore | null = null;
+let commandSequence = 0;
 
 async function flushToolStart(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
@@ -33,7 +47,7 @@ function createCatalog(
     loopPhase?: "planexec" | "review";
     loopTaskService?: ThothLoopTaskService;
     callerAvailableAfterCatalogCreation?: boolean;
-    workspaceSecretaryTurnPolicy?: "raw_provider" | "thoth_clarify";
+    foregroundTurnKind?: "raw_provider" | "thoth_clarify";
   } = {},
 ) {
   const timeline: AgentTimelineItem[] = [];
@@ -102,23 +116,74 @@ function createCatalog(
       })(),
   } as unknown as AgentManager;
 
+  const logger = createTestLogger();
+  const thothHome = mkdtempSync(join(tmpdir(), "thoth-tools-authority-"));
+  temporaryHomes.push(thothHome);
+  const authorityStore = getForegroundAuthorityStore({ thothHome, logger });
+  currentAuthorityStore = authorityStore;
+  const turnKind = input.foregroundTurnKind ?? "thoth_clarify";
+  const foreground = authorityStore.startTurn({
+    agentId: "agent-1",
+    kind: turnKind === "raw_provider" ? "raw" : "thoth",
+    ...(turnKind === "thoth_clarify"
+      ? { controls: { mode: "quick" as const, clarifyStrength: "light" as const, loop: null } }
+      : {}),
+    sourceMessageId: `message-${temporaryHomes.length}`,
+    workspacePath: primaryAgent.cwd,
+    userText: "Test foreground turn",
+  });
   const catalog = createThothToolCatalog({
     agentManager,
     agentStorage: {} as AgentStorage,
     terminalManager: null,
     providerSnapshotManager: {} as ProviderSnapshotManager,
-    logger: createTestLogger(),
+    logger,
+    thothHome,
     callerAgentId: "agent-1",
     callerAgentConfig: primaryAgent.config,
     ...(input.loopTaskService ? { loopTaskService: input.loopTaskService } : {}),
   });
   callerRegistered = true;
-  beginWorkspaceSecretaryTurnPolicy({
+  beginForegroundTurnFence({
     agentId: "agent-1",
     generation: "test-generation",
-    kind: input.workspaceSecretaryTurnPolicy ?? "thoth_clarify",
+    kind: turnKind,
+    foregroundTurnId: foreground.turn.id,
+  });
+  bindForegroundProviderTurn({
+    agentId: "agent-1",
+    generation: "test-generation",
+    providerTurnId: "turn-1",
   });
   return { appendTimelineItem, timeline, catalog };
+}
+
+function answerPendingRuntimeDecision(input: {
+  cardId: string;
+  submittedSummary: string;
+  answer: ThothCardAnswerPayload;
+}): void {
+  const store = currentAuthorityStore;
+  if (!store) {
+    throw new Error("Test foreground authority store is unavailable");
+  }
+  const card = store.getCard(input.cardId);
+  if (!card) {
+    throw new Error(`Missing authority card ${input.cardId}`);
+  }
+  const state = store.getState(card.agentId);
+  const result = store.answerCard({
+    agentId: card.agentId,
+    cardId: card.id,
+    answer: input.answer,
+    submittedCard: { ...card.card, submitted: true, submittedSummary: input.submittedSummary },
+    submittedSummary: input.submittedSummary,
+    expectedRevision: state.revision,
+    commandId: `test-answer-${++commandSequence}`,
+    nextLifecycle: "running",
+  });
+  expect(result.accepted).toBe(true);
+  resolveRuntimeAuthorityDecision(input);
 }
 
 function readyConvergenceReview() {
@@ -163,7 +228,7 @@ async function submitApprovedTaskCard(
   );
   await flushToolStart();
   const cardId = takeOnlyPendingCardId();
-  answerRuntimeAuthorityDecision({
+  answerPendingRuntimeDecision({
     cardId,
     submittedSummary: "已确认测试任务",
     answer: {
@@ -246,13 +311,14 @@ async function submitAnsweredClarifyCard(
   );
   await flushToolStart();
   const cardId = takeOnlyPendingCardId();
-  answerRuntimeAuthorityDecision({
+  answerPendingRuntimeDecision({
     cardId,
     submittedSummary: "已确认 3 个材料分支",
     answer: {
       intent: "submit_choices",
-      card_id: cardId,
+      question_card_id: cardId,
       title: "确认目标边界",
+      answers: [],
       raw_answer: "选择第一项",
     },
   });
@@ -261,12 +327,17 @@ async function submitAnsweredClarifyCard(
 
 afterEach(() => {
   resetRuntimeAuthorityDecisionsForTest();
-  resetWorkspaceSecretaryTurnPoliciesForTest();
+  resetForegroundTurnFencesForTest();
+  resetForegroundAuthorityStoresForTest();
+  currentAuthorityStore = null;
+  for (const home of temporaryHomes.splice(0)) {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 describe("Thoth runtime authority tools", () => {
   it("rejects remembered authority tools during a raw provider turn", async () => {
-    const { catalog, timeline } = createCatalog({ workspaceSecretaryTurnPolicy: "raw_provider" });
+    const { catalog, timeline } = createCatalog({ foregroundTurnKind: "raw_provider" });
 
     await expect(
       catalog.executeTool(
@@ -360,7 +431,10 @@ describe("Thoth runtime authority tools", () => {
     await flushToolStart();
 
     const cardId = takeOnlyPendingCardId();
-    answerRuntimeAuthorityDecision({
+    expect(currentAuthorityStore?.getCard(cardId)?.card).toMatchObject({
+      turnControls: { mode: "quick", clarifyStrength: "light", loop: null },
+    });
+    answerPendingRuntimeDecision({
       cardId,
       submittedSummary: "已确认并保持 Quick",
       answer: {
@@ -397,7 +471,7 @@ describe("Thoth runtime authority tools", () => {
         providerToolCall: {
           provider: "codex",
           threadId: "thread-late-caller",
-          turnId: "turn-late-caller",
+          turnId: "turn-1",
           callId: "call-late-caller",
           toolName: "thoth_submit_task_card",
         },
@@ -406,7 +480,7 @@ describe("Thoth runtime authority tools", () => {
 
     await flushToolStart();
     const cardId = takeOnlyPendingCardId();
-    answerRuntimeAuthorityDecision({
+    answerPendingRuntimeDecision({
       cardId,
       submittedSummary: "已确认延迟注册测试任务",
       answer: {
@@ -616,7 +690,7 @@ describe("Thoth runtime authority tools", () => {
     await flushToolStart();
 
     const cardId = takeOnlyPendingCardId();
-    answerRuntimeAuthorityDecision({
+    answerPendingRuntimeDecision({
       cardId,
       submittedSummary: "已确认并按 Quick 前台执行",
       answer: {
@@ -757,13 +831,14 @@ describe("Thoth runtime authority tools", () => {
     expect(JSON.stringify(runningToolCall)).not.toContain("legacy internal generic decision text");
 
     const cardId = takeOnlyPendingCardId();
-    answerRuntimeAuthorityDecision({
+    answerPendingRuntimeDecision({
       cardId,
       submittedSummary: "已确认 3 个分支维度",
       answer: {
         intent: "submit_choices",
-        card_id: cardId,
+        question_card_id: cardId,
         title: "确认排序目标边界",
+        answers: [],
         raw_answer: "选择第一项",
       },
     });

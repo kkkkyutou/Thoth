@@ -102,6 +102,8 @@ If validation cannot proceed because of a real external blocker:
 
 If provider tools request permission, wait for Thoth/user resolution. Do not assume allow. In PlanExec, provider plan approval may be auto-continued by the daemon when it is the normal plan-mode approval gate. Other risky permissions remain user-controlled.
 
+Provider, session, permission, transport, and runtime-tool failures are operational exits, not Review judgments about the task. They must not be reported as `continue` or `reframe_current_goal`, and they must not consume failed-Review budget unless Review successfully submitted that semantic verdict first.
+
 ## Completion
 
 The daemon advances goals linearly:

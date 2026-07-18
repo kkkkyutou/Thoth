@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -588,15 +588,23 @@ test("listDraftCommands uses explicit model config without default model fetchin
     fetchCatalogCalls = 0;
     createSessionCalls = 0;
     readonly commandConfigs: AgentSessionConfig[] = [];
+    readonly launchContexts: Array<AgentLaunchContext | undefined> = [];
+    readonly createOptions: Array<AgentCreateSessionOptions | undefined> = [];
 
     override async fetchCatalog() {
       this.fetchCatalogCalls += 1;
       return await super.fetchCatalog();
     }
 
-    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+    override async createSession(
+      config: AgentSessionConfig,
+      launchContext?: AgentLaunchContext,
+      options?: AgentCreateSessionOptions,
+    ): Promise<AgentSession> {
       this.createSessionCalls += 1;
       this.commandConfigs.push(config);
+      this.launchContexts.push(launchContext);
+      this.createOptions.push(options);
       return new DraftCommandSession(config);
     }
   }
@@ -606,6 +614,7 @@ test("listDraftCommands uses explicit model config without default model fetchin
       codex: client,
     },
     registry: storage,
+    thothHome: workdir,
     logger,
   });
 
@@ -618,6 +627,10 @@ test("listDraftCommands uses explicit model config without default model fetchin
   expect(commands).toEqual([draftCommand]);
   expect(client.fetchCatalogCalls).toBe(0);
   expect(client.createSessionCalls).toBe(1);
+  const commandProbeHome = client.launchContexts[0]?.env?.CODEX_HOME;
+  expect(commandProbeHome).toContain("provider-sessions/control-");
+  expect(commandProbeHome ? existsSync(commandProbeHome) : true).toBe(false);
+  expect(client.createOptions).toEqual([{ persistSession: false }]);
   expect(client.commandConfigs).toEqual([
     {
       provider: "codex",
@@ -637,6 +650,7 @@ test("listDraftFeatures returns no features without guessing a missing model", a
     createSessionCalls = 0;
     availabilityCalls = 0;
     readonly featureConfigs: AgentSessionConfig[] = [];
+    readonly launchContexts: Array<AgentLaunchContext | undefined> = [];
 
     override async isAvailable(): Promise<boolean> {
       this.availabilityCalls += 1;
@@ -684,6 +698,7 @@ test("listDraftFeatures uses explicit model config without default model fetchin
     fetchCatalogCalls = 0;
     createSessionCalls = 0;
     readonly featureConfigs: AgentSessionConfig[] = [];
+    readonly launchContexts: Array<AgentLaunchContext | undefined> = [];
 
     override async fetchCatalog() {
       this.fetchCatalogCalls += 1;
@@ -695,8 +710,12 @@ test("listDraftFeatures uses explicit model config without default model fetchin
       return await super.createSession(config);
     }
 
-    async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
+    async listFeatures(
+      config: AgentSessionConfig,
+      launchContext?: AgentLaunchContext,
+    ): Promise<AgentFeature[]> {
       this.featureConfigs.push(config);
+      this.launchContexts.push(launchContext);
       return [draftFeature];
     }
   }
@@ -706,6 +725,7 @@ test("listDraftFeatures uses explicit model config without default model fetchin
       codex: client,
     },
     registry: storage,
+    thothHome: workdir,
     logger,
   });
 
@@ -718,6 +738,9 @@ test("listDraftFeatures uses explicit model config without default model fetchin
   expect(features).toEqual([draftFeature]);
   expect(client.fetchCatalogCalls).toBe(0);
   expect(client.createSessionCalls).toBe(0);
+  const featureProbeHome = client.launchContexts[0]?.env?.CODEX_HOME;
+  expect(featureProbeHome).toContain("provider-sessions/control-");
+  expect(featureProbeHome ? existsSync(featureProbeHome) : true).toBe(false);
   expect(client.featureConfigs).toEqual([
     {
       provider: "codex",
@@ -1347,6 +1370,55 @@ test("createAgent passes native Thoth tools through launch context without inter
       command: "custom-mcp",
     },
   });
+});
+
+test("createAgent provisions foreground Thoth tools before provider session creation", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const thothTools: ThothToolCatalog = {
+    tools: new Map(),
+    getTool: () => undefined,
+    executeTool: async () => {
+      throw new Error("No tools registered in test catalog");
+    },
+  };
+
+  class NativeToolsClient extends TestAgentClient {
+    override readonly capabilities = {
+      ...TEST_CAPABILITIES,
+      supportsNativeThothTools: true,
+    };
+    lastLaunchContext: AgentLaunchContext | undefined;
+
+    override async createSession(
+      config: AgentSessionConfig,
+      launchContext?: AgentLaunchContext,
+    ): Promise<AgentSession> {
+      this.lastLaunchContext = launchContext;
+      return new TestAgentSession(config);
+    }
+  }
+
+  const client = new NativeToolsClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+    thothToolCatalogFactory: () => thothTools,
+    foregroundThothSessionProvisioner: ({ config }) => ({
+      ...config,
+      extra: {
+        ...(config.extra ?? {}),
+        thothRuntimeTools: { enabled: true, scope: "clarify" },
+      },
+    }),
+  });
+
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir });
+
+  expect(agent.config.extra?.thothRuntimeTools).toEqual({ enabled: true, scope: "clarify" });
+  expect(client.lastLaunchContext?.thothTools).toBe(thothTools);
+  rmSync(workdir, { recursive: true, force: true });
 });
 
 test("createAgent injects the MCP auth token as a bearer header into the launch config", async () => {
@@ -6154,8 +6226,8 @@ test("hydrateTimeline keeps provider user_message items when no canonical user h
   expect(assistantMessages).toHaveLength(2);
 });
 
-test("Workspace Secretary keeps its durable user anchor across provider history replay", async () => {
-  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-secretary-history-anchor-"));
+test("visible Agents keep daemon user anchors across provider history replay", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-history-anchor-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);
 
   class ProviderHistorySession extends TestAgentSession {
@@ -6204,11 +6276,7 @@ test("Workspace Secretary keeps its durable user anchor across provider history 
   });
 
   try {
-    const snapshot = await manager.createAgent(
-      { provider: "opencode", cwd: workdir, internal: true },
-      undefined,
-      { labels: { surface: "workspace-secretary" } },
-    );
+    const snapshot = await manager.createAgent({ provider: "opencode", cwd: workdir });
     await manager.appendTimelineItem(snapshot.id, {
       type: "user_message",
       messageId: "stable-ui-message-1",

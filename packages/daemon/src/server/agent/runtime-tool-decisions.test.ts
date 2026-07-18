@@ -1,16 +1,22 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThothClarifyCardModel } from "@thoth/protocol/workspace-secretary/rpc-schemas";
+import type {
+  ThothCardAnswerPayload,
+  ThothClarifyCardModel,
+} from "@thoth/protocol/thoth/rpc-schemas";
+import { createTestLogger } from "../../test-utils/test-logger.js";
+import { ForegroundAuthorityStore } from "./foreground-authority-store.js";
 import {
-  configureRuntimeAuthorityDecisionPersistence,
   createRuntimeAuthorityDecision,
   getPendingRuntimeAuthorityDecisionByCardId,
   listPendingRuntimeAuthorityDecisions,
   listRuntimeAuthorityDecisionRecords,
   resetRuntimeAuthorityDecisionsForTest,
 } from "./runtime-tool-decisions.js";
+
+const temporaryHomes: string[] = [];
 
 function clarifyCard(): ThothClarifyCardModel {
   return {
@@ -19,6 +25,16 @@ function clarifyCard(): ThothClarifyCardModel {
     title: "确认目标边界",
     whyNow: "这些选择会改变任务路线。",
     continuesClarify: true,
+    publicBadgeSummary: "正在拆解目标边界。",
+    frontierLedger: {
+      clarify_strength: "dive",
+      grounded_user_decisions: [],
+      remaining_material_user_owned_assumptions: ["语言", "交付形态"],
+      agent_owned_assumptions: ["具体实现策略由 agent 决定。"],
+      discoverable_assumptions: ["测试命令可发现。"],
+      why_this_round: "这些问题决定任务路线。",
+      convergence_state: "not_converged",
+    },
     submitted: false,
     card: {
       question_id: "question-card-persist",
@@ -32,6 +48,7 @@ function clarifyCard(): ThothClarifyCardModel {
           id: "language",
           question: "用什么语言实现？",
           behavior_tree_node: "language",
+          selection_mode: "single",
           choices: [
             { id: "cpp", label: "C++", description: "贴近系统性能" },
             { id: "rust", label: "Rust", description: "安全且高性能" },
@@ -41,6 +58,7 @@ function clarifyCard(): ThothClarifyCardModel {
           id: "shape",
           question: "交付成什么形态？",
           behavior_tree_node: "shape",
+          selection_mode: "single",
           choices: [
             { id: "library", label: "库函数", description: "最小复用接口" },
             { id: "cli", label: "命令行", description: "可传参运行" },
@@ -51,99 +69,114 @@ function clarifyCard(): ThothClarifyCardModel {
   };
 }
 
+function createStore(home?: string): { home: string; store: ForegroundAuthorityStore } {
+  const resolvedHome = home ?? mkdtempSync(join(tmpdir(), "thoth-runtime-decisions-"));
+  if (!home) {
+    temporaryHomes.push(resolvedHome);
+  }
+  return {
+    home: resolvedHome,
+    store: new ForegroundAuthorityStore({
+      thothHome: resolvedHome,
+      logger: createTestLogger(),
+    }),
+  };
+}
+
+function startThothTurn(store: ForegroundAuthorityStore): void {
+  store.startTurn({
+    agentId: "agent-1",
+    kind: "thoth",
+    controls: { mode: "quick", clarifyStrength: "dive", loop: null },
+    sourceMessageId: "message-1",
+    workspacePath: "/workspace/thoth",
+    userText: "实现一个高性能工具",
+  });
+}
+
+function createDecision(store: ForegroundAuthorityStore) {
+  return createRuntimeAuthorityDecision({
+    store,
+    provider: "codex",
+    agentId: "agent-1",
+    threadId: "thread-1",
+    providerTurnId: "turn-1",
+    callId: "call-1",
+    toolName: "thoth_submit_clarify_card",
+    card: { kind: "clarify_card", card: clarifyCard() },
+    redactedRawInputHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  });
+}
+
 afterEach(() => {
   resetRuntimeAuthorityDecisionsForTest();
+  for (const home of temporaryHomes.splice(0)) {
+    rmSync(home, { recursive: true, force: true });
+  }
+  vi.useRealTimers();
 });
 
 describe("runtime authority decision persistence", () => {
-  it("keeps pending cards actionable across process loss", () => {
-    const dir = mkdtempSync(join(tmpdir(), "thoth-runtime-decisions-"));
-    const filePath = join(dir, "runtime-authority-decisions.json");
+  it("keeps an open Card actionable after process memory is lost", () => {
+    const { home, store } = createStore();
+    startThothTurn(store);
+    const { record } = createDecision(store);
+    expect(listPendingRuntimeAuthorityDecisions()).toHaveLength(1);
+    store.close();
+    resetRuntimeAuthorityDecisionsForTest();
+
+    const recovered = createStore(home).store;
     try {
-      configureRuntimeAuthorityDecisionPersistence({ filePath });
-      const { record } = createRuntimeAuthorityDecision({
-        provider: "codex",
-        agentId: "agent-1",
-        topicId: "topic-main",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        callId: "call-1",
-        toolName: "thoth_submit_clarify_card",
-        phase: "clarify",
-        card: { kind: "clarify_card", card: clarifyCard() },
-        publicBadgeSummary: "正在拆解目标边界。",
-        frontierLedger: {
-          clarify_strength: "dive",
-          grounded_user_decisions: [],
-          remaining_material_user_owned_assumptions: ["语言", "交付形态"],
-          agent_owned_assumptions: ["具体实现策略由 agent 决定。"],
-          discoverable_assumptions: ["测试命令可发现。"],
-          why_this_round: "这些问题决定任务路线。",
-          convergence_state: "not_converged",
-        },
-        redactedRawInputHash:
-          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      expect(listPendingRuntimeAuthorityDecisions()).toEqual([]);
+      expect(getPendingRuntimeAuthorityDecisionByCardId(record.cardId)).toBeNull();
+      expect(listRuntimeAuthorityDecisionRecords(recovered)).toContainEqual(
+        expect.objectContaining({
+          cardId: record.cardId,
+          status: "pending",
+          foregroundTurnId: record.foregroundTurnId,
+        }),
+      );
+      expect(recovered.getState("agent-1")).toMatchObject({
+        lifecycle: "awaiting_card",
+        pendingCard: { card: { id: record.cardId } },
       });
 
-      const persisted = JSON.parse(readFileSync(filePath, "utf8")) as {
-        records: Array<{ id: string; status: string }>;
+      const answer: ThothCardAnswerPayload = {
+        intent: "submit_choices",
+        question_card_id: record.cardId,
+        title: "确认目标边界",
+        answers: [],
+        raw_answer: "继续",
       };
-      expect(persisted.records).toContainEqual(
-        expect.objectContaining({ id: record.id, status: "pending" }),
-      );
-
-      resetRuntimeAuthorityDecisionsForTest();
-      configureRuntimeAuthorityDecisionPersistence({ filePath });
-
-      expect(listPendingRuntimeAuthorityDecisions()).toContainEqual(
-        expect.objectContaining({
-          id: record.id,
-          cardId: "clarify-card-persist",
-          status: "pending",
-        }),
-      );
-      expect(getPendingRuntimeAuthorityDecisionByCardId("clarify-card-persist")).toMatchObject({
-        id: record.id,
-        status: "pending",
+      const state = recovered.getState("agent-1");
+      const result = recovered.answerCard({
+        agentId: "agent-1",
+        cardId: record.cardId,
+        answer,
+        submittedCard: { ...clarifyCard(), submitted: true, submittedSummary: "继续" },
+        submittedSummary: "继续",
+        expectedRevision: state.revision,
+        commandId: "answer-after-restart",
+        nextLifecycle: "running",
       });
-      expect(listRuntimeAuthorityDecisionRecords()).toContainEqual(
-        expect.objectContaining({
-          id: record.id,
-          status: "pending",
-          publicBadgeSummary: "正在拆解目标边界。",
-          frontierLedger: expect.objectContaining({ clarify_strength: "dive" }),
-        }),
-      );
+      expect(result.accepted).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      recovered.close();
     }
   });
 
-  it("does not expire an unanswered authority card over elapsed time", async () => {
-    vi.useFakeTimers();
+  it("does not expire an unanswered authority Card over elapsed time", async () => {
+    const { store } = createStore();
     try {
-      const { record } = createRuntimeAuthorityDecision({
-        provider: "acp.local",
-        agentId: "agent-1",
-        topicId: "topic-main",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        callId: "call-1",
-        toolName: "thoth_submit_clarify_card",
-        phase: "clarify",
-        card: { kind: "clarify_card", card: clarifyCard() },
-        redactedRawInputHash:
-          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      });
-
+      startThothTurn(store);
+      const { record } = createDecision(store);
+      vi.useFakeTimers();
       await vi.advanceTimersByTimeAsync(365 * 24 * 60 * 60 * 1_000);
 
-      expect(getPendingRuntimeAuthorityDecisionByCardId(record.cardId)).toMatchObject({
-        id: record.id,
-        status: "pending",
-      });
+      expect(store.getCard(record.cardId)).toMatchObject({ status: "pending" });
+      expect(store.getState("agent-1")).toMatchObject({ lifecycle: "awaiting_card" });
     } finally {
-      vi.useRealTimers();
+      store.close();
     }
   });
 });

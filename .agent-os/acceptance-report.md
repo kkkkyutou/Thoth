@@ -1140,7 +1140,7 @@ Evidence:
    confirmation, Goal Card confirmation and repair packet boundary.
 7. `packages/drivers/src/clarify/eval.ts` now keeps the original 15 behavior golden scenarios and
    adds revised checks:
-   `skill-created-by-standard-skill-create`, `skill-not-global-installed`,
+   `packaged-runtime-skill-authority`, `skill-not-global-installed`,
    `session-scoped-skill-visible`, `bare-provider-skill-invisible`,
    `normal-turn-does-not-repeat-skill-rules`, `transition-turn-carries-skill-reference`,
    `repair-packet-shape-only`, `skill-rules-live-in-skill-md` and
@@ -2340,3 +2340,52 @@ Evidence recorded on `2026-07-17`:
 Release:
 
 <https://github.com/SeeleAI/Thoth/releases/tag/v0.0.0-mvp-beta>
+
+### `NTH-EV-039` Packaged Product API Journey
+
+Status: `verified` locally for the rebuilt Linux AppImage and real Codex; Relay, native controls and public
+downloaded-asset repetition remain part of the release gate.
+
+Evidence recorded on `2026-07-18`:
+
+1. `scripts/acceptance/thoth-api-journey.mjs` defines one public product journey independent of Electron,
+   provider implementation and fixture internals: `raw -> Quick Clarify -> raw -> Loop -> Review fail -> retry
+-> pass -> done`. The AppImage launcher owns only isolated process setup and evidence collection.
+2. The Journey uses one visible Agent for all foreground turns. It asserts one provider session across raw,
+   Quick and Loop hot switching, Card submission through the Agent-scoped revision/CAS API, foreground
+   `background_handoff`, one failed-Review budget charge and final background `done`.
+3. A freshly rebuilt `packages/desktop/release/Thoth-x86_64.AppImage` passed the deterministic external-harness
+   Journey in `14.792s`: five foreground turns, three PlanExec phases, three Review phases, one failed Review and
+   eight dynamic-tool threads. The runtime build plus AppImage packaging took `75.270s` while reusing the Web
+   export.
+4. The same AppImage and identical Journey passed against real Codex in `196.341s`. It preserved provider session
+   `019f7434-9dee-7311-b321-47fed8974910`, registered task
+   `loop-task-cd97794c-0af5-4c79-a372-6dee40f425d2`, consumed one failed Review and reached `done`.
+5. Both runs mounted packaged `thoth-clarify/SKILL.md` and `thoth-loop/SKILL.md`, inspected `app.asar` for removed
+   Workspace Secretary execution symbols and used the daemon managed by the AppImage. The real-run daemon and
+   desktop logs contain no read-only SQLite, catalog probe, feature probe or command probe failure.
+6. Focused daemon typecheck passed; six provider/Loop test files passed `283/283`; the public foreground API suite
+   passed `5/5` in `6.61s`; `git diff --check` passed. Ignored receipts are under
+   `.dev/real-appimage/fast-api-result/` and `.dev/packaged-appimage-thoth-flow-fast-rebuilt/`.
+7. A fresh Electron/Xvfb UI canary then caught two projection defects that API-driving could not expose. The
+   Clarify renderer submitted its inner question-form ID instead of the outer authority Card ID, and Task/Goals
+   timeline Cards omitted the frozen turn controls, hiding Quick/Loop approval actions. Both were corrected and
+   locked by component/runtime-tool tests.
+8. The ninth empty-state AppImage UI run selected Codex/GPT-5.4 from an unconfigured draft, enabled Thoth, rendered
+   and submitted two real Clarify Cards, displayed `确认继续` on Task and `前台执行` on Quick Goals, and completed
+   the same visible session with `FOREGROUND_EXEC_DONE`. It then consumed frozen Loop/Single controls, displayed
+   `确认注册`, reached foreground `background_handoff` with an editable Composer and no Interrupt spinner, and
+   completed background task `loop-task-25ccf47f-368b-4cdd-8339-f80f5530fff3` with both goals passed. Ignored UI
+   evidence is under `.dev/real-appimage/ui-canary-ninth/`.
+9. Final local promotion gates passed full App (`324` files / `2673` tests), daemon (`230` passed files / `3123`
+   passed tests), foreground public API (`5/5`), desktop (`26` passed files / `171` tests), CLI (`40/40`), release
+   and brand contracts, foundation, Web/runtime/AppImage builds and diff hygiene. Clarify golden, Clarify user
+   simulation and Loop golden independent Codex judges all passed. The Loop dataset now explicitly rejects
+   Review permission denial, provider crash and timeout being modeled as semantic Review failures or consuming
+   failed-Review budget.
+
+Boundary:
+
+This evidence validates the local rebuilt Linux package and establishes the under-ten-minute feedback loop. It
+does not replace final Relay, Pause/Resume/Stop, restart/reconnect, native-platform or downloaded public Release
+acceptance.

@@ -1,127 +1,57 @@
 import { describe, expect, it } from "vitest";
 import { MutableDaemonConfigPatchSchema } from "./messages.js";
 
-describe("mutable daemon config patch", () => {
-  it("accepts the explicit Thoth mode switch", () => {
+describe("mutable daemon Thoth preferences", () => {
+  it("accepts the explicit Thoth switch", () => {
     expect(
       MutableDaemonConfigPatchSchema.parse({
-        workspaceSecretary: { enabled: false },
+        thoth: { enabled: false },
       }),
     ).toEqual({
-      workspaceSecretary: { enabled: false },
+      thoth: { enabled: false },
     });
   });
 
-  it("accepts Workspace Secretary loop strength", () => {
+  it("accepts Loop and Clarify preferences without execution authority", () => {
     expect(
       MutableDaemonConfigPatchSchema.parse({
-        workspaceSecretary: {
+        thoth: {
+          enabled: true,
           mode: "loop",
+          clarifyStrength: "balanced",
           loopStrength: "one_plan_one_do",
+          selectedBackgroundTaskId: "task-1",
         },
       }),
     ).toEqual({
-      workspaceSecretary: {
+      thoth: {
+        enabled: true,
         mode: "loop",
+        clarifyStrength: "balanced",
         loopStrength: "one_plan_one_do",
+        selectedBackgroundTaskId: "task-1",
       },
     });
   });
 
-  it("accepts persisted per-topic runtime status", () => {
-    expect(
+  it("rejects provider sessions and topic execution state inside preferences", () => {
+    expect(() =>
       MutableDaemonConfigPatchSchema.parse({
-        workspaceSecretary: {
-          topicSnapshots: [
-            {
-              workspacePath: "/workspace/thoth",
-              workspaceName: "Thoth",
-              activeTopicId: "topic-running",
-              topics: [
-                {
-                  id: "topic-running",
-                  title: "Running topic",
-                  status: "current",
-                  updatedLabel: "刚刚",
-                },
-              ],
-              turns: [],
-              topicStates: [
-                {
-                  topicId: "topic-running",
-                  turns: [],
-                  currentClarifyState: "C_DIRECT",
-                  activeTurnPhase: "clarify",
-                  foregroundTurnState: "background_handoff",
-                  status: {
-                    kind: "loading",
-                    title: "正在处理",
-                    detail: "provider turn 正在运行。",
-                  },
-                },
-              ],
-              nextTopicIndex: 2,
-              currentClarifyState: "C_DIRECT",
-              activeTurnPhase: "clarify",
-            },
-          ],
-        },
-      }).workspaceSecretary?.topicSnapshots?.[0]?.topicStates?.[0],
-    ).toMatchObject({
-      foregroundTurnState: "background_handoff",
-      status: {
-        kind: "loading",
-        title: "正在处理",
-        detail: "provider turn 正在运行。",
-      },
-    });
+        thoth: { providerBinding: { provider: "codex" } },
+      }),
+    ).toThrow();
+    expect(() =>
+      MutableDaemonConfigPatchSchema.parse({
+        thoth: { topicAgents: [{ agentId: "hidden-agent" }] },
+      }),
+    ).toThrow();
   });
 
-  it("accepts persisted Workspace Secretary topic provider agent mappings", () => {
-    expect(
+  it("rejects the removed Workspace Secretary config surface", () => {
+    expect(() =>
       MutableDaemonConfigPatchSchema.parse({
-        workspaceSecretary: {
-          topicSnapshots: [
-            {
-              workspacePath: "/workspace/thoth",
-              workspaceName: "Thoth",
-              activeTopicId: "topic-running",
-              topics: [
-                {
-                  id: "topic-running",
-                  title: "Running topic",
-                  status: "current",
-                  updatedLabel: "刚刚",
-                },
-              ],
-              turns: [],
-              topicAgents: [
-                {
-                  agentKey: "topic-running:structured:codex:gpt-5.6",
-                  agentId: "secretary-agent-1",
-                },
-              ],
-              topicStates: [
-                {
-                  topicId: "topic-running",
-                  turns: [],
-                  currentClarifyState: "C_DIRECT",
-                  activeTurnPhase: "clarify",
-                  timelineAgentId: "secretary-agent-1",
-                },
-              ],
-              nextTopicIndex: 2,
-              currentClarifyState: "C_DIRECT",
-              activeTurnPhase: "clarify",
-            },
-          ],
-        },
-      }).workspaceSecretary?.topicSnapshots?.[0]?.topicAgents,
-    ).toEqual([
-      {
-        agentKey: "topic-running:structured:codex:gpt-5.6",
-        agentId: "secretary-agent-1",
-      },
-    ]);
+        workspaceSecretary: { enabled: true },
+      }),
+    ).toThrow();
   });
 });

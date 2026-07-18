@@ -339,38 +339,7 @@ describe("workspace-tabs-store reducers", () => {
     ]);
   });
 
-  it("persists a Workspace Secretary topic binding on a draft tab", () => {
-    let state = emptyState();
-    const first = applyOpenDraftTab(state, {
-      serverId: SERVER_ID,
-      workspaceId: WORKSPACE_ID,
-      draftId: "draft-1",
-      now: NOW,
-    });
-    state = first.state;
-    const retargeted = applyRetargetTab(state, {
-      serverId: SERVER_ID,
-      workspaceId: WORKSPACE_ID,
-      tabId: "draft-1",
-      target: {
-        kind: "draft",
-        draftId: "draft-1",
-        title: "实现一个渲染器",
-        secretaryTopicId: "topic-renderer",
-      },
-    });
-
-    expect(retargeted.tabId).toBe("draft-1");
-    expect(retargeted.state.uiTabsByWorkspace[WORKSPACE_KEY]?.[0]?.target).toEqual({
-      kind: "draft",
-      draftId: "draft-1",
-      title: "实现一个渲染器",
-      secretaryTopicId: "topic-renderer",
-    });
-    expect(partializeWorkspaceTabsState(retargeted.state, { now: NOW })).toEqual(retargeted.state);
-  });
-
-  it("migrates persisted draft Workspace Secretary topic bindings", () => {
+  it("drops removed virtual topic bindings from persisted draft tabs", () => {
     const migrated = migrateWorkspaceTabsState(
       {
         uiTabsByWorkspace: {
@@ -395,7 +364,6 @@ describe("workspace-tabs-store reducers", () => {
       kind: "draft",
       draftId: "draft-1",
       title: "实现一个渲染器",
-      secretaryTopicId: "topic-renderer",
     });
   });
 

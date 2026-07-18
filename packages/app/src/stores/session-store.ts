@@ -28,6 +28,7 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceProjectDescriptorPayload,
 } from "@thoth/protocol/messages";
+import type { AgentThothState } from "@thoth/protocol/thoth/rpc-schemas";
 import {
   normalizeWorkspaceOpaqueId,
   normalizeWorkspacePath,
@@ -354,6 +355,7 @@ export interface SessionState {
   // Agents
   agents: Map<string, Agent>;
   agentDetails: Map<string, Agent>;
+  agentThothStates: Map<string, AgentThothState>;
   workspaces: Map<string, WorkspaceDescriptor>;
   // Project parents with no active workspaces, keyed by projectId. The
   // `emptyProjects` name is the existing protocol/store projection.
@@ -474,6 +476,12 @@ interface SessionStoreActions {
     serverId: string,
     agents: Map<string, Agent> | ((prev: Map<string, Agent>) => Map<string, Agent>),
   ) => void;
+  setAgentThothStates: (
+    serverId: string,
+    states:
+      | Map<string, AgentThothState>
+      | ((prev: Map<string, AgentThothState>) => Map<string, AgentThothState>),
+  ) => void;
   setWorkspaces: (
     serverId: string,
     workspaces:
@@ -561,6 +569,7 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     initializingAgents: new Map(),
     agents: new Map(),
     agentDetails: new Map(),
+    agentThothStates: new Map(),
     workspaces: new Map(),
     emptyProjects: new Map(),
     restoringWorkspaces: new Map(),
@@ -1215,6 +1224,27 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, agentDetails: nextAgents },
+            },
+          };
+        });
+      },
+
+      setAgentThothStates: (serverId, states) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+          const nextStates =
+            typeof states === "function" ? states(session.agentThothStates) : states;
+          if (session.agentThothStates === nextStates) {
+            return prev;
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: { ...session, agentThothStates: nextStates },
             },
           };
         });

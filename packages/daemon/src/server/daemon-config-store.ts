@@ -206,7 +206,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
 
   return {
     ...persisted,
-    workspaceSecretary: mutable.workspaceSecretary,
+    thoth: mutable.thoth,
     daemon: {
       ...persisted.daemon,
       mcp: {

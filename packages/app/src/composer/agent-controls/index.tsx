@@ -43,11 +43,10 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { RuntimeControls } from "@/composer/agent-controls/runtime-controls";
-import { buildWorkspaceSecretaryProviderSessionPatch } from "@/composer/agent-controls/provider-session-config";
+import { selectProviderModel } from "@/composer/agent-controls/provider-session-config";
 import { AgentModeControlView } from "@/composer/agent-controls/mode-control";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import type {
   AgentFeature,
   AgentMode,
@@ -283,47 +282,6 @@ function makeBadgePressableStyle(
   ];
 }
 
-function pickSheetModel({
-  nextProviderId,
-  modelId,
-  currentProvider,
-  onSelectProviderAndModel,
-  onSelectProvider,
-  onSelectModel,
-}: {
-  nextProviderId: string;
-  modelId: string;
-  currentProvider: string;
-  onSelectProviderAndModel?: (provider: string, modelId: string) => void;
-  onSelectProvider?: (providerId: string) => void;
-  onSelectModel?: (modelId: string) => void;
-}) {
-  if (onSelectProviderAndModel) {
-    onSelectProviderAndModel(nextProviderId, modelId);
-    return;
-  }
-  if (nextProviderId !== currentProvider) {
-    onSelectProvider?.(nextProviderId);
-  }
-  onSelectModel?.(modelId);
-}
-
-function pickDesktopModel({
-  nextProviderId,
-  modelId,
-  currentProvider,
-  onSelectModel,
-}: {
-  nextProviderId: string;
-  modelId: string;
-  currentProvider: string;
-  onSelectModel?: (modelId: string) => void;
-}) {
-  if (nextProviderId === currentProvider) {
-    onSelectModel?.(modelId);
-  }
-}
-
 function resolveProviderIcon(provider: string) {
   if (provider.trim().length === 0) {
     return null;
@@ -550,13 +508,6 @@ function ControlledAgentControls({
     [onSelectThinkingOption],
   );
 
-  const handleDesktopModelSelect = useCallback(
-    (nextProviderId: string, modelId: string) => {
-      pickDesktopModel({ nextProviderId, modelId, currentProvider: provider, onSelectModel });
-    },
-    [onSelectModel, provider],
-  );
-
   const providerPressableStyle = useMemo(
     () =>
       makeBadgePressableStyle(
@@ -598,7 +549,7 @@ function ControlledAgentControls({
 
   const handleSheetModelSelect = useCallback(
     (nextProviderId: string, modelId: string) => {
-      pickSheetModel({
+      selectProviderModel({
         nextProviderId,
         modelId,
         currentProvider: provider,
@@ -652,7 +603,7 @@ function ControlledAgentControls({
           handleThinkingPress={handleThinkingPress}
           handleProviderSelect={handleProviderSelect}
           handleThinkingSelect={handleThinkingSelect}
-          handleDesktopModelSelect={handleDesktopModelSelect}
+          handleDesktopModelSelect={handleSheetModelSelect}
           handleProviderOpenChange={handleProviderOpenChange}
           handleThinkingOpenChange={handleThinkingOpenChange}
           handleOpenChange={handleOpenChange}
@@ -1618,7 +1569,6 @@ export const AgentControls = memo(function AgentControls({
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const toast = useToast();
-  const { patchConfig } = useDaemonConfig(serverId);
 
   const {
     entries: snapshotEntries,
@@ -1683,42 +1633,6 @@ export const AgentControls = memo(function AgentControls({
   const agentProvider = agent?.provider;
   const activeModelId = modelSelection.activeModelId;
   const agentModeId = agent?.modeId;
-  const agentThinkingOptionId = agent?.thinkingOptionId ?? modelSelection.selectedThinkingId;
-  const agentFeatures = agent?.features;
-
-  const persistProviderSession = useCallback(
-    (input: {
-      model?: string | null;
-      modeId?: string | null;
-      thinkingOptionId?: string | null;
-      featureValues?: Record<string, unknown>;
-    }) => {
-      const patch = buildWorkspaceSecretaryProviderSessionPatch({
-        provider: agentProvider,
-        model: input.model ?? activeModelId,
-        modeId: input.modeId ?? agentModeId,
-        thinkingOptionId: input.thinkingOptionId ?? agentThinkingOptionId,
-        features: agentFeatures,
-        featureValues: input.featureValues,
-      });
-      if (!patch) {
-        return;
-      }
-      void patchConfig(patch).catch((error) => {
-        console.warn("[AgentControls] patch workspaceSecretary providerSession failed", error);
-        toast.error(toErrorMessage(error));
-      });
-    },
-    [
-      activeModelId,
-      agentFeatures,
-      agentModeId,
-      agentProvider,
-      agentThinkingOptionId,
-      patchConfig,
-      toast,
-    ],
-  );
 
   const handleSelectModel = useCallback(
     (modelId: string) => {
@@ -1740,9 +1654,8 @@ export const AgentControls = memo(function AgentControls({
         console.warn("[AgentControls] setAgentModel failed", error);
         toast.error(toErrorMessage(error));
       });
-      persistProviderSession({ model: modelId });
     },
-    [agentId, agentProvider, client, persistProviderSession, toast, updatePreferences],
+    [agentId, agentProvider, client, toast, updatePreferences],
   );
 
   const handleToggleFavoriteModel = useCallback(
@@ -1784,17 +1697,8 @@ export const AgentControls = memo(function AgentControls({
           console.warn("[AgentControls] setAgentThinkingOption failed", error);
           toast.error(toErrorMessage(error));
         });
-      persistProviderSession({ thinkingOptionId });
     },
-    [
-      activeModelId,
-      agentId,
-      agentProvider,
-      client,
-      persistProviderSession,
-      toast,
-      updatePreferences,
-    ],
+    [activeModelId, agentId, agentProvider, client, toast, updatePreferences],
   );
 
   const handleSelectProviderMode = useCallback(
@@ -1820,9 +1724,8 @@ export const AgentControls = memo(function AgentControls({
           console.warn("[AgentControls] setAgentMode failed", error);
           toast.error(toErrorMessage(error));
         });
-      persistProviderSession({ modeId });
     },
-    [agentId, agentProvider, client, persistProviderSession, toast, updatePreferences],
+    [agentId, agentProvider, client, toast, updatePreferences],
   );
 
   const handleSetFeature = useCallback(
@@ -1847,24 +1750,8 @@ export const AgentControls = memo(function AgentControls({
         console.warn("[AgentControls] setAgentFeature failed", error);
         toast.error(toErrorMessage(error));
       });
-      persistProviderSession({
-        featureValues: {
-          ...Object.fromEntries(
-            (agentFeatures ?? []).map((feature) => [feature.id, feature.value]),
-          ),
-          [featureId]: value,
-        },
-      });
     },
-    [
-      agentFeatures,
-      agentId,
-      agentProvider,
-      client,
-      persistProviderSession,
-      toast,
-      updatePreferences,
-    ],
+    [agentId, agentProvider, client, toast, updatePreferences],
   );
 
   const handleModelSelectorOpen = useCallback(() => {
@@ -1950,8 +1837,6 @@ export function DraftAgentControls({
   const { preferences, updatePreferences } = useFormPreferences();
   const isCompactFormFactor = useIsCompactFormFactor();
   const isCompact = isCompactLayout ?? isCompactFormFactor;
-  const toast = useToast();
-  const { patchConfig } = useDaemonConfig(modelSelectorServerId);
 
   const mappedThinkingOptions = useMemo<AgentControlOption[]>(() => {
     return toThinkingControlOptions(thinkingOptions);
@@ -1987,84 +1872,39 @@ export function DraftAgentControls({
     [updatePreferences],
   );
 
-  const persistDraftProviderSession = useCallback(
-    (input: {
-      provider?: AgentProvider | null;
-      model?: string | null;
-      modeId?: string | null;
-      thinkingOptionId?: string | null;
-      featureValues?: Record<string, unknown>;
-    }) => {
-      const patch = buildWorkspaceSecretaryProviderSessionPatch({
-        provider: input.provider ?? selectedProvider,
-        model: input.model ?? selectedModel,
-        modeId: input.modeId ?? selectedMode,
-        thinkingOptionId: input.thinkingOptionId ?? effectiveSelectedThinkingOption,
-        features,
-        featureValues: input.featureValues,
-      });
-      if (!patch) {
-        return;
-      }
-      void patchConfig(patch).catch((error) => {
-        console.warn("[DraftAgentControls] patch workspaceSecretary providerSession failed", error);
-        toast.error(toErrorMessage(error));
-      });
-    },
-    [
-      effectiveSelectedThinkingOption,
-      features,
-      patchConfig,
-      selectedModel,
-      selectedMode,
-      selectedProvider,
-      toast,
-    ],
-  );
-
   const handleDraftProviderAndModelSelect = useCallback(
     (provider: AgentProvider, modelId: string) => {
       onSelectProviderAndModel(provider, modelId);
-      persistDraftProviderSession({ provider, model: modelId });
     },
-    [onSelectProviderAndModel, persistDraftProviderSession],
+    [onSelectProviderAndModel],
   );
 
   const handleDraftModelSelect = useCallback(
     (modelId: string) => {
       onSelectModel(modelId);
-      persistDraftProviderSession({ model: modelId });
     },
-    [onSelectModel, persistDraftProviderSession],
+    [onSelectModel],
   );
 
   const handleDraftThinkingSelect = useCallback(
     (thinkingOptionId: string) => {
       onSelectThinkingOption(thinkingOptionId);
-      persistDraftProviderSession({ thinkingOptionId });
     },
-    [onSelectThinkingOption, persistDraftProviderSession],
+    [onSelectThinkingOption],
   );
 
   const handleDraftModeSelect = useCallback(
     (modeId: string) => {
       onSelectMode(modeId);
-      persistDraftProviderSession({ modeId });
     },
-    [onSelectMode, persistDraftProviderSession],
+    [onSelectMode],
   );
 
   const handleDraftFeatureSet = useCallback(
     (featureId: string, value: unknown) => {
       onSetFeature?.(featureId, value);
-      persistDraftProviderSession({
-        featureValues: {
-          ...Object.fromEntries((features ?? []).map((feature) => [feature.id, feature.value])),
-          [featureId]: value,
-        },
-      });
     },
-    [features, onSetFeature, persistDraftProviderSession],
+    [onSetFeature],
   );
 
   const runtimeControls = useMemo(

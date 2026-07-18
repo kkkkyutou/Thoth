@@ -18,6 +18,7 @@ import {
   type ProjectPlacementPayload,
   type WorkspaceSetupSnapshot,
   type WorkspaceDescriptorPayload,
+  type ThothTurnAck,
 } from "./messages.js";
 import type {
   TerminalManager,
@@ -151,7 +152,8 @@ import { WorkspaceFilesSession } from "./session/files/workspace-files-session.j
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
-import { WorkspaceSecretarySession } from "./session/workspace-secretary/workspace-secretary-session.js";
+import { ForegroundTurnCoordinator } from "./agent/foreground-turn-coordinator.js";
+import { getForegroundAuthorityStore } from "./agent/foreground-authority-runtime.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
@@ -562,6 +564,7 @@ export class Session {
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
+  private unsubscribeForegroundAuthority: (() => void) | null = null;
   private observedLoopPhaseAgentId: string | null = null;
   private unsubscribeObservedLoopPhaseAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -597,7 +600,7 @@ export class Session {
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
-  private readonly workspaceSecretarySession: WorkspaceSecretarySession;
+  private readonly foregroundTurnCoordinator: ForegroundTurnCoordinator;
   private readonly loopTaskService: ThothLoopTaskService | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
@@ -810,17 +813,22 @@ export class Session {
       listWorkspaces: () => this.workspaceRegistry.list(),
       logger: this.sessionLogger,
     });
-    this.workspaceSecretarySession = new WorkspaceSecretarySession({
-      host: {
-        emit: (msg) => this.emit(msg),
-        listWorkspaces: () => this.workspaceRegistry.list(),
-      },
+    const foregroundAuthorityStore = getForegroundAuthorityStore({
       thothHome: this.thothHome,
-      agentManager: this.agentManager,
-      daemonConfigStore,
-      agentStorage,
       logger: this.sessionLogger,
-      loopTaskService,
+    });
+    this.foregroundTurnCoordinator = new ForegroundTurnCoordinator({
+      authorityStore: foregroundAuthorityStore,
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      loopTaskService: loopTaskService ?? null,
+      logger: this.sessionLogger.child({ component: "foreground-turn-coordinator" }),
+    });
+    this.unsubscribeForegroundAuthority = foregroundAuthorityStore.subscribe((state, reason) => {
+      this.emit({
+        type: "agent.thoth.state.update",
+        payload: { state, reason },
+      });
     });
     this.loopTaskService = loopTaskService ?? null;
     this.daemonConfigStore = daemonConfigStore;
@@ -1550,6 +1558,10 @@ export class Session {
         return this.handleRefreshAgentRequest(msg);
       case "cancel_agent_request":
         return this.handleCancelAgentRequest(msg.agentId, msg.requestId);
+      case "agent.thoth.state.request":
+        return this.handleAgentThothStateRequest(msg);
+      case "agent.thoth.card.answer.request":
+        return this.handleAgentThothCardAnswerRequest(msg);
       case "agent_permission_response":
         return this.handleAgentPermissionResponse(msg.agentId, msg.requestId, msg.response);
       case "clear_agent_attention":
@@ -1701,16 +1713,6 @@ export class Session {
         return this.handleBackgroundTaskActionRequest(msg);
       case "background_task.decision.request":
         return this.handleBackgroundTaskDecisionRequest(msg);
-      case "workspace_secretary.snapshot.request":
-        return this.workspaceSecretarySession.handleSnapshotRequest(msg);
-      case "workspace_secretary.send.request":
-        return this.workspaceSecretarySession.handleSendRequest(msg);
-      case "workspace_secretary.answer.request":
-        return this.workspaceSecretarySession.handleAnswerRequest(msg);
-      case "workspace_secretary.cancel.request":
-        return this.workspaceSecretarySession.handleCancelRequest(msg);
-      case "workspace_secretary.topic.create.request":
-        return this.workspaceSecretarySession.handleTopicCreateRequest(msg);
       case "file_explorer_request":
         return this.workspaceFilesSession.handleFileExplorerRequest(msg);
       case "project_icon_request":
@@ -2651,14 +2653,8 @@ export class Session {
       attachments,
       labels,
       env,
+      thoth,
     } = msg;
-    this.sessionLogger.info(
-      { cwd: config.cwd, provider: config.provider, worktreeName },
-      `Creating agent in ${config.cwd} (${config.provider})${
-        worktreeName ? ` with worktree ${worktreeName}` : ""
-      }`,
-    );
-
     let createdWorktreeForCleanup: CreateThothWorktreeWorkflowResult | null = null;
     let createdAgentId: string | null = null;
     try {
@@ -2668,9 +2664,17 @@ export class Session {
       if (msg.workspaceId && (!requestedWorkspace || requestedWorkspace.archivedAt)) {
         throw new Error(`Workspace not found: ${msg.workspaceId}`);
       }
-      const authorityConfig = requestedWorkspace
-        ? { ...config, cwd: requestedWorkspace.cwd }
-        : config;
+      const authorityCwd = requestedWorkspace?.cwd ?? config.cwd?.trim();
+      if (!authorityCwd) {
+        throw new Error("Agent creation requires a daemon workspace or cwd.");
+      }
+      const authorityConfig: AgentSessionConfig = { ...config, cwd: authorityCwd };
+      this.sessionLogger.info(
+        { cwd: authorityCwd, provider: config.provider, worktreeName },
+        `Creating agent in ${authorityCwd} (${config.provider})${
+          worktreeName ? ` with worktree ${worktreeName}` : ""
+        }`,
+      );
       const trimmedPrompt = initialPrompt?.trim();
       const { provisionalTitle } = resolveCreateAgentTitles({
         configTitle: config.title,
@@ -2702,7 +2706,7 @@ export class Session {
       );
       const createdDirectoryWorkspaceForAgent = !createdWorktree && !msg.workspaceId;
 
-      const { snapshot, liveSnapshot } = await createAgentCommand(
+      const { snapshot } = await createAgentCommand(
         {
           agentManager: this.agentManager,
           agentStorage: this.agentStorage,
@@ -2716,11 +2720,14 @@ export class Session {
           config: createAgentConfig,
           workspaceId,
           worktreeName,
-          initialPrompt,
-          clientMessageId,
-          outputSchema,
-          images,
-          attachments,
+          // The public foreground router owns the first turn. Creating the
+          // provider session first guarantees its Thoth tool catalog exists
+          // before either a raw or structured initial prompt can start.
+          initialPrompt: undefined,
+          clientMessageId: undefined,
+          outputSchema: undefined,
+          images: undefined,
+          attachments: undefined,
           git,
           labels,
           env,
@@ -2731,7 +2738,28 @@ export class Session {
         },
       );
       createdAgentId = snapshot.id;
-      await this.agentUpdates.forwardLiveAgent(snapshot);
+      let turnAck: ThothTurnAck | undefined;
+      const initialPromptPayload = this.buildAgentPrompt(trimmedPrompt ?? "", images, attachments);
+      const hasInitialPromptContent = Array.isArray(initialPromptPayload)
+        ? initialPromptPayload.length > 0
+        : initialPromptPayload.length > 0;
+      if (hasInitialPromptContent) {
+        turnAck = await this.foregroundTurnCoordinator.startTurn({
+          agentId: snapshot.id,
+          workspaceId,
+          workspacePath: createAgentConfig.cwd,
+          text: trimmedPrompt ?? "",
+          ...(clientMessageId ? { messageId: clientMessageId } : {}),
+          ...(images ? { images } : {}),
+          ...(attachments ? { attachments } : {}),
+          ...(thoth ? { thoth } : {}),
+          rawPrompt: initialPromptPayload,
+          ...(outputSchema ? { rawRunOptions: { outputSchema } } : {}),
+        });
+        await waitForAgentRunStartWithTimeout(this.agentManager, snapshot.id);
+      }
+      const liveSnapshot = this.agentManager.getAgent(snapshot.id) ?? snapshot;
+      await this.agentUpdates.forwardLiveAgent(liveSnapshot);
       if (createdDirectoryWorkspaceForAgent && trimmedPrompt) {
         await this.scheduleAutoNameLocalWorkspaceTitleForFirstAgent({
           workspaceId,
@@ -2753,6 +2781,7 @@ export class Session {
             agentId: liveSnapshot.id,
             requestId,
             agent: agentPayload,
+            ...(turnAck ? { turnAck } : {}),
           },
         });
       }
@@ -3021,10 +3050,7 @@ export class Session {
     this.sessionLogger.info({ agentId }, `Cancel request received for agent ${agentId}`);
 
     try {
-      await cancelAgentRunCommand(
-        { agentManager: this.agentManager, logger: this.sessionLogger },
-        agentId,
-      );
+      await this.foregroundTurnCoordinator.cancel(agentId);
       if (requestId) {
         const agent = this.agentManager.getAgent(agentId);
         const payload = agent ? await this.buildAgentPayload(agent) : null;
@@ -3039,6 +3065,62 @@ export class Session {
       }
     } catch (error) {
       this.handleAgentRunError(agentId, error, "Failed to cancel running agent on request");
+      if (requestId) {
+        this.emit({
+          type: "cancel_agent_response",
+          payload: {
+            requestId,
+            agentId,
+            agent: null,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+  }
+
+  private async handleAgentThothStateRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.thoth.state.request" }>,
+  ): Promise<void> {
+    try {
+      const resolved = await this.resolveAgentIdentifier(msg.agentId);
+      if (!resolved.ok) {
+        throw new Error(resolved.error);
+      }
+      const state = await this.foregroundTurnCoordinator.getState(resolved.agentId);
+      this.emit({
+        type: "agent.thoth.state.response",
+        payload: { requestId: msg.requestId, state, error: null },
+      });
+    } catch (error) {
+      this.emit({
+        type: "agent.thoth.state.response",
+        payload: {
+          requestId: msg.requestId,
+          state: await this.foregroundTurnCoordinator.getState(msg.agentId),
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async handleAgentThothCardAnswerRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.thoth.card.answer.request" }>,
+  ): Promise<void> {
+    try {
+      const payload = await this.foregroundTurnCoordinator.answerCard(msg);
+      this.emit({ type: "agent.thoth.card.answer.response", payload });
+    } catch (error) {
+      this.emit({
+        type: "agent.thoth.card.answer.response",
+        payload: {
+          requestId: msg.requestId,
+          accepted: false,
+          conflict: false,
+          state: await this.foregroundTurnCoordinator.getState(msg.agentId),
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 
@@ -5743,7 +5825,13 @@ export class Session {
 
     try {
       const agentId = resolved.agentId;
-
+      const agent =
+        this.agentManager.getAgent(agentId) ??
+        (await ensureAgentLoaded(agentId, {
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          logger: this.sessionLogger,
+        }));
       const prompt = this.buildAgentPrompt(msg.text, msg.images, msg.attachments);
       this.sessionLogger.trace(
         {
@@ -5753,15 +5841,27 @@ export class Session {
         },
         "agent.session.send_agent_message",
       );
-      let dispatchResult: { outOfBand: boolean };
       try {
-        dispatchResult = await sendPromptToAgent({
-          agentManager: this.agentManager,
-          agentStorage: this.agentStorage,
+        const turnAck = await this.foregroundTurnCoordinator.startTurn({
           agentId,
-          prompt,
-          messageId: msg.messageId,
-          logger: this.sessionLogger,
+          ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
+          workspacePath: agent.cwd,
+          text: msg.text,
+          ...(msg.messageId ? { messageId: msg.messageId } : {}),
+          ...(msg.images ? { images: msg.images } : {}),
+          ...(msg.attachments ? { attachments: msg.attachments } : {}),
+          ...(msg.thoth ? { thoth: msg.thoth } : {}),
+          rawPrompt: prompt,
+        });
+        this.emit({
+          type: "send_agent_message_response",
+          payload: {
+            requestId: msg.requestId,
+            agentId,
+            accepted: true,
+            error: null,
+            turnAck,
+          },
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -5777,44 +5877,6 @@ export class Session {
         });
         return;
       }
-
-      if (dispatchResult.outOfBand) {
-        this.emit({
-          type: "send_agent_message_response",
-          payload: {
-            requestId: msg.requestId,
-            agentId,
-            accepted: true,
-            error: null,
-          },
-        });
-        return;
-      }
-
-      try {
-        await waitForAgentRunStartWithTimeout(this.agentManager, agentId);
-      } catch (error) {
-        this.emit({
-          type: "send_agent_message_response",
-          payload: {
-            requestId: msg.requestId,
-            agentId,
-            accepted: false,
-            error: errorToFriendlyMessage(error),
-          },
-        });
-        return;
-      }
-
-      this.emit({
-        type: "send_agent_message_response",
-        payload: {
-          requestId: msg.requestId,
-          agentId,
-          accepted: true,
-          error: null,
-        },
-      });
     } catch (error) {
       this.emit({
         type: "send_agent_message_response",
@@ -5989,6 +6051,10 @@ export class Session {
     if (this.unsubscribeAgentEvents) {
       this.unsubscribeAgentEvents();
       this.unsubscribeAgentEvents = null;
+    }
+    if (this.unsubscribeForegroundAuthority) {
+      this.unsubscribeForegroundAuthority();
+      this.unsubscribeForegroundAuthority = null;
     }
     if (this.unsubscribeObservedLoopPhaseAgentEvents) {
       this.unsubscribeObservedLoopPhaseAgentEvents();

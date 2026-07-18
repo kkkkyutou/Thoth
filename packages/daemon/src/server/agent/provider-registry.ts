@@ -396,11 +396,16 @@ function wrapClientProvider(
 ): AgentClient {
   const listImportableSessions = inner.listImportableSessions?.bind(inner);
   const importSession = inner.importSession?.bind(inner);
+  const listCommands = inner.listCommands?.bind(inner);
+  const listFeatures = inner.listFeatures?.bind(inner);
+  const archiveNativeSession = inner.archiveNativeSession?.bind(inner);
+  const unarchiveNativeSession = inner.unarchiveNativeSession?.bind(inner);
 
   return {
     provider,
+    runtimeSessionProvider: inner.runtimeSessionProvider,
     capabilities: inner.capabilities,
-    createSession: async (config, launchContext) =>
+    createSession: async (config, launchContext, options) =>
       wrapSessionProvider(
         provider,
         await inner.createSession(
@@ -409,6 +414,7 @@ function wrapClientProvider(
             provider: inner.provider,
           },
           launchContext,
+          options,
         ),
       ),
     resumeSession: async (handle, overrides, launchContext, options) =>
@@ -440,6 +446,14 @@ function wrapClientProvider(
     },
     resolveCreateConfig: inner.resolveCreateConfig?.bind(inner),
     isCreateConfigUnattended: inner.isCreateConfigUnattended?.bind(inner),
+    listCommands: listCommands
+      ? async (config, launchContext) =>
+          await listCommands({ ...config, provider: inner.provider }, launchContext)
+      : undefined,
+    listFeatures: listFeatures
+      ? async (config, launchContext) =>
+          await listFeatures({ ...config, provider: inner.provider }, launchContext)
+      : undefined,
     listImportableSessions: listImportableSessions
       ? async (options) => await listImportableSessions(options)
       : undefined,
@@ -470,6 +484,14 @@ function wrapClientProvider(
             persistence,
           };
         }
+      : undefined,
+    archiveNativeSession: archiveNativeSession
+      ? async (handle, launchContext) =>
+          await archiveNativeSession({ ...handle, provider: inner.provider }, launchContext)
+      : undefined,
+    unarchiveNativeSession: unarchiveNativeSession
+      ? async (handle, launchContext) =>
+          await unarchiveNativeSession({ ...handle, provider: inner.provider }, launchContext)
       : undefined,
     isAvailable: () => inner.isAvailable(),
     getDiagnostic: inner.getDiagnostic?.bind(inner),
